@@ -45,7 +45,11 @@ function ChaseCamera({
   return null;
 }
 
-export function Scene() {
+export function Scene({
+  speedRef,
+}: {
+  speedRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const chassisRef = useRef<RapierRigidBody>(null);
 
   return (
@@ -56,7 +60,7 @@ export function Scene() {
       <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground />
-        <Car chassisRef={chassisRef} />
+        <Car chassisRef={chassisRef} speedRef={speedRef} />
       </Physics>
       <ChaseCamera target={chassisRef} />
     </Canvas>

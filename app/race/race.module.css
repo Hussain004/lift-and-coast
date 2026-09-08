@@ -30,3 +30,18 @@
   border-radius: 4px;
   pointer-events: none;
 }
+
+.speed {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  color: #39ff88;
+  font-family: var(--font-geist-mono);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 16px;
+  border-radius: 4px;
+  pointer-events: none;
+}

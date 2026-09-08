@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRef } from "react";
 import styles from "./race.module.css";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
@@ -9,10 +10,15 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
 });
 
 export default function RacePage() {
+  const speedRef = useRef<HTMLDivElement>(null);
+
   return (
     <div className={styles.wrap}>
-      <Scene />
+      <Scene speedRef={speedRef} />
       <div className={styles.hud}>WASD / arrows to drive</div>
+      <div className={styles.speed} ref={speedRef}>
+        0 km/h
+      </div>
     </div>
   );
 }

@@ -22,8 +22,10 @@ const MAX_BRAKE_FORCE = 40;
 
 export function Car({
   chassisRef,
+  speedRef,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
+  speedRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
     null
@@ -66,6 +68,10 @@ export function Car({
         spinGroup.rotation.x = controller.wheelRotation(i) ?? 0;
       }
     });
+    if (speedRef?.current) {
+      const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
+      speedRef.current.textContent = `${Math.round(kmh)} km/h`;
+    }
   });
 
   return (
