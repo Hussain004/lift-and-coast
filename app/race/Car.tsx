@@ -17,7 +17,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 
-const MAX_ENGINE_FORCE = 1800;
+const MAX_ENGINE_FORCE = 70;
 const MAX_BRAKE_FORCE = 40;
 
 export function Car({
@@ -75,7 +75,8 @@ export function Car({
       mass={220}
       position={[0, 1, 0]}
       linearDamping={0.3}
-      angularDamping={1.5}
+      angularDamping={4}
+      canSleep={false}
     >
       <mesh castShadow>
         <boxGeometry args={[1.8, 0.8, 4]} />

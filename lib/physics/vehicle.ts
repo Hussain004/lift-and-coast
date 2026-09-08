@@ -9,11 +9,13 @@ export interface WheelLayout {
   isDriven: boolean;
 }
 
+// Forward is -Z (chase camera sits behind the car at +Z looking toward -Z).
+// Front wheels (leading edge, -Z) steer; rear wheels (+Z) are driven.
 export const CAR_WHEELS: WheelLayout[] = [
-  { position: [-0.7, -0.35, 1.3], radius: 0.34, isSteering: true, isDriven: false },
-  { position: [0.7, -0.35, 1.3], radius: 0.34, isSteering: true, isDriven: false },
-  { position: [-0.7, -0.35, -1.3], radius: 0.34, isSteering: false, isDriven: true },
-  { position: [0.7, -0.35, -1.3], radius: 0.34, isSteering: false, isDriven: true },
+  { position: [-0.7, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
+  { position: [0.7, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
+  { position: [-0.7, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
+  { position: [0.7, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
 ];
 
 const SUSPENSION_REST_LENGTH = 0.3;
@@ -43,7 +45,7 @@ export function createCarController(
     controller.setWheelSuspensionStiffness(i, 24);
     controller.setWheelSuspensionCompression(i, 0.6);
     controller.setWheelSuspensionRelaxation(i, 0.7);
-    controller.setWheelMaxSuspensionTravel(i, 0.2);
+    controller.setWheelMaxSuspensionTravel(i, 0.35);
     controller.setWheelSideFrictionStiffness(i, 1.6);
     controller.setWheelFrictionSlip(i, 3);
   }
