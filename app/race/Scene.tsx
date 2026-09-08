@@ -5,12 +5,17 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics, RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { Car } from "./Car";
+import { Track } from "./Track";
+import silverstone from "@/data/tracks/silverstone.json";
+import type { TrackData } from "@/lib/tracks/types";
+
+const track = silverstone as TrackData;
 
 function Ground() {
   return (
-    <RigidBody type="fixed" colliders="cuboid" friction={1.4} position={[0, -0.5, 0]}>
+    <RigidBody type="fixed" colliders="cuboid" friction={0.6} position={[0, -0.55, 0]}>
       <mesh receiveShadow>
-        <boxGeometry args={[400, 1, 400]} />
+        <boxGeometry args={[2500, 1, 2500]} />
         <meshStandardMaterial color="#2b2b2b" />
       </mesh>
     </RigidBody>
@@ -53,14 +58,22 @@ export function Scene({
   const chassisRef = useRef<RapierRigidBody>(null);
 
   return (
-    <Canvas shadows camera={{ fov: 65, position: [0, 3, 8] }}>
+    <Canvas
+      shadows
+      camera={{
+        fov: 65,
+        position: [track.startPos.x, 3, track.startPos.z + 8],
+        far: 3000,
+      }}
+    >
       <color attach="background" args={["#87ceeb"]} />
       <fog attach="fog" args={["#87ceeb", 40, 220]} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground />
-        <Car chassisRef={chassisRef} speedRef={speedRef} />
+        <Track track={track} />
+        <Car chassisRef={chassisRef} speedRef={speedRef} startPos={track.startPos} />
       </Physics>
       <ChaseCamera target={chassisRef} />
     </Canvas>

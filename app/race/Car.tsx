@@ -23,9 +23,11 @@ const MAX_BRAKE_FORCE = 40;
 export function Car({
   chassisRef,
   speedRef,
+  startPos,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
+  startPos: { x: number; z: number; headingRad: number };
 }) {
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
     null
@@ -79,7 +81,8 @@ export function Car({
       ref={chassisRef}
       colliders="cuboid"
       mass={220}
-      position={[0, 1, 0]}
+      position={[startPos.x, 1, startPos.z]}
+      rotation={[0, startPos.headingRad, 0]}
       linearDamping={0.3}
       angularDamping={4}
       canSleep={false}
