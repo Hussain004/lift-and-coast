@@ -122,17 +122,18 @@ export function Car({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rapier, world]);
 
-  // Temporary diagnostic hook: runs a batch of physics steps synchronously
-  // against the real mounted world/controller/chassis, bypassing the render
-  // loop entirely. requestAnimationFrame never fires in the automation
-  // environment used to build this (the tab is permanently
-  // document.hidden), so this is the only way to drive and inspect the
-  // live game's actual physics state from there. Not gated behind an env
-  // check - remove once the current handling investigation is done.
+  // Diagnostic hook, kept deliberately: runs a batch of physics steps
+  // synchronously against the real mounted world/controller/chassis,
+  // bypassing the render loop entirely. In the Claude Code browser
+  // automation used to build this, requestAnimationFrame and
+  // ResizeObserver never fire, so this - plus dispatching a plain
+  // `resize` event on window once to unstick react-use-measure's initial
+  // container measurement, which is what the Canvas mount itself is
+  // gated on - is the only way to mount the scene and then inspect the
+  // live game's actual physics state from there. This is how the wheel
+  // mesh auto-collider bug below was actually found: the headless Node
+  // harness has no meshes at all and could never have seen it.
   useEffect(() => {
-    const output = document.getElementById("__debug-output");
-    if (output) output.textContent = "CAR_MOUNTED";
-
     function handleDebugDrive(event: Event) {
       const controller = controllerRef.current;
       const body = chassisRef.current;
