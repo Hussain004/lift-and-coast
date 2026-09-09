@@ -16,6 +16,8 @@ import {
   computeStabilizingTorque,
   createCarController,
 } from "../physics/vehicle";
+import { buildRibbonGeometry } from "../tracks/mesh";
+import type { TrackData } from "../tracks/types";
 
 export interface DriveInputPlan {
   throttle: number;
@@ -27,6 +29,14 @@ export interface StabilityOptions {
   engineForce: number;
   brakeForce: number;
   stabilizeStrength: number;
+  /**
+   * Simulate on the actual track trimesh instead of a flat plane, spawning
+   * at its real start position/heading. Without this the harness only ever
+   * proves stability on an infinite flat cuboid, which the shipped game
+   * never drives on - real trimesh contacts (per-triangle, jittery near
+   * shared edges) are a different and stricter test.
+   */
+  track?: TrackData;
 }
 
 export interface StabilityResult {
@@ -55,10 +65,12 @@ function tiltFromUpright(rotation: {
 }
 
 /**
- * Simulates a car on a large flat plane under a control input for `seconds`,
- * tracking how far it tips (0 = upright) and how it moves. `input` can vary
- * over time (e.g. build speed, then steer) by passing a function of elapsed
- * seconds instead of a fixed plan.
+ * Simulates a car under a control input for `seconds`, tracking how far it
+ * tips (0 = upright) and how it moves. Runs on a large flat plane by
+ * default, or on `options.track`'s real trimesh (spawned at its start
+ * position/heading) when given. `input` can vary over time (e.g. build
+ * speed, then steer) by passing a function of elapsed seconds instead of a
+ * fixed plan.
  */
 export async function simulateDrive(
   seconds: number,
@@ -70,16 +82,40 @@ export async function simulateDrive(
   const timestep = 1 / 60;
   const world = new RAPIER_MOD.World({ x: 0, y: -9.81, z: 0 });
 
-  const groundBody = world.createRigidBody(
-    RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0)
-  );
-  world.createCollider(
-    RAPIER_MOD.ColliderDesc.cuboid(1000, 0.5, 1000).setFriction(1.2),
-    groundBody
-  );
+  if (options.track) {
+    // Matches Scene.tsx exactly: grass cuboid under everything plus the
+    // track trimesh on top, so a car pushed off the ribbon (e.g. by hard
+    // steering) lands on grass like it does in the real game, instead of
+    // free-falling through a void and reading as a "flip" that has nothing
+    // to do with the vehicle.
+    const groundBody = world.createRigidBody(
+      RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.55, 0)
+    );
+    world.createCollider(
+      RAPIER_MOD.ColliderDesc.cuboid(1250, 0.5, 1250).setFriction(0.6),
+      groundBody
+    );
 
+    const { positions, indices } = buildRibbonGeometry(options.track);
+    const trackBody = world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed());
+    world.createCollider(
+      RAPIER_MOD.ColliderDesc.trimesh(positions, indices).setFriction(1.3),
+      trackBody
+    );
+  } else {
+    const groundBody = world.createRigidBody(
+      RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0)
+    );
+    world.createCollider(
+      RAPIER_MOD.ColliderDesc.cuboid(1000, 0.5, 1000).setFriction(1.2),
+      groundBody
+    );
+  }
+
+  const spawn = options.track?.startPos ?? { x: 0, z: 0, headingRad: 0 };
   const chassisDesc = RAPIER_MOD.RigidBodyDesc.dynamic()
-    .setTranslation(0, 1, 0)
+    .setTranslation(spawn.x, 1, spawn.z)
+    .setRotation(new RAPIER_MOD.Quaternion(0, Math.sin(spawn.headingRad / 2), 0, Math.cos(spawn.headingRad / 2)))
     .setLinearDamping(LINEAR_DAMPING)
     .setAngularDamping(ANGULAR_DAMPING)
     .setCanSleep(false)
