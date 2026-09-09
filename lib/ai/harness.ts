@@ -43,6 +43,37 @@ export interface StabilityResult {
   maxTiltRad: number;
   finalSpeedMs: number;
   distanceMeters: number;
+  /**
+   * How far past the track edge the car got, in meters (0 if it never left
+   * the ribbon, or if no track was given). Lets a scenario assert it stayed
+   * on the actual trimesh rather than recovering on the flat grass cuboid
+   * next to it - a steer input hard enough to run off the ribbon spends
+   * most of its time being validated against the same flat-plane case the
+   * default (trackless) mode already covers, not real trimesh contact.
+   */
+  maxOffTrackMeters: number;
+}
+
+// Brute-force nearest centerline point. Only runs inside the harness's own
+// per-step loop (never on the shipped game's hot path), and 2946 points at
+// 60 steps/sec is trivial for a test to chew through.
+function distanceFromTrackEdge(
+  track: TrackData,
+  x: number,
+  z: number
+): number {
+  let nearestIdx = 0;
+  let nearestDistSq = Infinity;
+  for (let i = 0; i < track.centerline.length; i++) {
+    const [cx, , cz] = track.centerline[i];
+    const distSq = (cx - x) ** 2 + (cz - z) ** 2;
+    if (distSq < nearestDistSq) {
+      nearestDistSq = distSq;
+      nearestIdx = i;
+    }
+  }
+  const halfWidth = track.width[nearestIdx] / 2;
+  return Math.max(0, Math.sqrt(nearestDistSq) - halfWidth);
 }
 
 let rapierReady: Promise<typeof RAPIER> | null = null;
@@ -130,6 +161,7 @@ export async function simulateDrive(
   const startPos = chassis.translation();
 
   let maxTilt = 0;
+  let maxOffTrackMeters = 0;
   const steps = Math.round(seconds / timestep);
   for (let i = 0; i < steps; i++) {
     const stepInput = getInput(i * timestep);
@@ -153,6 +185,13 @@ export async function simulateDrive(
 
     world.step();
     maxTilt = Math.max(maxTilt, tiltFromUpright(chassis.rotation()));
+    if (options.track) {
+      const pos = chassis.translation();
+      maxOffTrackMeters = Math.max(
+        maxOffTrackMeters,
+        distanceFromTrackEdge(options.track, pos.x, pos.z)
+      );
+    }
   }
 
   const endPos = chassis.translation();
@@ -165,5 +204,6 @@ export async function simulateDrive(
     maxTiltRad: maxTilt,
     finalSpeedMs: controller.currentVehicleSpeed(),
     distanceMeters,
+    maxOffTrackMeters,
   };
 }

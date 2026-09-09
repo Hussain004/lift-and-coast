@@ -36,12 +36,30 @@ describe("vehicle stability on real Silverstone trimesh", () => {
     expect(result.finalSpeedMs).toBeGreaterThan(10);
   }, 20000);
 
+  // Full steering lock at full throttle runs the car off the ribbon within a
+  // couple of seconds - this exercises grass recovery (the ground cuboid,
+  // same as the flat-plane suite), not trimesh contact. See the "stays on
+  // the ribbon" test below for the case that actually stays on the mesh.
   it("does not tip over holding throttle and full steering lock for 8 seconds", async () => {
     const result = await simulateDrive(
       8,
       { throttle: 1, brake: 0, steer: 1 },
       TUNING
     );
+    expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
+  }, 20000);
+
+  // Moderate steer that actually stays on the ribbon for its whole duration
+  // (verified empirically: steer 0.3 keeps maxOffTrackMeters at 0 through
+  // ~4s before the car runs wide) - the real discriminator between trimesh
+  // jitter and the flat-plane case, unlike the full-lock scenarios above.
+  it("stays on the ribbon and upright while cornering under throttle", async () => {
+    const result = await simulateDrive(
+      4,
+      { throttle: 1, brake: 0, steer: 0.3 },
+      TUNING
+    );
+    expect(result.maxOffTrackMeters).toBeLessThan(0.5);
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
   }, 20000);
 
@@ -54,6 +72,8 @@ describe("vehicle stability on real Silverstone trimesh", () => {
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
   }, 20000);
 
+  // Also runs the car off the ribbon onto grass well before the steer input
+  // kicks in at t=20 - same grass-recovery caveat as the full-lock test above.
   it("does not tip over steering hard after building up speed", async () => {
     const result = await simulateDrive(
       25,

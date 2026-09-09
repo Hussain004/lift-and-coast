@@ -52,6 +52,11 @@ npm run lint
 npx tsc --noEmit
 ```
 
+Vehicle stability is checked headlessly (no browser required): `lib/ai/harness.ts`
+runs the real Rapier vehicle controller under stress scenarios (hard throttle,
+steering lock, braking) both on a flat plane and on the actual Silverstone
+trimesh, and asserts the car stays upright and on the track surface.
+
 ## Deployment
 
 Zero-config on Vercel: connect this repository as a Vercel project. No
