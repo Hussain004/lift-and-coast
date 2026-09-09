@@ -16,7 +16,7 @@ export default function RacePage() {
   return (
     <div className={styles.wrap}>
       <Scene speedRef={speedRef} lapRef={lapRef} />
-      <div className={styles.hud}>WASD / arrows to drive</div>
+      <div className={styles.hud}>WASD / arrows to drive. Hold R to rewind.</div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
       </div>

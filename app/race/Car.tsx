@@ -25,8 +25,30 @@ import {
 } from "@/lib/physics/vehicle";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
+import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 
 const LINE_HALF_WIDTH_METERS = 6;
+const REWIND_CAPACITY_SECONDS = 5;
+
+function snapshotOf(body: RapierRigidBody): RewindSample {
+  const p = body.translation();
+  const r = body.rotation();
+  const lv = body.linvel();
+  const av = body.angvel();
+  return {
+    position: { x: p.x, y: p.y, z: p.z },
+    rotation: { x: r.x, y: r.y, z: r.z, w: r.w },
+    linvel: { x: lv.x, y: lv.y, z: lv.z },
+    angvel: { x: av.x, y: av.y, z: av.z },
+  };
+}
+
+function applySnapshot(body: RapierRigidBody, sample: RewindSample, zeroVelocity: boolean) {
+  body.setTranslation(sample.position, true);
+  body.setRotation(sample.rotation, true);
+  body.setLinvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.linvel, true);
+  body.setAngvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.angvel, true);
+}
 
 function bestLapStorageKey(trackId: string) {
   return `lift-and-coast:best-lap:${trackId}`;
@@ -82,6 +104,11 @@ export function Car({
     bestLapRef.current = loadBestLap(trackId);
   }, [trackId]);
 
+  const rewindBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
+  const rewindCursorRef = useRef(0);
+  const wasRewindingRef = useRef(false);
+  const isRewindingRef = useRef(false);
+
   useEffect(() => {
     const body = chassisRef.current;
     if (!body) return;
@@ -99,6 +126,27 @@ export function Car({
     const body = chassisRef.current;
     if (!controller || !body) return;
     const driveInput = update(world.timestep);
+    isRewindingRef.current = driveInput.rewind;
+
+    if (driveInput.rewind) {
+      wasRewindingRef.current = true;
+      const buffer = rewindBufferRef.current;
+      rewindCursorRef.current = Math.min(
+        rewindCursorRef.current + world.timestep,
+        buffer.oldestAvailableSeconds()
+      );
+      const sample = buffer.sampleAt(rewindCursorRef.current);
+      if (sample) applySnapshot(body, sample, true);
+      return;
+    }
+
+    if (wasRewindingRef.current) {
+      const sample = rewindBufferRef.current.resumeFrom(rewindCursorRef.current);
+      if (sample) applySnapshot(body, sample, false);
+      rewindCursorRef.current = 0;
+      wasRewindingRef.current = false;
+    }
+
     applyCarControls(controller, driveInput, DEFAULT_ENGINE_FORCE, DEFAULT_BRAKE_FORCE);
     controller.updateVehicle(world.timestep);
 
@@ -109,6 +157,8 @@ export function Car({
         true
       );
     }
+
+    rewindBufferRef.current.push(snapshotOf(body));
   });
 
   useFrame((_, dt) => {
@@ -129,6 +179,8 @@ export function Car({
       const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
       speedRef.current.textContent = `${Math.round(kmh)} km/h`;
     }
+
+    if (isRewindingRef.current) return;
 
     const t = body.translation();
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
