@@ -98,3 +98,15 @@
   background: #ffd23f;
   transition: width 0.1s linear;
 }
+
+.aeroMode {
+  position: absolute;
+  bottom: 74px;
+  right: 16px;
+  color: #6bd1ff;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+}

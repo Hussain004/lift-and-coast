@@ -13,11 +13,12 @@ import {
   CHASSIS_MASS,
   LINEAR_DAMPING,
   applyCarControls,
+  applyDragImpulse,
   applyLoadSensitiveFriction,
   computeStabilizingTorque,
   createCarController,
 } from "../physics/vehicle";
-import { computeDownforceN } from "../physics/aero";
+import { computeDownforceN, type AeroMode } from "../physics/aero";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { checkTrackLimits } from "../tracks/trackLimits";
 import type { TrackData } from "../tracks/types";
@@ -40,6 +41,8 @@ export interface StabilityOptions {
    * shared edges) are a different and stricter test.
    */
   track?: TrackData;
+  /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
+  aeroMode?: AeroMode;
 }
 
 export interface StabilityResult {
@@ -187,8 +190,10 @@ export async function simulateDrive(
         true
       );
     }
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+    const aeroMode = options.aeroMode ?? "high-downforce";
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode);
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
+    applyDragImpulse(chassis, aeroMode, timestep);
 
     world.step();
     maxTilt = Math.max(maxTilt, tiltFromUpright(chassis.rotation()));

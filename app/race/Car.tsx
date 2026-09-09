@@ -21,6 +21,7 @@ import {
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
   applyCarControls,
+  applyDragImpulse,
   applyLoadSensitiveFriction,
   computeStabilizingTorque,
   createCarController,
@@ -88,6 +89,7 @@ export function Car({
   lapRef,
   trackLimitRef,
   energyRef,
+  aeroModeRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -95,6 +97,7 @@ export function Car({
   lapRef?: React.RefObject<HTMLDivElement | null>;
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
   energyRef?: React.RefObject<HTMLDivElement | null>;
+  aeroModeRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -104,7 +107,7 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update } = useDriveInput();
+  const { update, aeroMode } = useDriveInput();
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -201,6 +204,7 @@ export function Car({
         }
         const downforceN = computeDownforceN(controller.currentVehicleSpeed());
         body.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
+        applyDragImpulse(body, aeroMode.current, timestep);
 
         world.step();
 
@@ -283,8 +287,9 @@ export function Car({
         true
       );
     }
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current);
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
+    applyDragImpulse(body, aeroMode.current, world.timestep);
 
     rewindBufferRef.current.push(snapshotOf(body));
   });
@@ -309,6 +314,10 @@ export function Car({
     }
     if (energyRef?.current) {
       energyRef.current.style.width = `${(batteryFractionRef.current * 100).toFixed(1)}%`;
+    }
+    if (aeroModeRef?.current) {
+      aeroModeRef.current.textContent =
+        aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE";
     }
 
     if (isRewindingRef.current) return;

@@ -44,7 +44,9 @@ npm run dev
 
 Open http://localhost:3000. Click Drive, then use WASD or the arrow keys.
 Hold R to rewind the last few seconds after spinning off. Hold Shift to
-deploy harvested energy for a power boost (Push-to-Pass).
+deploy harvested energy for a power boost (Push-to-Pass). Press E to toggle
+Active Aero between high-downforce cornering mode and a low-drag mode for a
+higher top speed on the straights.
 
 ## Testing
 

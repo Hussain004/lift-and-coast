@@ -2,6 +2,7 @@ import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import { loadSensitivityScale } from "./tireModel";
+import { computeDragN, type AeroMode } from "./aero";
 
 export interface WheelLayout {
   /** Position of the wheel relative to the chassis center. */
@@ -160,6 +161,24 @@ export function computeStabilizingTorque(
   if (axis.lengthSq() < 1e-8) return [0, 0, 0];
   axis.normalize().multiplyScalar(strength * tilt);
   return [axis.x, axis.y, axis.z];
+}
+
+/**
+ * Aerodynamic drag opposing the chassis's actual horizontal velocity vector
+ * (not just forward speed), so it slows sliding as well as driving. Shared
+ * between Car.tsx and the headless harness so both simulate the same car.
+ */
+export function applyDragImpulse(
+  body: RigidBody,
+  mode: AeroMode,
+  timestep: number
+) {
+  const v = body.linvel();
+  const speed = Math.hypot(v.x, v.z);
+  if (speed < 0.01) return;
+  const dragN = computeDragN(speed, mode);
+  const scale = (dragN * timestep) / speed;
+  body.applyImpulse({ x: -v.x * scale, y: 0, z: -v.z * scale }, true);
 }
 
 export function applyCarControls(

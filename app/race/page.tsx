@@ -14,6 +14,7 @@ export default function RacePage() {
   const lapRef = useRef<HTMLDivElement>(null);
   const trackLimitRef = useRef<HTMLDivElement>(null);
   const energyRef = useRef<HTMLDivElement>(null);
+  const aeroModeRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -22,9 +23,11 @@ export default function RacePage() {
         lapRef={lapRef}
         trackLimitRef={trackLimitRef}
         energyRef={energyRef}
+        aeroModeRef={aeroModeRef}
       />
       <div className={styles.hud}>
-        WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy.
+        WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
+        E to toggle aero mode.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
@@ -32,6 +35,7 @@ export default function RacePage() {
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>
+      <div className={styles.aeroMode} ref={aeroModeRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.energyTrack}>
         <div className={styles.energyFill} ref={energyRef} />
