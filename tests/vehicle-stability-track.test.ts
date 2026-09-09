@@ -53,11 +53,13 @@ describe("vehicle stability on real Silverstone trimesh", () => {
 
   // Moderate steer that actually stays on the ribbon for its whole duration
   // (verified empirically: steer 0.3 keeps maxOffTrackMeters at 0 through
-  // ~4s before the car runs wide) - the real discriminator between trimesh
-  // jitter and the flat-plane case, unlike the full-lock scenarios above.
+  // ~2s before the car runs wide - shorter than it used to be, since the
+  // car covers much more ground per second at the current engine force) -
+  // the real discriminator between trimesh jitter and the flat-plane case,
+  // unlike the full-lock scenarios above.
   it("stays on the ribbon and upright while cornering under throttle", async () => {
     const result = await simulateDrive(
-      4,
+      2,
       { throttle: 1, brake: 0, steer: 0.3 },
       TUNING
     );
@@ -69,6 +71,26 @@ describe("vehicle stability on real Silverstone trimesh", () => {
     const result = await simulateDrive(
       3,
       { throttle: 0, brake: 1, steer: 0 },
+      TUNING
+    );
+    expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
+  }, 20000);
+
+  // Braking hard from real speed was never exercised before this engine
+  // force - it turns out slamming full brake instantly at speed pitches the
+  // chassis past the flip threshold (a raw-input characteristic of the
+  // raycast suspension, not something fixed at this layer). The real input
+  // path (useDriveInput.ts) ramps brake up over 0.5s specifically to avoid
+  // this; this scenario reproduces that ramp to prove the actual gameplay
+  // path - not just the raw physics API - stays safe.
+  it("does not tip over braking hard from speed with a realistic (ramped) brake input", async () => {
+    const BRAKE_RAMP_SECONDS = 0.5;
+    const result = await simulateDrive(
+      4,
+      (t) => {
+        if (t < 3) return { throttle: 1, brake: 0, steer: 0 };
+        return { throttle: 0, brake: Math.min(1, (t - 3) / BRAKE_RAMP_SECONDS), steer: 0 };
+      },
       TUNING
     );
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);

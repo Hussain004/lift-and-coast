@@ -12,6 +12,27 @@ export interface DriveInput {
 
 const STEER_RATE = 4;
 const STEER_CENTER_RATE = 6;
+// Ramp brake input up to full over half a second instead of snapping to 1
+// instantly. Found via headless testing at the current (much higher) engine
+// force: slamming full brake the instant the key is pressed, after building
+// real speed, pitches the chassis violently (tilt exceeded the flip
+// threshold above ~0.7 brake amount applied instantly) - the raycast
+// suspension has no anti-dive geometry to absorb a full-force step input.
+// Ramping the input itself, same technique already used for steering,
+// verified safe with a wide margin (~0.3 rad vs the 0.6 flip threshold),
+// including combined with hard throttle boost and trail-braking steer.
+// Releasing the brake is left instant - only the sudden application caused
+// the instability, not the release.
+//
+// This mitigation lives ONLY in this keyboard input path - it is not a fix
+// in the vehicle model itself (lib/physics/vehicle.ts still accepts and
+// reacts badly to an instant brake:1). Any other input source that can
+// command full brake in one frame - the planned gamepad/wheel analog input
+// (implementation_plan.md section 5) or an AI driver braking under braking
+// (section 14, "AI harvests battery under braking") - needs the same
+// shaping applied at its own point of entry, or a real fix in the vehicle
+// model, before it ships.
+const BRAKE_RAMP_SECONDS = 0.5;
 
 const THROTTLE_KEYS = ["KeyW", "ArrowUp"];
 const BRAKE_KEYS = ["KeyS", "ArrowDown"];
@@ -76,7 +97,9 @@ export function useDriveInput() {
         STEER_CENTER_RATE
       );
       input.current.throttle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
-      input.current.brake = anyPressed(pressed, BRAKE_KEYS) ? 1 : 0;
+      input.current.brake = anyPressed(pressed, BRAKE_KEYS)
+        ? Math.min(1, input.current.brake + dt / BRAKE_RAMP_SECONDS)
+        : 0;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
       return input.current;

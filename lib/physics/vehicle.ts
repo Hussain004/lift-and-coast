@@ -33,7 +33,24 @@ export const CHASSIS_HALF_EXTENTS: [number, number, number] = [0.9, 0.4, 2];
 export const CHASSIS_MASS = 220;
 export const LINEAR_DAMPING = 0.05;
 export const ANGULAR_DAMPING = 6;
-export const DEFAULT_ENGINE_FORCE = 250;
+// Verified via the headless harness: 250N never even reached 100 km/h (it
+// converges to ~95 km/h and sits there). Tested a straight-line 8s throttle
+// sweep from 400N up to 1500N - tilt climbs gradually and safely through
+// 1400N (0.16 rad), then hits a real instability cliff at 1450N+ (0.42 rad,
+// with uncontrolled yaw despite steer=0 - a wheelie/spin precursor, the same
+// failure mode chased earlier this session). 850N reaches 100 km/h in ~4.4s
+// and keeps Push-to-Pass's 1.6x boost (see energy.ts) at 1360N, comfortably
+// under that cliff, verified combined with hard steer and low-drag mode
+// together (tilt stayed ~0.15 rad).
+//
+// The actual bounding constraint turned out to be braking, not throttle:
+// instantly slamming full brake after building speed at 850N pitches the
+// chassis past the flip threshold well before the throttle cliff does (see
+// BRAKE_RAMP_SECONDS in useDriveInput.ts, and the "realistic (ramped) brake
+// input" test in vehicle-stability-track.test.ts) - any further increase to
+// this constant should be re-verified against hard braking from speed, not
+// just sustained throttle.
+export const DEFAULT_ENGINE_FORCE = 850;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
