@@ -1,5 +1,6 @@
 import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
+import { Quaternion, Vector3 } from "three";
 
 export interface WheelLayout {
   /** Position of the wheel relative to the chassis center. */
@@ -48,7 +49,7 @@ export function createCarController(
     controller.setWheelSuspensionStiffness(i, 30);
     controller.setWheelSuspensionCompression(i, 0.6);
     controller.setWheelSuspensionRelaxation(i, 0.7);
-    controller.setWheelMaxSuspensionTravel(i, 0.15);
+    controller.setWheelMaxSuspensionTravel(i, 0.22);
     // Values above 1.0 amplify lateral impulses and are a known flip
     // trigger in Bullet-derived raycast vehicles - keep this at 1.0.
     controller.setWheelSideFrictionStiffness(i, 1.0);
@@ -64,7 +65,34 @@ export interface CarControls {
   steerAngle: number;
 }
 
-const MAX_STEER_ANGLE = 0.55;
+const MAX_STEER_ANGLE = 0.45;
+
+const STABILIZE_MIN_TILT_RAD = 0.05;
+
+/**
+ * ponytail: the raycast suspension has no explicit weight-transfer model,
+ * so a wheel that tops out under hard acceleration or steering just stays
+ * off the ground with nothing pulling it back down - a real wheelie/flip,
+ * not a bug. This applies a corrective torque toward upright, proportional
+ * to tilt, as a stopgap until proper weight transfer exists (plan section
+ * 5, depth feature 1).
+ */
+export function computeStabilizingTorque(
+  quaternion: { x: number; y: number; z: number; w: number },
+  strength: number
+): [number, number, number] {
+  const worldUp = new Vector3(0, 1, 0);
+  const bodyUp = new Vector3(0, 1, 0).applyQuaternion(
+    new Quaternion(quaternion.x, quaternion.y, quaternion.z, quaternion.w)
+  );
+  const tilt = bodyUp.angleTo(worldUp);
+  if (tilt < STABILIZE_MIN_TILT_RAD) return [0, 0, 0];
+
+  const axis = new Vector3().crossVectors(bodyUp, worldUp);
+  if (axis.lengthSq() < 1e-8) return [0, 0, 0];
+  axis.normalize().multiplyScalar(strength * tilt);
+  return [axis.x, axis.y, axis.z];
+}
 
 export function applyCarControls(
   controller: Rapier.DynamicRayCastVehicleController,

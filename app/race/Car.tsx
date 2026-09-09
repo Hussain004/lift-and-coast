@@ -13,12 +13,14 @@ import type Rapier from "@dimforge/rapier3d-compat";
 import {
   CAR_WHEELS,
   applyCarControls,
+  computeStabilizingTorque,
   createCarController,
 } from "@/lib/physics/vehicle";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 
-const MAX_ENGINE_FORCE = 70;
+const MAX_ENGINE_FORCE = 55;
 const MAX_BRAKE_FORCE = 40;
+const STABILIZE_STRENGTH = 30;
 
 export function Car({
   chassisRef,
@@ -51,10 +53,19 @@ export function Car({
 
   useBeforePhysicsStep(() => {
     const controller = controllerRef.current;
-    if (!controller) return;
+    const body = chassisRef.current;
+    if (!controller || !body) return;
     const driveInput = update(world.timestep);
     applyCarControls(controller, driveInput, MAX_ENGINE_FORCE, MAX_BRAKE_FORCE);
     controller.updateVehicle(world.timestep);
+
+    const torque = computeStabilizingTorque(body.rotation(), STABILIZE_STRENGTH);
+    if (torque[0] || torque[1] || torque[2]) {
+      body.applyTorqueImpulse(
+        { x: torque[0] * world.timestep, y: torque[1] * world.timestep, z: torque[2] * world.timestep },
+        true
+      );
+    }
   });
 
   useFrame(() => {
