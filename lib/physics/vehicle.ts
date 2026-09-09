@@ -78,6 +78,24 @@ export interface CarControls {
 
 const MAX_STEER_ANGLE = 0.45;
 
+// A binary keyboard press commands full lock instantly - fine standing
+// still, way too much at speed (plan section 5: "speed-sensitive max
+// lock"). Scale steer angle down between these speeds, floored so the car
+// stays steerable rather than becoming unresponsive at top speed.
+const STEER_FULL_LOCK_SPEED_MS = 8;
+const STEER_MIN_LOCK_SPEED_MS = 45;
+const STEER_MIN_SCALE = 0.35;
+
+export function speedSensitiveSteerScale(speedMs: number): number {
+  const speed = Math.abs(speedMs);
+  if (speed <= STEER_FULL_LOCK_SPEED_MS) return 1;
+  if (speed >= STEER_MIN_LOCK_SPEED_MS) return STEER_MIN_SCALE;
+  const t =
+    (speed - STEER_FULL_LOCK_SPEED_MS) /
+    (STEER_MIN_LOCK_SPEED_MS - STEER_FULL_LOCK_SPEED_MS);
+  return 1 - t * (1 - STEER_MIN_SCALE);
+}
+
 const STABILIZE_MIN_TILT_RAD = 0.05;
 
 /**
@@ -109,11 +127,13 @@ export function applyCarControls(
   controller: Rapier.DynamicRayCastVehicleController,
   { throttle, brake, steer }: { throttle: number; brake: number; steer: number },
   maxEngineForce: number,
-  maxBrakeForce: number
+  maxBrakeForce: number,
+  currentSpeedMs: number
 ) {
+  const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
   CAR_WHEELS.forEach((wheel, i) => {
     controller.setWheelEngineForce(i, wheel.isDriven ? throttle * maxEngineForce : 0);
     controller.setWheelBrake(i, brake * maxBrakeForce);
-    controller.setWheelSteering(i, wheel.isSteering ? steer * MAX_STEER_ANGLE : 0);
+    controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });
 }

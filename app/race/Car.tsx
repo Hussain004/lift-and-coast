@@ -147,7 +147,13 @@ export function Car({
       wasRewindingRef.current = false;
     }
 
-    applyCarControls(controller, driveInput, DEFAULT_ENGINE_FORCE, DEFAULT_BRAKE_FORCE);
+    applyCarControls(
+      controller,
+      driveInput,
+      DEFAULT_ENGINE_FORCE,
+      DEFAULT_BRAKE_FORCE,
+      controller.currentVehicleSpeed()
+    );
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);

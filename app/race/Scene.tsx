@@ -37,9 +37,17 @@ function ChaseCamera({
     if (!body) return;
     const t = body.translation();
     const r = body.rotation();
-    const quat = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+    // Yaw only - a chase camera rigidly following the chassis's full
+    // rotation amplifies every bit of pitch/roll (suspension squat, kerb
+    // bump, cornering lean) into a much larger swing of camera position,
+    // since the offset arm is several meters long. A ~2 degree chassis
+    // pitch under throttle was reading as a dramatic lurch in the view.
+    const yaw = Math.atan2(
+      2 * (r.w * r.y + r.x * r.z),
+      1 - 2 * (r.y * r.y + r.z * r.z)
+    );
 
-    back.current.set(0, 2.2, 7).applyQuaternion(quat);
+    back.current.set(0, 2.2, 7).applyEuler(new THREE.Euler(0, yaw, 0));
     desiredPos.current.set(t.x + back.current.x, t.y + back.current.y, t.z + back.current.z);
     camera.position.lerp(desiredPos.current, Math.min(1, dt * 5));
 

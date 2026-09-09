@@ -52,6 +52,8 @@ export interface StabilityResult {
    * default (trackless) mode already covers, not real trimesh contact.
    */
   maxOffTrackMeters: number;
+  /** Absolute heading change from start to end of the run, in radians. */
+  netYawChangeRad: number;
 }
 
 // Brute-force nearest centerline point. Only runs inside the harness's own
@@ -93,6 +95,16 @@ function tiltFromUpright(rotation: {
     new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w)
   );
   return bodyUp.angleTo(worldUp);
+}
+
+function yawFromRotation(rotation: {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}): number {
+  const { x, y, z, w } = rotation;
+  return Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
 }
 
 /**
@@ -159,13 +171,20 @@ export async function simulateDrive(
 
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const startPos = chassis.translation();
+  const startYaw = yawFromRotation(chassis.rotation());
 
   let maxTilt = 0;
   let maxOffTrackMeters = 0;
   const steps = Math.round(seconds / timestep);
   for (let i = 0; i < steps; i++) {
     const stepInput = getInput(i * timestep);
-    applyCarControls(controller, stepInput, options.engineForce, options.brakeForce);
+    applyCarControls(
+      controller,
+      stepInput,
+      options.engineForce,
+      options.brakeForce,
+      controller.currentVehicleSpeed()
+    );
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(
@@ -199,11 +218,16 @@ export async function simulateDrive(
     endPos.x - startPos.x,
     endPos.z - startPos.z
   );
+  const endYaw = yawFromRotation(chassis.rotation());
+  const netYawChangeRad = Math.abs(
+    Math.atan2(Math.sin(endYaw - startYaw), Math.cos(endYaw - startYaw))
+  );
 
   return {
     maxTiltRad: maxTilt,
     finalSpeedMs: controller.currentVehicleSpeed(),
     distanceMeters,
     maxOffTrackMeters,
+    netYawChangeRad,
   };
 }
