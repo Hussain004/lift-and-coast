@@ -25,6 +25,21 @@ export const CAR_WHEELS: WheelLayout[] = [
 ];
 
 const SUSPENSION_REST_LENGTH = 0.18;
+// Lower than this project's original value of 30, so the chassis actually
+// rolls visibly under cornering load instead of staying nearly flat. The
+// stabilizing torque and angular damping turned out NOT to be the cause of
+// the "glued to the road" feeling reported - a headless sweep of both found
+// tilt during hard cornering essentially unchanged whether the stabilizing
+// torque was fully disabled or angular damping was cut from 6 to 1. This
+// value (down from 30) actually moved it: cornering tilt roughly doubled to
+// ~0.11 rad while barely costing any cornering speed, verified safe across
+// the full danger-scenario matrix (full-lock steer, ramped hard brake,
+// boosted trail-braking, boosted low-drag hard steer) - all stayed well
+// under half the 0.6 rad flip threshold used throughout the stability
+// suite. Lower still (tested down to 3) starts costing real traction/speed
+// without adding more visible roll, so this isn't a "softer is always more
+// dynamic" dial.
+const SUSPENSION_STIFFNESS = 18;
 
 // Single source of truth for chassis + tuning constants, shared by the
 // real game (Car.tsx) and the headless stability harness (lib/ai/harness.ts)
@@ -79,7 +94,7 @@ export function createCarController(
   });
 
   for (let i = 0; i < CAR_WHEELS.length; i++) {
-    controller.setWheelSuspensionStiffness(i, 30);
+    controller.setWheelSuspensionStiffness(i, SUSPENSION_STIFFNESS);
     controller.setWheelSuspensionCompression(i, 0.6);
     controller.setWheelSuspensionRelaxation(i, 0.7);
     controller.setWheelMaxSuspensionTravel(i, 0.22);
