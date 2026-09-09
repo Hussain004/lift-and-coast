@@ -19,6 +19,7 @@ import {
 } from "../physics/vehicle";
 import { computeDownforceN } from "../physics/aero";
 import { buildRibbonGeometry } from "../tracks/mesh";
+import { checkTrackLimits } from "../tracks/trackLimits";
 import type { TrackData } from "../tracks/types";
 
 export interface DriveInputPlan {
@@ -58,27 +59,6 @@ export interface StabilityResult {
   netYawChangeRad: number;
 }
 
-// Brute-force nearest centerline point. Only runs inside the harness's own
-// per-step loop (never on the shipped game's hot path), and 2946 points at
-// 60 steps/sec is trivial for a test to chew through.
-function distanceFromTrackEdge(
-  track: TrackData,
-  x: number,
-  z: number
-): number {
-  let nearestIdx = 0;
-  let nearestDistSq = Infinity;
-  for (let i = 0; i < track.centerline.length; i++) {
-    const [cx, , cz] = track.centerline[i];
-    const distSq = (cx - x) ** 2 + (cz - z) ** 2;
-    if (distSq < nearestDistSq) {
-      nearestDistSq = distSq;
-      nearestIdx = i;
-    }
-  }
-  const halfWidth = track.width[nearestIdx] / 2;
-  return Math.max(0, Math.sqrt(nearestDistSq) - halfWidth);
-}
 
 let rapierReady: Promise<typeof RAPIER> | null = null;
 function ensureRapierInit() {
@@ -216,7 +196,7 @@ export async function simulateDrive(
       const pos = chassis.translation();
       maxOffTrackMeters = Math.max(
         maxOffTrackMeters,
-        distanceFromTrackEdge(options.track, pos.x, pos.z)
+        checkTrackLimits(options.track, pos.x, pos.z).distanceFromEdgeMeters
       );
     }
   }

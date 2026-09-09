@@ -29,6 +29,8 @@ import { computeDownforceN } from "@/lib/physics/aero";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
+import { checkTrackLimits } from "@/lib/tracks/trackLimits";
+import type { TrackData } from "@/lib/tracks/types";
 
 const LINE_HALF_WIDTH_METERS = 6;
 const REWIND_CAPACITY_SECONDS = 5;
@@ -83,15 +85,16 @@ export function Car({
   chassisRef,
   speedRef,
   lapRef,
-  trackId,
-  startPos,
+  trackLimitRef,
+  track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
-  trackId: string;
-  startPos: { x: number; z: number; headingRad: number };
+  trackLimitRef?: React.RefObject<HTMLDivElement | null>;
+  track: TrackData;
 }) {
+  const { startPos } = track;
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
     null
   );
@@ -104,8 +107,8 @@ export function Car({
   );
   const bestLapRef = useRef<number | null>(null);
   useEffect(() => {
-    bestLapRef.current = loadBestLap(trackId);
-  }, [trackId]);
+    bestLapRef.current = loadBestLap(track.id);
+  }, [track.id]);
 
   const rewindBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
   const rewindCursorRef = useRef(0);
@@ -303,12 +306,17 @@ export function Car({
       (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current)
     ) {
       bestLapRef.current = lap.lastLapSeconds;
-      saveBestLap(trackId, lap.lastLapSeconds);
+      saveBestLap(track.id, lap.lastLapSeconds);
     }
     if (lapRef?.current) {
       lapRef.current.textContent =
         `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
         `  BEST ${formatLapTime(bestLapRef.current)}`;
+    }
+
+    if (trackLimitRef?.current) {
+      const status = checkTrackLimits(track, t.x, t.z);
+      trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
     }
   });
 

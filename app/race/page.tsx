@@ -12,10 +12,11 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
 export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
+  const trackLimitRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
-      <Scene speedRef={speedRef} lapRef={lapRef} />
+      <Scene speedRef={speedRef} lapRef={lapRef} trackLimitRef={trackLimitRef} />
       <div className={styles.hud}>WASD / arrows to drive. Hold R to rewind.</div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
@@ -23,6 +24,7 @@ export default function RacePage() {
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>
+      <div className={styles.trackLimit} ref={trackLimitRef} />
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />
