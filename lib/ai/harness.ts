@@ -55,14 +55,17 @@ function tiltFromUpright(rotation: {
 }
 
 /**
- * Simulates a car on a large flat plane under a constant control input for
- * `seconds`, tracking how far it tips (0 = upright) and how it moves.
+ * Simulates a car on a large flat plane under a control input for `seconds`,
+ * tracking how far it tips (0 = upright) and how it moves. `input` can vary
+ * over time (e.g. build speed, then steer) by passing a function of elapsed
+ * seconds instead of a fixed plan.
  */
 export async function simulateDrive(
   seconds: number,
-  input: DriveInputPlan,
+  input: DriveInputPlan | ((elapsedSeconds: number) => DriveInputPlan),
   options: StabilityOptions
 ): Promise<StabilityResult> {
+  const getInput = typeof input === "function" ? input : () => input;
   const RAPIER_MOD = await ensureRapierInit();
   const timestep = 1 / 60;
   const world = new RAPIER_MOD.World({ x: 0, y: -9.81, z: 0 });
@@ -71,7 +74,7 @@ export async function simulateDrive(
     RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0)
   );
   world.createCollider(
-    RAPIER_MOD.ColliderDesc.cuboid(500, 0.5, 500).setFriction(1.2),
+    RAPIER_MOD.ColliderDesc.cuboid(1000, 0.5, 1000).setFriction(1.2),
     groundBody
   );
 
@@ -93,7 +96,8 @@ export async function simulateDrive(
   let maxTilt = 0;
   const steps = Math.round(seconds / timestep);
   for (let i = 0; i < steps; i++) {
-    applyCarControls(controller, input, options.engineForce, options.brakeForce);
+    const stepInput = getInput(i * timestep);
+    applyCarControls(controller, stepInput, options.engineForce, options.brakeForce);
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(

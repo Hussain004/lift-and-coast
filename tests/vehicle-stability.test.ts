@@ -49,4 +49,15 @@ describe("vehicle stability (headless)", () => {
     );
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
   }, 20000);
+
+  it("does not tip over steering hard after building up speed", async () => {
+    // The highest-lateral-load case a player hits: near top speed, then
+    // full steering lock with no easing in.
+    const result = await simulateDrive(
+      25,
+      (t) => ({ throttle: 1, brake: 0, steer: t > 20 ? 1 : 0 }),
+      TUNING
+    );
+    expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
+  }, 20000);
 });
