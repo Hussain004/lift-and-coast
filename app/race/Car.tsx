@@ -24,6 +24,29 @@ import {
   createCarController,
 } from "@/lib/physics/vehicle";
 import { useDriveInput } from "@/lib/input/useDriveInput";
+import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
+
+const LINE_HALF_WIDTH_METERS = 6;
+
+function bestLapStorageKey(trackId: string) {
+  return `lift-and-coast:best-lap:${trackId}`;
+}
+
+// ponytail: a single float per track doesn't need IndexedDB/schema
+// versioning yet (plan section 10 calls for IndexedDB for personal bests
+// long-term) - move it there once ghost replay/telemetry data needs that
+// infra anyway, and migrate this key alongside it.
+function loadBestLap(trackId: string): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(bestLapStorageKey(trackId));
+  const parsed = raw === null ? null : Number(raw);
+  return parsed !== null && Number.isFinite(parsed) ? parsed : null;
+}
+
+function saveBestLap(trackId: string, seconds: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(bestLapStorageKey(trackId), String(seconds));
+}
 
 const CHASSIS_SIZE: [number, number, number] = [
   CHASSIS_HALF_EXTENTS[0] * 2,
@@ -34,10 +57,14 @@ const CHASSIS_SIZE: [number, number, number] = [
 export function Car({
   chassisRef,
   speedRef,
+  lapRef,
+  trackId,
   startPos,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
+  lapRef?: React.RefObject<HTMLDivElement | null>;
+  trackId: string;
   startPos: { x: number; z: number; headingRad: number };
 }) {
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
@@ -47,6 +74,13 @@ export function Car({
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
   const { update } = useDriveInput();
+  const lapTimerRef = useRef(
+    createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
+  );
+  const bestLapRef = useRef<number | null>(null);
+  useEffect(() => {
+    bestLapRef.current = loadBestLap(trackId);
+  }, [trackId]);
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -77,9 +111,10 @@ export function Car({
     }
   });
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const controller = controllerRef.current;
-    if (!controller) return;
+    const body = chassisRef.current;
+    if (!controller || !body) return;
     CAR_WHEELS.forEach((wheel, i) => {
       const steerGroup = steerRefs.current[i];
       const spinGroup = spinRefs.current[i];
@@ -93,6 +128,22 @@ export function Car({
     if (speedRef?.current) {
       const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
       speedRef.current.textContent = `${Math.round(kmh)} km/h`;
+    }
+
+    const t = body.translation();
+    const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
+    if (
+      lap.crossedFinishLine &&
+      lap.lastLapSeconds !== null &&
+      (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current)
+    ) {
+      bestLapRef.current = lap.lastLapSeconds;
+      saveBestLap(trackId, lap.lastLapSeconds);
+    }
+    if (lapRef?.current) {
+      lapRef.current.textContent =
+        `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
+        `  BEST ${formatLapTime(bestLapRef.current)}`;
     }
   });
 

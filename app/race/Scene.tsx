@@ -52,8 +52,10 @@ function ChaseCamera({
 
 export function Scene({
   speedRef,
+  lapRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
+  lapRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
 
@@ -73,7 +75,13 @@ export function Scene({
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground />
         <Track track={track} />
-        <Car chassisRef={chassisRef} speedRef={speedRef} startPos={track.startPos} />
+        <Car
+          chassisRef={chassisRef}
+          speedRef={speedRef}
+          lapRef={lapRef}
+          trackId={track.id}
+          startPos={track.startPos}
+        />
       </Physics>
       <ChaseCamera target={chassisRef} />
     </Canvas>

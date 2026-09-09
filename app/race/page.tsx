@@ -11,11 +11,15 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
 
 export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
+  const lapRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
-      <Scene speedRef={speedRef} />
+      <Scene speedRef={speedRef} lapRef={lapRef} />
       <div className={styles.hud}>WASD / arrows to drive</div>
+      <div className={styles.lap} ref={lapRef}>
+        LAP 1 --:--.---  BEST --:--.---
+      </div>
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>

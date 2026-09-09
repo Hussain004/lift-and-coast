@@ -31,6 +31,20 @@
   pointer-events: none;
 }
 
+.lap {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  color: #fff;
+  font-family: var(--font-geist-mono);
+  font-size: 15px;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 12px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 .speed {
   position: absolute;
   bottom: 16px;
