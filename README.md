@@ -43,7 +43,8 @@ npm run dev
 ```
 
 Open http://localhost:3000. Click Drive, then use WASD or the arrow keys.
-Hold R to rewind the last few seconds after spinning off.
+Hold R to rewind the last few seconds after spinning off. Hold Shift to
+deploy harvested energy for a power boost (Push-to-Pass).
 
 ## Testing
 

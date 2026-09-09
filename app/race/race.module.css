@@ -79,3 +79,22 @@
   border-radius: 4px;
   pointer-events: none;
 }
+
+.energyTrack {
+  position: absolute;
+  bottom: 56px;
+  right: 16px;
+  width: 160px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.energyFill {
+  height: 100%;
+  width: 100%;
+  background: #ffd23f;
+  transition: width 0.1s linear;
+}

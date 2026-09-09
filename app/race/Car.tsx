@@ -26,6 +26,7 @@ import {
   createCarController,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
+import { createEnergySystem } from "@/lib/physics/energy";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
@@ -86,12 +87,14 @@ export function Car({
   speedRef,
   lapRef,
   trackLimitRef,
+  energyRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
+  energyRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -114,6 +117,9 @@ export function Car({
   const rewindCursorRef = useRef(0);
   const wasRewindingRef = useRef(false);
   const isRewindingRef = useRef(false);
+
+  const energySystemRef = useRef(createEnergySystem());
+  const batteryFractionRef = useRef(1);
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -254,10 +260,16 @@ export function Car({
       wasRewindingRef.current = false;
     }
 
+    const energyStatus = energySystemRef.current.update(
+      { brakeAmount: driveInput.brake, deployRequested: driveInput.deploy },
+      world.timestep
+    );
+    batteryFractionRef.current = energyStatus.batteryFraction;
+
     applyCarControls(
       controller,
       driveInput,
-      DEFAULT_ENGINE_FORCE,
+      DEFAULT_ENGINE_FORCE * energyStatus.engineForceMultiplier,
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed()
     );
@@ -294,6 +306,9 @@ export function Car({
     if (speedRef?.current) {
       const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
       speedRef.current.textContent = `${Math.round(kmh)} km/h`;
+    }
+    if (energyRef?.current) {
+      energyRef.current.style.width = `${(batteryFractionRef.current * 100).toFixed(1)}%`;
     }
 
     if (isRewindingRef.current) return;

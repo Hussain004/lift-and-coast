@@ -13,11 +13,19 @@ export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
   const trackLimitRef = useRef<HTMLDivElement>(null);
+  const energyRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
-      <Scene speedRef={speedRef} lapRef={lapRef} trackLimitRef={trackLimitRef} />
-      <div className={styles.hud}>WASD / arrows to drive. Hold R to rewind.</div>
+      <Scene
+        speedRef={speedRef}
+        lapRef={lapRef}
+        trackLimitRef={trackLimitRef}
+        energyRef={energyRef}
+      />
+      <div className={styles.hud}>
+        WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy.
+      </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
       </div>
@@ -25,6 +33,9 @@ export default function RacePage() {
         0 km/h
       </div>
       <div className={styles.trackLimit} ref={trackLimitRef} />
+      <div className={styles.energyTrack}>
+        <div className={styles.energyFill} ref={energyRef} />
+      </div>
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />

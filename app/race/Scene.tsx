@@ -62,10 +62,12 @@ export function Scene({
   speedRef,
   lapRef,
   trackLimitRef,
+  energyRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   trackLimitRef: React.RefObject<HTMLDivElement | null>;
+  energyRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
 
@@ -90,6 +92,7 @@ export function Scene({
           speedRef={speedRef}
           lapRef={lapRef}
           trackLimitRef={trackLimitRef}
+          energyRef={energyRef}
           track={track}
         />
       </Physics>
