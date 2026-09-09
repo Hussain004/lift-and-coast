@@ -17,6 +17,7 @@ import {
   computeStabilizingTorque,
   createCarController,
 } from "../physics/vehicle";
+import { computeDownforceN } from "../physics/aero";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import type { TrackData } from "../tracks/types";
 
@@ -206,6 +207,8 @@ export async function simulateDrive(
         true
       );
     }
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+    chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
 
     world.step();
     maxTilt = Math.max(maxTilt, tiltFromUpright(chassis.rotation()));

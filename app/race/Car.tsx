@@ -25,6 +25,7 @@ import {
   computeStabilizingTorque,
   createCarController,
 } from "@/lib/physics/vehicle";
+import { computeDownforceN } from "@/lib/physics/aero";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
@@ -189,6 +190,8 @@ export function Car({
             true
           );
         }
+        const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+        body.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
 
         world.step();
 
@@ -265,6 +268,8 @@ export function Car({
         true
       );
     }
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+    body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
 
     rewindBufferRef.current.push(snapshotOf(body));
   });
