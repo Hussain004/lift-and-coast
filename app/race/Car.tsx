@@ -11,16 +11,25 @@ import {
 } from "@react-three/rapier";
 import type Rapier from "@dimforge/rapier3d-compat";
 import {
+  ANGULAR_DAMPING,
   CAR_WHEELS,
+  CHASSIS_HALF_EXTENTS,
+  CHASSIS_MASS,
+  DEFAULT_BRAKE_FORCE,
+  DEFAULT_ENGINE_FORCE,
+  DEFAULT_STABILIZE_STRENGTH,
+  LINEAR_DAMPING,
   applyCarControls,
   computeStabilizingTorque,
   createCarController,
 } from "@/lib/physics/vehicle";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 
-const MAX_ENGINE_FORCE = 55;
-const MAX_BRAKE_FORCE = 40;
-const STABILIZE_STRENGTH = 30;
+const CHASSIS_SIZE: [number, number, number] = [
+  CHASSIS_HALF_EXTENTS[0] * 2,
+  CHASSIS_HALF_EXTENTS[1] * 2,
+  CHASSIS_HALF_EXTENTS[2] * 2,
+];
 
 export function Car({
   chassisRef,
@@ -56,10 +65,10 @@ export function Car({
     const body = chassisRef.current;
     if (!controller || !body) return;
     const driveInput = update(world.timestep);
-    applyCarControls(controller, driveInput, MAX_ENGINE_FORCE, MAX_BRAKE_FORCE);
+    applyCarControls(controller, driveInput, DEFAULT_ENGINE_FORCE, DEFAULT_BRAKE_FORCE);
     controller.updateVehicle(world.timestep);
 
-    const torque = computeStabilizingTorque(body.rotation(), STABILIZE_STRENGTH);
+    const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
     if (torque[0] || torque[1] || torque[2]) {
       body.applyTorqueImpulse(
         { x: torque[0] * world.timestep, y: torque[1] * world.timestep, z: torque[2] * world.timestep },
@@ -91,15 +100,15 @@ export function Car({
     <RigidBody
       ref={chassisRef}
       colliders="cuboid"
-      mass={220}
+      mass={CHASSIS_MASS}
       position={[startPos.x, 1, startPos.z]}
       rotation={[0, startPos.headingRad, 0]}
-      linearDamping={0.3}
-      angularDamping={6}
+      linearDamping={LINEAR_DAMPING}
+      angularDamping={ANGULAR_DAMPING}
       canSleep={false}
     >
       <mesh castShadow>
-        <boxGeometry args={[1.8, 0.8, 4]} />
+        <boxGeometry args={CHASSIS_SIZE} />
         <meshStandardMaterial color="#39ff88" />
       </mesh>
       {CAR_WHEELS.map((wheel, i) => (

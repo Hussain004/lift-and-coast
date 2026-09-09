@@ -24,6 +24,17 @@ export const CAR_WHEELS: WheelLayout[] = [
 
 const SUSPENSION_REST_LENGTH = 0.18;
 
+// Single source of truth for chassis + tuning constants, shared by the
+// real game (Car.tsx) and the headless stability harness (lib/ai/harness.ts)
+// so both always simulate the exact same car.
+export const CHASSIS_HALF_EXTENTS: [number, number, number] = [0.9, 0.4, 2];
+export const CHASSIS_MASS = 220;
+export const LINEAR_DAMPING = 0.05;
+export const ANGULAR_DAMPING = 6;
+export const DEFAULT_ENGINE_FORCE = 250;
+export const DEFAULT_BRAKE_FORCE = 40;
+export const DEFAULT_STABILIZE_STRENGTH = 30;
+
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
  * rigid body, wired to the CAR_WHEELS layout (indices line up 1:1).
