@@ -18,10 +18,31 @@ export type AeroMode = "high-downforce" | "low-drag";
 // High-downforce is the identity case (multipliers of 1) so every existing
 // scenario and test, tuned before aero modes existed, keeps behaving exactly
 // as before. Low-drag trades grip for a higher top speed.
-const AERO_MODE_MULTIPLIERS: Record<AeroMode, { downforce: number; drag: number }> = {
-  "high-downforce": { downforce: 1, drag: 1 },
-  "low-drag": { downforce: 0.4, drag: 0.5 },
+//
+// grip is a direct mechanical-grip penalty for low-drag mode ("flattened
+// wings"), separate from the downforce->load->grip coupling in
+// applyLoadSensitiveFriction. That coupling alone doesn't punish cornering
+// in low-drag mode: at typical cornering speeds (~10 m/s) downforce is under
+// 1.5% of the car's static weight in either mode, so the load-sensitivity
+// curve barely moves - confirmed empirically (off-track distance at
+// steer=0.3 differed by ~1.4% between modes with grip unset). This field is
+// what actually makes low-drag mode bleed grip through corners.
+//
+// 0.5 rather than something milder like 0.8: Rapier's raycast vehicle
+// constrains lateral velocity rather than modeling a real force-based slip
+// limit, so moderate steering inputs stay within grip in either mode
+// regardless of a small penalty - only a strong one produces a felt
+// difference. Verified at hard steer (0.9) after building speed: 0.5 grip
+// gives ~11% less net turn-in and ~21% more off-track distance than
+// high-downforce, at tilt still far under the flip threshold.
+const AERO_MODE_MULTIPLIERS: Record<AeroMode, { downforce: number; drag: number; grip: number }> = {
+  "high-downforce": { downforce: 1, drag: 1, grip: 1 },
+  "low-drag": { downforce: 0.4, drag: 0.5, grip: 0.5 },
 };
+
+export function aeroGripMultiplier(mode: AeroMode): number {
+  return AERO_MODE_MULTIPLIERS[mode].grip;
+}
 
 export function computeDownforceN(
   speedMs: number,

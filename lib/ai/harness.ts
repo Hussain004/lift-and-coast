@@ -12,6 +12,7 @@ import {
   CHASSIS_HALF_EXTENTS,
   CHASSIS_MASS,
   LINEAR_DAMPING,
+  OFF_TRACK_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -159,12 +160,27 @@ export async function simulateDrive(
 
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const startPos = chassis.translation();
-  const startYaw = yawFromRotation(chassis.rotation());
+  const startRotation = chassis.rotation();
+  const startYaw = yawFromRotation(startRotation);
 
   let maxTilt = 0;
   let maxOffTrackMeters = 0;
   const steps = Math.round(seconds / timestep);
+  const aeroMode = options.aeroMode ?? "high-downforce";
   for (let i = 0; i < steps; i++) {
+    // Matches Car.tsx: past this distance off-track, snap back to the start
+    // line rather than let the car keep going - a long enough straight-line
+    // run off-course eventually crosses the finite ground plane's edge and
+    // crashes the physics engine entirely (found via this harness).
+    if (options.track) {
+      const p = chassis.translation();
+      if (checkTrackLimits(options.track, p.x, p.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS) {
+        chassis.setTranslation(startPos, true);
+        chassis.setRotation(startRotation, true);
+        chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      }
+    }
     const stepInput = getInput(i * timestep);
     applyCarControls(
       controller,
@@ -173,7 +189,7 @@ export async function simulateDrive(
       options.brakeForce,
       controller.currentVehicleSpeed()
     );
-    applyLoadSensitiveFriction(controller);
+    applyLoadSensitiveFriction(controller, aeroMode);
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(
@@ -190,7 +206,6 @@ export async function simulateDrive(
         true
       );
     }
-    const aeroMode = options.aeroMode ?? "high-downforce";
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode);
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
     applyDragImpulse(chassis, aeroMode, timestep);

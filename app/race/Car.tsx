@@ -20,6 +20,7 @@ import {
   DEFAULT_ENGINE_FORCE,
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
+  OFF_TRACK_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -123,6 +124,9 @@ export function Car({
 
   const energySystemRef = useRef(createEnergySystem());
   const batteryFractionRef = useRef(1);
+  const startRotationRef = useRef(
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(0, startPos.headingRad, 0))
+  );
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -192,7 +196,7 @@ export function Car({
           DEFAULT_BRAKE_FORCE,
           controller.currentVehicleSpeed()
         );
-        applyLoadSensitiveFriction(controller);
+        applyLoadSensitiveFriction(controller, aeroMode.current);
         controller.updateVehicle(timestep);
 
         const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
@@ -245,6 +249,23 @@ export function Car({
     const driveInput = update(world.timestep);
     isRewindingRef.current = driveInput.rewind;
 
+    // Snap back to the start line if the car ends up this far off-track
+    // (e.g. spun off pointing away from the circuit and held throttle
+    // instead of rewinding). Found via headless testing: driving straight
+    // off-course for long enough eventually runs past the finite ground
+    // plane's edge and crashes the physics engine entirely - this catches it
+    // hundreds of meters before that, and far past any legitimate
+    // spin-recovery distance in the stability suite (under 60m throughout).
+    const pos = body.translation();
+    if (checkTrackLimits(track, pos.x, pos.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS) {
+      const q = startRotationRef.current;
+      body.setTranslation({ x: startPos.x, y: 1, z: startPos.z }, true);
+      body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      return;
+    }
+
     if (driveInput.rewind) {
       wasRewindingRef.current = true;
       const buffer = rewindBufferRef.current;
@@ -277,7 +298,7 @@ export function Car({
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed()
     );
-    applyLoadSensitiveFriction(controller);
+    applyLoadSensitiveFriction(controller, aeroMode.current);
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);

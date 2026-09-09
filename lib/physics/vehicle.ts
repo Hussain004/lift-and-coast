@@ -2,7 +2,7 @@ import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import { loadSensitivityScale } from "./tireModel";
-import { computeDragN, type AeroMode } from "./aero";
+import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 
 export interface WheelLayout {
   /** Position of the wheel relative to the chassis center. */
@@ -36,6 +36,9 @@ export const ANGULAR_DAMPING = 6;
 export const DEFAULT_ENGINE_FORCE = 250;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
+// Snap back to the start line past this distance off-track - see the usage
+// site (Car.tsx, and the harness below) for why.
+export const OFF_TRACK_RESET_METERS = 300;
 
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
@@ -95,13 +98,21 @@ export const STATIC_WHEEL_LOAD_N = (CHASSIS_MASS * 9.81) / 4;
  * (BASE_SIDE_FRICTION_STIFFNESS) rather than ever scaled upward - that
  * value is a documented flip trigger above 1.0, and a lightly loaded wheel
  * would otherwise get pushed past it.
+ *
+ * Also applies the active-aero grip multiplier (aeroGripMultiplier) - a
+ * direct mechanical-grip penalty for low-drag mode, since the
+ * downforce->load coupling above is negligible at cornering speeds (see
+ * aero.ts). Both scales only ever multiply below 1x on top of each other,
+ * so the sideFrictionStiffness safety ceiling still holds.
  */
 export function applyLoadSensitiveFriction(
-  controller: Rapier.DynamicRayCastVehicleController
+  controller: Rapier.DynamicRayCastVehicleController,
+  aeroMode: AeroMode = "high-downforce"
 ) {
+  const gripScale = aeroGripMultiplier(aeroMode);
   for (let i = 0; i < CAR_WHEELS.length; i++) {
     const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
-    const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N);
+    const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N) * gripScale;
     controller.setWheelFrictionSlip(i, BASE_FRICTION_SLIP * scale);
     controller.setWheelSideFrictionStiffness(
       i,
