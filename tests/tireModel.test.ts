@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTireForces } from "../lib/physics/tireModel";
+import { computeTireForces, loadSensitivityScale } from "../lib/physics/tireModel";
 
 const NOMINAL_LOAD_N = 2000;
 
@@ -126,5 +126,35 @@ describe("computeTireForces", () => {
       const magnitude = Math.hypot(forces.lateralForceN, forces.longitudinalForceN);
       expect(magnitude).toBeLessThanOrEqual(maxAlone + 1e-6);
     }
+  });
+});
+
+describe("loadSensitivityScale", () => {
+  const REFERENCE_LOAD_N = 540;
+
+  it("returns 1 at the reference load", () => {
+    expect(loadSensitivityScale(REFERENCE_LOAD_N, REFERENCE_LOAD_N)).toBeCloseTo(1, 6);
+  });
+
+  it("returns less than 1 above the reference load and more than 1 below it", () => {
+    expect(loadSensitivityScale(REFERENCE_LOAD_N * 2, REFERENCE_LOAD_N)).toBeLessThan(1);
+    expect(loadSensitivityScale(REFERENCE_LOAD_N * 0.5, REFERENCE_LOAD_N)).toBeGreaterThan(1);
+  });
+
+  it("is monotonically decreasing as load increases", () => {
+    const loads = [100, 300, 540, 1000, 2000, 5000];
+    const scales = loads.map((l) => loadSensitivityScale(l, REFERENCE_LOAD_N));
+    for (let i = 1; i < scales.length; i++) {
+      expect(scales[i]).toBeLessThan(scales[i - 1]);
+    }
+  });
+
+  it("clamps to a bounded range even at extreme loads", () => {
+    const atZero = loadSensitivityScale(0, REFERENCE_LOAD_N);
+    const atTiny = loadSensitivityScale(0.001, REFERENCE_LOAD_N);
+    const atHuge = loadSensitivityScale(1_000_000, REFERENCE_LOAD_N);
+    expect(atZero).toBeLessThanOrEqual(1.5);
+    expect(atTiny).toBeLessThanOrEqual(1.5);
+    expect(atHuge).toBeGreaterThanOrEqual(0.6);
   });
 });

@@ -21,6 +21,7 @@ import {
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
   applyCarControls,
+  applyLoadSensitiveFriction,
   computeStabilizingTorque,
   createCarController,
 } from "@/lib/physics/vehicle";
@@ -178,6 +179,7 @@ export function Car({
           DEFAULT_BRAKE_FORCE,
           controller.currentVehicleSpeed()
         );
+        applyLoadSensitiveFriction(controller);
         controller.updateVehicle(timestep);
 
         const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
@@ -253,6 +255,7 @@ export function Car({
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed()
     );
+    applyLoadSensitiveFriction(controller);
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);

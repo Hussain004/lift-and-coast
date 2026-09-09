@@ -32,6 +32,24 @@ function peakForceN(normalLoadN: number, compoundGrip: number): number {
   return mu * normalLoadN * compoundGrip;
 }
 
+const LOAD_SCALE_MIN = 0.6;
+const LOAD_SCALE_MAX = 1.5;
+
+/**
+ * The same sub-linear load sensitivity as the tire force curve above,
+ * expressed as a dimensionless multiplier around 1.0 at `referenceLoadN`
+ * instead of a Newton force - for modulating a friction *parameter*
+ * (e.g. Rapier's own wheelFrictionSlip/wheelSideFrictionStiffness) rather
+ * than computing a force directly. Clamped: a near-zero load would
+ * otherwise blow this up toward infinity, which is meaningless since a
+ * wheel that unloaded has ~0 grip regardless of the multiplier.
+ */
+export function loadSensitivityScale(normalLoadN: number, referenceLoadN: number): number {
+  if (normalLoadN <= 0) return LOAD_SCALE_MAX;
+  const raw = (referenceLoadN / normalLoadN) ** LOAD_SENSITIVITY_EXPONENT;
+  return Math.min(LOAD_SCALE_MAX, Math.max(LOAD_SCALE_MIN, raw));
+}
+
 // Rises from 0 to 1 as slip goes from 0 to slipAtPeak, then relaxes back
 // down as slip increases further - "grip rises to a peak then falls off"
 // (plan section 5), without needing the full Magic Formula's B/C/D/E

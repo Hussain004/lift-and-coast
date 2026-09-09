@@ -1,6 +1,7 @@
 import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
+import { loadSensitivityScale } from "./tireModel";
 
 export interface WheelLayout {
   /** Position of the wheel relative to the chassis center. */
@@ -68,6 +69,44 @@ export function createCarController(
   }
 
   return controller;
+}
+
+export const BASE_FRICTION_SLIP = 3;
+export const BASE_SIDE_FRICTION_STIFFNESS = 1.0;
+// Static per-wheel load: total weight over 4 wheels, evenly (no front/rear
+// bias modeled). Used only as the reference point for load-sensitivity
+// scaling below, not as an authoritative weight-transfer figure - Rapier's
+// own suspension already simulates real per-wheel load via
+// wheelSuspensionForce, which is what gets compared against this.
+export const STATIC_WHEEL_LOAD_N = (CHASSIS_MASS * 9.81) / 4;
+
+/**
+ * Plan section 5's tire load sensitivity ("grip doesn't scale linearly with
+ * load"), applied to the two friction parameters Rapier's raycast vehicle
+ * actually exposes, using its own simulated per-wheel suspension force as
+ * the normal load - real weight transfer, not a separate estimate. A more
+ * loaded wheel (e.g. the outside wheel mid-corner, or the front axle under
+ * braking) gets comparatively less grip per unit load than a lightly
+ * loaded one, which is what makes trail-braking and throttle modulation
+ * matter instead of grip just being free.
+ *
+ * sideFrictionStiffness is capped at its existing safe ceiling
+ * (BASE_SIDE_FRICTION_STIFFNESS) rather than ever scaled upward - that
+ * value is a documented flip trigger above 1.0, and a lightly loaded wheel
+ * would otherwise get pushed past it.
+ */
+export function applyLoadSensitiveFriction(
+  controller: Rapier.DynamicRayCastVehicleController
+) {
+  for (let i = 0; i < CAR_WHEELS.length; i++) {
+    const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
+    const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N);
+    controller.setWheelFrictionSlip(i, BASE_FRICTION_SLIP * scale);
+    controller.setWheelSideFrictionStiffness(
+      i,
+      Math.min(BASE_SIDE_FRICTION_STIFFNESS, BASE_SIDE_FRICTION_STIFFNESS * scale)
+    );
+  }
 }
 
 export interface CarControls {

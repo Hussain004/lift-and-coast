@@ -13,6 +13,7 @@ import {
   CHASSIS_MASS,
   LINEAR_DAMPING,
   applyCarControls,
+  applyLoadSensitiveFriction,
   computeStabilizingTorque,
   createCarController,
 } from "../physics/vehicle";
@@ -188,6 +189,7 @@ export async function simulateDrive(
       options.brakeForce,
       controller.currentVehicleSpeed()
     );
+    applyLoadSensitiveFriction(controller);
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(
