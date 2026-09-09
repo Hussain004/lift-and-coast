@@ -210,7 +210,9 @@ export function Car({
         }
       }
 
-      if (output) output.textContent = JSON.stringify({ maxTilt, samples });
+      if (output) {
+        output.textContent = JSON.stringify({ bodyMass: body.mass(), maxTilt, samples });
+      }
     }
 
     window.addEventListener("debug-drive-request", handleDebugDrive);

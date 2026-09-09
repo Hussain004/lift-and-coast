@@ -33,7 +33,9 @@ describe("vehicle stability on real Silverstone trimesh", () => {
       TUNING
     );
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
-    expect(result.finalSpeedMs).toBeGreaterThan(10);
+    // currentVehicleSpeed()'s sign isn't a reliable direction indicator
+    // (the real HUD already takes Math.abs() of it) - check magnitude.
+    expect(Math.abs(result.finalSpeedMs)).toBeGreaterThan(10);
   }, 20000);
 
   // Full steering lock at full throttle runs the car off the ribbon within a

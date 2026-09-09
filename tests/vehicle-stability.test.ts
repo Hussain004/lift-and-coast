@@ -29,7 +29,9 @@ describe("vehicle stability (headless)", () => {
     // linear damping large enough relative to engine force to cap speed at
     // a walking pace, which is exactly as undrivable as flipping.
     expect(result.distanceMeters).toBeGreaterThan(45);
-    expect(result.finalSpeedMs).toBeGreaterThan(10);
+    // currentVehicleSpeed()'s sign isn't a reliable direction indicator
+    // (the real HUD already takes Math.abs() of it) - check magnitude.
+    expect(Math.abs(result.finalSpeedMs)).toBeGreaterThan(10);
   }, 20000);
 
   it("does not tip over holding throttle and full steering lock for 8 seconds", async () => {

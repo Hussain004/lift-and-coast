@@ -161,13 +161,16 @@ export async function simulateDrive(
     .setRotation(new RAPIER_MOD.Quaternion(0, Math.sin(spawn.headingRad / 2), 0, Math.cos(spawn.headingRad / 2)))
     .setLinearDamping(LINEAR_DAMPING)
     .setAngularDamping(ANGULAR_DAMPING)
-    .setCanSleep(false)
-    .setAdditionalMass(CHASSIS_MASS);
+    .setCanSleep(false);
   const chassis = world.createRigidBody(chassisDesc);
-  world.createCollider(
-    RAPIER_MOD.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS),
-    chassis
-  );
+  // Matches Car.tsx exactly: mass is set on the one chassis collider via
+  // setMass, not setAdditionalMass on the body. They are not equivalent -
+  // additional mass stacks on top of the collider's own density-derived
+  // mass, so the harness was previously simulating a ~225.76kg car against
+  // constants tuned for 220kg.
+  world
+    .createCollider(RAPIER_MOD.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis)
+    .setMass(CHASSIS_MASS);
 
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const startPos = chassis.translation();
