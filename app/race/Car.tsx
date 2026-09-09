@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import {
+  CuboidCollider,
   RigidBody,
   useRapier,
   useBeforePhysicsStep,
@@ -303,14 +304,25 @@ export function Car({
   return (
     <RigidBody
       ref={chassisRef}
-      colliders="cuboid"
-      mass={CHASSIS_MASS}
+      colliders={false}
       position={[startPos.x, 1, startPos.z]}
       rotation={[0, startPos.headingRad, 0]}
       linearDamping={LINEAR_DAMPING}
       angularDamping={ANGULAR_DAMPING}
       canSleep={false}
     >
+      {/*
+        colliders={false} + one explicit collider is deliberate: the
+        default auto-collider generation ("cuboid") walks every visible
+        mesh under this RigidBody and gives EACH one its own bounding-box
+        collider - including the 4 wheel cylinder meshes below, which were
+        silently getting solid, chassis-fixed collision boxes sitting right
+        where the ground is, fighting the raycast suspension on every wheel.
+        That was the real cause of the violent launching/flipping reported
+        during play - a headless harness with no meshes at all could never
+        have caught it. Only the chassis body should ever be solid.
+      */}
+      <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
       <mesh castShadow>
         <boxGeometry args={CHASSIS_SIZE} />
         <meshStandardMaterial color="#39ff88" />
