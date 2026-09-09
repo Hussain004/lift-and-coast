@@ -28,17 +28,21 @@ const SUSPENSION_REST_LENGTH = 0.18;
 // Lower than this project's original value of 30, so the chassis actually
 // rolls visibly under cornering load instead of staying nearly flat. The
 // stabilizing torque and angular damping turned out NOT to be the cause of
-// the "glued to the road" feeling reported - a headless sweep of both found
-// tilt during hard cornering essentially unchanged whether the stabilizing
-// torque was fully disabled or angular damping was cut from 6 to 1. This
-// value (down from 30) actually moved it: cornering tilt roughly doubled to
-// ~0.11 rad while barely costing any cornering speed, verified safe across
-// the full danger-scenario matrix (full-lock steer, ramped hard brake,
-// boosted trail-braking, boosted low-drag hard steer) - all stayed well
-// under half the 0.6 rad flip threshold used throughout the stability
-// suite. Lower still (tested down to 3) starts costing real traction/speed
-// without adding more visible roll, so this isn't a "softer is always more
-// dynamic" dial.
+// the "glued to the road" feeling first reported - a headless sweep of both
+// found tilt during hard cornering essentially unchanged whether the
+// stabilizing torque was fully disabled or angular damping was cut from 6
+// to 1. Lowering suspension stiffness is what actually moved it. At the
+// original compression/relaxation below (0.6/0.7, tuned for stiffness 30)
+// this was underdamped - see those constants for what that caused and how
+// it was fixed. With damping corrected, this stiffness gives real but
+// modest roll: about 0.066 rad in a moderate-steer cornering test versus
+// about 0.036 rad at stiffness 30 with the same corrected damping - roughly
+// 80% more, not the ~2x this comment previously claimed (that number
+// included bounce). Verified safe across the full danger-scenario matrix
+// (full-lock steer, ramped hard brake, boosted trail-braking, boosted
+// low-drag hard steer) - all stayed well under half the 0.6 rad flip
+// threshold. Lower still (tested down to 3) starts costing real
+// traction/speed without adding more visible roll.
 const SUSPENSION_STIFFNESS = 18;
 
 // Single source of truth for chassis + tuning constants, shared by the
@@ -95,8 +99,19 @@ export function createCarController(
 
   for (let i = 0; i < CAR_WHEELS.length; i++) {
     controller.setWheelSuspensionStiffness(i, SUSPENSION_STIFFNESS);
-    controller.setWheelSuspensionCompression(i, 0.6);
-    controller.setWheelSuspensionRelaxation(i, 0.7);
+    // These were 0.6/0.7 (tuned for stiffness 30) until dropping stiffness
+    // to 18 without raising them left the suspension underdamped: a
+    // per-frame trace under a throttle boost showed pitch overshoot then
+    // spring back (e.g. dive to -0.11 rad, recover to -0.05, both within
+    // half a second) - reported by a real player as the car "leaning
+    // towards the front and backwards" under boost. Raised in step with the
+    // lower stiffness until that overshoot-and-recover pattern disappeared
+    // from the trace (it settles smoothly now, no spring-back). Doing this
+    // also reduced the peak cornering-roll numbers measured while tuning
+    // SUSPENSION_STIFFNESS above, since a real chunk of that peak had been
+    // the bounce itself, not settled lean.
+    controller.setWheelSuspensionCompression(i, 1.8);
+    controller.setWheelSuspensionRelaxation(i, 2.0);
     controller.setWheelMaxSuspensionTravel(i, 0.22);
     // Values above 1.0 amplify lateral impulses and are a known flip
     // trigger in Bullet-derived raycast vehicles - keep this at 1.0.
