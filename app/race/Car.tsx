@@ -84,7 +84,7 @@ export function Car({
       position={[startPos.x, 1, startPos.z]}
       rotation={[0, startPos.headingRad, 0]}
       linearDamping={0.3}
-      angularDamping={4}
+      angularDamping={6}
       canSleep={false}
     >
       <mesh castShadow>

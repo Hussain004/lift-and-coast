@@ -11,14 +11,17 @@ export interface WheelLayout {
 
 // Forward is -Z (chase camera sits behind the car at +Z looking toward -Z).
 // Front wheels (leading edge, -Z) steer; rear wheels (+Z) are driven.
+// Wheel track is widened close to the chassis edges and ride height kept
+// low - a narrow, tall stance is what was flipping the car under braking,
+// acceleration, and steering alike.
 export const CAR_WHEELS: WheelLayout[] = [
-  { position: [-0.7, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
-  { position: [0.7, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
-  { position: [-0.7, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
-  { position: [0.7, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
+  { position: [-0.82, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
+  { position: [0.82, -0.35, -1.3], radius: 0.34, isSteering: true, isDriven: false },
+  { position: [-0.82, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
+  { position: [0.82, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
 ];
 
-const SUSPENSION_REST_LENGTH = 0.3;
+const SUSPENSION_REST_LENGTH = 0.18;
 
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
@@ -42,11 +45,13 @@ export function createCarController(
   });
 
   for (let i = 0; i < CAR_WHEELS.length; i++) {
-    controller.setWheelSuspensionStiffness(i, 24);
+    controller.setWheelSuspensionStiffness(i, 30);
     controller.setWheelSuspensionCompression(i, 0.6);
     controller.setWheelSuspensionRelaxation(i, 0.7);
-    controller.setWheelMaxSuspensionTravel(i, 0.35);
-    controller.setWheelSideFrictionStiffness(i, 1.6);
+    controller.setWheelMaxSuspensionTravel(i, 0.15);
+    // Values above 1.0 amplify lateral impulses and are a known flip
+    // trigger in Bullet-derived raycast vehicles - keep this at 1.0.
+    controller.setWheelSideFrictionStiffness(i, 1.0);
     controller.setWheelFrictionSlip(i, 3);
   }
 
