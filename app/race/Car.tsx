@@ -121,6 +121,88 @@ export function Car({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rapier, world]);
 
+  // Temporary diagnostic hook: runs a batch of physics steps synchronously
+  // against the real mounted world/controller/chassis, bypassing the render
+  // loop entirely. requestAnimationFrame never fires in the automation
+  // environment used to build this (the tab is permanently
+  // document.hidden), so this is the only way to drive and inspect the
+  // live game's actual physics state from there. Not gated behind an env
+  // check - remove once the current handling investigation is done.
+  useEffect(() => {
+    function handleDebugDrive(event: Event) {
+      const controller = controllerRef.current;
+      const body = chassisRef.current;
+      if (!controller || !body) return;
+      const detail = (event as CustomEvent).detail as {
+        seconds: number;
+        throttle: number;
+        brake: number;
+        steer: number;
+        sampleEvery?: number;
+      };
+      const timestep = world.timestep;
+      const steps = Math.round(detail.seconds / timestep);
+      const sampleEvery = detail.sampleEvery ?? 30;
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      let maxTilt = 0;
+      const samples: Array<{
+        t: number;
+        tilt: number;
+        roll: number;
+        pitch: number;
+        y: number;
+        speed: number;
+      }> = [];
+
+      for (let i = 0; i < steps; i++) {
+        applyCarControls(
+          controller,
+          { throttle: detail.throttle, brake: detail.brake, steer: detail.steer },
+          DEFAULT_ENGINE_FORCE,
+          DEFAULT_BRAKE_FORCE,
+          controller.currentVehicleSpeed()
+        );
+        controller.updateVehicle(timestep);
+
+        const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
+        if (torque[0] || torque[1] || torque[2]) {
+          body.applyTorqueImpulse(
+            { x: torque[0] * timestep, y: torque[1] * timestep, z: torque[2] * timestep },
+            true
+          );
+        }
+
+        world.step();
+
+        const r = body.rotation();
+        const quat = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+        const bodyUp = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
+        const tilt = bodyUp.angleTo(worldUp);
+        if (tilt > maxTilt) maxTilt = tilt;
+
+        if (i % sampleEvery === 0) {
+          const bodyRight = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+          const bodyForward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+          samples.push({
+            t: Number((i * timestep).toFixed(2)),
+            tilt: Number(tilt.toFixed(4)),
+            roll: Number(Math.asin(Math.max(-1, Math.min(1, bodyRight.y))).toFixed(4)),
+            pitch: Number(Math.asin(Math.max(-1, Math.min(1, -bodyForward.y))).toFixed(4)),
+            y: Number(body.translation().y.toFixed(4)),
+            speed: Number(controller.currentVehicleSpeed().toFixed(2)),
+          });
+        }
+      }
+
+      const output = document.getElementById("__debug-output");
+      if (output) output.textContent = JSON.stringify({ maxTilt, samples });
+    }
+
+    window.addEventListener("debug-drive-request", handleDebugDrive);
+    return () => window.removeEventListener("debug-drive-request", handleDebugDrive);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [world]);
+
   useBeforePhysicsStep(() => {
     const controller = controllerRef.current;
     const body = chassisRef.current;

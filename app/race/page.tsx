@@ -23,6 +23,9 @@ export default function RacePage() {
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>
+      {/* Temporary diagnostic output for the debug-drive-request hook in
+          Car.tsx - see the comment there. Remove alongside it. */}
+      <div id="__debug-output" style={{ display: "none" }} />
     </div>
   );
 }
