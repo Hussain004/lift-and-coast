@@ -129,10 +129,24 @@ export function Car({
   // live game's actual physics state from there. Not gated behind an env
   // check - remove once the current handling investigation is done.
   useEffect(() => {
+    const output = document.getElementById("__debug-output");
+    if (output) output.textContent = "CAR_MOUNTED";
+
     function handleDebugDrive(event: Event) {
       const controller = controllerRef.current;
       const body = chassisRef.current;
-      if (!controller || !body) return;
+      const output = document.getElementById("__debug-output");
+      if (!controller || !body) {
+        if (output) {
+          output.textContent = JSON.stringify({
+            error: "controller or body not ready",
+            hasController: !!controller,
+            hasBody: !!body,
+          });
+        }
+        return;
+      }
+      if (output) output.textContent = "RUNNING";
       const detail = (event as CustomEvent).detail as {
         seconds: number;
         throttle: number;
@@ -194,7 +208,6 @@ export function Car({
         }
       }
 
-      const output = document.getElementById("__debug-output");
       if (output) output.textContent = JSON.stringify({ maxTilt, samples });
     }
 
