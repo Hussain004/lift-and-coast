@@ -263,6 +263,13 @@ export function Car({
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      // Clear rewind state too - otherwise a reset that lands mid-rewind
+      // (holding R while 300m out, the exact situation a stranded player
+      // reaches for) leaves wasRewindingRef true, and the next tick's
+      // resumeFrom() teleports the car straight back out to the stale
+      // pre-reset snapshot.
+      wasRewindingRef.current = false;
+      rewindCursorRef.current = 0;
       return;
     }
 
