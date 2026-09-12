@@ -20,7 +20,7 @@ import {
   createCarController,
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
-import { buildRibbonGeometry } from "../tracks/mesh";
+import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "../tracks/mesh";
 import { checkTrackLimits } from "../tracks/trackLimits";
 import type { TrackData } from "../tracks/types";
 
@@ -61,6 +61,14 @@ export interface StabilityResult {
   maxOffTrackMeters: number;
   /** Absolute heading change from start to end of the run, in radians. */
   netYawChangeRad: number;
+  /**
+   * Largest single-timestep change in tilt, in radians. A smooth suspension
+   * response changes by a small fraction of this per 1/60s step even during
+   * hard cornering or braking - a much larger single-step jump means an
+   * actual discontinuity (e.g. a wheel crossing a real geometry step), not
+   * gradual physics. Caught the grass/track height mismatch bug.
+   */
+  maxTiltStepRad: number;
 }
 
 
@@ -116,9 +124,10 @@ export async function simulateDrive(
     // track trimesh on top, so a car pushed off the ribbon (e.g. by hard
     // steering) lands on grass like it does in the real game, instead of
     // free-falling through a void and reading as a "flip" that has nothing
-    // to do with the vehicle.
+    // to do with the vehicle. Surface height derived from
+    // GRASS_BELOW_TRACK_METERS - see its definition for why that gap.
     const groundBody = world.createRigidBody(
-      RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.55, 0)
+      RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -(0.5 + GRASS_BELOW_TRACK_METERS), 0)
     );
     world.createCollider(
       RAPIER_MOD.ColliderDesc.cuboid(1250, 0.5, 1250).setFriction(0.6),
@@ -165,6 +174,8 @@ export async function simulateDrive(
 
   let maxTilt = 0;
   let maxOffTrackMeters = 0;
+  let maxTiltStep = 0;
+  let previousTilt: number | null = null;
   const steps = Math.round(seconds / timestep);
   const aeroMode = options.aeroMode ?? "high-downforce";
   for (let i = 0; i < steps; i++) {
@@ -179,6 +190,9 @@ export async function simulateDrive(
         chassis.setRotation(startRotation, true);
         chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
         chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        // The reset itself is an intentional tilt discontinuity, not a
+        // physics bug - don't let it register as one.
+        previousTilt = null;
       }
     }
     const stepInput = getInput(i * timestep);
@@ -211,7 +225,12 @@ export async function simulateDrive(
     applyDragImpulse(chassis, aeroMode, timestep);
 
     world.step();
-    maxTilt = Math.max(maxTilt, tiltFromUpright(chassis.rotation()));
+    const tilt = tiltFromUpright(chassis.rotation());
+    maxTilt = Math.max(maxTilt, tilt);
+    if (previousTilt !== null) {
+      maxTiltStep = Math.max(maxTiltStep, Math.abs(tilt - previousTilt));
+    }
+    previousTilt = tilt;
     if (options.track) {
       const pos = chassis.translation();
       maxOffTrackMeters = Math.max(
@@ -237,5 +256,6 @@ export async function simulateDrive(
     distanceMeters,
     maxOffTrackMeters,
     netYawChangeRad,
+    maxTiltStepRad: maxTiltStep,
   };
 }
