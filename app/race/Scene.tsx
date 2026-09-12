@@ -8,14 +8,24 @@ import { Car } from "./Car";
 import { Track } from "./Track";
 import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
+import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 
 const track = silverstone as TrackData;
 
+// Half of the box geometry's height below (see GRASS_BELOW_TRACK_METERS for
+// why the ground surface isn't flush with the track trimesh).
+const GROUND_HALF_HEIGHT = 0.5;
+
 function Ground() {
   return (
-    <RigidBody type="fixed" colliders="cuboid" friction={0.6} position={[0, -0.55, 0]}>
+    <RigidBody
+      type="fixed"
+      colliders="cuboid"
+      friction={0.6}
+      position={[0, -(GROUND_HALF_HEIGHT + GRASS_BELOW_TRACK_METERS), 0]}
+    >
       <mesh receiveShadow>
-        <boxGeometry args={[2500, 1, 2500]} />
+        <boxGeometry args={[2500, GROUND_HALF_HEIGHT * 2, 2500]} />
         <meshStandardMaterial color="#2b2b2b" />
       </mesh>
     </RigidBody>

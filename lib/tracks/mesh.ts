@@ -1,5 +1,16 @@
 import type { TrackData } from "./types";
 
+// The track trimesh is flat at y=0 (see buildRibbonGeometry below). The
+// grass ground plane surrounding it should sit this far below that, not
+// flush (a raycast wheel can ping-pong between two colliders at the exact
+// same height) and not much more (a bigger gap becomes a literal curb a
+// wheel has to climb crossing from grass back onto the track - the original
+// 5cm gap did exactly that, producing a sharp pitch spike reported as the
+// car "twitching" every so often during normal driving, whenever a corner
+// was taken wide enough to touch grass and come back). Both Scene.tsx and
+// the headless harness derive their ground collider's height from this.
+export const GRASS_BELOW_TRACK_METERS = 0.01;
+
 export interface RibbonGeometry {
   /** Flat [x, y, z, x, y, z, ...] vertex positions. */
   positions: Float32Array;
