@@ -74,7 +74,20 @@ export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
 // site (Car.tsx, and the harness below) for why.
-export const OFF_TRACK_RESET_METERS = 300;
+//
+// Originally 300, but that was calibrated when DEFAULT_ENGINE_FORCE was
+// 250: at 850N, a player just holding throttle in a straight line (no spin,
+// no mistake) covers 300m off the track's own curvature in about 16s -
+// reported as a "twitch" (a jarring reset: position/velocity snap to zero,
+// pitch snaps flat, then dives again as it re-accelerates from a stop) on
+// every normal test-drive, not just genuine spin-off recovery. Re-measured
+// the real crash boundary at 850N by disabling the guard: still position-
+// based, not speed-based, so it lands at roughly the same place as before -
+// safe through 1183m off-track (36s), crashes by ~1200m (37s). 700 keeps
+// about 40% margin below that while giving a normal straight-line test
+// (even a deliberate "how fast does this go" run) 20+ seconds before it
+// intervenes, only catching genuinely extended off-course driving.
+export const OFF_TRACK_RESET_METERS = 700;
 
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
