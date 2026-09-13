@@ -59,9 +59,18 @@ function ChaseCamera({
 
     back.current.set(0, 2.2, 7).applyEuler(new THREE.Euler(0, yaw, 0));
     desiredPos.current.set(t.x + back.current.x, t.y + back.current.y, t.z + back.current.z);
-    camera.position.lerp(desiredPos.current, Math.min(1, dt * 5));
+    // Exponential (not linear-per-frame) smoothing: a fixed fraction-of-gap-
+    // closed-per-frame lerp is frame-rate dependent, so any render dt jitter
+    // (a GC pause, a heavier draw call during a turn) gets amplified into a
+    // visible camera swing proportional to how far the target just moved -
+    // worst during cornering, when desiredPos/lookAt move the most per
+    // frame. This closes the same fraction of the remaining gap regardless
+    // of dt, and both position and lookAt now share one rate so they track
+    // each other instead of drifting apart under irregular frame timing.
+    const smoothing = 1 - Math.exp(-8 * dt);
+    camera.position.lerp(desiredPos.current, smoothing);
 
-    lookAt.current.lerp(new THREE.Vector3(t.x, t.y + 0.5, t.z), Math.min(1, dt * 8));
+    lookAt.current.lerp(new THREE.Vector3(t.x, t.y + 0.5, t.z), smoothing);
     camera.lookAt(lookAt.current);
   });
 
