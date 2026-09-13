@@ -53,13 +53,13 @@ describe("vehicle stability on real Silverstone trimesh", () => {
 
   // Moderate steer that actually stays on the ribbon for its whole duration
   // (verified empirically: steer 0.3 keeps maxOffTrackMeters at 0 through
-  // ~2s before the car runs wide - shorter than it used to be, since the
+  // ~1.5s before the car runs wide - shorter than it used to be, since the
   // car covers much more ground per second at the current engine force) -
   // the real discriminator between trimesh jitter and the flat-plane case,
   // unlike the full-lock scenarios above.
   it("stays on the ribbon and upright while cornering under throttle", async () => {
     const result = await simulateDrive(
-      2,
+      1.5,
       { throttle: 1, brake: 0, steer: 0.3 },
       TUNING
     );

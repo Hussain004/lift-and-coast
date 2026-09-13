@@ -41,7 +41,15 @@ const TUNING = {
 // suspension response, which changes by a tiny fraction of this per step
 // even under hard cornering or braking (see existing scenarios' numbers).
 // Measured at 0.0036 with the current 1cm gap versus 0.0263 at the old
-// 5cm gap, so 0.01 has real margin in both directions.
+// 5cm gap, so 0.01 had real margin in both directions at the original
+// 850N engine force.
+//
+// Raised to 0.02 after DEFAULT_ENGINE_FORCE went to 1450: the same 1cm gap
+// now measures 0.015 at this scenario's higher crossing speed (a faster
+// wheel hits the same tiny step harder) - still nowhere near the old 5cm
+// gap's 0.0263 discontinuity, and confirmed via maxOffTrackMeters staying
+// at 282m (nowhere near either off-track reset threshold) that this is the
+// grass/curb bump itself, not a reset artifact.
 describe("grass/track surface transition", () => {
   it("does not produce a tilt discontinuity crossing back onto the track", async () => {
     const plan = (t: number) => ({
@@ -51,6 +59,6 @@ describe("grass/track surface transition", () => {
     });
     const result = await simulateDrive(45, plan, TUNING);
     expect(result.maxOffTrackMeters).toBeGreaterThan(0);
-    expect(result.maxTiltStepRad).toBeLessThan(0.01);
+    expect(result.maxTiltStepRad).toBeLessThan(0.02);
   }, 30000);
 });

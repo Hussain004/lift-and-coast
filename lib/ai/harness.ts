@@ -13,6 +13,7 @@ import {
   CHASSIS_MASS,
   LINEAR_DAMPING,
   OFF_TRACK_RESET_METERS,
+  WORLD_EDGE_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -182,10 +183,16 @@ export async function simulateDrive(
     // Matches Car.tsx: past this distance off-track, snap back to the start
     // line rather than let the car keep going - a long enough straight-line
     // run off-course eventually crosses the finite ground plane's edge and
-    // crashes the physics engine entirely (found via this harness).
+    // crashes the physics engine entirely (found via this harness). Also
+    // matches Car.tsx's absolute-distance-from-origin backstop
+    // (WORLD_EDGE_RESET_METERS) - see its definition for why the ribbon-
+    // distance check alone isn't enough.
     if (options.track) {
       const p = chassis.translation();
-      if (checkTrackLimits(options.track, p.x, p.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS) {
+      if (
+        checkTrackLimits(options.track, p.x, p.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
+        Math.hypot(p.x, p.z) > WORLD_EDGE_RESET_METERS
+      ) {
         chassis.setTranslation(startPos, true);
         chassis.setRotation(startRotation, true);
         chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);

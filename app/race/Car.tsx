@@ -21,6 +21,7 @@ import {
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
   OFF_TRACK_RESET_METERS,
+  WORLD_EDGE_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -263,8 +264,16 @@ export function Car({
     // plane's edge and crashes the physics engine entirely - this catches it
     // hundreds of meters before that, and far past any legitimate
     // spin-recovery distance in the stability suite (under 60m throughout).
+    //
+    // Also checks absolute distance from the origin directly (see
+    // WORLD_EDGE_RESET_METERS) - the ribbon-distance check above can't catch
+    // a car that drives straight past the far end of the track's own extent,
+    // since the nearest ribbon point stays fixed while the car keeps going.
     const pos = body.translation();
-    if (checkTrackLimits(track, pos.x, pos.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS) {
+    if (
+      checkTrackLimits(track, pos.x, pos.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
+      Math.hypot(pos.x, pos.z) > WORLD_EDGE_RESET_METERS
+    ) {
       const q = startRotationRef.current;
       body.setTranslation({ x: startPos.x, y: 1, z: startPos.z }, true);
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);

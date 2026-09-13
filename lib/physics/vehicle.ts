@@ -52,24 +52,38 @@ export const CHASSIS_HALF_EXTENTS: [number, number, number] = [0.9, 0.4, 2];
 export const CHASSIS_MASS = 220;
 export const LINEAR_DAMPING = 0.05;
 export const ANGULAR_DAMPING = 6;
-// Verified via the headless harness: 250N never even reached 100 km/h (it
-// converges to ~95 km/h and sits there). Tested a straight-line 8s throttle
-// sweep from 400N up to 1500N - tilt climbs gradually and safely through
-// 1400N (0.16 rad), then hits a real instability cliff at 1450N+ (0.42 rad,
-// with uncontrolled yaw despite steer=0 - a wheelie/spin precursor, the same
-// failure mode chased earlier this session). 850N reaches 100 km/h in ~4.4s
-// and keeps Push-to-Pass's 1.6x boost (see energy.ts) at 1360N, comfortably
-// under that cliff, verified combined with hard steer and low-drag mode
-// together (tilt stayed ~0.15 rad).
+// Real F1 cars do 0-100 km/h in ~2.5-2.6s. 850N (this constant's previous
+// value) only managed 4.4s. A straight-line 20s full-throttle sweep at the
+// current suspension tuning (stiffness 18, compression/relaxation 1.8/2.0 -
+// see SUSPENSION_STIFFNESS) found no instability at all from 1400N through
+// 1500N (maxTilt ~0.13 rad, essentially zero uncontrolled yaw) - a documented
+// "instability cliff at 1450N+" here previously was measured before those
+// suspension fixes landed and is stale; re-verify against the CURRENT
+// suspension tuning before trusting any prior instability claim at a given
+// force, since raising suspension stiffness or lowering damping shifts where
+// a real cliff sits. 1450N lands 0-100 at 2.53s, in the target window. Push-
+// to-Pass's 1.6x boost (see energy.ts) makes this 2320N - re-verified
+// combined with hard steer and low-drag mode together: tilt reaches 0.264
+// rad, well under the 0.6 rad flip threshold but a real increase from the
+// old config's ~0.15 rad at the same combined scenario - re-check this if
+// DEPLOY_BOOST_MULTIPLIER or this constant moves again.
 //
-// The actual bounding constraint turned out to be braking, not throttle:
-// instantly slamming full brake after building speed at 850N pitches the
-// chassis past the flip threshold well before the throttle cliff does (see
+// This is a single constant force, not a real car's per-gear torque curve -
+// it can hit 0-100 well but can't also hit a real F1 0-200 time (~4.5-4.8s)
+// in the same model, since quadratic drag makes a fixed force taper harder
+// as speed climbs while a real F1 car holds near-peak thrust past 200 km/h
+// (helped by rising downforce/grip at speed). Measured at 1450N: 0-200 takes
+// 6.65s. Closing that gap needs a speed-dependent force curve (the game's
+// stand-in for gears), not a bigger constant - out of scope here.
+//
+// Braking, not throttle, is the tighter constraint on how high this can go
+// (instantly slamming full brake after building speed pitches the chassis
+// past the flip threshold well before a throttle cliff does - see
 // BRAKE_RAMP_SECONDS in useDriveInput.ts, and the "realistic (ramped) brake
-// input" test in vehicle-stability-track.test.ts) - any further increase to
-// this constant should be re-verified against hard braking from speed, not
-// just sustained throttle.
-export const DEFAULT_ENGINE_FORCE = 850;
+// input" test in vehicle-stability-track.test.ts, re-verified safe at 1450N).
+// Any further increase to this constant must be re-verified against that
+// braking scenario, not just sustained throttle.
+export const DEFAULT_ENGINE_FORCE = 1450;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
@@ -88,6 +102,21 @@ export const DEFAULT_STABILIZE_STRENGTH = 30;
 // (even a deliberate "how fast does this go" run) 20+ seconds before it
 // intervenes, only catching genuinely extended off-course driving.
 export const OFF_TRACK_RESET_METERS = 700;
+
+// Backstop for a case OFF_TRACK_RESET_METERS alone can miss: that guard
+// measures distance from the nearest point on the track's own ribbon, which
+// stays fixed once a car drives past the far end of the track's extent - so
+// a car continuing in roughly the direction the track was already heading
+// can reach the finite grass plane's actual edge (a fixed 1250m half-extent
+// in both Scene.tsx and the harness, independent of engine force) while
+// still reading well under OFF_TRACK_RESET_METERS off the ribbon. Found via
+// exactly this failure after raising DEFAULT_ENGINE_FORCE: a cycling-steer
+// scenario crossed the real grass edge and fell into unbounded freefall (the
+// same NaN-inducing failure as leaving any finite ground plane) while its
+// ribbon-relative off-track distance was still under 700m. This checks
+// absolute distance from the origin directly - a backstop independent of
+// track shape or heading, with real margin below the actual 1250m edge.
+export const WORLD_EDGE_RESET_METERS = 1150;
 
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
