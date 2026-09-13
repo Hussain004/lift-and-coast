@@ -79,18 +79,27 @@ function ChaseCamera({
 
     back.current.set(0, 2.2, 7).applyEuler(new THREE.Euler(0, yaw, 0));
     desiredPos.current.set(t.x + back.current.x, t.y + back.current.y, t.z + back.current.z);
-    // Exponential (not linear-per-frame) smoothing: a fixed fraction-of-gap-
-    // closed-per-frame lerp is frame-rate dependent, so any render dt jitter
-    // (a GC pause, a heavier draw call during a turn) gets amplified into a
-    // visible camera swing proportional to how far the target just moved -
-    // worst during cornering, when desiredPos/lookAt move the most per
-    // frame. This closes the same fraction of the remaining gap regardless
-    // of dt, and both position and lookAt now share one rate so they track
-    // each other instead of drifting apart under irregular frame timing.
-    const smoothing = 1 - Math.exp(-8 * dt);
-    camera.position.lerp(desiredPos.current, smoothing);
+    // Position is NOT smoothed - it snaps directly to desiredPos every
+    // frame. A first-order lag filter (lerp toward a moving target at a
+    // fixed rate) settles at a steady-state distance BEHIND the target of
+    // speed * timeConstant - i.e. exponential position smoothing makes the
+    // camera trail further back the faster the car goes, and catch up the
+    // instant it slows. That produced a real, continuous zoom-out/zoom-in
+    // tied to every acceleration/deceleration (confirmed by measuring the
+    // car's on-screen size across a recording: it shrank monotonically
+    // with speed, from a 213px bounding box at 11 km/h down to ~80px at
+    // 170 km/h), which through a chase camera reads exactly like the
+    // reported "galloping"/"steering out on its own" - worse after a turn
+    // (biggest speed swings), worse in low-drag (higher top speed), and
+    // invisible to any headless test, since none of them run a camera.
+    // desiredPos is already derived from the mesh's own interpolated
+    // transform (see above), so it doesn't need a second smoothing pass on
+    // top of that for stability - only the look-at aim point still benefits
+    // from a light filter, to avoid whip-panning on a sharp yaw change.
+    camera.position.copy(desiredPos.current);
 
-    lookAt.current.lerp(new THREE.Vector3(t.x, t.y + 0.5, t.z), smoothing);
+    const lookAtSmoothing = 1 - Math.exp(-8 * dt);
+    lookAt.current.lerp(new THREE.Vector3(t.x, t.y + 0.5, t.z), lookAtSmoothing);
     camera.lookAt(lookAt.current);
   });
 
