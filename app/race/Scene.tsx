@@ -94,12 +94,22 @@ function ChaseCamera({
     // invisible to any headless test, since none of them run a camera.
     // desiredPos is already derived from the mesh's own interpolated
     // transform (see above), so it doesn't need a second smoothing pass on
-    // top of that for stability - only the look-at aim point still benefits
-    // from a light filter, to avoid whip-panning on a sharp yaw change.
+    // top of that for stability - and neither does the look-at aim point
+    // below, for the same reason (see its comment).
     camera.position.copy(desiredPos.current);
 
-    const lookAtSmoothing = 1 - Math.exp(-8 * dt);
-    lookAt.current.lerp(new THREE.Vector3(t.x, t.y + 0.5, t.z), lookAtSmoothing);
+    // lookAt is NOT smoothed either, for the same reason position isn't:
+    // this filter was left in after the position fix and reintroduced the
+    // exact same bug in the other half of the camera. A lagged lookAt
+    // chases a moving aim point, settling speed * timeConstant behind the
+    // car - at 68 m/s and this filter's ~0.125s time constant that's ~8.5m,
+    // farther back than the camera itself sits (7m). The camera ends up
+    // aiming at a point behind its own position, i.e. looking backward and
+    // down past the car - worse the faster the car goes, which is exactly
+    // "hold W and the view pans down until the car disappears". Both terms
+    // now come from the same frame's interpolated transform with no filter
+    // on either, so no speed-dependent gap can open between them.
+    lookAt.current.set(t.x, t.y + 0.5, t.z);
     camera.lookAt(lookAt.current);
   });
 
