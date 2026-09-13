@@ -45,6 +45,41 @@ const SUSPENSION_REST_LENGTH = 0.18;
 // traction/speed without adding more visible roll.
 const SUSPENSION_STIFFNESS = 18;
 
+// The rear wheels carry far more sustained load than the front under
+// acceleration (weight transfer plus downforce), and at the shared travel
+// limit of 0.22 they permanently bottom out under full throttle: traced via
+// Rapier's per-wheel wheelSuspensionLength/wheelSuspensionForce, the rear
+// suspension sits pinned at exactly restLength - maxTravel = -0.04 (its hard
+// mechanical limit) from about 0.4s into any full-throttle run onward,
+// generating 850-950N just to hold the car up - it needs to compress
+// further to reach real equilibrium but has no room left. Being pinned at
+// that limit is an unstable state in the raycast vehicle's force model: at
+// real Silverstone speed on the actual track trimesh (not the idealized
+// flat test plane this never showed up on), both rear wheels'
+// wheelSuspensionForce would occasionally glitch to exactly 0 for 2-3
+// consecutive steps while still reporting contact, and the sudden loss of
+// ~1800N of rear support kicked the chassis pitch from +0.11 rad to -0.22
+// rad in a single 1/60s step - this was the real cause of the
+// "galloping"/"hood lifts up and it starts galloping like crazy" reports,
+// not the camera (which was by then already lag-free and faithfully
+// rendering this real physics glitch).
+//
+// Raising REAR stiffness instead was tried first and works for the kick,
+// but it fights the cornering-roll tuning above (roll dropped from 0.066 to
+// 0.036 rad at rear stiffness 30, below the 0.045 floor corneringRoll.test
+// requires) since a stiffer rear resists lateral load transfer too, not
+// just longitudinal. Giving the rear more TRAVEL instead leaves stiffness
+// (and roll) untouched: at 0.5, sustained full throttle settles at a real
+// equilibrium of -0.1677 (comfortably off the new -0.32 floor) and boosted
+// Push-to-Pass throttle (1.6x, see energy.ts) at -0.2652 (also off the
+// floor, ~0.055 margin) - both genuine equilibria confirmed by re-running at
+// even more travel and seeing the same numbers, not still-clamped ones.
+// Cornering roll stays at 0.0677 rad, close to this stiffness's original
+// ~0.066-0.07 baseline. The wheel visual meshes don't move with suspension
+// length (see Car.tsx - only steering and spin are animated), so the larger
+// travel has no visual side effect.
+const REAR_MAX_SUSPENSION_TRAVEL = 0.5;
+
 // Single source of truth for chassis + tuning constants, shared by the
 // real game (Car.tsx) and the headless stability harness (lib/ai/harness.ts)
 // so both always simulate the exact same car.
@@ -152,7 +187,10 @@ export function createCarController(
     // the bounce itself, not settled lean.
     controller.setWheelSuspensionCompression(i, 1.8);
     controller.setWheelSuspensionRelaxation(i, 2.0);
-    controller.setWheelMaxSuspensionTravel(i, 0.22);
+    controller.setWheelMaxSuspensionTravel(
+      i,
+      CAR_WHEELS[i].isDriven ? REAR_MAX_SUSPENSION_TRAVEL : 0.22
+    );
     // Values above 1.0 amplify lateral impulses and are a known flip
     // trigger in Bullet-derived raycast vehicles - keep this at 1.0.
     controller.setWheelSideFrictionStiffness(i, 1.0);
