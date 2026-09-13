@@ -44,12 +44,11 @@ const TUNING = {
 // 5cm gap, so 0.01 had real margin in both directions at the original
 // 850N engine force.
 //
-// Raised to 0.02 after DEFAULT_ENGINE_FORCE went to 1450: the same 1cm gap
-// now measures 0.015 at this scenario's higher crossing speed (a faster
-// wheel hits the same tiny step harder) - still nowhere near the old 5cm
-// gap's 0.0263 discontinuity, and confirmed via maxOffTrackMeters staying
-// at 282m (nowhere near either off-track reset threshold) that this is the
-// grass/curb bump itself, not a reset artifact.
+// DEFAULT_ENGINE_FORCE has since moved (up to 1450, then back down to 1100
+// after "so much force" feedback on the launch feel) - re-measured at 1100N
+// and back to 0.0047, close to the original 850N figure, so 0.01 still
+// holds real margin. Re-check this if the engine force changes again: it
+// briefly needed loosening to 0.02 at 1450N before settling back down.
 describe("grass/track surface transition", () => {
   it("does not produce a tilt discontinuity crossing back onto the track", async () => {
     const plan = (t: number) => ({
@@ -59,6 +58,6 @@ describe("grass/track surface transition", () => {
     });
     const result = await simulateDrive(45, plan, TUNING);
     expect(result.maxOffTrackMeters).toBeGreaterThan(0);
-    expect(result.maxTiltStepRad).toBeLessThan(0.02);
+    expect(result.maxTiltStepRad).toBeLessThan(0.01);
   }, 30000);
 });

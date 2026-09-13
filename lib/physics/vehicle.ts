@@ -52,38 +52,36 @@ export const CHASSIS_HALF_EXTENTS: [number, number, number] = [0.9, 0.4, 2];
 export const CHASSIS_MASS = 220;
 export const LINEAR_DAMPING = 0.05;
 export const ANGULAR_DAMPING = 6;
-// Real F1 cars do 0-100 km/h in ~2.5-2.6s. 850N (this constant's previous
-// value) only managed 4.4s. A straight-line 20s full-throttle sweep at the
-// current suspension tuning (stiffness 18, compression/relaxation 1.8/2.0 -
-// see SUSPENSION_STIFFNESS) found no instability at all from 1400N through
-// 1500N (maxTilt ~0.13 rad, essentially zero uncontrolled yaw) - a documented
-// "instability cliff at 1450N+" here previously was measured before those
-// suspension fixes landed and is stale; re-verify against the CURRENT
-// suspension tuning before trusting any prior instability claim at a given
-// force, since raising suspension stiffness or lowering damping shifts where
-// a real cliff sits. 1450N lands 0-100 at 2.53s, in the target window. Push-
-// to-Pass's 1.6x boost (see energy.ts) makes this 2320N - re-verified
-// combined with hard steer and low-drag mode together: tilt reaches 0.264
-// rad, well under the 0.6 rad flip threshold but a real increase from the
-// old config's ~0.15 rad at the same combined scenario - re-check this if
-// DEPLOY_BOOST_MULTIPLIER or this constant moves again.
+// Real F1 cars do 0-100 km/h in ~2.5-2.6s, which 1450N (this constant's
+// previous value) hit almost exactly (2.53s) - but raising it that far from
+// the original 850N (4.4s) made the launch itself feel excessive, reported
+// directly after shipping: "the driving feel is so much force". A sweep of
+// candidate forces found peak launch pitch is NOT strongly force-dependent
+// in this range (0.132 rad at 1450N vs 0.111 rad even at 1000N, a suspension
+// -transient response that's largely saturated rather than scaling with the
+// force driving it) - so the fix for "too much force" is simply a lower
+// force, not a suspension retune. 1100N takes 0-100 to 3.30s: a real, felt
+// reduction in launch aggression (about 30% slower to 100) while still well
+// off the original 850N's 4.4s. Push-to-Pass's 1.6x boost (see energy.ts)
+// makes this 1760N.
 //
 // This is a single constant force, not a real car's per-gear torque curve -
-// it can hit 0-100 well but can't also hit a real F1 0-200 time (~4.5-4.8s)
-// in the same model, since quadratic drag makes a fixed force taper harder
-// as speed climbs while a real F1 car holds near-peak thrust past 200 km/h
-// (helped by rising downforce/grip at speed). Measured at 1450N: 0-200 takes
-// 6.65s. Closing that gap needs a speed-dependent force curve (the game's
+// it can't hit a real F1 0-200 time (~4.5-4.8s) either way, since quadratic
+// drag makes a fixed force taper harder as speed climbs while a real F1 car
+// holds near-peak thrust past 200 km/h. Measured at 1100N: 0-200 takes
+// 10.13s. Closing that gap needs a speed-dependent force curve (the game's
 // stand-in for gears), not a bigger constant - out of scope here.
 //
-// Braking, not throttle, is the tighter constraint on how high this can go
-// (instantly slamming full brake after building speed pitches the chassis
-// past the flip threshold well before a throttle cliff does - see
-// BRAKE_RAMP_SECONDS in useDriveInput.ts, and the "realistic (ramped) brake
-// input" test in vehicle-stability-track.test.ts, re-verified safe at 1450N).
-// Any further increase to this constant must be re-verified against that
-// braking scenario, not just sustained throttle.
-export const DEFAULT_ENGINE_FORCE = 1450;
+// Stability re-verified at 1100N: a straight-line 15s full-throttle sweep
+// shows no instability (well under the 0.6 rad flip threshold - see the
+// force-sweep data above). Braking, not throttle, is the tighter constraint
+// on how high this can go (instantly slamming full brake after building
+// speed pitches the chassis past the flip threshold well before a throttle
+// cliff does - see BRAKE_RAMP_SECONDS in useDriveInput.ts, and the
+// "realistic (ramped) brake input" test in vehicle-stability-track.test.ts).
+// Any future increase to this constant must be re-verified against both that
+// braking scenario and the felt launch aggression, not just raw stability.
+export const DEFAULT_ENGINE_FORCE = 1100;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
