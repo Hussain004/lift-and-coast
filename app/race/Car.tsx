@@ -86,6 +86,7 @@ const CHASSIS_SIZE: [number, number, number] = [
 
 export function Car({
   chassisRef,
+  visualRef,
   speedRef,
   lapRef,
   trackLimitRef,
@@ -94,6 +95,12 @@ export function Car({
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
+  /**
+   * A ref to the chassis mesh itself, not the physics body - see its usage
+   * site in Scene.tsx for why the chase camera needs this instead of
+   * chassisRef.
+   */
+  visualRef?: React.RefObject<THREE.Mesh | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
@@ -394,7 +401,7 @@ export function Car({
         have caught it. Only the chassis body should ever be solid.
       */}
       <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-      <mesh castShadow>
+      <mesh ref={visualRef} castShadow>
         <boxGeometry args={CHASSIS_SIZE} />
         <meshStandardMaterial color="#39ff88" />
       </mesh>

@@ -35,18 +35,38 @@ function Ground() {
 function ChaseCamera({
   target,
 }: {
-  target: React.RefObject<RapierRigidBody | null>;
+  target: React.RefObject<THREE.Object3D | null>;
 }) {
   const { camera } = useThree();
   const desiredPos = useRef(new THREE.Vector3(0, 3, 8));
   const lookAt = useRef(new THREE.Vector3());
   const back = useRef(new THREE.Vector3());
+  const worldPos = useRef(new THREE.Vector3());
+  const worldQuat = useRef(new THREE.Quaternion());
 
   useFrame((_, dt) => {
-    const body = target.current;
-    if (!body) return;
-    const t = body.translation();
-    const r = body.rotation();
+    const object = target.current;
+    if (!object) return;
+    // Reads the chassis MESH's own interpolated world transform (see
+    // visualRef in Car.tsx), not the raw physics body. react-three-rapier
+    // smooths each RigidBody's rendered object between physics steps
+    // (Physics defaults to interpolate: true) for visual stability at any
+    // render framerate, but the raw rigid body always reports the latest
+    // completed physics step - a camera built from the raw body disagreed
+    // with what was actually on screen by up to one physics step's worth
+    // of motion, on every render frame that didn't land exactly on a step
+    // boundary. That gap is proportional to speed - invisible standing
+    // still, worse the faster the car goes - which matches the reported
+    // "galloping"/"steering out on its own" far better than anything
+    // tried before: present even driving dead straight, a slight twitch
+    // in high-downforce, much worse in low-drag (its higher top speed),
+    // and impossible to reproduce in this project's headless harness,
+    // which has no rendering pipeline and so no interpolation to disagree
+    // with in the first place.
+    object.getWorldPosition(worldPos.current);
+    object.getWorldQuaternion(worldQuat.current);
+    const t = worldPos.current;
+    const r = worldQuat.current;
     // Yaw only - a chase camera rigidly following the chassis's full
     // rotation amplifies every bit of pitch/roll (suspension squat, kerb
     // bump, cornering lean) into a much larger swing of camera position,
@@ -91,6 +111,7 @@ export function Scene({
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
+  const visualRef = useRef<THREE.Mesh>(null);
 
   return (
     <Canvas
@@ -110,6 +131,7 @@ export function Scene({
         <Track track={track} />
         <Car
           chassisRef={chassisRef}
+          visualRef={visualRef}
           speedRef={speedRef}
           lapRef={lapRef}
           trackLimitRef={trackLimitRef}
@@ -118,7 +140,7 @@ export function Scene({
           track={track}
         />
       </Physics>
-      <ChaseCamera target={chassisRef} />
+      <ChaseCamera target={visualRef} />
     </Canvas>
   );
 }
