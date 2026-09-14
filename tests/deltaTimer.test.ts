@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeltaTracker, formatDelta } from "../lib/race/deltaTimer";
+import { MAX_RECORDING_SAMPLES, createDeltaTracker, formatDelta } from "../lib/race/deltaTimer";
 
 describe("createDeltaTracker", () => {
   it("reports no delta until a reference lap exists", () => {
@@ -58,6 +58,17 @@ describe("createDeltaTracker", () => {
 
     const delta = tracker.recordSample(100, 10);
     expect(delta).toBeCloseTo(0, 5);
+  });
+
+  it("never adopts an overlong lap as the reference, even as a first-ever best", () => {
+    const tracker = createDeltaTracker();
+    for (let i = 0; i < MAX_RECORDING_SAMPLES + 10; i++) {
+      tracker.recordSample(i, i);
+    }
+    // No prior best exists, so this would otherwise count as a new best.
+    tracker.endLap(MAX_RECORDING_SAMPLES + 10, MAX_RECORDING_SAMPLES + 10, true);
+
+    expect(tracker.recordSample(0, 0)).toBeNull();
   });
 });
 

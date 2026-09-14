@@ -18,13 +18,27 @@ export interface DeltaSample {
  * Car.tsx). Reference resets each page load; delta only appears after the
  * player's own first completed lap in the current session.
  */
+// A lap this long (~5.5 minutes at 60fps) will never be a real best time,
+// so recording is stopped rather than left unbounded for a session where
+// the player never crosses the line (idling, or a long off-track wander -
+// the off-track teleport reset doesn't itself end a lap). `wasOverlong`
+// additionally blocks promotion even in the one case a long lap COULD
+// still look like a "new best" - the player's very first lap ever, before
+// bestLapRef has any value to compare against.
+export const MAX_RECORDING_SAMPLES = 20000;
+
 export function createDeltaTracker() {
   let recording: DeltaSample[] = [];
   let reference: DeltaSample[] | null = null;
+  let wasOverlong = false;
 
   /** Call once per frame while driving, with the current lap's progress/time. */
   function recordSample(progressMeters: number, elapsedSeconds: number): number | null {
-    recording.push({ progressMeters, elapsedSeconds });
+    if (recording.length < MAX_RECORDING_SAMPLES) {
+      recording.push({ progressMeters, elapsedSeconds });
+    } else {
+      wasOverlong = true;
+    }
     if (!reference || reference.length < 2) return null;
     return elapsedSeconds - referenceTimeAt(reference, progressMeters);
   }
@@ -41,9 +55,12 @@ export function createDeltaTracker() {
    * same frame, corrupting exactly the samples a close finish needs most.
    */
   function endLap(lapSeconds: number, trackLengthMeters: number, wasNewBest: boolean) {
-    recording.push({ progressMeters: trackLengthMeters, elapsedSeconds: lapSeconds });
-    if (wasNewBest) reference = recording;
+    if (recording.length < MAX_RECORDING_SAMPLES) {
+      recording.push({ progressMeters: trackLengthMeters, elapsedSeconds: lapSeconds });
+    }
+    if (wasNewBest && !wasOverlong) reference = recording;
     recording = [];
+    wasOverlong = false;
   }
 
   return { recordSample, endLap };

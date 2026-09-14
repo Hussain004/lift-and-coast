@@ -33,6 +33,7 @@ import { createEnergySystem } from "@/lib/physics/energy";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
+import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
 import type { TrackData } from "@/lib/tracks/types";
@@ -139,6 +140,8 @@ export function Car({
   // allWheelsOffTrack's own comment for why the two use different rules).
   // Reset alongside lapHadDiscontinuityRef when the next lap starts.
   const lapInvalidRef = useRef(false);
+  const ghostRecorderRef = useRef(createGhostRecorder());
+  const ghostMeshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
     bestLapRef.current = loadBestLap(track.id);
   }, [track.id]);
@@ -400,6 +403,10 @@ export function Car({
         saveBestLap(track.id, lap.lastLapSeconds);
       }
       deltaTrackerRef.current.endLap(lap.lastLapSeconds, track.lengthMeters, wasNewBest);
+      // Same eligibility as the delta timer's reference (see its own
+      // endLap comment) - the ghost should be the same lap the delta is
+      // measured against, not a separately-chosen one.
+      ghostRecorderRef.current.endLap(wasNewBest);
       lapHadDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
     }
@@ -431,49 +438,75 @@ export function Car({
       deltaRef.current.dataset.sign = delta === null || delta === 0 ? "" : delta > 0 ? "behind" : "ahead";
     }
 
+    ghostRecorderRef.current.recordSample(lap.currentLapSeconds, {
+      position: { x: t.x, y: t.y, z: t.z },
+      rotation: { x: bodyRot.x, y: bodyRot.y, z: bodyRot.z, w: bodyRot.w },
+    });
+    if (ghostMeshRef.current) {
+      const ghostPose = ghostRecorderRef.current.poseAt(lap.currentLapSeconds);
+      if (ghostPose) {
+        ghostMeshRef.current.visible = true;
+        ghostMeshRef.current.position.set(ghostPose.position.x, ghostPose.position.y, ghostPose.position.z);
+        ghostMeshRef.current.quaternion.set(
+          ghostPose.rotation.x,
+          ghostPose.rotation.y,
+          ghostPose.rotation.z,
+          ghostPose.rotation.w
+        );
+      } else {
+        ghostMeshRef.current.visible = false;
+      }
+    }
+
     if (trackLimitRef?.current) {
       trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
     }
   });
 
   return (
-    <RigidBody
-      ref={chassisRef}
-      colliders={false}
-      position={[startPos.x, 1, startPos.z]}
-      rotation={[0, startPos.headingRad, 0]}
-      linearDamping={LINEAR_DAMPING}
-      angularDamping={ANGULAR_DAMPING}
-      canSleep={false}
-    >
-      {/*
-        colliders={false} + one explicit collider is deliberate: the
-        default auto-collider generation ("cuboid") walks every visible
-        mesh under this RigidBody and gives EACH one its own bounding-box
-        collider - including the 4 wheel cylinder meshes below, which were
-        silently getting solid, chassis-fixed collision boxes sitting right
-        where the ground is, fighting the raycast suspension on every wheel.
-        That was the real cause of the violent launching/flipping reported
-        during play - a headless harness with no meshes at all could never
-        have caught it. Only the chassis body should ever be solid.
-      */}
-      <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-      <mesh ref={visualRef} castShadow>
+    <>
+      <mesh ref={ghostMeshRef} visible={false}>
         <boxGeometry args={CHASSIS_SIZE} />
-        <meshStandardMaterial color="#39ff88" />
+        <meshStandardMaterial color="#39ff88" transparent opacity={0.3} depthWrite={false} />
       </mesh>
-      {CAR_WHEELS.map((wheel, i) => (
-        <group key={i} position={wheel.position}>
-          <group ref={(el) => { steerRefs.current[i] = el; }}>
-            <group ref={(el) => { spinRefs.current[i] = el; }}>
-              <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[wheel.radius, wheel.radius, 0.28, 16]} />
-                <meshStandardMaterial color="#111111" />
-              </mesh>
+      <RigidBody
+        ref={chassisRef}
+        colliders={false}
+        position={[startPos.x, 1, startPos.z]}
+        rotation={[0, startPos.headingRad, 0]}
+        linearDamping={LINEAR_DAMPING}
+        angularDamping={ANGULAR_DAMPING}
+        canSleep={false}
+      >
+        {/*
+          colliders={false} + one explicit collider is deliberate: the
+          default auto-collider generation ("cuboid") walks every visible
+          mesh under this RigidBody and gives EACH one its own bounding-box
+          collider - including the 4 wheel cylinder meshes below, which were
+          silently getting solid, chassis-fixed collision boxes sitting right
+          where the ground is, fighting the raycast suspension on every wheel.
+          That was the real cause of the violent launching/flipping reported
+          during play - a headless harness with no meshes at all could never
+          have caught it. Only the chassis body should ever be solid.
+        */}
+        <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
+        <mesh ref={visualRef} castShadow>
+          <boxGeometry args={CHASSIS_SIZE} />
+          <meshStandardMaterial color="#39ff88" />
+        </mesh>
+        {CAR_WHEELS.map((wheel, i) => (
+          <group key={i} position={wheel.position}>
+            <group ref={(el) => { steerRefs.current[i] = el; }}>
+              <group ref={(el) => { spinRefs.current[i] = el; }}>
+                <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+                  <cylinderGeometry args={[wheel.radius, wheel.radius, 0.28, 16]} />
+                  <meshStandardMaterial color="#111111" />
+                </mesh>
+              </group>
             </group>
           </group>
-        </group>
-      ))}
-    </RigidBody>
+        ))}
+      </RigidBody>
+    </>
   );
 }
