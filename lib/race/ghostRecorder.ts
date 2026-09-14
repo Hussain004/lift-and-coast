@@ -3,7 +3,7 @@ export interface GhostPose {
   rotation: { x: number; y: number; z: number; w: number };
 }
 
-interface GhostSample extends GhostPose {
+export interface GhostSample extends GhostPose {
   elapsedSeconds: number;
 }
 
@@ -47,6 +47,21 @@ export function createGhostRecorder() {
     wasOverlong = false;
   }
 
+  /** The current reference lap's samples, for persisting alongside its lap time. */
+  function getReference(): GhostSample[] | null {
+    return reference;
+  }
+
+  /**
+   * Replaces the reference outright - for loading a previously-persisted
+   * best lap after construction (the async IndexedDB read in Car.tsx can't
+   * finish before useRef's initial createGhostRecorder() call, unlike
+   * initialReference above which only covers a reference known up front).
+   */
+  function setReference(samples: GhostSample[] | null) {
+    reference = samples;
+  }
+
   function poseAt(elapsedSeconds: number): GhostPose | null {
     if (!reference || reference.length === 0) return null;
     const first = reference[0];
@@ -73,7 +88,7 @@ export function createGhostRecorder() {
     return { position: last.position, rotation: last.rotation };
   }
 
-  return { recordSample, endLap, poseAt };
+  return { recordSample, endLap, poseAt, getReference, setReference };
 }
 
 function lerpVec3(

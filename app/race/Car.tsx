@@ -35,6 +35,7 @@ import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
+import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
 import type { TrackData } from "@/lib/tracks/types";
 
@@ -59,26 +60,6 @@ function applySnapshot(body: RapierRigidBody, sample: RewindSample, zeroVelocity
   body.setRotation(sample.rotation, true);
   body.setLinvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.linvel, true);
   body.setAngvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.angvel, true);
-}
-
-function bestLapStorageKey(trackId: string) {
-  return `lift-and-coast:best-lap:${trackId}`;
-}
-
-// ponytail: a single float per track doesn't need IndexedDB/schema
-// versioning yet (plan section 10 calls for IndexedDB for personal bests
-// long-term) - move it there once ghost replay/telemetry data needs that
-// infra anyway, and migrate this key alongside it.
-function loadBestLap(trackId: string): number | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(bestLapStorageKey(trackId));
-  const parsed = raw === null ? null : Number(raw);
-  return parsed !== null && Number.isFinite(parsed) ? parsed : null;
-}
-
-function saveBestLap(trackId: string, seconds: number) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(bestLapStorageKey(trackId), String(seconds));
 }
 
 const CHASSIS_SIZE: [number, number, number] = [
@@ -143,7 +124,17 @@ export function Car({
   const ghostRecorderRef = useRef(createGhostRecorder());
   const ghostMeshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
-    bestLapRef.current = loadBestLap(track.id);
+    let cancelled = false;
+    loadPersonalBest(track.id)
+      .then((record) => {
+        if (cancelled || !record) return;
+        bestLapRef.current = record.bestLapSeconds;
+        if (record.ghost.length > 0) ghostRecorderRef.current.setReference(record.ghost);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [track.id]);
 
   const rewindBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
@@ -400,13 +391,21 @@ export function Car({
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
         bestLapRef.current = lap.lastLapSeconds;
-        saveBestLap(track.id, lap.lastLapSeconds);
       }
       deltaTrackerRef.current.endLap(lap.lastLapSeconds, track.lengthMeters, wasNewBest);
       // Same eligibility as the delta timer's reference (see its own
       // endLap comment) - the ghost should be the same lap the delta is
       // measured against, not a separately-chosen one.
       ghostRecorderRef.current.endLap(wasNewBest);
+      if (wasNewBest) {
+        // After endLap above, so getReference() reflects this lap's just-
+        // promoted ghost samples rather than the previous best's.
+        savePersonalBest(track.id, {
+          schemaVersion: 1,
+          bestLapSeconds: lap.lastLapSeconds,
+          ghost: ghostRecorderRef.current.getReference() ?? [],
+        }).catch(() => {});
+      }
       lapHadDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
     }
