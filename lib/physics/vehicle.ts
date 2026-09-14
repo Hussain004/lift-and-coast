@@ -87,36 +87,46 @@ export const CHASSIS_HALF_EXTENTS: [number, number, number] = [0.9, 0.4, 2];
 export const CHASSIS_MASS = 220;
 export const LINEAR_DAMPING = 0.05;
 export const ANGULAR_DAMPING = 6;
-// Real F1 cars do 0-100 km/h in ~2.5-2.6s, which 1450N (this constant's
-// previous value) hit almost exactly (2.53s) - but raising it that far from
-// the original 850N (4.4s) made the launch itself feel excessive, reported
-// directly after shipping: "the driving feel is so much force". A sweep of
-// candidate forces found peak launch pitch is NOT strongly force-dependent
-// in this range (0.132 rad at 1450N vs 0.111 rad even at 1000N, a suspension
-// -transient response that's largely saturated rather than scaling with the
-// force driving it) - so the fix for "too much force" is simply a lower
-// force, not a suspension retune. 1100N takes 0-100 to 3.30s: a real, felt
-// reduction in launch aggression (about 30% slower to 100) while still well
-// off the original 850N's 4.4s. Push-to-Pass's 1.6x boost (see energy.ts)
-// makes this 1760N.
+// Real F1 cars do 0-100 km/h in ~2.5-2.6s, which this constant hits almost
+// exactly (2.47-2.53s across measurements). This was lowered to 1100N for
+// one session after 1450N's launch was reported as excessive ("the driving
+// feel is so much force"), but that violence turned out to be the rear
+// suspension bottoming out under load (see REAR_MAX_SUSPENSION_TRAVEL above)
+// producing a real single-step chassis kick, not the acceleration itself -
+// once that was fixed, 1450N was restored since the underlying complaint's
+// actual cause was gone. Push-to-Pass's 1.6x boost (see energy.ts) does NOT
+// apply directly to this constant - see BOOSTED_ENGINE_FORCE_CAP below.
 //
-// This is a single constant force, not a real car's per-gear torque curve -
-// it can't hit a real F1 0-200 time (~4.5-4.8s) either way, since quadratic
-// drag makes a fixed force taper harder as speed climbs while a real F1 car
-// holds near-peak thrust past 200 km/h. Measured at 1100N: 0-200 takes
-// 10.13s. Closing that gap needs a speed-dependent force curve (the game's
-// stand-in for gears), not a bigger constant - out of scope here.
+// This is a single fixed force, not a real car's per-gear torque curve, so
+// it can't also hit a real F1 0-200 time (~4.5-4.8s) - quadratic drag makes
+// a fixed force taper harder as speed climbs while a real car shifts gears
+// to stay near peak thrust past 200 km/h. Closing that gap needs a per-gear
+// torque curve (plan section 5, depth feature 4: manual gears), which is
+// future work, not a change to this constant.
 //
-// Stability re-verified at 1100N: a straight-line 15s full-throttle sweep
-// shows no instability (well under the 0.6 rad flip threshold - see the
-// force-sweep data above). Braking, not throttle, is the tighter constraint
-// on how high this can go (instantly slamming full brake after building
-// speed pitches the chassis past the flip threshold well before a throttle
-// cliff does - see BRAKE_RAMP_SECONDS in useDriveInput.ts, and the
-// "realistic (ramped) brake input" test in vehicle-stability-track.test.ts).
-// Any future increase to this constant must be re-verified against both that
-// braking scenario and the felt launch aggression, not just raw stability.
-export const DEFAULT_ENGINE_FORCE = 1100;
+// Stability re-verified at 1450N: a straight-line 15s full-throttle sweep
+// shows no instability (well under the 0.6 rad flip threshold). Braking, not
+// throttle, is the tighter constraint on how high this can go (instantly
+// slamming full brake after building speed pitches the chassis past the
+// flip threshold well before a throttle cliff does - see
+// BRAKE_RAMP_SECONDS in useDriveInput.ts, and the "realistic (ramped) brake
+// input" test in vehicle-stability-track.test.ts). Any future increase to
+// this constant must be re-verified against both that braking scenario and
+// the felt launch aggression, not just raw stability.
+export const DEFAULT_ENGINE_FORCE = 1450;
+
+// Push-to-Pass's 1.6x boost (see energy.ts) applied directly to
+// DEFAULT_ENGINE_FORCE would be 2320N - well past a stability cliff found by
+// sweeping cold-start force against airborne time on the real track: 1760N
+// recovers in 1.1s/0.13 rad, 1900N spirals into a sustained wheelie (front
+// wheels lose contact for 3.65s, pitch past 0.5 rad and not recovering).
+// A single fixed force can't hit both a real F1 0-100 (~2.5s, needs 1450N)
+// and 0-200 time (~4.5-4.8s, needs a per-gear torque curve this game
+// doesn't have) - closing that second gap is future work (plan section 5,
+// depth feature 4: manual gears), not something to force out of this one
+// constant. Capping the boosted force here keeps boost safe in the
+// meantime while still giving it a real, felt kick over unboosted driving.
+export const BOOSTED_ENGINE_FORCE_CAP = 1750;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
@@ -320,13 +330,15 @@ export function applyDragImpulse(
 export function applyCarControls(
   controller: Rapier.DynamicRayCastVehicleController,
   { throttle, brake, steer }: { throttle: number; brake: number; steer: number },
-  maxEngineForce: number,
+  baseEngineForce: number,
+  boostMultiplier: number,
   maxBrakeForce: number,
   currentSpeedMs: number
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
+  const engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
   CAR_WHEELS.forEach((wheel, i) => {
-    controller.setWheelEngineForce(i, wheel.isDriven ? throttle * maxEngineForce : 0);
+    controller.setWheelEngineForce(i, wheel.isDriven ? throttle * engineForce : 0);
     controller.setWheelBrake(i, brake * maxBrakeForce);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });

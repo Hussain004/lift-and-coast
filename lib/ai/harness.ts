@@ -45,6 +45,13 @@ export interface StabilityOptions {
   track?: TrackData;
   /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
   aeroMode?: AeroMode;
+  /**
+   * Push-to-Pass's engine force multiplier (see energy.ts) - defaults to 1
+   * (no boost). Matches Car.tsx: applied via applyCarControls, not by
+   * pre-multiplying engineForce, since applyCarControls clamps the boosted
+   * result to a safe ceiling (see BOOSTED_ENGINE_FORCE_CAP in vehicle.ts).
+   */
+  boostMultiplier?: number;
 }
 
 export interface StabilityResult {
@@ -207,6 +214,7 @@ export async function simulateDrive(
       controller,
       stepInput,
       options.engineForce,
+      options.boostMultiplier ?? 1,
       options.brakeForce,
       controller.currentVehicleSpeed()
     );

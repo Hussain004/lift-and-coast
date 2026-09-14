@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import RAPIER from "@dimforge/rapier3d-compat";
 import {
+  BOOSTED_ENGINE_FORCE_CAP,
   CHASSIS_HALF_EXTENTS,
   CHASSIS_MASS,
+  DEFAULT_ENGINE_FORCE,
   applyCarControls,
   createCarController,
   speedSensitiveSteerScale,
@@ -46,14 +48,32 @@ describe("applyCarControls wires the speed scale into the live wheel steering", 
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
-    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 0, 0);
+    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 0);
     const steeringAtStandstill = controller.wheelSteering(0) ?? 0;
 
-    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 0, 40);
+    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 40);
     const steeringAtSpeed = controller.wheelSteering(0) ?? 0;
 
     expect(steeringAtStandstill).toBeGreaterThan(0);
     expect(steeringAtSpeed).toBeGreaterThan(0);
     expect(steeringAtSpeed).toBeLessThan(steeringAtStandstill);
+  });
+});
+
+describe("applyCarControls caps Push-to-Pass boost at a safe ceiling", () => {
+  it("clamps the boosted force but leaves unboosted throttle unchanged", async () => {
+    await RAPIER.init();
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const chassis = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0).setAdditionalMass(CHASSIS_MASS)
+    );
+    world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
+    const controller = createCarController(RAPIER, world, chassis);
+
+    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1, 0, 0);
+    expect(controller.wheelEngineForce(2)).toBeCloseTo(DEFAULT_ENGINE_FORCE, 0);
+
+    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1.6, 0, 0);
+    expect(controller.wheelEngineForce(2)).toBeCloseTo(BOOSTED_ENGINE_FORCE_CAP, 0);
   });
 });

@@ -201,6 +201,7 @@ export function Car({
           controller,
           { throttle: detail.throttle, brake: detail.brake, steer: detail.steer },
           DEFAULT_ENGINE_FORCE,
+          1,
           DEFAULT_BRAKE_FORCE,
           controller.currentVehicleSpeed()
         );
@@ -317,7 +318,8 @@ export function Car({
     applyCarControls(
       controller,
       driveInput,
-      DEFAULT_ENGINE_FORCE * energyStatus.engineForceMultiplier,
+      DEFAULT_ENGINE_FORCE,
+      energyStatus.engineForceMultiplier,
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed()
     );

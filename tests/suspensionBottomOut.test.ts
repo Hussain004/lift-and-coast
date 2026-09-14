@@ -25,18 +25,21 @@ const track = silverstone as TrackData;
 // This needs the REAL track trimesh (not the default flat plane) and a
 // run long enough to reach a sustained cruise, which is why none of the
 // existing short/flat-plane stability tests caught it - both matter here.
-// Runs at both normal and boosted (Push-to-Pass) throttle since boosted
-// force needs more suspension travel to clear the same floor.
+// Runs at both normal and boosted (Push-to-Pass) throttle since boost is a
+// separate multiplier applyCarControls clamps to a safe ceiling (see
+// BOOSTED_ENGINE_FORCE_CAP in vehicle.ts) - this confirms that ceiling is
+// actually low enough to avoid retriggering the same suspension floor.
 describe("suspension does not bottom out under sustained throttle on the real track", () => {
   it.each([
-    ["normal throttle", DEFAULT_ENGINE_FORCE],
-    ["boosted (Push-to-Pass) throttle", DEFAULT_ENGINE_FORCE * 1.6],
-  ])("%s: no single-step tilt discontinuity over 20s straight", async (_label, engineForce) => {
+    ["normal throttle", 1],
+    ["boosted (Push-to-Pass) throttle", 1.6],
+  ])("%s: no single-step tilt discontinuity over 20s straight", async (_label, boostMultiplier) => {
     const result = await simulateDrive(
       20,
       { throttle: 1, brake: 0, steer: 0 },
       {
-        engineForce,
+        engineForce: DEFAULT_ENGINE_FORCE,
+        boostMultiplier,
         brakeForce: DEFAULT_BRAKE_FORCE,
         stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
         track,
