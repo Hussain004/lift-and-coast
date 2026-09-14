@@ -13,6 +13,7 @@ export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
   const deltaRef = useRef<HTMLDivElement>(null);
+  const sectorsRef = useRef<HTMLDivElement>(null);
   const trackLimitRef = useRef<HTMLDivElement>(null);
   const energyRef = useRef<HTMLDivElement>(null);
   const aeroModeRef = useRef<HTMLDivElement>(null);
@@ -23,6 +24,7 @@ export default function RacePage() {
         speedRef={speedRef}
         lapRef={lapRef}
         deltaRef={deltaRef}
+        sectorsRef={sectorsRef}
         trackLimitRef={trackLimitRef}
         energyRef={energyRef}
         aeroModeRef={aeroModeRef}
@@ -35,6 +37,7 @@ export default function RacePage() {
         LAP 1 --:--.---  BEST --:--.---
       </div>
       <div className={styles.delta} ref={deltaRef} />
+      <div className={styles.sectors} ref={sectorsRef} />
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>

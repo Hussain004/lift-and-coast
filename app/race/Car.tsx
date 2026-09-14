@@ -34,13 +34,21 @@ import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
+import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
+import { computeSectorGates } from "@/lib/tracks/sectors";
 import type { TrackData } from "@/lib/tracks/types";
 
 const LINE_HALF_WIDTH_METERS = 6;
 const REWIND_CAPACITY_SECONDS = 5;
+const SECTOR_COUNT = 3;
+const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
+  purple: "#b967ff",
+  green: "#39ff88",
+  yellow: "#ffd23f",
+};
 
 function snapshotOf(body: RapierRigidBody): RewindSample {
   const p = body.translation();
@@ -74,6 +82,7 @@ export function Car({
   speedRef,
   lapRef,
   deltaRef,
+  sectorsRef,
   trackLimitRef,
   energyRef,
   aeroModeRef,
@@ -89,6 +98,7 @@ export function Car({
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
   deltaRef?: React.RefObject<HTMLDivElement | null>;
+  sectorsRef?: React.RefObject<HTMLDivElement | null>;
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
   energyRef?: React.RefObject<HTMLDivElement | null>;
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
@@ -127,6 +137,10 @@ export function Car({
   // the actual violation, not just any rewind at all (which would let an
   // unrelated later correction erase an earlier, still-valid infraction).
   const lapInvalidAtSecondsRef = useRef<number | null>(null);
+  const sectorTimerRef = useRef(createSectorTimer(computeSectorGates(track, SECTOR_COUNT)));
+  const sectorResultsRef = useRef<(SectorCrossing | null)[]>(
+    new Array(SECTOR_COUNT).fill(null)
+  );
   const ghostRecorderRef = useRef(createGhostRecorder());
   const ghostMeshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
@@ -138,9 +152,14 @@ export function Car({
         if (record.ghost.length > 0) ghostRecorderRef.current.setReference(record.ghost);
       })
       .catch(() => {});
+    // Shows "S1 --.---  S2 --.---  S3 --.---" from the very start of the
+    // session, rather than a blank/hidden HUD element (.sectors:empty)
+    // until the first sector completes.
+    renderSectors();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.id]);
 
   const rewindBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
@@ -306,6 +325,11 @@ export function Car({
       wasRewindingRef.current = false;
       rewindCursorRef.current = 0;
       lapHadDiscontinuityRef.current = true;
+      // Otherwise nextGateIndex would still point at whatever gate was
+      // being approached before the teleport - the car driving from the
+      // start line would silently miss gate 0 and later register a
+      // garbage split spanning the teleport (see sectorTimer.reset).
+      sectorTimerRef.current.reset();
       return;
     }
 
@@ -378,6 +402,17 @@ export function Car({
     rewindBufferRef.current.push(snapshotOf(body));
   });
 
+  function renderSectors() {
+    if (!sectorsRef?.current) return;
+    sectorsRef.current.innerHTML = sectorResultsRef.current
+      .map((s, i) =>
+        s
+          ? `<span style="color:${SECTOR_COLOR_HEX[s.color]}">S${i + 1} ${s.sectorSeconds.toFixed(3)}</span>`
+          : `<span>S${i + 1} --.---</span>`
+      )
+      .join("");
+  }
+
   useFrame((_, dt) => {
     const controller = controllerRef.current;
     const body = chassisRef.current;
@@ -409,8 +444,8 @@ export function Car({
     const t = body.translation();
     const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
+    const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
-      const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
       const wasNewBest =
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
@@ -430,9 +465,26 @@ export function Car({
           ghost: ghostRecorderRef.current.getReference() ?? [],
         }).catch(() => {});
       }
+      // Completes the final sector for the lap that just ended (see
+      // sectorTimer.ts's own comment for why this is driven by the lap
+      // timer's crossing rather than a third progress-based gate). The
+      // display is deliberately NOT cleared here - the just-finished
+      // lap's three splits stay on screen (S3 is otherwise never visible
+      // at all, since it completes at the exact instant the lap ends) and
+      // each slot is naturally overwritten as the new lap's own sectors
+      // complete in turn.
+      const finalSplit = sectorTimerRef.current.onLapEnd(lap.lastLapSeconds, eligible, wasNewBest);
+      sectorResultsRef.current[finalSplit.sectorIndex] = finalSplit;
+      renderSectors();
       lapHadDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
       lapInvalidAtSecondsRef.current = null;
+    }
+
+    const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);
+    if (sectorCrossing) {
+      sectorResultsRef.current[sectorCrossing.sectorIndex] = sectorCrossing;
+      renderSectors();
     }
 
     // All-four-wheels-off check for lap invalidation (see allWheelsOffTrack)

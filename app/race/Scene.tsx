@@ -120,6 +120,7 @@ export function Scene({
   speedRef,
   lapRef,
   deltaRef,
+  sectorsRef,
   trackLimitRef,
   energyRef,
   aeroModeRef,
@@ -127,6 +128,7 @@ export function Scene({
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   deltaRef: React.RefObject<HTMLDivElement | null>;
+  sectorsRef: React.RefObject<HTMLDivElement | null>;
   trackLimitRef: React.RefObject<HTMLDivElement | null>;
   energyRef: React.RefObject<HTMLDivElement | null>;
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
@@ -156,6 +158,7 @@ export function Scene({
           speedRef={speedRef}
           lapRef={lapRef}
           deltaRef={deltaRef}
+          sectorsRef={sectorsRef}
           trackLimitRef={trackLimitRef}
           energyRef={energyRef}
           aeroModeRef={aeroModeRef}

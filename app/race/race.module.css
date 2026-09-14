@@ -72,6 +72,27 @@
   color: #ff3b3b;
 }
 
+.sectors {
+  position: absolute;
+  top: 96px;
+  left: 16px;
+  color: #fff;
+  font-family: var(--font-geist-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 12px;
+  border-radius: 4px;
+  pointer-events: none;
+  display: flex;
+  gap: 12px;
+}
+
+.sectors:empty {
+  display: none;
+}
+
 .trackLimit {
   position: absolute;
   top: 16px;
