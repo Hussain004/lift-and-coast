@@ -73,7 +73,24 @@ export function createLapTimer(config: LapTimerConfig) {
     return { currentLapSeconds, lapCount, lastLapSeconds, bestLapSeconds, crossedFinishLine };
   }
 
-  return { update };
+  /**
+   * Rolls the current lap's elapsed time back by `seconds` - call once when
+   * the rewind mechanic (Car.tsx) finishes, with however much time it
+   * actually scrubbed back, so a rewound mistake doesn't leave the lap
+   * clock still counting the time spent making (and undoing) it. Clamped
+   * at 0 rather than going negative - a rewind spanning back across the
+   * previous lap's finish-line crossing isn't unwound here (lap count and
+   * the previous lap's recorded result are untouched), just floored.
+   * Returns the resulting currentLapSeconds, so a caller can tell whether
+   * the rollback reached back past some earlier point in the lap (e.g.
+   * Car.tsx comparing it against when a track-limits violation happened).
+   */
+  function rewindBy(seconds: number): number {
+    currentLapSeconds = Math.max(0, currentLapSeconds - seconds);
+    return currentLapSeconds;
+  }
+
+  return { update, rewindBy };
 }
 
 export function formatLapTime(seconds: number | null): string {

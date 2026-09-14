@@ -121,6 +121,12 @@ export function Car({
   // allWheelsOffTrack's own comment for why the two use different rules).
   // Reset alongside lapHadDiscontinuityRef when the next lap starts.
   const lapInvalidRef = useRef(false);
+  // The lap clock's value (lap.currentLapSeconds) at the moment
+  // lapInvalidRef first became true this lap - lets the rewind-resume
+  // handler below tell whether a rewind reached back far enough to undo
+  // the actual violation, not just any rewind at all (which would let an
+  // unrelated later correction erase an earlier, still-valid infraction).
+  const lapInvalidAtSecondsRef = useRef<number | null>(null);
   const ghostRecorderRef = useRef(createGhostRecorder());
   const ghostMeshRef = useRef<THREE.Mesh>(null);
   useEffect(() => {
@@ -319,6 +325,24 @@ export function Car({
     if (wasRewindingRef.current) {
       const sample = rewindBufferRef.current.resumeFrom(rewindCursorRef.current);
       if (sample) applySnapshot(body, sample, false);
+      // Undo the mistake, not just its consequences: roll the lap clock
+      // back by however much time was actually scrubbed. Only clear an
+      // existing track-limits invalidation if the rollback actually
+      // reaches back to (or before) the moment it happened - otherwise an
+      // unrelated later rewind (e.g. straightening up after clipping a
+      // kerb at turn 9) would erase an earlier, still-legitimate
+      // invalidation from turn 3 just by being a rewind at all. If the
+      // excursion itself is still within reach after rewinding, the very
+      // next frame's allWheelsOffTrack check re-flags it immediately
+      // regardless. (lapHadDiscontinuityRef is deliberately NOT cleared
+      // here - it protects the delta timer/ghost recorder's recorded
+      // samples, which stay non-monotonic across this rewind regardless of
+      // whether the driving itself was clean afterward.)
+      const rolledBackTo = lapTimerRef.current.rewindBy(rewindCursorRef.current);
+      if (lapInvalidAtSecondsRef.current === null || rolledBackTo <= lapInvalidAtSecondsRef.current) {
+        lapInvalidRef.current = false;
+        lapInvalidAtSecondsRef.current = null;
+      }
       rewindCursorRef.current = 0;
       wasRewindingRef.current = false;
     }
@@ -408,6 +432,7 @@ export function Car({
       }
       lapHadDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
+      lapInvalidAtSecondsRef.current = null;
     }
 
     // All-four-wheels-off check for lap invalidation (see allWheelsOffTrack)
@@ -421,6 +446,12 @@ export function Car({
       return { x: t.x + local.x, z: t.z + local.z };
     });
     if (allWheelsOffTrack(track, wheelWorldPositions)) {
+      // Only record the timestamp on the first violation this lap - a
+      // rewind must reach back to the START of the infraction to undo it,
+      // not just its most recent moment.
+      if (!lapInvalidRef.current) {
+        lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+      }
       lapInvalidRef.current = true;
     }
 

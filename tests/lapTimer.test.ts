@@ -116,6 +116,24 @@ describe("createLapTimer", () => {
     expect(result.crossedFinishLine).toBe(false);
     expect(result.lapCount).toBe(0);
   });
+
+  it("rewindBy rolls the current lap's elapsed time back and returns the new value", () => {
+    const timer = createLapTimer({ startPos: track.startPos, lineHalfWidth: 6 });
+    for (let i = 0; i < 60; i++) timer.update(track.startPos, 1 / 60);
+    const rolledBackTo = timer.rewindBy(0.4);
+    expect(rolledBackTo).toBeCloseTo(1 - 0.4, 5);
+    const result = timer.update(track.startPos, 1 / 60);
+    // 1 second accumulated, minus 0.4 rewound, plus this call's own tick.
+    expect(result.currentLapSeconds).toBeCloseTo(1 - 0.4 + 1 / 60, 5);
+  });
+
+  it("rewindBy floors at zero rather than going negative", () => {
+    const timer = createLapTimer({ startPos: track.startPos, lineHalfWidth: 6 });
+    timer.update(track.startPos, 1 / 60);
+    expect(timer.rewindBy(100)).toBe(0);
+    const result = timer.update(track.startPos, 1 / 60);
+    expect(result.currentLapSeconds).toBeCloseTo(1 / 60, 5);
+  });
 });
 
 describe("formatLapTime", () => {
