@@ -34,7 +34,7 @@ import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
-import { checkTrackLimits } from "@/lib/tracks/trackLimits";
+import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
 import type { TrackData } from "@/lib/tracks/types";
 
 const LINE_HALF_WIDTH_METERS = 6;
@@ -133,6 +133,12 @@ export function Car({
   // lib/race/deltaTimer.ts assume monotonic progress within a recording).
   // Reset after every lap ends, tainting only the lap it happened in.
   const lapHadDiscontinuityRef = useRef(false);
+  // Plan section 5, depth feature 7: a lap is invalidated once all four
+  // wheels have been off track at any point, not just momentarily flagged
+  // by the real-time HUD warning (which fires off the chassis center - see
+  // allWheelsOffTrack's own comment for why the two use different rules).
+  // Reset alongside lapHadDiscontinuityRef when the next lap starts.
+  const lapInvalidRef = useRef(false);
   useEffect(() => {
     bestLapRef.current = loadBestLap(track.id);
   }, [track.id]);
@@ -386,22 +392,37 @@ export function Car({
     const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
-      const wasNewBest = bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current;
+      const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
+      const wasNewBest =
+        eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
         bestLapRef.current = lap.lastLapSeconds;
         saveBestLap(track.id, lap.lastLapSeconds);
       }
-      deltaTrackerRef.current.endLap(
-        lap.lastLapSeconds,
-        track.lengthMeters,
-        wasNewBest && !lapHadDiscontinuityRef.current
-      );
+      deltaTrackerRef.current.endLap(lap.lastLapSeconds, track.lengthMeters, wasNewBest);
       lapHadDiscontinuityRef.current = false;
+      lapInvalidRef.current = false;
     }
+
+    // All-four-wheels-off check for lap invalidation (see allWheelsOffTrack)
+    // - separate from and stricter than the chassis-center-based warning
+    // below, so this only flags once the car has genuinely left the track,
+    // not while merely running wide with grip still on one side.
+    const bodyRot = body.rotation();
+    const bodyQuat = new THREE.Quaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
+    const wheelWorldPositions = CAR_WHEELS.map((wheel) => {
+      const local = new THREE.Vector3(...wheel.position).applyQuaternion(bodyQuat);
+      return { x: t.x + local.x, z: t.z + local.z };
+    });
+    if (allWheelsOffTrack(track, wheelWorldPositions)) {
+      lapInvalidRef.current = true;
+    }
+
     if (lapRef?.current) {
       lapRef.current.textContent =
         `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
-        `  BEST ${formatLapTime(bestLapRef.current)}`;
+        `  BEST ${formatLapTime(bestLapRef.current)}` +
+        (lapInvalidRef.current ? "  INVALID" : "");
     }
 
     const delta = deltaTrackerRef.current.recordSample(status.progressMeters, lap.currentLapSeconds);

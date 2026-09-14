@@ -37,3 +37,19 @@ export function checkTrackLimits(track: TrackData, x: number, z: number): TrackL
   const progressMeters = (nearestIdx / track.centerline.length) * track.lengthMeters;
   return { distanceFromEdgeMeters, isOffTrack: distanceFromEdgeMeters > 0, progressMeters };
 }
+
+/**
+ * The real track-limits rule (plan section 5, depth feature 7): a lap is
+ * only invalidated when ALL FOUR wheels are off the track, not the chassis
+ * center - a single wheel still touching keeps the lap legal, same as real
+ * regulations, and avoids penalizing a car that's mostly still on track
+ * through a wide corner exit. This is deliberately stricter (and separate
+ * from) the HUD's real-time "TRACK LIMITS" warning, which fires off the
+ * chassis center via `checkTrackLimits` above as an earlier, softer caution.
+ */
+export function allWheelsOffTrack(
+  track: TrackData,
+  wheelPositions: { x: number; z: number }[]
+): boolean {
+  return wheelPositions.every((p) => checkTrackLimits(track, p.x, p.z).isOffTrack);
+}

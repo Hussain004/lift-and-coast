@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkTrackLimits } from "../lib/tracks/trackLimits";
+import { allWheelsOffTrack, checkTrackLimits } from "../lib/tracks/trackLimits";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -51,5 +51,41 @@ describe("checkTrackLimits", () => {
     const nearStatus = checkTrackLimits(track, near.x, near.z);
     const farStatus = checkTrackLimits(track, far.x, far.z);
     expect(farStatus.distanceFromEdgeMeters).toBeGreaterThan(nearStatus.distanceFromEdgeMeters);
+  });
+});
+
+describe("allWheelsOffTrack", () => {
+  it("is false when all four wheels are on track", () => {
+    const halfWidth = track.width[200] / 2;
+    const wheels = [
+      pointAtLateralOffset(200, halfWidth * 0.5),
+      pointAtLateralOffset(200, -halfWidth * 0.5),
+      pointAtLateralOffset(200, halfWidth * 0.3),
+      pointAtLateralOffset(200, -halfWidth * 0.3),
+    ];
+    expect(allWheelsOffTrack(track, wheels)).toBe(false);
+  });
+
+  it("is false when even one wheel still touches the track", () => {
+    const halfWidth = track.width[200] / 2;
+    const wheels = [
+      pointAtLateralOffset(200, halfWidth + 5),
+      pointAtLateralOffset(200, halfWidth + 5),
+      pointAtLateralOffset(200, halfWidth + 5),
+      // Fourth wheel still on track - the whole car keeps the lap legal.
+      pointAtLateralOffset(200, halfWidth * 0.5),
+    ];
+    expect(allWheelsOffTrack(track, wheels)).toBe(false);
+  });
+
+  it("is true only once all four wheels are past the edge", () => {
+    const halfWidth = track.width[200] / 2;
+    const wheels = [
+      pointAtLateralOffset(200, halfWidth + 5),
+      pointAtLateralOffset(200, halfWidth + 5),
+      pointAtLateralOffset(200, halfWidth + 6),
+      pointAtLateralOffset(200, halfWidth + 6),
+    ];
+    expect(allWheelsOffTrack(track, wheels)).toBe(true);
   });
 });
