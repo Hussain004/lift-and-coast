@@ -12,6 +12,7 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
 export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
+  const deltaRef = useRef<HTMLDivElement>(null);
   const trackLimitRef = useRef<HTMLDivElement>(null);
   const energyRef = useRef<HTMLDivElement>(null);
   const aeroModeRef = useRef<HTMLDivElement>(null);
@@ -21,6 +22,7 @@ export default function RacePage() {
       <Scene
         speedRef={speedRef}
         lapRef={lapRef}
+        deltaRef={deltaRef}
         trackLimitRef={trackLimitRef}
         energyRef={energyRef}
         aeroModeRef={aeroModeRef}
@@ -32,6 +34,7 @@ export default function RacePage() {
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
       </div>
+      <div className={styles.delta} ref={deltaRef} />
       <div className={styles.speed} ref={speedRef}>
         0 km/h
       </div>

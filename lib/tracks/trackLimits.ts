@@ -4,6 +4,15 @@ export interface TrackLimitStatus {
   /** 0 if within the track's width, meters past the edge otherwise. */
   distanceFromEdgeMeters: number;
   isOffTrack: boolean;
+  /**
+   * Arc-length distance along the centerline from the start/finish line to
+   * the nearest centerline point, in meters - the same nearest-point search
+   * this function already does, exposed for the delta timer (see
+   * lib/race/deltaTimer.ts) instead of a second brute-force scan per frame.
+   * Wraps to ~0 at the start/finish line, since track.centerline[0] is
+   * startPos (verified against the real track data).
+   */
+  progressMeters: number;
 }
 
 /**
@@ -25,5 +34,6 @@ export function checkTrackLimits(track: TrackData, x: number, z: number): TrackL
   }
   const halfWidth = track.width[nearestIdx] / 2;
   const distanceFromEdgeMeters = Math.max(0, Math.sqrt(nearestDistSq) - halfWidth);
-  return { distanceFromEdgeMeters, isOffTrack: distanceFromEdgeMeters > 0 };
+  const progressMeters = (nearestIdx / track.centerline.length) * track.lengthMeters;
+  return { distanceFromEdgeMeters, isOffTrack: distanceFromEdgeMeters > 0, progressMeters };
 }

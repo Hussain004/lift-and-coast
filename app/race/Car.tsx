@@ -32,6 +32,7 @@ import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
 import { useDriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
+import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { checkTrackLimits } from "@/lib/tracks/trackLimits";
 import type { TrackData } from "@/lib/tracks/types";
@@ -90,6 +91,7 @@ export function Car({
   visualRef,
   speedRef,
   lapRef,
+  deltaRef,
   trackLimitRef,
   energyRef,
   aeroModeRef,
@@ -104,6 +106,7 @@ export function Car({
   visualRef?: React.RefObject<THREE.Mesh | null>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
+  deltaRef?: React.RefObject<HTMLDivElement | null>;
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
   energyRef?: React.RefObject<HTMLDivElement | null>;
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
@@ -121,6 +124,15 @@ export function Car({
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
   const bestLapRef = useRef<number | null>(null);
+  const deltaTrackerRef = useRef(createDeltaTracker());
+  // Set whenever this lap's progress jumped discontinuously (a rewind, or
+  // the off-track teleport below) instead of driving forward continuously -
+  // such a lap's recorded (progress, time) samples aren't monotonic, so it
+  // must never be adopted as the delta tracker's reference lap even if it
+  // happens to also be a new best time (recordSample/endLap in
+  // lib/race/deltaTimer.ts assume monotonic progress within a recording).
+  // Reset after every lap ends, tainting only the lap it happened in.
+  const lapHadDiscontinuityRef = useRef(false);
   useEffect(() => {
     bestLapRef.current = loadBestLap(track.id);
   }, [track.id]);
@@ -287,10 +299,12 @@ export function Car({
       // pre-reset snapshot.
       wasRewindingRef.current = false;
       rewindCursorRef.current = 0;
+      lapHadDiscontinuityRef.current = true;
       return;
     }
 
     if (driveInput.rewind) {
+      lapHadDiscontinuityRef.current = true;
       wasRewindingRef.current = true;
       const buffer = rewindBufferRef.current;
       rewindCursorRef.current = Math.min(
@@ -369,14 +383,20 @@ export function Car({
     if (isRewindingRef.current) return;
 
     const t = body.translation();
+    const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
-    if (
-      lap.crossedFinishLine &&
-      lap.lastLapSeconds !== null &&
-      (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current)
-    ) {
-      bestLapRef.current = lap.lastLapSeconds;
-      saveBestLap(track.id, lap.lastLapSeconds);
+    if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+      const wasNewBest = bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current;
+      if (wasNewBest) {
+        bestLapRef.current = lap.lastLapSeconds;
+        saveBestLap(track.id, lap.lastLapSeconds);
+      }
+      deltaTrackerRef.current.endLap(
+        lap.lastLapSeconds,
+        track.lengthMeters,
+        wasNewBest && !lapHadDiscontinuityRef.current
+      );
+      lapHadDiscontinuityRef.current = false;
     }
     if (lapRef?.current) {
       lapRef.current.textContent =
@@ -384,8 +404,13 @@ export function Car({
         `  BEST ${formatLapTime(bestLapRef.current)}`;
     }
 
+    const delta = deltaTrackerRef.current.recordSample(status.progressMeters, lap.currentLapSeconds);
+    if (deltaRef?.current) {
+      deltaRef.current.textContent = formatDelta(delta);
+      deltaRef.current.dataset.sign = delta === null || delta === 0 ? "" : delta > 0 ? "behind" : "ahead";
+    }
+
     if (trackLimitRef?.current) {
-      const status = checkTrackLimits(track, t.x, t.z);
       trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
     }
   });

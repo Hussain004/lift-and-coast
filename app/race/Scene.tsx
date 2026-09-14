@@ -119,12 +119,14 @@ function ChaseCamera({
 export function Scene({
   speedRef,
   lapRef,
+  deltaRef,
   trackLimitRef,
   energyRef,
   aeroModeRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
+  deltaRef: React.RefObject<HTMLDivElement | null>;
   trackLimitRef: React.RefObject<HTMLDivElement | null>;
   energyRef: React.RefObject<HTMLDivElement | null>;
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
@@ -153,6 +155,7 @@ export function Scene({
           visualRef={visualRef}
           speedRef={speedRef}
           lapRef={lapRef}
+          deltaRef={deltaRef}
           trackLimitRef={trackLimitRef}
           energyRef={energyRef}
           aeroModeRef={aeroModeRef}

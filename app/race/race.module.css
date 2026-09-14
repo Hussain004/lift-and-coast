@@ -45,6 +45,33 @@
   pointer-events: none;
 }
 
+.delta {
+  position: absolute;
+  top: 56px;
+  left: 16px;
+  color: #fff;
+  font-family: var(--font-geist-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 12px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.delta:empty {
+  display: none;
+}
+
+.delta[data-sign="ahead"] {
+  color: #39ff88;
+}
+
+.delta[data-sign="behind"] {
+  color: #ff3b3b;
+}
+
 .trackLimit {
   position: absolute;
   top: 16px;
