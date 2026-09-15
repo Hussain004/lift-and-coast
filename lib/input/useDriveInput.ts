@@ -46,6 +46,13 @@ const STEER_CENTER_RATE = 6;
 // (section 14, "AI harvests battery under braking") - needs the same
 // shaping applied at its own point of entry, or a real fix in the vehicle
 // model, before it ships.
+//
+// This ramp IS what "ABS" means in this project (plan section 5, depth
+// feature 5) - toggling absEnabled off removes it, letting brake input
+// through instantly and reintroducing the exact real, documented
+// instability above. That's the intended tradeoff (real ABS-off driving
+// is genuinely harder to control without lockup), not a missing safety
+// check.
 const BRAKE_RAMP_SECONDS = 0.5;
 
 const THROTTLE_KEYS = ["KeyW", "ArrowUp"];
@@ -56,6 +63,8 @@ const REWIND_KEYS = ["KeyR"];
 const DEPLOY_KEYS = ["ShiftLeft", "ShiftRight"];
 const AERO_MODE_TOGGLE_KEY = "KeyE";
 const CAMERA_MODE_TOGGLE_KEY = "KeyC";
+const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
+const ABS_TOGGLE_KEY = "KeyB";
 
 const anyPressed = (keys: Set<string>, codes: string[]) =>
   codes.some((code) => keys.has(code));
@@ -84,6 +93,11 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
   const internalCameraMode = useRef<CameraMode>("chase");
   const cameraMode = externalCameraModeRef ?? internalCameraMode;
   const tireCompound = useRef<TireCompoundId>("medium");
+  // Both default ON (plan section 5, depth feature 5: "off by default on
+  // Pro" - Pro is a difficulty tier that doesn't exist yet, so on is the
+  // right default until it does).
+  const tractionControlEnabled = useRef(true);
+  const absEnabled = useRef(true);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -99,6 +113,12 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
       const selectedCompound = TIRE_COMPOUND_KEYS[e.code];
       if (selectedCompound && !keys.current.has(e.code)) {
         tireCompound.current = selectedCompound;
+      }
+      if (e.code === TRACTION_CONTROL_TOGGLE_KEY && !keys.current.has(e.code)) {
+        tractionControlEnabled.current = !tractionControlEnabled.current;
+      }
+      if (e.code === ABS_TOGGLE_KEY && !keys.current.has(e.code)) {
+        absEnabled.current = !absEnabled.current;
       }
       keys.current.add(e.code);
     };
@@ -121,6 +141,8 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
     aeroMode,
     cameraMode,
     tireCompound,
+    tractionControlEnabled,
+    absEnabled,
     update(dt: number) {
       const pressed = keys.current;
       const steerTarget =
@@ -136,7 +158,9 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
       );
       input.current.throttle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
       input.current.brake = anyPressed(pressed, BRAKE_KEYS)
-        ? Math.min(1, input.current.brake + dt / BRAKE_RAMP_SECONDS)
+        ? absEnabled.current
+          ? Math.min(1, input.current.brake + dt / BRAKE_RAMP_SECONDS)
+          : 1
         : 0;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);

@@ -180,6 +180,7 @@ export function Scene({
   energyRef,
   aeroModeRef,
   tireRef,
+  assistsRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -189,6 +190,7 @@ export function Scene({
   energyRef: React.RefObject<HTMLDivElement | null>;
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
   tireRef: React.RefObject<HTMLDivElement | null>;
+  assistsRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
@@ -222,6 +224,7 @@ export function Scene({
           energyRef={energyRef}
           aeroModeRef={aeroModeRef}
           tireRef={tireRef}
+          assistsRef={assistsRef}
           track={track}
         />
       </Physics>

@@ -89,6 +89,7 @@ export function Car({
   energyRef,
   aeroModeRef,
   tireRef,
+  assistsRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -113,6 +114,7 @@ export function Car({
   energyRef?: React.RefObject<HTMLDivElement | null>;
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
   tireRef?: React.RefObject<HTMLDivElement | null>;
+  assistsRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -122,7 +124,8 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode, tireCompound } = useDriveInput(cameraModeRef);
+  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled } =
+    useDriveInput(cameraModeRef);
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -270,7 +273,8 @@ export function Car({
           DEFAULT_ENGINE_FORCE,
           1,
           DEFAULT_BRAKE_FORCE,
-          controller.currentVehicleSpeed()
+          controller.currentVehicleSpeed(),
+          true
         );
         applyLoadSensitiveFriction(controller, aeroMode.current);
         controller.updateVehicle(timestep);
@@ -413,7 +417,8 @@ export function Car({
       DEFAULT_ENGINE_FORCE,
       energyStatus.engineForceMultiplier,
       DEFAULT_BRAKE_FORCE,
-      controller.currentVehicleSpeed()
+      controller.currentVehicleSpeed(),
+      tractionControlEnabled.current
     );
 
     // A fresh set is fitted the instant the player switches compounds
@@ -503,6 +508,11 @@ export function Car({
           100
       );
       tireRef.current.textContent = `${tireCompound.current.toUpperCase()} ${gripPercent}%`;
+    }
+    if (assistsRef?.current) {
+      assistsRef.current.textContent =
+        `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
+        `  ABS ${absEnabled.current ? "ON" : "OFF"}`;
     }
 
     if (isRewindingRef.current) return;

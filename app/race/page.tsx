@@ -18,6 +18,7 @@ export default function RacePage() {
   const energyRef = useRef<HTMLDivElement>(null);
   const aeroModeRef = useRef<HTMLDivElement>(null);
   const tireRef = useRef<HTMLDivElement>(null);
+  const assistsRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -30,11 +31,12 @@ export default function RacePage() {
         energyRef={energyRef}
         aeroModeRef={aeroModeRef}
         tireRef={tireRef}
+        assistsRef={assistsRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
         E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
-        soft/medium/hard tires.
+        soft/medium/hard tires. Press T to toggle TC, B to toggle ABS.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
@@ -46,6 +48,7 @@ export default function RacePage() {
       </div>
       <div className={styles.aeroMode} ref={aeroModeRef} />
       <div className={styles.tire} ref={tireRef} />
+      <div className={styles.assists} ref={assistsRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.energyTrack}>
         <div className={styles.energyFill} ref={energyRef} />

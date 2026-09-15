@@ -52,6 +52,12 @@ export interface StabilityOptions {
    * result to a safe ceiling (see BOOSTED_ENGINE_FORCE_CAP in vehicle.ts).
    */
   boostMultiplier?: number;
+  /**
+   * Traction control assist (see tractionControlThrottleScale in
+   * vehicle.ts) - defaults to true, matching Car.tsx's own default-on
+   * assist state.
+   */
+  tractionControlEnabled?: boolean;
 }
 
 export interface StabilityResult {
@@ -216,7 +222,8 @@ export async function simulateDrive(
       options.engineForce,
       options.boostMultiplier ?? 1,
       options.brakeForce,
-      controller.currentVehicleSpeed()
+      controller.currentVehicleSpeed(),
+      options.tractionControlEnabled ?? true
     );
     applyLoadSensitiveFriction(controller, aeroMode);
     controller.updateVehicle(timestep);

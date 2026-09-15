@@ -49,10 +49,10 @@ describe("applyCarControls wires the speed scale into the live wheel steering", 
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
-    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 0);
+    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 0, true);
     const steeringAtStandstill = controller.wheelSteering(0) ?? 0;
 
-    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 40);
+    applyCarControls(controller, { throttle: 0, brake: 0, steer: 1 }, 0, 1, 0, 40, true);
     const steeringAtSpeed = controller.wheelSteering(0) ?? 0;
 
     expect(steeringAtStandstill).toBeGreaterThan(0);
@@ -71,10 +71,18 @@ describe("applyCarControls caps Push-to-Pass boost at a safe ceiling", () => {
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
-    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1, 0, 0);
+    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1, 0, 0, true);
     expect(controller.wheelEngineForce(2)).toBeCloseTo(DEFAULT_ENGINE_FORCE, 0);
 
-    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1.6, 0, 0);
+    applyCarControls(
+      controller,
+      { throttle: 1, brake: 0, steer: 0 },
+      DEFAULT_ENGINE_FORCE,
+      1.6,
+      0,
+      0,
+      true
+    );
     expect(controller.wheelEngineForce(2)).toBeCloseTo(BOOSTED_ENGINE_FORCE_CAP, 0);
   });
 });

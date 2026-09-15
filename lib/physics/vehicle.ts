@@ -287,6 +287,34 @@ export function speedSensitiveSteerScale(speedMs: number): number {
   return 1 - t * (1 - STEER_MIN_SCALE);
 }
 
+// Plan section 5, depth feature 5: traction control as a difficulty/assist
+// toggle, defaulting ON (the plan's "off by default on Pro" refers to a
+// difficulty tier that doesn't exist yet - on is the right default until
+// it does). Gated on actual steering input, not just low speed: real
+// wheelspin-related instability in this project only shows up as power-on
+// oversteer during corner exit, and this project's raycast wheels don't
+// model true slip-based wheelspin on a straight line at all - a cap that
+// fired on every launch would silently slow the already-tuned, verified
+// straight-line 0-100 time (2.47s) for zero benefit, since there's no
+// wheelspin to correct there. Below TC_STEER_THRESHOLD (near dead-center
+// steering), this always returns 1 - a pure straight-line launch is
+// completely unaffected by this toggle regardless of speed.
+const TC_STEER_THRESHOLD = 0.15;
+const TC_LOW_SPEED_MS = 15;
+const TC_MIN_THROTTLE_SCALE = 0.7;
+
+export function tractionControlThrottleScale(
+  speedMs: number,
+  steer: number,
+  enabled: boolean
+): number {
+  if (!enabled || Math.abs(steer) < TC_STEER_THRESHOLD) return 1;
+  const speed = Math.abs(speedMs);
+  if (speed >= TC_LOW_SPEED_MS) return 1;
+  const t = speed / TC_LOW_SPEED_MS;
+  return TC_MIN_THROTTLE_SCALE + t * (1 - TC_MIN_THROTTLE_SCALE);
+}
+
 const STABILIZE_MIN_TILT_RAD = 0.05;
 
 /**
@@ -338,12 +366,14 @@ export function applyCarControls(
   baseEngineForce: number,
   boostMultiplier: number,
   maxBrakeForce: number,
-  currentSpeedMs: number
+  currentSpeedMs: number,
+  tractionControlEnabled: boolean
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
   const engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
+  const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   CAR_WHEELS.forEach((wheel, i) => {
-    controller.setWheelEngineForce(i, wheel.isDriven ? throttle * engineForce : 0);
+    controller.setWheelEngineForce(i, wheel.isDriven ? throttle * throttleScale * engineForce : 0);
     controller.setWheelBrake(i, brake * maxBrakeForce);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });
