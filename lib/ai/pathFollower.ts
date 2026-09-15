@@ -1,4 +1,4 @@
-import type { RacingLinePoint } from "../tracks/racingLine";
+import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
 
 // Plan section 6: "steer toward a lookahead point on the racing line;
 // throttle/brake targets derived from curvature ahead (brake *before* the
@@ -47,6 +47,21 @@ export interface AIControls {
   throttle: number;
   brake: number;
   steer: number;
+  /**
+   * The nearest line point's own zone. Exposed for a future AI energy/
+   * aero strategy (plan section 6) - not consumed by anything yet. A
+   * first attempt at that (deploy Push-to-Pass and switch to low-drag
+   * aero whenever zone === "throttle") flipped the AI car on the real
+   * track: "throttle" includes corner-exit acceleration while still
+   * turning, and cutting grip or adding engine force there destabilizes
+   * it (checked at a full lap-plus, 150s - a 90s check missed it
+   * entirely). computeAIControls's throttle/brake decision doesn't know
+   * about the boost that gets applied after it, so it can't compensate.
+   * Solving this needs the energy decision feeding back into that
+   * decision, not a simple gate on zone - deferred, not attempted again
+   * without that.
+   */
+  zone: ThrottleZone;
 }
 
 /**
@@ -88,5 +103,5 @@ export function computeAIControls(
   const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
   const brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
 
-  return { throttle, brake, steer };
+  return { throttle, brake, steer, zone: line[nearest].zone };
 }

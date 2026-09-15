@@ -176,8 +176,19 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // Speed profile: a raw per-point cap from the smoothed line's own
   // curvature (a real radius, via turn angle over real arc length - see the
   // module comment), then backward/forward passes enforcing a physically
-  // reachable deceleration/acceleration between consecutive points.
-  let curveOnlySpeed: Float64Array = new Float64Array(n);
+  // reachable deceleration/acceleration between consecutive points. This
+  // profile drives the AI's actual target speed, so unlike stage 2's offset
+  // it is NOT box-filtered here - a box filter was tried directly on this
+  // signal to fix the zone-classification flicker below, and while it
+  // looked like a clear win on paper (83->16 short zone "runs", +1 m/s at
+  // the tightest corner), it was checked at 90s only. At a full lap-plus
+  // (150s) it caused a genuine flip (maxTiltRad 0.11 -> 1.04) - this
+  // control system's documented chaotic sensitivity (see pathFollower.ts)
+  // means even a ~1 m/s shift at one corner can move the AI's failure mode
+  // from "runs a bit wide" to "tips over" elsewhere on the lap. The fix
+  // belongs on the classification signal only (see displaySpeedMs below),
+  // never on the speed the AI actually drives to.
+  const curveOnlySpeed = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const behind = unitTangentAt(positions, (i - SPEED_LOOKAHEAD_POINTS + n) % n);
     const ahead = unitTangentAt(positions, (i + SPEED_LOOKAHEAD_POINTS) % n);
@@ -191,29 +202,6 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     const curvature = arcLength > 1e-6 ? turnAngle / arcLength : 0;
     const maxLateralSpeed = curvature > 1e-9 ? Math.sqrt(MAX_LATERAL_ACCEL_MS2 / curvature) : MAX_SPEED_MS;
     curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, maxLateralSpeed));
-  }
-
-  // Same box-filter fix as stage 2's offset smoothing, and for the same
-  // reason: curveOnlySpeed is differentiated from real (slightly noisy)
-  // centerline geometry, so it inherits small per-point wobbles. Those
-  // don't move the actual driving line, but they do flip the per-point
-  // deceleration classification below back and forth - checked
-  // numerically against real Silverstone data: unsmoothed, 83 of 145
-  // zone "runs" were 3 points or shorter (a rapid brake-hard/brake-medium
-  // flicker, not a real color band a driver could read); this smoothing
-  // pass cuts that to 16 of 72, and the ones left are isolated one-point
-  // "lift" blips hundreds of meters apart, not flicker. Reuses
-  // SMOOTHING_BOX_RADIUS/SMOOTHING_PASSES rather than its own tuned
-  // values - a wider/more-aggressive smooth was tried and cut flicker
-  // further, but it also measurably raised the tightest corner's target
-  // speed (up to +5.8 m/s at radius 20/6 passes vs +1 m/s here), which
-  // risks feeding the AI a less accurate, faster line into exactly the
-  // corners it already runs wide on.
-  for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
-    curveOnlySpeed = boxFilterPass(curveOnlySpeed, SMOOTHING_BOX_RADIUS);
-  }
-  for (let i = 0; i < n; i++) {
-    curveOnlySpeed[i] = Math.max(MIN_CORNER_SPEED_MS, Math.min(MAX_SPEED_MS, curveOnlySpeed[i]));
   }
 
   const targetSpeedMs = Float64Array.from(curveOnlySpeed);
@@ -233,12 +221,28 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     }
   }
 
+  // Display-only smoothed copy of the final, physically-capped speed
+  // profile, used ONLY to classify each point's zone for the on-track
+  // color overlay - never returned as targetSpeedMs, so the AI's actual
+  // driving target is untouched (see the module comment above on why that
+  // separation matters). Smoothing the already-capped profile works at
+  // least as well as smoothing the raw curvature cap did: checked
+  // numerically against real Silverstone data, this gives 0 zone "runs" of
+  // 3 points or shorter (down from 83 of 145), better than smoothing
+  // curveOnlySpeed itself managed (16 of 72) - the backward/forward passes
+  // already partly shape the profile, so there's less residual noise left
+  // to smooth out.
+  let displaySpeedMs: Float64Array = Float64Array.from(targetSpeedMs);
+  for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
+    displaySpeedMs = boxFilterPass(displaySpeedMs, SMOOTHING_BOX_RADIUS);
+  }
+
   const result: RacingLinePoint[] = new Array(n);
   for (let i = 0; i < n; i++) {
     const next = (i + 1) % n;
     const decelNeeded = Math.max(
       0,
-      (targetSpeedMs[i] ** 2 - targetSpeedMs[next] ** 2) / (2 * segmentLengths[i])
+      (displaySpeedMs[i] ** 2 - displaySpeedMs[next] ** 2) / (2 * segmentLengths[i])
     );
     result[i] = {
       position: positions[i],

@@ -179,15 +179,18 @@ describe("computeRacingLine speed profile", () => {
   });
 
   it("does not flicker between zones (a driver needs a readable color band, not noise)", () => {
-    // Before smoothing curveOnlySpeed, the per-point deceleration used to
-    // classify each point's zone inherited the same small-scale centerline
-    // noise the offset signal has (see the module comment) - 83 of 145
-    // zone "runs" on the real track were 3 points (~6m) or shorter, mostly
-    // rapid brake-hard/brake-medium alternation rather than a single
-    // growing-more-urgent band before a corner. Smoothing cut that to 16.
-    // This threshold is set with real margin above the fixed value (16),
-    // not a tight fit, so it only fails on an actual regression back
-    // toward the unsmoothed noise floor (83).
+    // The per-point deceleration used to classify each point's zone
+    // inherits the same small-scale centerline noise the offset signal has
+    // (see the module comment) - unsmoothed, 83 of 145 zone "runs" on the
+    // real track were 3 points (~6m) or shorter, mostly rapid brake-hard/
+    // brake-medium alternation rather than a single growing-more-urgent
+    // band before a corner. Fixed by smoothing a DISPLAY-ONLY copy of the
+    // final speed profile for classification (see displaySpeedMs in
+    // racingLine.ts) - never the AI-facing targetSpeedMs itself, since an
+    // earlier attempt that smoothed the AI-facing signal directly caused a
+    // real flip at a full lap-plus (see aiOpponent.test.ts's own history).
+    // This gives 0 short runs on the real track; the threshold below still
+    // has real margin above that; not a tight fit.
     const line = computeRacingLine(track);
     const n = line.length;
     let shortRuns = 0;
@@ -203,7 +206,7 @@ describe("computeRacingLine speed profile", () => {
         runLength = 1;
       }
     }
-    expect(shortRuns).toBeLessThan(35);
+    expect(shortRuns).toBeLessThan(10);
   });
 });
 

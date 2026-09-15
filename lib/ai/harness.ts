@@ -30,6 +30,17 @@ export interface DriveInputPlan {
   throttle: number;
   brake: number;
   steer: number;
+  /**
+   * Per-tick overrides for a closed-loop controller that varies these
+   * itself (e.g. an AI switching aero mode/deploying Push-to-Pass by
+   * track position - not wired into AICar.tsx yet, a first attempt at
+   * that destabilized the AI and was reverted, see pathFollower.ts's own
+   * comment on AIControls.zone) - falls back to the fixed
+   * options.boostMultiplier/aeroMode when omitted, so every existing
+   * scripted-input test (which never sets these) is unaffected.
+   */
+  boostMultiplier?: number;
+  aeroMode?: AeroMode;
 }
 
 /** Live chassis state, passed to a closed-loop input function each step. */
@@ -223,7 +234,7 @@ export async function simulateDrive(
   let distanceTraveledMeters = 0;
   let previousStepPos = startPos;
   const steps = Math.round(seconds / timestep);
-  const aeroMode = options.aeroMode ?? "high-downforce";
+  const defaultAeroMode = options.aeroMode ?? "high-downforce";
   for (let i = 0; i < steps; i++) {
     // Matches Car.tsx: past this distance off-track, snap back to the start
     // line rather than let the car keep going - a long enough straight-line
@@ -266,16 +277,17 @@ export async function simulateDrive(
       // this suite, not just this new closed-loop use.
       speedMs: computeSignedForwardSpeed(chassis.linvel(), preStepYaw),
     });
+    const stepAeroMode = stepInput.aeroMode ?? defaultAeroMode;
     applyCarControls(
       controller,
       stepInput,
       options.engineForce,
-      options.boostMultiplier ?? 1,
+      stepInput.boostMultiplier ?? options.boostMultiplier ?? 1,
       options.brakeForce,
       controller.currentVehicleSpeed(),
       options.tractionControlEnabled ?? true
     );
-    applyLoadSensitiveFriction(controller, aeroMode);
+    applyLoadSensitiveFriction(controller, stepAeroMode);
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(
@@ -292,9 +304,9 @@ export async function simulateDrive(
         true
       );
     }
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode);
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), stepAeroMode);
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
-    applyDragImpulse(chassis, aeroMode, timestep);
+    applyDragImpulse(chassis, stepAeroMode, timestep);
 
     world.step();
     const tilt = tiltFromUpright(chassis.rotation());
