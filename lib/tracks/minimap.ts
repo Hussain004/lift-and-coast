@@ -1,7 +1,9 @@
 import type { TrackData } from "./types";
 
 export const MINIMAP_SIZE_PX = 170;
-export const MINIMAP_ZOOM_PX_PER_METER = 1.1;
+// Lower = more of the track visible around the car. 0.75 shows roughly a
+// 113m radius (half the 170px box / 0.75), up from the original 1.1's ~77m.
+export const MINIMAP_ZOOM_PX_PER_METER = 0.75;
 
 /**
  * SVG path `d` in raw world meters (X -> path X, Z -> path Y, no flip) - NOT

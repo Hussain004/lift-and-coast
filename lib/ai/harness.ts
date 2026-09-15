@@ -67,6 +67,14 @@ export interface StabilityOptions {
    * assist state.
    */
   tractionControlEnabled?: boolean;
+  /**
+   * Per-step off-track distance (meters, 0 = on track), only called when
+   * `track` is given. StabilityResult only keeps the single worst value
+   * over the whole run - this is for tuning scripts/tests that need the
+   * full timeline (e.g. counting how many separate off-track excursions
+   * happened, not just how bad the worst one was).
+   */
+  onStep?: (elapsedSeconds: number, offTrackMeters: number) => void;
 }
 
 export interface StabilityResult {
@@ -303,10 +311,9 @@ export async function simulateDrive(
     previousStepPos = stepEndPos;
     if (options.track) {
       const pos = chassis.translation();
-      maxOffTrackMeters = Math.max(
-        maxOffTrackMeters,
-        checkTrackLimits(options.track, pos.x, pos.z).distanceFromEdgeMeters
-      );
+      const offTrackMeters = checkTrackLimits(options.track, pos.x, pos.z).distanceFromEdgeMeters;
+      maxOffTrackMeters = Math.max(maxOffTrackMeters, offTrackMeters);
+      options.onStep?.(i * timestep, offTrackMeters);
     }
   }
 
