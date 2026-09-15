@@ -184,6 +184,7 @@ export function Scene({
   damageRef,
   minimapGroupRef,
   minimapMarkerRef,
+  aiMinimapMarkerRef,
   positionRef,
   raceResultRef,
 }: {
@@ -199,6 +200,7 @@ export function Scene({
   damageRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
+  aiMinimapMarkerRef: React.RefObject<SVGCircleElement | null>;
   positionRef: React.RefObject<HTMLDivElement | null>;
   raceResultRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -222,7 +224,7 @@ export function Scene({
       <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground />
-        <Track track={track} />
+        <Track track={track} chassisRef={chassisRef} />
         <Car
           chassisRef={chassisRef}
           visualRef={visualRef}
@@ -244,7 +246,7 @@ export function Scene({
           raceRef={raceRef}
           track={track}
         />
-        <AICar track={track} raceRef={raceRef} />
+        <AICar track={track} raceRef={raceRef} minimapMarkerRef={aiMinimapMarkerRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
     </Canvas>

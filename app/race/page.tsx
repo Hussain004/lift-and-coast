@@ -47,6 +47,7 @@ export default function RacePage() {
   const damageRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
+  const aiMinimapMarkerRef = useRef<SVGCircleElement>(null);
   const positionRef = useRef<HTMLDivElement>(null);
   const raceResultRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +66,7 @@ export default function RacePage() {
         damageRef={damageRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
+        aiMinimapMarkerRef={aiMinimapMarkerRef}
         positionRef={positionRef}
         raceResultRef={raceResultRef}
       />
@@ -99,6 +101,12 @@ export default function RacePage() {
         <g ref={minimapGroupRef} transform={initialMinimapTransform}>
           <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
           <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
+          {/* AI opponent - a plain world-space dot inside the same rotating
+              group as the track path, so it inherits the egocentric
+              transform for free instead of needing its own rotation math
+              (unlike the player's own fixed, always-up-pointing marker
+              below). Matches AICar.tsx's own chassis color. */}
+          <circle ref={aiMinimapMarkerRef} cx={track.startPos.x} cy={track.startPos.z} r={5} fill="#ff5a3c" />
         </g>
         {/* Fixed at the box center, always pointing up - the world rotates
             around this marker instead of the marker rotating, so there's no

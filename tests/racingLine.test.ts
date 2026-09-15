@@ -4,6 +4,8 @@ import {
   MAX_DECEL_MS2,
   buildRacingLineRibbon,
   computeRacingLine,
+  updateLiveZoneColors,
+  type RacingLinePoint,
   type ThrottleZone,
 } from "../lib/tracks/racingLine";
 import silverstone from "../data/tracks/silverstone.json";
@@ -258,5 +260,49 @@ describe("buildRacingLineRibbon", () => {
       expect(idx).toBeGreaterThanOrEqual(0);
       expect(idx).toBeLessThan(vertexCount);
     }
+  });
+});
+
+describe("updateLiveZoneColors", () => {
+  const ZONE_COLOR: Record<ThrottleZone, [number, number, number]> = {
+    throttle: [0, 1, 0],
+    lift: [1, 1, 0],
+    "brake-medium": [1, 0.5, 0],
+    "brake-hard": [1, 0, 0],
+  };
+
+  // Same straight-line shape as pathFollower.test.ts's own fixture: one
+  // point per meter along -Z, car at the origin so index 0 is the nearest
+  // point and index i sits i meters ahead of it.
+  function buildStraightLine(length: number, targetSpeedMs: number): RacingLinePoint[] {
+    const line: RacingLinePoint[] = [];
+    for (let i = 0; i < length; i++) {
+      line.push({ position: [0, 0, -i], targetSpeedMs, zone: "throttle", distanceToNextMeters: 1 });
+    }
+    return line;
+  }
+
+  it("colors a point green when the current speed doesn't need to drop to reach it", () => {
+    const line = buildStraightLine(300, 40);
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 20, 150, ZONE_COLOR);
+    const idx = 10 * 6;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR.throttle);
+  });
+
+  it("colors a point brake-hard red when way faster than what it needs", () => {
+    const line = buildStraightLine(300, 15);
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 70, 150, ZONE_COLOR);
+    const idx = 10 * 6;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR["brake-hard"]);
+  });
+
+  it("leaves points beyond the lookahead distance untouched", () => {
+    const line = buildStraightLine(300, 40);
+    const colors = new Float32Array(line.length * 6).fill(0.5);
+    updateLiveZoneColors(line, colors, 0, 0, 20, 20, ZONE_COLOR);
+    const idx = 250 * 6;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual([0.5, 0.5, 0.5]);
   });
 });

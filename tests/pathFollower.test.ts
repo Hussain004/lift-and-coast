@@ -12,7 +12,7 @@ import type { RacingLinePoint } from "../lib/tracks/racingLine";
 function buildStraightLine(length: number, targetSpeedMs = 70): RacingLinePoint[] {
   const line: RacingLinePoint[] = [];
   for (let i = 0; i < length; i++) {
-    line.push({ position: [0, 0, -i], targetSpeedMs, zone: "throttle" });
+    line.push({ position: [0, 0, -i], targetSpeedMs, zone: "throttle", distanceToNextMeters: 1 });
   }
   return line;
 }

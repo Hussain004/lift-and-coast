@@ -2,9 +2,15 @@
 
 import { useMemo } from "react";
 import * as THREE from "three";
-import { RigidBody, TrimeshCollider } from "@react-three/rapier";
+import { useFrame } from "@react-three/fiber";
+import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
 import { buildRibbonGeometry } from "@/lib/tracks/mesh";
-import { buildRacingLineRibbon, computeRacingLine, type ThrottleZone } from "@/lib/tracks/racingLine";
+import {
+  buildRacingLineRibbon,
+  computeRacingLine,
+  updateLiveZoneColors,
+  type ThrottleZone,
+} from "@/lib/tracks/racingLine";
 import type { TrackData } from "@/lib/tracks/types";
 
 // Lifts the racing line's rendered geometry just above the flat (y=0) track
@@ -25,8 +31,21 @@ const ZONE_COLOR: Record<ThrottleZone, [number, number, number]> = {
   "brake-hard": [1, 0.23, 0.23], // #ff3b3b
 };
 
-function RacingLine({ track }: { track: TrackData }) {
-  const geometry = useMemo(() => {
+// How far ahead of the car (meters) the racing line's real-time color
+// readout extends, like an F1 game's ideal-line overlay - not the whole
+// visible horizon. Picked by feel, comfortably short of the scene's own
+// 220m fog distance (Scene.tsx) so the "unpainted" static color further
+// ahead is never visible fading in at the edge of view.
+const LIVE_COLOR_LOOKAHEAD_METERS = 150;
+
+function RacingLine({
+  track,
+  chassisRef,
+}: {
+  track: TrackData;
+  chassisRef?: React.RefObject<RapierRigidBody | null>;
+}) {
+  const { geometry, line } = useMemo(() => {
     const line = computeRacingLine(track);
     const { positions, colors, indices } = buildRacingLineRibbon(
       line,
@@ -42,10 +61,38 @@ function RacingLine({ track }: { track: TrackData }) {
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const colorAttr = new THREE.BufferAttribute(colors, 3);
+    // Colors are rewritten every frame below - hints three.js to allocate
+    // the GPU buffer for frequent updates instead of a static one.
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("color", colorAttr);
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
-    return geo;
+    return { geometry: geo, line };
   }, [track]);
+
+  useFrame(() => {
+    const body = chassisRef?.current;
+    if (!body) return;
+    const t = body.translation();
+    const lv = body.linvel();
+    // Horizontal speed magnitude, not the signed forward speed used for
+    // control (computeSignedForwardSpeed) - this is a read-only cosmetic
+    // readout, so it doesn't need that value's sign-bug workaround, and a
+    // plain magnitude is exactly what "how fast is the car going" means
+    // for a color overlay the driver reads.
+    const speedMs = Math.hypot(lv.x, lv.z);
+    const colorAttr = geometry.getAttribute("color") as THREE.BufferAttribute;
+    updateLiveZoneColors(
+      line,
+      colorAttr.array as Float32Array,
+      t.x,
+      t.z,
+      speedMs,
+      LIVE_COLOR_LOOKAHEAD_METERS,
+      ZONE_COLOR
+    );
+    colorAttr.needsUpdate = true;
+  });
 
   return (
     <mesh geometry={geometry}>
@@ -58,7 +105,13 @@ function RacingLine({ track }: { track: TrackData }) {
   );
 }
 
-export function Track({ track }: { track: TrackData }) {
+export function Track({
+  track,
+  chassisRef,
+}: {
+  track: TrackData;
+  chassisRef?: React.RefObject<RapierRigidBody | null>;
+}) {
   const { positions, indices, geometry } = useMemo(() => {
     const { positions, indices } = buildRibbonGeometry(track);
     const geometry = new THREE.BufferGeometry();
@@ -76,7 +129,7 @@ export function Track({ track }: { track: TrackData }) {
           <meshStandardMaterial color="#3a3a3a" />
         </mesh>
       </RigidBody>
-      <RacingLine track={track} />
+      <RacingLine track={track} chassisRef={chassisRef} />
     </>
   );
 }

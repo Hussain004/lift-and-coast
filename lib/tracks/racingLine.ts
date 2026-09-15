@@ -89,6 +89,8 @@ export interface RacingLinePoint {
   targetSpeedMs: number;
   /** For coloring/HUD: how much this point asks the driver to lift/brake. */
   zone: ThrottleZone;
+  /** Arc length from this point to the next (wrapping at the lap), meters. */
+  distanceToNextMeters: number;
 }
 
 function unitTangentAt(points: readonly (readonly [number, number, number])[], i: number): { x: number; z: number } {
@@ -114,7 +116,7 @@ function boxFilterPass(values: Float64Array, radius: number): Float64Array {
   return out;
 }
 
-function classifyZone(decelMs2: number): ThrottleZone {
+export function classifyZone(decelMs2: number): ThrottleZone {
   if (decelMs2 <= LIFT_DECEL_THRESHOLD) return "throttle";
   if (decelMs2 <= BRAKE_MEDIUM_DECEL_THRESHOLD) return "lift";
   if (decelMs2 <= BRAKE_HARD_DECEL_THRESHOLD) return "brake-medium";
@@ -248,9 +250,89 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       position: positions[i],
       targetSpeedMs: targetSpeedMs[i],
       zone: classifyZone(decelNeeded),
+      distanceToNextMeters: segmentLengths[i],
     };
   }
   return result;
+}
+
+// A separate, tiny copy of the same brute-force nearest-point scan
+// pathFollower.ts uses for the AI's own steering - kept independent rather
+// than shared so this purely cosmetic HUD feature (the live racing-line
+// color below) can never risk a diff touching the AI control file. This
+// project's own history (see racingLine.ts's module comment on
+// displaySpeedMs) is that even innocuous-looking changes near the AI's
+// control path have caused real regressions.
+function nearestPointIndex(line: RacingLinePoint[], x: number, z: number): number {
+  let nearestIdx = 0;
+  let nearestDistSq = Infinity;
+  for (let i = 0; i < line.length; i++) {
+    const [lx, , lz] = line[i].position;
+    const distSq = (lx - x) ** 2 + (lz - z) ** 2;
+    if (distSq < nearestDistSq) {
+      nearestDistSq = distSq;
+      nearestIdx = i;
+    }
+  }
+  return nearestIdx;
+}
+
+// Floors the distance used in the decel-needed formula below so a point
+// right at (or a hair behind) the car's own position can't divide by zero
+// or near-zero - see updateLiveZoneColors's own comment for why the result
+// at that floor is still the physically sensible answer.
+const MIN_LIVE_COLOR_DISTANCE_METERS = 0.1;
+
+/**
+ * Recolors the racing line ribbon's vertex colors in place for a stretch
+ * ahead of the car's actual current position and speed - unlike the static
+ * per-point `zone` above (which reflects the ideal line's own self-
+ * consistent speed profile, baked in once at track load), this compares
+ * what the DRIVER is actually doing right now against that profile, the
+ * same way an F1 game's ideal-line overlay recolors live: green if the
+ * current speed doesn't need to drop before that point, through yellow/
+ * orange to red the harder the driver needs to brake to make it.
+ *
+ * Only repaints `lookaheadMeters` ahead of the car each call - points
+ * behind the car, or not yet reached, keep whatever color they last had
+ * (the initial static classification, or a stale live snapshot from the
+ * last time the car passed nearby). Both are outside the driver's forward
+ * view in practice, so resetting a trailing window every frame wasn't
+ * judged worth the extra bookkeeping.
+ */
+export function updateLiveZoneColors(
+  line: RacingLinePoint[],
+  colors: Float32Array,
+  carX: number,
+  carZ: number,
+  currentSpeedMs: number,
+  lookaheadMeters: number,
+  zoneColor: Record<ThrottleZone, [number, number, number]>
+): void {
+  const n = line.length;
+  const nearest = nearestPointIndex(line, carX, carZ);
+  let distance = 0;
+  for (let k = 0; k < n; k++) {
+    const i = (nearest + k) % n;
+    const d = Math.max(distance, MIN_LIVE_COLOR_DISTANCE_METERS);
+    // Same v^2 = v0^2 - 2*a*d formula used to build the static profile
+    // above, just solved for `a` (decel needed) using the car's real
+    // current speed and real distance instead of the line's own profile
+    // speed - clamped at 0 so a point the car is already slower than
+    // (e.g. still accelerating out of the previous corner) doesn't read as
+    // negative "decel".
+    const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - line[i].targetSpeedMs ** 2) / (2 * d));
+    const [r, g, b] = zoneColor[classifyZone(decelNeeded)];
+    const idx = i * 6;
+    colors[idx] = r;
+    colors[idx + 1] = g;
+    colors[idx + 2] = b;
+    colors[idx + 3] = r;
+    colors[idx + 4] = g;
+    colors[idx + 5] = b;
+    distance += line[i].distanceToNextMeters;
+    if (distance > lookaheadMeters) break;
+  }
 }
 
 export interface RacingLineRibbon {

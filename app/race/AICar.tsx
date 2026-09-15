@@ -68,9 +68,20 @@ const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
  *
  * Does track its own lap count now (plan section 7's Quick Race), writing
  * into the shared raceRef so Car.tsx can compute a live P1/P2 without
- * either car needing a ref into the other's internals.
+ * either car needing a ref into the other's internals. Also writes its own
+ * world position into minimapMarkerRef each frame so it shows up on the
+ * player's minimap (a plain SVG circle, not the rotating egocentric
+ * marker the player gets - see page.tsx).
  */
-export function AICar({ track, raceRef }: { track: TrackData; raceRef?: React.RefObject<RaceState> }) {
+export function AICar({
+  track,
+  raceRef,
+  minimapMarkerRef,
+}: {
+  track: TrackData;
+  raceRef?: React.RefObject<RaceState>;
+  minimapMarkerRef?: React.RefObject<SVGCircleElement | null>;
+}) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
@@ -169,6 +180,11 @@ export function AICar({ track, raceRef }: { track: TrackData; raceRef?: React.Re
   useFrame(() => {
     const controller = controllerRef.current;
     if (!controller) return;
+    const pos = chassisRef.current?.translation();
+    if (minimapMarkerRef?.current && pos) {
+      minimapMarkerRef.current.setAttribute("cx", pos.x.toFixed(1));
+      minimapMarkerRef.current.setAttribute("cy", pos.z.toFixed(1));
+    }
     CAR_WHEELS.forEach((wheel, i) => {
       const steerGroup = steerRefs.current[i];
       const spinGroup = spinRefs.current[i];
