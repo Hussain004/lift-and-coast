@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { stepSteering } from "./steering";
 import type { AeroMode } from "@/lib/physics/aero";
+
+export type CameraMode = "chase" | "cockpit";
 
 export interface DriveInput {
   throttle: number;
@@ -41,6 +43,7 @@ const RIGHT_KEYS = ["KeyD", "ArrowRight"];
 const REWIND_KEYS = ["KeyR"];
 const DEPLOY_KEYS = ["ShiftLeft", "ShiftRight"];
 const AERO_MODE_TOGGLE_KEY = "KeyE";
+const CAMERA_MODE_TOGGLE_KEY = "KeyC";
 
 const anyPressed = (keys: Set<string>, codes: string[]) =>
   codes.some((code) => keys.has(code));
@@ -49,8 +52,14 @@ const anyPressed = (keys: Set<string>, codes: string[]) =>
  * Tracks WASD/arrow key state and exposes a ref with rate-limited steering.
  * Read `.current` inside a render loop (e.g. useFrame) rather than via state,
  * so key changes never trigger a React re-render.
+ *
+ * `externalCameraModeRef` lets a parent component (Scene.tsx) read the same
+ * ref this hook writes to - needed because the camera itself lives outside
+ * Car.tsx (a sibling under Canvas, not a child), unlike aeroMode/input,
+ * which are only ever read from inside Car.tsx where this hook is called.
+ * Falls back to an internally-created ref if omitted (e.g. in tests).
  */
-export function useDriveInput() {
+export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
   const keys = useRef(new Set<string>());
   const input = useRef<DriveInput>({
     throttle: 0,
@@ -60,6 +69,8 @@ export function useDriveInput() {
     deploy: false,
   });
   const aeroMode = useRef<AeroMode>("high-downforce");
+  const internalCameraMode = useRef<CameraMode>("chase");
+  const cameraMode = externalCameraModeRef ?? internalCameraMode;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -68,6 +79,9 @@ export function useDriveInput() {
       if (e.code === AERO_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
         aeroMode.current =
           aeroMode.current === "high-downforce" ? "low-drag" : "high-downforce";
+      }
+      if (e.code === CAMERA_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
+        cameraMode.current = cameraMode.current === "chase" ? "cockpit" : "chase";
       }
       keys.current.add(e.code);
     };
@@ -78,11 +92,17 @@ export function useDriveInput() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
+    // cameraMode is a ref (either the caller's own, stable for the
+    // component's lifetime, or the internal one created above) - it's
+    // read/written through .current inside the listener, not captured by
+    // value, so it doesn't need to be a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
     input,
     aeroMode,
+    cameraMode,
     update(dt: number) {
       const pressed = keys.current;
       const steerTarget =

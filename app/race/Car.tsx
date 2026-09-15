@@ -30,7 +30,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
-import { useDriveInput } from "@/lib/input/useDriveInput";
+import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
@@ -79,6 +79,7 @@ const CHASSIS_SIZE: [number, number, number] = [
 export function Car({
   chassisRef,
   visualRef,
+  cameraModeRef,
   speedRef,
   lapRef,
   deltaRef,
@@ -95,6 +96,13 @@ export function Car({
    * chassisRef.
    */
   visualRef?: React.RefObject<THREE.Mesh | null>;
+  /**
+   * Shared with Scene.tsx's camera component (see useDriveInput's own
+   * comment for why) - created there and passed down so both this
+   * component's keyboard handling and the camera outside it read the same
+   * ref.
+   */
+  cameraModeRef?: React.RefObject<CameraMode>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
   deltaRef?: React.RefObject<HTMLDivElement | null>;
@@ -111,7 +119,7 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode } = useDriveInput();
+  const { update, aeroMode, cameraMode } = useDriveInput(cameraModeRef);
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -414,6 +422,18 @@ export function Car({
   }
 
   useFrame((_, dt) => {
+    // Hide the chassis mesh in cockpit mode - otherwise the camera (see
+    // ChaseCamera in Scene.tsx) sits inside a solid box and renders its
+    // inside faces. Cheaper and more robust than offsetting the camera
+    // just ahead of the chassis, which would still clip through on a hard
+    // pitch/roll. Runs before the controller/body guard below so a
+    // transient null (a remount, a track change) while in cockpit mode
+    // can't leave the car permanently invisible with nothing left to
+    // restore it.
+    if (visualRef?.current) {
+      visualRef.current.visible = cameraMode.current !== "cockpit";
+    }
+
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;

@@ -31,7 +31,7 @@ export default function RacePage() {
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
-        E to toggle aero mode.
+        E to toggle aero mode. Press C to toggle camera.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
