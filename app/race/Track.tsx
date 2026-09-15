@@ -42,16 +42,16 @@ function RacingLine({ track }: { track: TrackData }) {
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    geo.computeBoundingBox();
+    // TEMP DEBUG - remove before final ship.
+    console.log("RACING LINE DEBUG bbox", JSON.stringify(geo.boundingBox), "vertexCount", positions.length / 3);
     return geo;
   }, [track]);
 
   return (
     <mesh geometry={geometry}>
-      {/* vertexColors, not a single material color - each vertex carries
-          its own throttle/brake zone color (see ZONE_COLOR). basic (not
-          standard) so scene lighting doesn't tint or darken the colors -
-          this is a flat HUD-style overlay, not a lit surface. */}
-      <meshBasicMaterial vertexColors />
+      {/* TEMP DEBUG color="magenta" swapped in to isolate this mesh visually - remove before final ship. */}
+      <meshBasicMaterial vertexColors color="magenta" side={THREE.DoubleSide} />
     </mesh>
   );
 }
