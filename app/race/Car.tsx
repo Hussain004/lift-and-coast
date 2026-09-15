@@ -39,7 +39,11 @@ import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
-import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
+import {
+  allWheelsOffTrack,
+  checkTrackLimits,
+  computeSurfaceGripMultiplier,
+} from "@/lib/tracks/trackLimits";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
@@ -348,8 +352,11 @@ export function Car({
     // a car that drives straight past the far end of the track's own extent,
     // since the nearest ribbon point stays fixed while the car keeps going.
     const pos = body.translation();
+    // Reused below for the surface grip penalty too, instead of a second
+    // brute-force nearest-centerline-point scan for the same position.
+    const limitStatus = checkTrackLimits(track, pos.x, pos.z);
     if (
-      checkTrackLimits(track, pos.x, pos.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
+      limitStatus.distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
       Math.hypot(pos.x, pos.z) > WORLD_EDGE_RESET_METERS
     ) {
       const q = startRotationRef.current;
@@ -443,7 +450,8 @@ export function Car({
       TIRE_COMPOUNDS[tireCompound.current],
       tireWornMetersRef.current
     );
-    applyLoadSensitiveFriction(controller, aeroMode.current, compoundGripMultiplier);
+    const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
+    applyLoadSensitiveFriction(controller, aeroMode.current, compoundGripMultiplier, surfaceGripMultiplier);
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);

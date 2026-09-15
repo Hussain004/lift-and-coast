@@ -38,6 +38,31 @@ export function checkTrackLimits(track: TrackData, x: number, z: number): TrackL
   return { distanceFromEdgeMeters, isOffTrack: distanceFromEdgeMeters > 0, progressMeters };
 }
 
+// Plan section 5, depth feature 6 (kerb & surface interaction) / section 4
+// point 7 (surface zones): this track's data has no authored per-zone
+// surface tags yet (asphalt/kerb/grass/gravel), so this approximates "how
+// far into the grass" a car is using the same distanceFromEdgeMeters this
+// module already computes for the off-track warning/invalidation above,
+// rather than a second geometry system. Grip falls off smoothly over the
+// first few meters past the edge (where real grass starts mattering) down
+// to a harsh but still-drivable floor, instead of an instant on/off
+// track-limits-style cliff - revisit with real per-zone grip/drag once the
+// track pipeline authors them.
+const SURFACE_GRIP_FALLOFF_METERS = 4;
+const MIN_SURFACE_GRIP_FRACTION = 0.35;
+
+/**
+ * A below-1x-only grip multiplier for driving off the track surface -
+ * follows the same "only ever shrinks an existing safe product" pattern as
+ * the aero and tire compound grip scales in vehicle.ts/tireModel.ts, so it
+ * composes with them without needing new stability verification.
+ */
+export function computeSurfaceGripMultiplier(distanceFromEdgeMeters: number): number {
+  if (distanceFromEdgeMeters <= 0) return 1;
+  const t = Math.min(1, distanceFromEdgeMeters / SURFACE_GRIP_FALLOFF_METERS);
+  return 1 - t * (1 - MIN_SURFACE_GRIP_FRACTION);
+}
+
 /**
  * The real track-limits rule (plan section 5, depth feature 7): a lap is
  * only invalidated when ALL FOUR wheels are off the track, not the chassis
