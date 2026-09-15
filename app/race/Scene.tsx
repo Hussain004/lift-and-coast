@@ -179,6 +179,7 @@ export function Scene({
   aeroModeRef,
   tireRef,
   assistsRef,
+  damageRef,
   minimapGroupRef,
   minimapMarkerRef,
 }: {
@@ -191,6 +192,7 @@ export function Scene({
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
   tireRef: React.RefObject<HTMLDivElement | null>;
   assistsRef: React.RefObject<HTMLDivElement | null>;
+  damageRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
 }) {
@@ -227,6 +229,7 @@ export function Scene({
           aeroModeRef={aeroModeRef}
           tireRef={tireRef}
           assistsRef={assistsRef}
+          damageRef={damageRef}
           minimapGroupRef={minimapGroupRef}
           minimapMarkerRef={minimapMarkerRef}
           track={track}

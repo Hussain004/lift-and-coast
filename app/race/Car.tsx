@@ -9,6 +9,7 @@ import {
   useRapier,
   useBeforePhysicsStep,
   type RapierRigidBody,
+  type ContactForcePayload,
 } from "@react-three/rapier";
 import type Rapier from "@dimforge/rapier3d-compat";
 import {
@@ -31,6 +32,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
+import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
@@ -96,6 +98,7 @@ export function Car({
   aeroModeRef,
   tireRef,
   assistsRef,
+  damageRef,
   minimapGroupRef,
   minimapMarkerRef,
   track,
@@ -123,6 +126,7 @@ export function Car({
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
   tireRef?: React.RefObject<HTMLDivElement | null>;
   assistsRef?: React.RefObject<HTMLDivElement | null>;
+  damageRef?: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef?: React.RefObject<SVGGElement | null>;
   minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
   track: TrackData;
@@ -186,6 +190,11 @@ export function Car({
   // the wear tracking itself lives here rather than in useDriveInput
   // since it needs per-frame speed/distance data that hook doesn't have.
   const prevTireCompoundRef = useRef<TireCompoundId>(tireCompound.current);
+  // Grip lost to impact damage (1 = undamaged) - see applyImpactDamage's own
+  // comment. Reset on the same "fresh attempt" triggers as the lap-scoped
+  // state below: a new lap starting, or the off-track/world-edge teleport
+  // reset snapping the car back to the start line.
+  const damageGripMultiplierRef = useRef(1);
   useEffect(() => {
     let cancelled = false;
     loadPersonalBest(track.id)
@@ -377,6 +386,7 @@ export function Car({
       // start line would silently miss gate 0 and later register a
       // garbage split spanning the teleport (see sectorTimer.reset).
       sectorTimerRef.current.reset();
+      damageGripMultiplierRef.current = 1;
       return;
     }
 
@@ -451,7 +461,13 @@ export function Car({
       tireWornMetersRef.current
     );
     const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
-    applyLoadSensitiveFriction(controller, aeroMode.current, compoundGripMultiplier, surfaceGripMultiplier);
+    applyLoadSensitiveFriction(
+      controller,
+      aeroMode.current,
+      compoundGripMultiplier,
+      surfaceGripMultiplier,
+      damageGripMultiplierRef.current
+    );
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
@@ -528,6 +544,10 @@ export function Car({
         `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
         `  ABS ${absEnabled.current ? "ON" : "OFF"}`;
     }
+    if (damageRef?.current) {
+      const damagePercent = Math.round(damageGripMultiplierRef.current * 100);
+      damageRef.current.textContent = damagePercent < 100 ? `DAMAGE ${damagePercent}%` : "";
+    }
 
     if (isRewindingRef.current) return;
 
@@ -569,6 +589,7 @@ export function Car({
       lapHadDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
       lapInvalidAtSecondsRef.current = null;
+      damageGripMultiplierRef.current = 1;
     }
 
     const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);
@@ -657,6 +678,12 @@ export function Car({
         linearDamping={LINEAR_DAMPING}
         angularDamping={ANGULAR_DAMPING}
         canSleep={false}
+        onContactForce={(payload: ContactForcePayload) => {
+          damageGripMultiplierRef.current = applyImpactDamage(
+            damageGripMultiplierRef.current,
+            payload.totalForceMagnitude
+          );
+        }}
       >
         {/*
           colliders={false} + one explicit collider is deliberate: the

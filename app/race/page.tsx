@@ -44,6 +44,7 @@ export default function RacePage() {
   const aeroModeRef = useRef<HTMLDivElement>(null);
   const tireRef = useRef<HTMLDivElement>(null);
   const assistsRef = useRef<HTMLDivElement>(null);
+  const damageRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
 
@@ -59,6 +60,7 @@ export default function RacePage() {
         aeroModeRef={aeroModeRef}
         tireRef={tireRef}
         assistsRef={assistsRef}
+        damageRef={damageRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
       />
@@ -78,6 +80,7 @@ export default function RacePage() {
       <div className={styles.aeroMode} ref={aeroModeRef} />
       <div className={styles.tire} ref={tireRef} />
       <div className={styles.assists} ref={assistsRef} />
+      <div className={styles.damage} ref={damageRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <svg
         className={styles.minimap}

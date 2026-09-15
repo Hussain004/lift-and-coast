@@ -238,21 +238,28 @@ export const STATIC_WHEEL_LOAD_N = (CHASSIS_MASS * 9.81) / 4;
  * direct mechanical-grip penalty for low-drag mode, since the
  * downforce->load coupling above is negligible at cornering speeds (see
  * aero.ts) - tire compound degradation (compoundGripMultiplier, see
- * computeCompoundGripMultiplier in tireModel.ts), and surface grip
+ * computeCompoundGripMultiplier in tireModel.ts), surface grip
  * (surfaceGripMultiplier, see computeSurfaceGripMultiplier in
- * trackLimits.ts, for driving off the track edge), each defaulting to 1
- * (fresh tire, on track - no change from before these parameters existed).
- * All four scales only ever multiply below 1x on top of each other, so the
- * sideFrictionStiffness safety ceiling still holds no matter how worn the
- * tires are or how far off-track the car has gone.
+ * trackLimits.ts, for driving off the track edge), and impact damage
+ * (damageGripMultiplier, see applyImpactDamage in damage.ts), each
+ * defaulting to 1 (fresh tire, on track, undamaged - no change from before
+ * these parameters existed). All five scales only ever multiply below 1x
+ * on top of each other, so the sideFrictionStiffness safety ceiling still
+ * holds no matter how worn the tires are, how far off-track the car has
+ * gone, or how damaged it is.
  */
 export function applyLoadSensitiveFriction(
   controller: Rapier.DynamicRayCastVehicleController,
   aeroMode: AeroMode = "high-downforce",
   compoundGripMultiplier: number = 1,
-  surfaceGripMultiplier: number = 1
+  surfaceGripMultiplier: number = 1,
+  damageGripMultiplier: number = 1
 ) {
-  const gripScale = aeroGripMultiplier(aeroMode) * compoundGripMultiplier * surfaceGripMultiplier;
+  const gripScale =
+    aeroGripMultiplier(aeroMode) *
+    compoundGripMultiplier *
+    surfaceGripMultiplier *
+    damageGripMultiplier;
   for (let i = 0; i < CAR_WHEELS.length; i++) {
     const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
     const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N) * gripScale;
