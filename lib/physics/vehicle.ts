@@ -315,6 +315,19 @@ export function tractionControlThrottleScale(
   return TC_MIN_THROTTLE_SCALE + t * (1 - TC_MIN_THROTTLE_SCALE);
 }
 
+/**
+ * Yaw-only heading extracted from a quaternion, ignoring pitch/roll - the
+ * same formula Scene.tsx's ChaseCamera uses for its own yaw-only chase/
+ * cockpit follow, and the convention track data's startPos.headingRad
+ * matches (see computeSectorGates's own comment, and CAR_WHEELS' layout
+ * above: forward is -Z at yaw 0). Shared so the camera and anything else
+ * that needs heading (e.g. the minimap) can't drift apart into two
+ * independently-typo'd copies of the same atan2 formula.
+ */
+export function yawFromQuaternion(x: number, y: number, z: number, w: number): number {
+  return Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
+}
+
 const STABILIZE_MIN_TILT_RAD = 0.05;
 
 /**

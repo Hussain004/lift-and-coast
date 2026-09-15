@@ -1,53 +1,79 @@
 import type { TrackData } from "./types";
 
-export interface MinimapProjection {
-  /** Projects a world (x, z) position to pixel coordinates in the minimap box. */
-  toPoint(x: number, z: number): { x: number; y: number };
-  /** SVG path `d` attribute tracing the track centerline as a closed loop. */
-  pathD: string;
-  /** Projected start/finish position. */
-  startPoint: { x: number; y: number };
+export const MINIMAP_SIZE_PX = 170;
+export const MINIMAP_ZOOM_PX_PER_METER = 1.1;
+
+/**
+ * SVG path `d` in raw world meters (X -> path X, Z -> path Y, no flip) - NOT
+ * pre-scaled to pixels. The car-centered minimap applies a live
+ * translate+rotate+scale transform (see computeMinimapTransform) to the <g>
+ * wrapping this path each frame instead of re-projecting every point every
+ * frame, so the path geometry itself only needs computing once.
+ */
+export function buildMinimapPath(track: TrackData): string {
+  return (
+    track.centerline
+      .map(([x, , z], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${z.toFixed(1)}`)
+      .join(" ") + " Z"
+  );
 }
 
 /**
- * Uniform-scale (aspect-ratio-preserving) projection of a track's centerline
- * X/Z plane onto a `sizePx` square, padded by `paddingPx` on every side.
- * World Z maps to screen Y directly (no flip) - this only needs to be
- * internally consistent between the static path and the live dot in
- * Car.tsx, not to match any particular on-screen driving direction.
+ * SVG `transform` attribute value for a car-centered, forward-up rotating
+ * minimap: centers the view on (carX, carZ) and rotates so the car's own
+ * heading (yawRad - same convention as vehicle.ts's yawFromQuaternion and
+ * CAR_WHEELS' layout: forward is -Z at yaw 0) always points up on screen,
+ * regardless of which way the car is actually facing in world space.
+ *
+ * Derivation: SVG's rotate(deg) maps a point (x, y) to
+ * (x*cos(a) - y*sin(a), x*sin(a) + y*cos(a)) - the standard 2D rotation
+ * matrix. Forward at yaw is (-sin(yaw), -cos(yaw)) in (x, z). Solving
+ * R(theta) * forward = (0, -1) [straight up on screen] for theta gives
+ * theta = yaw exactly, with no sign flip or axis swap - see
+ * projectToMinimap and tests/minimap.test.ts for the point-by-point
+ * verification of this at several yaw values.
+ *
+ * SVG applies a transform list right-to-left, so this reads (in order of
+ * actual application): center the car at the origin, rotate to align its
+ * heading with "up", scale meters to pixels, then move the origin to the
+ * box's own center.
  */
-export function buildMinimapProjection(
-  track: TrackData,
-  sizePx: number,
-  paddingPx: number
-): MinimapProjection {
-  const xs = track.centerline.map(([x]) => x);
-  const zs = track.centerline.map(([, , z]) => z);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minZ = Math.min(...zs);
-  const maxZ = Math.max(...zs);
+export function computeMinimapTransform(
+  carX: number,
+  carZ: number,
+  yawRad: number,
+  sizePx: number = MINIMAP_SIZE_PX,
+  zoomPxPerMeter: number = MINIMAP_ZOOM_PX_PER_METER
+): string {
+  const center = sizePx / 2;
+  const yawDeg = (yawRad * 180) / Math.PI;
+  return (
+    `translate(${center},${center}) ` +
+    `scale(${zoomPxPerMeter}) ` +
+    `rotate(${yawDeg.toFixed(3)}) ` +
+    `translate(${(-carX).toFixed(2)},${(-carZ).toFixed(2)})`
+  );
+}
 
-  const spanX = maxX - minX;
-  const spanZ = maxZ - minZ;
-  const drawable = sizePx - 2 * paddingPx;
-  // Same scale for both axes so the shape isn't stretched - whichever
-  // dimension is wider determines the limiting scale.
-  const scale = drawable / Math.max(spanX, spanZ, 1e-6);
-
-  function toPoint(x: number, z: number) {
-    return {
-      x: paddingPx + (x - minX) * scale,
-      y: paddingPx + (z - minZ) * scale,
-    };
-  }
-
-  const pathD = track.centerline
-    .map(([x, , z], i) => {
-      const p = toPoint(x, z);
-      return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-    })
-    .join(" ") + " Z";
-
-  return { toPoint, pathD, startPoint: toPoint(track.startPos.x, track.startPos.z) };
+/**
+ * Pure point projection mirroring computeMinimapTransform's own math, so the
+ * rotation/centering logic can be unit tested without an SVG parser.
+ */
+export function projectToMinimap(
+  worldX: number,
+  worldZ: number,
+  carX: number,
+  carZ: number,
+  yawRad: number,
+  sizePx: number = MINIMAP_SIZE_PX,
+  zoomPxPerMeter: number = MINIMAP_ZOOM_PX_PER_METER
+): { x: number; y: number } {
+  const dx = worldX - carX;
+  const dz = worldZ - carZ;
+  const cos = Math.cos(yawRad);
+  const sin = Math.sin(yawRad);
+  const rx = dx * cos - dz * sin;
+  const ry = dx * sin + dz * cos;
+  const center = sizePx / 2;
+  return { x: center + rx * zoomPxPerMeter, y: center + ry * zoomPxPerMeter };
 }

@@ -1,56 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { buildMinimapProjection } from "../lib/tracks/minimap";
+import { MINIMAP_SIZE_PX, buildMinimapPath, projectToMinimap } from "../lib/tracks/minimap";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
 const track = silverstone as TrackData;
 
-describe("buildMinimapProjection", () => {
-  it("projects every centerline point within the padded box, touching a boundary", () => {
-    const size = 200;
-    const padding = 10;
-    const projection = buildMinimapProjection(track, size, padding);
+describe("buildMinimapPath", () => {
+  it("produces a closed SVG path in raw world meters referencing every centerline point", () => {
+    const pathD = buildMinimapPath(track);
+    expect(pathD.startsWith("M")).toBe(true);
+    expect(pathD.endsWith("Z")).toBe(true);
+    expect(pathD.split("L").length - 1).toBe(track.centerline.length - 1);
+  });
+});
 
-    let touchedMin = false;
-    let touchedMax = false;
-    const epsilon = 0.5;
+const SAMPLE_YAWS = [0, Math.PI / 2, Math.PI, -1.234, 2.9];
 
-    for (const [x, , z] of track.centerline) {
-      const p = projection.toPoint(x, z);
-      expect(p.x).toBeGreaterThanOrEqual(padding - epsilon);
-      expect(p.x).toBeLessThanOrEqual(size - padding + epsilon);
-      expect(p.y).toBeGreaterThanOrEqual(padding - epsilon);
-      expect(p.y).toBeLessThanOrEqual(size - padding + epsilon);
+describe("projectToMinimap orientation (car-centered, forward-up rotation)", () => {
+  it.each(SAMPLE_YAWS)("keeps the car's own position at the box center regardless of yaw (yaw=%f)", (yaw) => {
+    const carX = 10;
+    const carZ = -20;
+    const p = projectToMinimap(carX, carZ, carX, carZ, yaw);
+    expect(p.x).toBeCloseTo(MINIMAP_SIZE_PX / 2, 5);
+    expect(p.y).toBeCloseTo(MINIMAP_SIZE_PX / 2, 5);
+  });
 
-      if (Math.abs(p.x - padding) < epsilon || Math.abs(p.y - padding) < epsilon) touchedMin = true;
-      if (Math.abs(p.x - (size - padding)) < epsilon || Math.abs(p.y - (size - padding)) < epsilon)
-        touchedMax = true;
+  it.each(SAMPLE_YAWS)(
+    "projects a point straight ahead of the car (its own forward direction) directly above center (yaw=%f)",
+    (yaw) => {
+      const carX = 5;
+      const carZ = 5;
+      // Same forward convention as vehicle.ts's yawFromQuaternion / CAR_WHEELS:
+      // forward is -Z at yaw 0.
+      const forwardX = -Math.sin(yaw);
+      const forwardZ = -Math.cos(yaw);
+      const aheadX = carX + forwardX * 20;
+      const aheadZ = carZ + forwardZ * 20;
+      const p = projectToMinimap(aheadX, aheadZ, carX, carZ, yaw);
+      expect(p.x).toBeCloseTo(MINIMAP_SIZE_PX / 2, 3);
+      expect(p.y).toBeLessThan(MINIMAP_SIZE_PX / 2 - 1);
     }
+  );
 
-    expect(touchedMin).toBe(true);
-    expect(touchedMax).toBe(true);
-  });
-
-  it("preserves aspect ratio (uniform scale on both axes)", () => {
-    const projection = buildMinimapProjection(track, 200, 10);
-    const a = projection.toPoint(0, 0);
-    const b = projection.toPoint(100, 0);
-    const c = projection.toPoint(0, 100);
-    const scaleX = Math.abs(b.x - a.x) / 100;
-    const scaleZ = Math.abs(c.y - a.y) / 100;
-    expect(scaleX).toBeCloseTo(scaleZ, 5);
-  });
-
-  it("projects the start position to a finite point inside the box", () => {
-    const projection = buildMinimapProjection(track, 200, 10);
-    expect(Number.isFinite(projection.startPoint.x)).toBe(true);
-    expect(Number.isFinite(projection.startPoint.y)).toBe(true);
-  });
-
-  it("produces a closed SVG path referencing every centerline point", () => {
-    const projection = buildMinimapProjection(track, 200, 10);
-    expect(projection.pathD.startsWith("M")).toBe(true);
-    expect(projection.pathD.endsWith("Z")).toBe(true);
-    expect(projection.pathD.split("L").length - 1).toBe(track.centerline.length - 1);
+  it.each(SAMPLE_YAWS)("projects a point directly behind the car below center (yaw=%f)", (yaw) => {
+    const carX = -3;
+    const carZ = 8;
+    const forwardX = -Math.sin(yaw);
+    const forwardZ = -Math.cos(yaw);
+    const behindX = carX - forwardX * 20;
+    const behindZ = carZ - forwardZ * 20;
+    const p = projectToMinimap(behindX, behindZ, carX, carZ, yaw);
+    expect(p.x).toBeCloseTo(MINIMAP_SIZE_PX / 2, 3);
+    expect(p.y).toBeGreaterThan(MINIMAP_SIZE_PX / 2 + 1);
   });
 });

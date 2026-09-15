@@ -3,7 +3,11 @@
 import dynamic from "next/dynamic";
 import { useRef } from "react";
 import styles from "./race.module.css";
-import { buildMinimapProjection } from "@/lib/tracks/minimap";
+import {
+  MINIMAP_SIZE_PX,
+  buildMinimapPath,
+  computeMinimapTransform,
+} from "@/lib/tracks/minimap";
 import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
 
@@ -12,15 +16,23 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   loading: () => <div className={styles.loading}>Loading track...</div>,
 });
 
-const MINIMAP_SIZE_PX = 150;
-const MINIMAP_PADDING_PX = 10;
-// Module-level, not per-render - the track data is static, so the
-// projection only needs to be computed once for the whole app lifetime.
-const minimapProjection = buildMinimapProjection(
-  silverstone as TrackData,
-  MINIMAP_SIZE_PX,
-  MINIMAP_PADDING_PX
+const track = silverstone as TrackData;
+// Module-level, not per-render - the track data is static, so the path only
+// needs building once for the whole app lifetime. Live per-frame updates
+// only change the wrapping <g>'s transform (see Car.tsx), not this path.
+const minimapPathD = buildMinimapPath(track);
+// Matches the chassis's own spawn rotation (rotation={[0, startPos.headingRad, 0]}
+// in Car.tsx) exactly, so there's no visible snap on the first live frame.
+const initialMinimapTransform = computeMinimapTransform(
+  track.startPos.x,
+  track.startPos.z,
+  track.startPos.headingRad
 );
+const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
+const MINIMAP_MARKER_POINTS =
+  `${MINIMAP_CENTER_PX},${MINIMAP_CENTER_PX - 8} ` +
+  `${MINIMAP_CENTER_PX - 6},${MINIMAP_CENTER_PX + 6} ` +
+  `${MINIMAP_CENTER_PX + 6},${MINIMAP_CENTER_PX + 6}`;
 
 export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
@@ -32,7 +44,8 @@ export default function RacePage() {
   const aeroModeRef = useRef<HTMLDivElement>(null);
   const tireRef = useRef<HTMLDivElement>(null);
   const assistsRef = useRef<HTMLDivElement>(null);
-  const minimapDotRef = useRef<SVGCircleElement>(null);
+  const minimapGroupRef = useRef<SVGGElement>(null);
+  const minimapMarkerRef = useRef<SVGPolygonElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -46,8 +59,8 @@ export default function RacePage() {
         aeroModeRef={aeroModeRef}
         tireRef={tireRef}
         assistsRef={assistsRef}
-        minimapProjection={minimapProjection}
-        minimapDotRef={minimapDotRef}
+        minimapGroupRef={minimapGroupRef}
+        minimapMarkerRef={minimapMarkerRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
@@ -72,20 +85,14 @@ export default function RacePage() {
         height={MINIMAP_SIZE_PX}
         viewBox={`0 0 ${MINIMAP_SIZE_PX} ${MINIMAP_SIZE_PX}`}
       >
-        <path d={minimapProjection.pathD} fill="none" stroke="#fff" strokeWidth={2} />
-        <circle
-          cx={minimapProjection.startPoint.x}
-          cy={minimapProjection.startPoint.y}
-          r={3}
-          fill="#ffd23f"
-        />
-        <circle
-          ref={minimapDotRef}
-          cx={minimapProjection.startPoint.x}
-          cy={minimapProjection.startPoint.y}
-          r={4}
-          fill="#39ff88"
-        />
+        <g ref={minimapGroupRef} transform={initialMinimapTransform}>
+          <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
+          <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
+        </g>
+        {/* Fixed at the box center, always pointing up - the world rotates
+            around this marker instead of the marker rotating, so there's no
+            heading-arrow rotation math to get backwards. */}
+        <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill="#39ff88" />
       </svg>
       <div className={styles.energyTrack}>
         <div className={styles.energyFill} ref={energyRef} />

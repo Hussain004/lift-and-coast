@@ -10,7 +10,7 @@ import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
 import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
-import type { MinimapProjection } from "@/lib/tracks/minimap";
+import { yawFromQuaternion } from "@/lib/physics/vehicle";
 
 const track = silverstone as TrackData;
 
@@ -101,10 +101,7 @@ function ChaseCamera({
     // bump, cornering lean) into a much larger swing of camera position,
     // since the offset arm is several meters long. A ~2 degree chassis
     // pitch under throttle was reading as a dramatic lurch in the view.
-    const yaw = Math.atan2(
-      2 * (r.w * r.y + r.x * r.z),
-      1 - 2 * (r.y * r.y + r.z * r.z)
-    );
+    const yaw = yawFromQuaternion(r.x, r.y, r.z, r.w);
 
     // Same offset-then-rotate-then-add-to-t construction for both modes -
     // only the offset vector and lookAt target differ. Position is NOT
@@ -182,8 +179,8 @@ export function Scene({
   aeroModeRef,
   tireRef,
   assistsRef,
-  minimapProjection,
-  minimapDotRef,
+  minimapGroupRef,
+  minimapMarkerRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -194,8 +191,8 @@ export function Scene({
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
   tireRef: React.RefObject<HTMLDivElement | null>;
   assistsRef: React.RefObject<HTMLDivElement | null>;
-  minimapProjection: MinimapProjection;
-  minimapDotRef: React.RefObject<SVGCircleElement | null>;
+  minimapGroupRef: React.RefObject<SVGGElement | null>;
+  minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
@@ -230,8 +227,8 @@ export function Scene({
           aeroModeRef={aeroModeRef}
           tireRef={tireRef}
           assistsRef={assistsRef}
-          minimapProjection={minimapProjection}
-          minimapDotRef={minimapDotRef}
+          minimapGroupRef={minimapGroupRef}
+          minimapMarkerRef={minimapMarkerRef}
           track={track}
         />
       </Physics>

@@ -27,6 +27,7 @@ import {
   applyLoadSensitiveFriction,
   computeStabilizingTorque,
   createCarController,
+  yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
@@ -40,7 +41,7 @@ import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
 import { computeSectorGates } from "@/lib/tracks/sectors";
-import type { MinimapProjection } from "@/lib/tracks/minimap";
+import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
 
 const LINE_HALF_WIDTH_METERS = 6;
@@ -91,8 +92,8 @@ export function Car({
   aeroModeRef,
   tireRef,
   assistsRef,
-  minimapProjection,
-  minimapDotRef,
+  minimapGroupRef,
+  minimapMarkerRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -118,8 +119,8 @@ export function Car({
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
   tireRef?: React.RefObject<HTMLDivElement | null>;
   assistsRef?: React.RefObject<HTMLDivElement | null>;
-  minimapProjection?: MinimapProjection;
-  minimapDotRef?: React.RefObject<SVGCircleElement | null>;
+  minimapGroupRef?: React.RefObject<SVGGElement | null>;
+  minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -625,11 +626,12 @@ export function Car({
       trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
     }
 
-    if (minimapProjection && minimapDotRef?.current) {
-      const dotPos = minimapProjection.toPoint(t.x, t.z);
-      minimapDotRef.current.setAttribute("cx", dotPos.x.toFixed(1));
-      minimapDotRef.current.setAttribute("cy", dotPos.y.toFixed(1));
-      minimapDotRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : "#39ff88");
+    if (minimapGroupRef?.current) {
+      const yaw = yawFromQuaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
+      minimapGroupRef.current.setAttribute("transform", computeMinimapTransform(t.x, t.z, yaw));
+    }
+    if (minimapMarkerRef?.current) {
+      minimapMarkerRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : "#39ff88");
     }
   });
 
