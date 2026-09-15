@@ -1,3 +1,6 @@
+/** Finish-line gate half-width used by both cars (Car.tsx, AICar.tsx). */
+export const LINE_HALF_WIDTH_METERS = 6;
+
 export interface LapTimerConfig {
   startPos: { x: number; z: number; headingRad: number };
   /** Half-width of the finish line gate, in meters. */

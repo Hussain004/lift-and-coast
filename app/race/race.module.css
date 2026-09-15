@@ -207,3 +207,39 @@
   border-radius: 4px;
   pointer-events: none;
 }
+
+.position {
+  position: absolute;
+  top: 194px;
+  right: 16px;
+  color: #39ff88;
+  font-family: var(--font-geist-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 12px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.raceResult {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #39ff88;
+  font-family: var(--font-geist-mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 20px 32px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.raceResult:empty {
+  display: none;
+}

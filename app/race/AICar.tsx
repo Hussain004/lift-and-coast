@@ -34,6 +34,8 @@ import { computeDownforceN } from "@/lib/physics/aero";
 import { checkTrackLimits, computeSurfaceGripMultiplier } from "@/lib/tracks/trackLimits";
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
+import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import type { RaceState } from "@/lib/race/racePosition";
 import type { TrackData } from "@/lib/tracks/types";
 
 const CHASSIS_SIZE: [number, number, number] = [
@@ -63,14 +65,21 @@ const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
  * Deliberately owns its own chassis/visual/controller refs rather than
  * sharing anything with Scene.tsx's player refs - ChaseCamera follows
  * Scene.tsx's visualRef, and this car must never become that target.
+ *
+ * Does track its own lap count now (plan section 7's Quick Race), writing
+ * into the shared raceRef so Car.tsx can compute a live P1/P2 without
+ * either car needing a ref into the other's internals.
  */
-export function AICar({ track }: { track: TrackData }) {
+export function AICar({ track, raceRef }: { track: TrackData; raceRef?: React.RefObject<RaceState> }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(null);
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
+  const lapTimerRef = useRef(
+    createLapTimer({ startPos: track.startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
+  );
 
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
@@ -122,6 +131,11 @@ export function AICar({ track }: { track: TrackData }) {
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       return;
+    }
+
+    const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
+    if (raceRef?.current) {
+      raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
     }
 
     const rot = body.rotation();

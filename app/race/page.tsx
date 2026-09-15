@@ -47,6 +47,8 @@ export default function RacePage() {
   const damageRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
+  const positionRef = useRef<HTMLDivElement>(null);
+  const raceResultRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -63,6 +65,8 @@ export default function RacePage() {
         damageRef={damageRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
+        positionRef={positionRef}
+        raceResultRef={raceResultRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
@@ -72,6 +76,10 @@ export default function RacePage() {
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
       </div>
+      <div className={styles.position} ref={positionRef}>
+        P1
+      </div>
+      <div className={styles.raceResult} ref={raceResultRef} />
       <div className={styles.delta} ref={deltaRef} />
       <div className={styles.sectors} ref={sectorsRef} />
       <div className={styles.speed} ref={speedRef}>

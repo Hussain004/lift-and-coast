@@ -35,10 +35,11 @@ import { createEnergySystem } from "@/lib/physics/energy";
 import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
-import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
+import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
+import { computeRacePosition, type RaceState } from "@/lib/race/racePosition";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import {
@@ -50,9 +51,13 @@ import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
 
-const LINE_HALF_WIDTH_METERS = 6;
 const REWIND_CAPACITY_SECONDS = 5;
 const SECTOR_COUNT = 3;
+// Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
+// AI opponent that exists today, not the full session-setup lap-count
+// slider (plan section 8) - that needs a menu/state machine this project
+// doesn't have yet. A fixed default is the smallest useful step.
+const RACE_LAPS = 3;
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
   green: "#39ff88",
@@ -101,6 +106,9 @@ export function Car({
   damageRef,
   minimapGroupRef,
   minimapMarkerRef,
+  positionRef,
+  raceResultRef,
+  raceRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -129,6 +137,15 @@ export function Car({
   damageRef?: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef?: React.RefObject<SVGGElement | null>;
   minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
+  positionRef?: React.RefObject<HTMLDivElement | null>;
+  raceResultRef?: React.RefObject<HTMLDivElement | null>;
+  /**
+   * Shared with AICar.tsx (created in Scene.tsx) - each car writes its own
+   * lap/progress into its own half of this plain mutable object every
+   * physics tick, so this component can compare the two for a live race
+   * position without either car needing a ref to the other's internals.
+   */
+  raceRef?: React.RefObject<RaceState>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -143,6 +160,8 @@ export function Car({
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
+  const raceElapsedSecondsRef = useRef(0);
+  const raceFinishedRef = useRef(false);
   const bestLapRef = useRef<number | null>(null);
   const deltaTrackerRef = useRef(createDeltaTracker());
   // Set whenever this lap's progress jumped discontinuously (a rewind, or
@@ -554,8 +573,35 @@ export function Car({
     const t = body.translation();
     const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
+
+    if (!raceFinishedRef.current) {
+      raceElapsedSecondsRef.current += dt;
+    }
+    if (raceRef?.current) {
+      raceRef.current.player = { lapCount: lap.lapCount, progressMeters: status.progressMeters };
+      if (positionRef?.current && !raceFinishedRef.current) {
+        const position = computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters);
+        positionRef.current.textContent = `P${position}`;
+      }
+    }
+
     const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+      // ponytail: the race "ends" here as a HUD banner only - driving,
+      // physics, and the AI keep going, and there's no results/menu
+      // screen to return to (plan section 8's menu state machine doesn't
+      // exist yet). Also doesn't account for the AI finishing its own
+      // RACE_LAPS first - the banner only triggers off the player's own
+      // finish-line crossing. Upgrade once session setup/results screens
+      // exist.
+      if (!raceFinishedRef.current && lap.lapCount >= RACE_LAPS && raceResultRef?.current) {
+        raceFinishedRef.current = true;
+        const finalPosition = raceRef?.current
+          ? computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters)
+          : 1;
+        raceResultRef.current.textContent =
+          `P${finalPosition} - ${RACE_LAPS}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}`;
+      }
       const wasNewBest =
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {

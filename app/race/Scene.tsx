@@ -12,6 +12,7 @@ import type { TrackData } from "@/lib/tracks/types";
 import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
+import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 
 const track = silverstone as TrackData;
 
@@ -183,6 +184,8 @@ export function Scene({
   damageRef,
   minimapGroupRef,
   minimapMarkerRef,
+  positionRef,
+  raceResultRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -196,8 +199,11 @@ export function Scene({
   damageRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
+  positionRef: React.RefObject<HTMLDivElement | null>;
+  raceResultRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
+  const raceRef = useRef<RaceState>(createRaceState());
   const visualRef = useRef<THREE.Mesh>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
 
@@ -233,9 +239,12 @@ export function Scene({
           damageRef={damageRef}
           minimapGroupRef={minimapGroupRef}
           minimapMarkerRef={minimapMarkerRef}
+          positionRef={positionRef}
+          raceResultRef={raceResultRef}
+          raceRef={raceRef}
           track={track}
         />
-        <AICar track={track} />
+        <AICar track={track} raceRef={raceRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
     </Canvas>
