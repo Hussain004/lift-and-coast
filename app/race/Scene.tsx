@@ -10,6 +10,7 @@ import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
 import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import type { MinimapProjection } from "@/lib/tracks/minimap";
 
 const track = silverstone as TrackData;
 
@@ -181,6 +182,8 @@ export function Scene({
   aeroModeRef,
   tireRef,
   assistsRef,
+  minimapProjection,
+  minimapDotRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -191,6 +194,8 @@ export function Scene({
   aeroModeRef: React.RefObject<HTMLDivElement | null>;
   tireRef: React.RefObject<HTMLDivElement | null>;
   assistsRef: React.RefObject<HTMLDivElement | null>;
+  minimapProjection: MinimapProjection;
+  minimapDotRef: React.RefObject<SVGCircleElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
@@ -225,6 +230,8 @@ export function Scene({
           aeroModeRef={aeroModeRef}
           tireRef={tireRef}
           assistsRef={assistsRef}
+          minimapProjection={minimapProjection}
+          minimapDotRef={minimapDotRef}
           track={track}
         />
       </Physics>

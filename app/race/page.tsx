@@ -3,11 +3,24 @@
 import dynamic from "next/dynamic";
 import { useRef } from "react";
 import styles from "./race.module.css";
+import { buildMinimapProjection } from "@/lib/tracks/minimap";
+import silverstone from "@/data/tracks/silverstone.json";
+import type { TrackData } from "@/lib/tracks/types";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
   loading: () => <div className={styles.loading}>Loading track...</div>,
 });
+
+const MINIMAP_SIZE_PX = 150;
+const MINIMAP_PADDING_PX = 10;
+// Module-level, not per-render - the track data is static, so the
+// projection only needs to be computed once for the whole app lifetime.
+const minimapProjection = buildMinimapProjection(
+  silverstone as TrackData,
+  MINIMAP_SIZE_PX,
+  MINIMAP_PADDING_PX
+);
 
 export default function RacePage() {
   const speedRef = useRef<HTMLDivElement>(null);
@@ -19,6 +32,7 @@ export default function RacePage() {
   const aeroModeRef = useRef<HTMLDivElement>(null);
   const tireRef = useRef<HTMLDivElement>(null);
   const assistsRef = useRef<HTMLDivElement>(null);
+  const minimapDotRef = useRef<SVGCircleElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -32,6 +46,8 @@ export default function RacePage() {
         aeroModeRef={aeroModeRef}
         tireRef={tireRef}
         assistsRef={assistsRef}
+        minimapProjection={minimapProjection}
+        minimapDotRef={minimapDotRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
@@ -50,6 +66,27 @@ export default function RacePage() {
       <div className={styles.tire} ref={tireRef} />
       <div className={styles.assists} ref={assistsRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
+      <svg
+        className={styles.minimap}
+        width={MINIMAP_SIZE_PX}
+        height={MINIMAP_SIZE_PX}
+        viewBox={`0 0 ${MINIMAP_SIZE_PX} ${MINIMAP_SIZE_PX}`}
+      >
+        <path d={minimapProjection.pathD} fill="none" stroke="#fff" strokeWidth={2} />
+        <circle
+          cx={minimapProjection.startPoint.x}
+          cy={minimapProjection.startPoint.y}
+          r={3}
+          fill="#ffd23f"
+        />
+        <circle
+          ref={minimapDotRef}
+          cx={minimapProjection.startPoint.x}
+          cy={minimapProjection.startPoint.y}
+          r={4}
+          fill="#39ff88"
+        />
+      </svg>
       <div className={styles.energyTrack}>
         <div className={styles.energyFill} ref={energyRef} />
       </div>

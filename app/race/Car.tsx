@@ -40,6 +40,7 @@ import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { allWheelsOffTrack, checkTrackLimits } from "@/lib/tracks/trackLimits";
 import { computeSectorGates } from "@/lib/tracks/sectors";
+import type { MinimapProjection } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
 
 const LINE_HALF_WIDTH_METERS = 6;
@@ -90,6 +91,8 @@ export function Car({
   aeroModeRef,
   tireRef,
   assistsRef,
+  minimapProjection,
+  minimapDotRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -115,6 +118,8 @@ export function Car({
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
   tireRef?: React.RefObject<HTMLDivElement | null>;
   assistsRef?: React.RefObject<HTMLDivElement | null>;
+  minimapProjection?: MinimapProjection;
+  minimapDotRef?: React.RefObject<SVGCircleElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -618,6 +623,13 @@ export function Car({
 
     if (trackLimitRef?.current) {
       trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
+    }
+
+    if (minimapProjection && minimapDotRef?.current) {
+      const dotPos = minimapProjection.toPoint(t.x, t.z);
+      minimapDotRef.current.setAttribute("cx", dotPos.x.toFixed(1));
+      minimapDotRef.current.setAttribute("cy", dotPos.y.toFixed(1));
+      minimapDotRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : "#39ff88");
     }
   });
 

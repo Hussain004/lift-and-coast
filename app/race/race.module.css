@@ -182,3 +182,12 @@
   letter-spacing: 1px;
   pointer-events: none;
 }
+
+.minimap {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  pointer-events: none;
+}
