@@ -237,14 +237,19 @@ export const STATIC_WHEEL_LOAD_N = (CHASSIS_MASS * 9.81) / 4;
  * Also applies the active-aero grip multiplier (aeroGripMultiplier) - a
  * direct mechanical-grip penalty for low-drag mode, since the
  * downforce->load coupling above is negligible at cornering speeds (see
- * aero.ts). Both scales only ever multiply below 1x on top of each other,
- * so the sideFrictionStiffness safety ceiling still holds.
+ * aero.ts) - and tire compound degradation (compoundGripMultiplier, see
+ * computeCompoundGripMultiplier in tireModel.ts), defaulting to 1 (fresh
+ * tire, no change from before this parameter existed). All three scales
+ * only ever multiply below 1x on top of each other, so the
+ * sideFrictionStiffness safety ceiling still holds no matter how worn the
+ * tires are.
  */
 export function applyLoadSensitiveFriction(
   controller: Rapier.DynamicRayCastVehicleController,
-  aeroMode: AeroMode = "high-downforce"
+  aeroMode: AeroMode = "high-downforce",
+  compoundGripMultiplier: number = 1
 ) {
-  const gripScale = aeroGripMultiplier(aeroMode);
+  const gripScale = aeroGripMultiplier(aeroMode) * compoundGripMultiplier;
   for (let i = 0; i < CAR_WHEELS.length; i++) {
     const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
     const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N) * gripScale;

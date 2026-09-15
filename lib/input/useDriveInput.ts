@@ -1,8 +1,20 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { stepSteering } from "./steering";
 import type { AeroMode } from "@/lib/physics/aero";
+import type { TireCompoundId } from "@/lib/physics/tireModel";
 
 export type CameraMode = "chase" | "cockpit";
+
+// Explicit selection (one key per compound) rather than a cycle - fitting
+// a fresh set of a SPECIFIC compound is always one keystroke, instead of
+// needing up to two extra presses to cycle back around to the compound
+// you already had (which would otherwise be the only way to reset wear
+// without actually wanting to switch compounds).
+const TIRE_COMPOUND_KEYS: Record<string, TireCompoundId> = {
+  Digit1: "soft",
+  Digit2: "medium",
+  Digit3: "hard",
+};
 
 export interface DriveInput {
   throttle: number;
@@ -71,6 +83,7 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
   const cameraMode = externalCameraModeRef ?? internalCameraMode;
+  const tireCompound = useRef<TireCompoundId>("medium");
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -82,6 +95,10 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
       }
       if (e.code === CAMERA_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
         cameraMode.current = cameraMode.current === "chase" ? "cockpit" : "chase";
+      }
+      const selectedCompound = TIRE_COMPOUND_KEYS[e.code];
+      if (selectedCompound && !keys.current.has(e.code)) {
+        tireCompound.current = selectedCompound;
       }
       keys.current.add(e.code);
     };
@@ -103,6 +120,7 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
     input,
     aeroMode,
     cameraMode,
+    tireCompound,
     update(dt: number) {
       const pressed = keys.current;
       const steerTarget =

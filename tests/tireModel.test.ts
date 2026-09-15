@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeTireForces, loadSensitivityScale } from "../lib/physics/tireModel";
+import {
+  MIN_COMPOUND_GRIP_FRACTION,
+  TIRE_COMPOUNDS,
+  computeCompoundGripMultiplier,
+  computeTireForces,
+  loadSensitivityScale,
+} from "../lib/physics/tireModel";
 
 const NOMINAL_LOAD_N = 2000;
 
@@ -156,5 +162,39 @@ describe("loadSensitivityScale", () => {
     expect(atZero).toBeLessThanOrEqual(1.5);
     expect(atTiny).toBeLessThanOrEqual(1.5);
     expect(atHuge).toBeGreaterThanOrEqual(0.6);
+  });
+});
+
+describe("computeCompoundGripMultiplier", () => {
+  it("is 1 (full grip) with no wear on any compound", () => {
+    expect(computeCompoundGripMultiplier(TIRE_COMPOUNDS.soft, 0)).toBe(1);
+    expect(computeCompoundGripMultiplier(TIRE_COMPOUNDS.medium, 0)).toBe(1);
+    expect(computeCompoundGripMultiplier(TIRE_COMPOUNDS.hard, 0)).toBe(1);
+  });
+
+  it("never drops below the floor no matter how much distance is driven", () => {
+    expect(computeCompoundGripMultiplier(TIRE_COMPOUNDS.soft, 10_000_000)).toBeCloseTo(
+      MIN_COMPOUND_GRIP_FRACTION,
+      6
+    );
+  });
+
+  it("degrades soft fastest and hard slowest at the same distance", () => {
+    const distance = 5891; // one Silverstone lap
+    const soft = computeCompoundGripMultiplier(TIRE_COMPOUNDS.soft, distance);
+    const medium = computeCompoundGripMultiplier(TIRE_COMPOUNDS.medium, distance);
+    const hard = computeCompoundGripMultiplier(TIRE_COMPOUNDS.hard, distance);
+    expect(soft).toBeLessThan(medium);
+    expect(medium).toBeLessThan(hard);
+  });
+
+  it("never exceeds 1 (peak grip is identical across compounds, never boosted)", () => {
+    // wornMeters is always >= 0 in practice (the wear tracker only ever
+    // accumulates via Math.abs(distance)) - checked at 0 and at realistic
+    // driven distances, not negative inputs the real caller never produces.
+    for (const compound of Object.values(TIRE_COMPOUNDS)) {
+      expect(computeCompoundGripMultiplier(compound, 0)).toBeLessThanOrEqual(1);
+      expect(computeCompoundGripMultiplier(compound, 5891)).toBeLessThanOrEqual(1);
+    }
   });
 });

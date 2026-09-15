@@ -6,6 +6,7 @@ import {
   CHASSIS_MASS,
   DEFAULT_ENGINE_FORCE,
   applyCarControls,
+  applyLoadSensitiveFriction,
   createCarController,
   speedSensitiveSteerScale,
 } from "../lib/physics/vehicle";
@@ -75,5 +76,32 @@ describe("applyCarControls caps Push-to-Pass boost at a safe ceiling", () => {
 
     applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1.6, 0, 0);
     expect(controller.wheelEngineForce(2)).toBeCloseTo(BOOSTED_ENGINE_FORCE_CAP, 0);
+  });
+});
+
+describe("applyLoadSensitiveFriction wires tire compound wear into live wheel friction", () => {
+  it("scales friction slip down proportionally to a degraded compound multiplier", async () => {
+    await RAPIER.init();
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const chassis = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 1, 0).setAdditionalMass(CHASSIS_MASS)
+    );
+    world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
+    const controller = createCarController(RAPIER, world, chassis);
+
+    // Compares the ratio between two calls rather than anchoring to
+    // BASE_FRICTION_SLIP directly - wheelSuspensionForce() before any
+    // physics step has run isn't STATIC_WHEEL_LOAD_N (the documented
+    // fallback only covers a null/undefined reading, not an actual 0N),
+    // so the load-sensitivity term's own contribution here is whatever it
+    // is; only the compound multiplier's effect on top of that is this
+    // test's actual concern.
+    applyLoadSensitiveFriction(controller, "high-downforce", 1);
+    const freshSlip = controller.wheelFrictionSlip(0) ?? 0;
+
+    applyLoadSensitiveFriction(controller, "high-downforce", 0.85);
+    const wornSlip = controller.wheelFrictionSlip(0) ?? 0;
+
+    expect(wornSlip).toBeCloseTo(freshSlip * 0.85, 5);
   });
 });

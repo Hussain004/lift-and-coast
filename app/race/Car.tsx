@@ -30,6 +30,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
+import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime } from "@/lib/race/lapTimer";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
@@ -87,6 +88,7 @@ export function Car({
   trackLimitRef,
   energyRef,
   aeroModeRef,
+  tireRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -110,6 +112,7 @@ export function Car({
   trackLimitRef?: React.RefObject<HTMLDivElement | null>;
   energyRef?: React.RefObject<HTMLDivElement | null>;
   aeroModeRef?: React.RefObject<HTMLDivElement | null>;
+  tireRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -119,7 +122,7 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode } = useDriveInput(cameraModeRef);
+  const { update, aeroMode, cameraMode, tireCompound } = useDriveInput(cameraModeRef);
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -151,6 +154,25 @@ export function Car({
   );
   const ghostRecorderRef = useRef(createGhostRecorder());
   const ghostMeshRef = useRef<THREE.Mesh>(null);
+  // Distance driven (odometer-style, direction-independent) since the
+  // current compound was fitted - see computeCompoundGripMultiplier in
+  // tireModel.ts. Not lap-scoped: real tire wear accumulates across a
+  // whole stint, not per lap, and this project has no pit-stop system yet
+  // to force a reset - switching compounds (the 1/2/3 keys, owned by
+  // useDriveInput) is the only reset trigger, standing in for fitting a
+  // fresh set. Deliberately NOT touched by rewind or the off-track
+  // teleport reset - both roll back POSITION/TIME, but the tires
+  // physically experienced those meters regardless, same as a real
+  // rewind not un-scrubbing tire wear. Pressing the SAME compound's key
+  // again while already on it is a no-op (change-detected below, not
+  // event-detected) - there's no way to "re-fit an identical fresh set"
+  // without switching away and back, a known, minor limitation.
+  const tireWornMetersRef = useRef(0);
+  // Last compound seen, to detect a change made via the 1/2/3 keys (owned
+  // by useDriveInput, see tireCompound above) and reset wear on switch -
+  // the wear tracking itself lives here rather than in useDriveInput
+  // since it needs per-frame speed/distance data that hook doesn't have.
+  const prevTireCompoundRef = useRef<TireCompoundId>(tireCompound.current);
   useEffect(() => {
     let cancelled = false;
     loadPersonalBest(track.id)
@@ -393,7 +415,24 @@ export function Car({
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed()
     );
-    applyLoadSensitiveFriction(controller, aeroMode.current);
+
+    // A fresh set is fitted the instant the player switches compounds
+    // (1/2/3 keys, owned by useDriveInput) - see tireWornMetersRef's own
+    // comment for why that's the only reset trigger this project has
+    // right now.
+    if (tireCompound.current !== prevTireCompoundRef.current) {
+      prevTireCompoundRef.current = tireCompound.current;
+      tireWornMetersRef.current = 0;
+    }
+    // Odometer-style accumulation using this step's pre-update speed - a
+    // one-step lag against the exact instantaneous speed, immaterial at
+    // 60Hz for a quantity that only meaningfully changes over many meters.
+    tireWornMetersRef.current += Math.abs(controller.currentVehicleSpeed()) * world.timestep;
+    const compoundGripMultiplier = computeCompoundGripMultiplier(
+      TIRE_COMPOUNDS[tireCompound.current],
+      tireWornMetersRef.current
+    );
+    applyLoadSensitiveFriction(controller, aeroMode.current, compoundGripMultiplier);
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
@@ -457,6 +496,13 @@ export function Car({
     if (aeroModeRef?.current) {
       aeroModeRef.current.textContent =
         aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE";
+    }
+    if (tireRef?.current) {
+      const gripPercent = Math.round(
+        computeCompoundGripMultiplier(TIRE_COMPOUNDS[tireCompound.current], tireWornMetersRef.current) *
+          100
+      );
+      tireRef.current.textContent = `${tireCompound.current.toUpperCase()} ${gripPercent}%`;
     }
 
     if (isRewindingRef.current) return;

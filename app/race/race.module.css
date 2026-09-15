@@ -158,3 +158,15 @@
   letter-spacing: 1px;
   pointer-events: none;
 }
+
+.tire {
+  position: absolute;
+  bottom: 90px;
+  right: 16px;
+  color: #ff9f4a;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
