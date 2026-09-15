@@ -338,6 +338,32 @@ export function yawFromQuaternion(x: number, y: number, z: number, w: number): n
   return Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z));
 }
 
+/**
+ * A reliable, signed "forward speed" (positive = moving forward, negative =
+ * reversing), computed directly from linear velocity and heading - a
+ * substitute for Rapier's own controller.currentVehicleSpeed() where that's
+ * needed as an input to other logic (steer scaling, traction control
+ * gating, an AI's target-speed following), not for driving the wheels
+ * themselves. Found via a sustained (10s+) full-throttle, real-trimesh
+ * headless run (see tests/aiOpponent.test.ts) that currentVehicleSpeed()
+ * intermittently reports the wrong SIGN at high speed while its magnitude
+ * stays correct - confirmed against the chassis's own raw linear velocity
+ * magnitude, which stayed smooth and correct the entire time the reported
+ * speed was flipping sign every few frames. Not yet adopted by Car.tsx's
+ * existing call sites - this fixes the AI's own speed-dependent control
+ * logic without touching the player's already-shipped, already-verified
+ * code path in the same pass as an unrelated feature; worth revisiting for
+ * the player too as a follow-up.
+ */
+export function computeSignedForwardSpeed(
+  linvel: { x: number; z: number },
+  yawRad: number
+): number {
+  const forwardX = -Math.sin(yawRad);
+  const forwardZ = -Math.cos(yawRad);
+  return linvel.x * forwardX + linvel.z * forwardZ;
+}
+
 const STABILIZE_MIN_TILT_RAD = 0.05;
 
 /**

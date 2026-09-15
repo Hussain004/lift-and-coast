@@ -17,6 +17,7 @@ import {
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
+  computeSignedForwardSpeed,
   computeStabilizingTorque,
   createCarController,
 } from "../physics/vehicle";
@@ -29,6 +30,14 @@ export interface DriveInputPlan {
   throttle: number;
   brake: number;
   steer: number;
+}
+
+/** Live chassis state, passed to a closed-loop input function each step. */
+export interface DriveState {
+  x: number;
+  z: number;
+  yawRad: number;
+  speedMs: number;
 }
 
 export interface StabilityOptions {
@@ -63,7 +72,18 @@ export interface StabilityOptions {
 export interface StabilityResult {
   maxTiltRad: number;
   finalSpeedMs: number;
+  /** Net straight-line displacement from start to end position. */
   distanceMeters: number;
+  /**
+   * Total path length actually driven, accumulated from real position
+   * deltas each step - not the same as distanceMeters (net displacement)
+   * once a run covers a large enough fraction of a closed-loop track that
+   * the two diverge (e.g. a long run that laps back toward its own start
+   * has small displacement despite having driven a real distance). Immune
+   * to any speed-reading quirks by construction, since it never reads a
+   * "speed" value at all, only positions.
+   */
+  distanceTraveledMeters: number;
   /**
    * How far past the track edge the car got, in meters (0 if it never left
    * the ribbon, or if no track was given). Lets a scenario assert it stayed
@@ -120,12 +140,14 @@ function yawFromRotation(rotation: {
  * tips (0 = upright) and how it moves. Runs on a large flat plane by
  * default, or on `options.track`'s real trimesh (spawned at its start
  * position/heading) when given. `input` can vary over time (e.g. build
- * speed, then steer) by passing a function of elapsed seconds instead of a
- * fixed plan.
+ * speed, then steer) by passing a function of elapsed seconds, or react to
+ * the car's own live position/heading/speed (e.g. a path-following AI
+ * controller) via that function's second argument - a fixed plan or a
+ * function that ignores the second argument both still work unchanged.
  */
 export async function simulateDrive(
   seconds: number,
-  input: DriveInputPlan | ((elapsedSeconds: number) => DriveInputPlan),
+  input: DriveInputPlan | ((elapsedSeconds: number, state: DriveState) => DriveInputPlan),
   options: StabilityOptions
 ): Promise<StabilityResult> {
   const getInput = typeof input === "function" ? input : () => input;
@@ -190,6 +212,8 @@ export async function simulateDrive(
   let maxOffTrackMeters = 0;
   let maxTiltStep = 0;
   let previousTilt: number | null = null;
+  let distanceTraveledMeters = 0;
+  let previousStepPos = startPos;
   const steps = Math.round(seconds / timestep);
   const aeroMode = options.aeroMode ?? "high-downforce";
   for (let i = 0; i < steps; i++) {
@@ -210,12 +234,30 @@ export async function simulateDrive(
         chassis.setRotation(startRotation, true);
         chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
         chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
-        // The reset itself is an intentional tilt discontinuity, not a
-        // physics bug - don't let it register as one.
+        // The reset itself is an intentional tilt discontinuity and an
+        // intentional position teleport, not a physics bug or real distance
+        // driven - don't let either register as one.
         previousTilt = null;
+        previousStepPos = startPos;
       }
     }
-    const stepInput = getInput(i * timestep);
+    const preStepPos = chassis.translation();
+    const preStepRot = chassis.rotation();
+    const preStepYaw = yawFromRotation(preStepRot);
+    const stepInput = getInput(i * timestep, {
+      x: preStepPos.x,
+      z: preStepPos.z,
+      yawRad: preStepYaw,
+      // Not controller.currentVehicleSpeed() - see
+      // computeSignedForwardSpeed's own comment for why that reads the
+      // wrong sign at sustained high speed on the real trimesh, which
+      // would feed garbage into a closed-loop controller like an AI's path
+      // follower. applyCarControls' own currentSpeedMs argument below is
+      // left as controller.currentVehicleSpeed() - changing that would
+      // shift behavior for every existing scripted-input stability test in
+      // this suite, not just this new closed-loop use.
+      speedMs: computeSignedForwardSpeed(chassis.linvel(), preStepYaw),
+    });
     applyCarControls(
       controller,
       stepInput,
@@ -253,6 +295,12 @@ export async function simulateDrive(
       maxTiltStep = Math.max(maxTiltStep, Math.abs(tilt - previousTilt));
     }
     previousTilt = tilt;
+    const stepEndPos = chassis.translation();
+    distanceTraveledMeters += Math.hypot(
+      stepEndPos.x - previousStepPos.x,
+      stepEndPos.z - previousStepPos.z
+    );
+    previousStepPos = stepEndPos;
     if (options.track) {
       const pos = chassis.translation();
       maxOffTrackMeters = Math.max(
@@ -276,6 +324,7 @@ export async function simulateDrive(
     maxTiltRad: maxTilt,
     finalSpeedMs: controller.currentVehicleSpeed(),
     distanceMeters,
+    distanceTraveledMeters,
     maxOffTrackMeters,
     netYawChangeRad,
     maxTiltStepRad: maxTiltStep,

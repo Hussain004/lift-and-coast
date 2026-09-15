@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics, RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { Car } from "./Car";
+import { AICar } from "./AICar";
 import { Track } from "./Track";
 import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
@@ -234,6 +235,7 @@ export function Scene({
           minimapMarkerRef={minimapMarkerRef}
           track={track}
         />
+        <AICar track={track} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
     </Canvas>
