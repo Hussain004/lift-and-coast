@@ -70,11 +70,13 @@ export const MAX_ACCEL_MS2 = 8;
 const SPEED_PASS_LAPS = 3; // full loop-arounds, so constraints propagate all the way round a closed track.
 
 // Thresholds on required deceleration (m/s^2) between consecutive points,
-// checked against the real distribution on Silverstone before picking
-// them: ~55% of the lap needs no lift at all (throttle), ~18% wants a
-// light lift, ~7% a real brake, and the remaining ~20% (including every
-// point where MAX_DECEL_MS2 itself is the binding constraint - a genuine
-// hard-braking zone) reads as brake-hard.
+// checked against the real (smoothed) distribution on Silverstone before
+// picking them: ~71% of the lap needs no lift at all (throttle), ~4% wants
+// a light lift, ~4% a medium brake, and ~21% (including every point where
+// MAX_DECEL_MS2 itself is the binding constraint - a genuine hard-braking
+// zone) reads as brake-hard. The lift/medium bands are naturally brief -
+// deceleration ramps from near-zero to the 14 m/s^2 cap quickly approaching
+// a real corner, so there's only a short stretch of track in between.
 const LIFT_DECEL_THRESHOLD = 0.3;
 const BRAKE_MEDIUM_DECEL_THRESHOLD = 3;
 const BRAKE_HARD_DECEL_THRESHOLD = 7;
@@ -175,7 +177,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // curvature (a real radius, via turn angle over real arc length - see the
   // module comment), then backward/forward passes enforcing a physically
   // reachable deceleration/acceleration between consecutive points.
-  const curveOnlySpeed = new Float64Array(n);
+  let curveOnlySpeed: Float64Array = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const behind = unitTangentAt(positions, (i - SPEED_LOOKAHEAD_POINTS + n) % n);
     const ahead = unitTangentAt(positions, (i + SPEED_LOOKAHEAD_POINTS) % n);
@@ -189,6 +191,29 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     const curvature = arcLength > 1e-6 ? turnAngle / arcLength : 0;
     const maxLateralSpeed = curvature > 1e-9 ? Math.sqrt(MAX_LATERAL_ACCEL_MS2 / curvature) : MAX_SPEED_MS;
     curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, maxLateralSpeed));
+  }
+
+  // Same box-filter fix as stage 2's offset smoothing, and for the same
+  // reason: curveOnlySpeed is differentiated from real (slightly noisy)
+  // centerline geometry, so it inherits small per-point wobbles. Those
+  // don't move the actual driving line, but they do flip the per-point
+  // deceleration classification below back and forth - checked
+  // numerically against real Silverstone data: unsmoothed, 83 of 145
+  // zone "runs" were 3 points or shorter (a rapid brake-hard/brake-medium
+  // flicker, not a real color band a driver could read); this smoothing
+  // pass cuts that to 16 of 72, and the ones left are isolated one-point
+  // "lift" blips hundreds of meters apart, not flicker. Reuses
+  // SMOOTHING_BOX_RADIUS/SMOOTHING_PASSES rather than its own tuned
+  // values - a wider/more-aggressive smooth was tried and cut flicker
+  // further, but it also measurably raised the tightest corner's target
+  // speed (up to +5.8 m/s at radius 20/6 passes vs +1 m/s here), which
+  // risks feeding the AI a less accurate, faster line into exactly the
+  // corners it already runs wide on.
+  for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
+    curveOnlySpeed = boxFilterPass(curveOnlySpeed, SMOOTHING_BOX_RADIUS);
+  }
+  for (let i = 0; i < n; i++) {
+    curveOnlySpeed[i] = Math.max(MIN_CORNER_SPEED_MS, Math.min(MAX_SPEED_MS, curveOnlySpeed[i]));
   }
 
   const targetSpeedMs = Float64Array.from(curveOnlySpeed);

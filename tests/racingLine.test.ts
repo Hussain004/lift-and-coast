@@ -177,6 +177,34 @@ describe("computeRacingLine speed profile", () => {
     const throttleFraction = line.filter((p) => p.zone === "throttle").length / line.length;
     expect(throttleFraction).toBeGreaterThan(0.4);
   });
+
+  it("does not flicker between zones (a driver needs a readable color band, not noise)", () => {
+    // Before smoothing curveOnlySpeed, the per-point deceleration used to
+    // classify each point's zone inherited the same small-scale centerline
+    // noise the offset signal has (see the module comment) - 83 of 145
+    // zone "runs" on the real track were 3 points (~6m) or shorter, mostly
+    // rapid brake-hard/brake-medium alternation rather than a single
+    // growing-more-urgent band before a corner. Smoothing cut that to 16.
+    // This threshold is set with real margin above the fixed value (16),
+    // not a tight fit, so it only fails on an actual regression back
+    // toward the unsmoothed noise floor (83).
+    const line = computeRacingLine(track);
+    const n = line.length;
+    let shortRuns = 0;
+    let cur = line[0].zone;
+    let runLength = 1;
+    for (let i = 1; i <= n; i++) {
+      const zone = line[i % n].zone;
+      if (zone === cur) {
+        runLength++;
+      } else {
+        if (runLength <= 3) shortRuns++;
+        cur = zone;
+        runLength = 1;
+      }
+    }
+    expect(shortRuns).toBeLessThan(35);
+  });
 });
 
 describe("buildRacingLineRibbon", () => {

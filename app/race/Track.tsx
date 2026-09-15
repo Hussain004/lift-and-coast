@@ -11,8 +11,10 @@ import type { TrackData } from "@/lib/tracks/types";
 // surface (see mesh.ts's own comment) so it doesn't z-fight with it.
 const RACING_LINE_HEIGHT_OFFSET = 0.05;
 // Wide colored stripe (like an F1 game's throttle map), not a thin wire -
-// half this value each side of the line's own center.
-const RACING_LINE_HALF_WIDTH_METERS = 1.3;
+// half this value each side of the line's own center. 1.3 (2.6m total)
+// looked too wide against this track's 13m width once actually driven -
+// cut roughly in half.
+const RACING_LINE_HALF_WIDTH_METERS = 0.6;
 
 // 0-1 RGB, matching this project's existing HUD palette (SECTOR_COLOR_HEX
 // in Car.tsx uses the same green/yellow; red matches the trackLimit HUD).
