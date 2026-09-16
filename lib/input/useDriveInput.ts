@@ -65,6 +65,7 @@ const AERO_MODE_TOGGLE_KEY = "KeyE";
 const CAMERA_MODE_TOGGLE_KEY = "KeyC";
 const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
 const ABS_TOGGLE_KEY = "KeyB";
+const RACING_LINE_TOGGLE_KEY = "KeyL";
 
 const anyPressed = (keys: Set<string>, codes: string[]) =>
   codes.some((code) => keys.has(code));
@@ -79,8 +80,15 @@ const anyPressed = (keys: Set<string>, codes: string[]) =>
  * Car.tsx (a sibling under Canvas, not a child), unlike aeroMode/input,
  * which are only ever read from inside Car.tsx where this hook is called.
  * Falls back to an internally-created ref if omitted (e.g. in tests).
+ *
+ * `externalRacingLineVisibleRef` is the same idea, for the same reason -
+ * the racing line overlay lives in Track.tsx, a sibling of Car.tsx under
+ * the Canvas, not a child of it.
  */
-export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
+export function useDriveInput(
+  externalCameraModeRef?: RefObject<CameraMode>,
+  externalRacingLineVisibleRef?: RefObject<boolean>
+) {
   const keys = useRef(new Set<string>());
   const input = useRef<DriveInput>({
     throttle: 0,
@@ -98,6 +106,11 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
   // right default until it does).
   const tractionControlEnabled = useRef(true);
   const absEnabled = useRef(true);
+  const internalRacingLineVisible = useRef(true);
+  // On by default (plan section 13's "optional ideal-line overlay assist") -
+  // same "no Pro difficulty tier yet" reasoning as tractionControlEnabled/
+  // absEnabled above.
+  const racingLineVisible = externalRacingLineVisibleRef ?? internalRacingLineVisible;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -119,6 +132,9 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
       }
       if (e.code === ABS_TOGGLE_KEY && !keys.current.has(e.code)) {
         absEnabled.current = !absEnabled.current;
+      }
+      if (e.code === RACING_LINE_TOGGLE_KEY && !keys.current.has(e.code)) {
+        racingLineVisible.current = !racingLineVisible.current;
       }
       keys.current.add(e.code);
     };
@@ -143,6 +159,7 @@ export function useDriveInput(externalCameraModeRef?: RefObject<CameraMode>) {
     tireCompound,
     tractionControlEnabled,
     absEnabled,
+    racingLineVisible,
     update(dt: number) {
       const pressed = keys.current;
       const steerTarget =

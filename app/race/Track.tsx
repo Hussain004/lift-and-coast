@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
@@ -41,10 +41,14 @@ const LIVE_COLOR_LOOKAHEAD_METERS = 150;
 function RacingLine({
   track,
   chassisRef,
+  racingLineVisibleRef,
 }: {
   track: TrackData;
   chassisRef?: React.RefObject<RapierRigidBody | null>;
+  /** Toggled by useDriveInput's own "L" key - see its own comment. */
+  racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
+  const meshRef = useRef<THREE.Mesh>(null);
   const { geometry, line } = useMemo(() => {
     const line = computeRacingLine(track);
     const { positions, colors, indices } = buildRacingLineRibbon(
@@ -71,6 +75,15 @@ function RacingLine({
   }, [track]);
 
   useFrame(() => {
+    const visible = racingLineVisibleRef?.current ?? true;
+    if (meshRef.current) {
+      meshRef.current.visible = visible;
+    }
+    // Skip the per-frame color rewrite entirely while hidden - it walks
+    // LIVE_COLOR_LOOKAHEAD_METERS of line points and re-uploads the color
+    // buffer to the GPU every frame, which a toggle meant to turn this
+    // overlay off should also turn off the cost of.
+    if (!visible) return;
     const body = chassisRef?.current;
     if (!body) return;
     const t = body.translation();
@@ -95,7 +108,7 @@ function RacingLine({
   });
 
   return (
-    <mesh geometry={geometry}>
+    <mesh ref={meshRef} geometry={geometry}>
       {/* vertexColors, not a single material color - each vertex carries
           its own throttle/brake zone color (see ZONE_COLOR). basic (not
           standard) so scene lighting doesn't tint or darken the colors -
@@ -108,9 +121,11 @@ function RacingLine({
 export function Track({
   track,
   chassisRef,
+  racingLineVisibleRef,
 }: {
   track: TrackData;
   chassisRef?: React.RefObject<RapierRigidBody | null>;
+  racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
   const { positions, indices, geometry } = useMemo(() => {
     const { positions, indices } = buildRibbonGeometry(track);
@@ -129,7 +144,7 @@ export function Track({
           <meshStandardMaterial color="#3a3a3a" />
         </mesh>
       </RigidBody>
-      <RacingLine track={track} chassisRef={chassisRef} />
+      <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
     </>
   );
 }

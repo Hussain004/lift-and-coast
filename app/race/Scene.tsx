@@ -269,6 +269,7 @@ export function Scene({
   const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes());
   const visualRef = useRef<THREE.Mesh>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
+  const racingLineVisibleRef = useRef(true);
 
   return (
     <Canvas
@@ -285,11 +286,12 @@ export function Scene({
       <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground />
-        <Track track={track} chassisRef={chassisRef} />
+        <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
         <Car
           chassisRef={chassisRef}
           visualRef={visualRef}
           cameraModeRef={cameraModeRef}
+          racingLineVisibleRef={racingLineVisibleRef}
           speedRef={speedRef}
           lapRef={lapRef}
           deltaRef={deltaRef}

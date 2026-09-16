@@ -104,6 +104,7 @@ export function Car({
   chassisRef,
   visualRef,
   cameraModeRef,
+  racingLineVisibleRef,
   speedRef,
   lapRef,
   deltaRef,
@@ -140,6 +141,8 @@ export function Car({
    * ref.
    */
   cameraModeRef?: React.RefObject<CameraMode>;
+  /** Shared with Track.tsx's racing line overlay - same sharing reason as cameraModeRef. */
+  racingLineVisibleRef?: React.RefObject<boolean>;
   speedRef?: React.RefObject<HTMLDivElement | null>;
   lapRef?: React.RefObject<HTMLDivElement | null>;
   deltaRef?: React.RefObject<HTMLDivElement | null>;
@@ -184,8 +187,8 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled } =
-    useDriveInput(cameraModeRef);
+  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible } =
+    useDriveInput(cameraModeRef, racingLineVisibleRef);
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -618,7 +621,8 @@ export function Car({
     if (assistsRef?.current) {
       assistsRef.current.textContent =
         `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
-        `  ABS ${absEnabled.current ? "ON" : "OFF"}`;
+        `  ABS ${absEnabled.current ? "ON" : "OFF"}` +
+        (racingLineVisible.current ? "" : "  LINE OFF");
     }
     if (damageRef?.current) {
       const damagePercent = Math.round(damageGripMultiplierRef.current * 100);
