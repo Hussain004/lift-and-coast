@@ -9,6 +9,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import {
   ANGULAR_DAMPING,
+  CAR_WHEELS,
   CHASSIS_HALF_EXTENTS,
   CHASSIS_MASS,
   LINEAR_DAMPING,
@@ -86,6 +87,67 @@ export interface StabilityOptions {
    * happened, not just how bad the worst one was).
    */
   onStep?: (elapsedSeconds: number, offTrackMeters: number) => void;
+  /**
+   * Per-step full telemetry dump (position/tilt/speed/inputs plus each
+   * wheel's contact flag, suspension force/length, and longitudinal/lateral
+   * impulses) - the headless counterpart of plan section 15's in-game
+   * telemetry overlay. Fired once per physics step AFTER world.step(), from
+   * the live controller/chassis, so it can never influence the simulation -
+   * this is what the AI stability diagnostic (tests/aiTelemetry.test.ts, run
+   * via `npm run diagnose:ai`) uses to characterize what physically happens
+   * during off-track excursions and flips (see
+   * [[lift_and_coast_ai_flip_nose_scrape]]: the mechanism turned out to be a
+   * chassis-nose rigid-body scrape against the trimesh, not traction loss).
+   */
+  onTelemetry?: (sample: TelemetrySample) => void;
+  /**
+   * When true, each telemetry sample includes `chassisContacts` — the list
+   * of other colliders the chassis rigid body is touching that step. Used to
+   * identify what EXTERNAL object the chassis collides with during a
+   * velocity-collapse event (the single-step 50→2 m/s "impact" identified
+   * by the per-wheel telemetry diagnostic: wheels all report normal loads
+   * and tiny impulses, so it's not a wheel-force event — it must be a
+   * rigid-body contact with the trimesh or ground cuboid). Read-only after
+   * world.step() via world.contactPairsWith — no simulation impact.
+   */
+  captureChassisContacts?: boolean;
+}
+
+export interface WheelTelemetry {
+  isInContact: boolean;
+  /** Newtons pushing the chassis up through this suspension, 0 when airborne. */
+  suspensionForce: number;
+  /** Current compressed suspension length (meters) - 0 = fully topped out. */
+  suspensionLength: number;
+  /** Longitudinal impulse (N·s) this wheel applied to the chassis this step — the drive/brake traction signal. */
+  forwardImpulse: number;
+  /** Lateral impulse (N·s) this wheel applied to the chassis this step — the cornering-grip signal. */
+  sideImpulse: number;
+}
+
+export interface TelemetrySample {
+  elapsedSeconds: number;
+  position: { x: number; y: number; z: number };
+  tiltRad: number;
+  /** Signed forward speed (positive = driving forward), see computeSignedForwardSpeed. */
+  speedMs: number;
+  /** Distance past the track edge in meters (0 = on the ribbon), see checkTrackLimits. */
+  offTrackMeters: number;
+  throttle: number;
+  brake: number;
+  steer: number;
+  wheels: WheelTelemetry[];
+  /**
+   * Which other colliders the chassis rigid body is currently touching.
+   * Populated via world.contactPairsWith after world.step() — pure read.
+   * Values: "ground" (the plane under the track), "track" (the ribbon
+   * trimesh). Anything else (only the chassis's own collider) is filtered
+   * out. Always present on every sample; empty while the car rides on its
+   * wheels normally, populated during a nose scrape (see
+   * [[lift_and_coast_ai_flip_nose_scrape]]), and always empty when
+   * `captureChassisContacts` is off.
+   */
+  chassisContacts: string[];
 }
 
 export interface StabilityResult {
@@ -173,6 +235,13 @@ export async function simulateDrive(
   const RAPIER_MOD = await ensureRapierInit();
   const timestep = 1 / 60;
   const world = new RAPIER_MOD.World({ x: 0, y: -9.81, z: 0 });
+  // Raw collider handles used to label chassisContacts (see
+  // captureChassisContacts): ground = the plane under the track, track =
+  // the ribbon trimesh. Only populated when captureChassisContacts is set,
+  // but assignments are kept unconditional-ish (two branches above) so this
+  // stays trivially correct if that option is ever removed.
+  let groundHandle = -1;
+  let trackHandle = -1;
 
   if (options.track) {
     // Matches Scene.tsx exactly: grass cuboid under everything plus the
@@ -184,25 +253,22 @@ export async function simulateDrive(
     const groundBody = world.createRigidBody(
       RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -(0.5 + GRASS_BELOW_TRACK_METERS), 0)
     );
-    world.createCollider(
-      RAPIER_MOD.ColliderDesc.cuboid(1250, 0.5, 1250).setFriction(0.6),
-      groundBody
-    );
+    groundHandle = world
+      .createCollider(RAPIER_MOD.ColliderDesc.cuboid(1250, 0.5, 1250).setFriction(0.6), groundBody)
+      .handle;
 
     const { positions, indices } = buildRibbonGeometry(options.track);
     const trackBody = world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed());
-    world.createCollider(
-      RAPIER_MOD.ColliderDesc.trimesh(positions, indices).setFriction(1.3),
-      trackBody
-    );
+    trackHandle = world
+      .createCollider(RAPIER_MOD.ColliderDesc.trimesh(positions, indices).setFriction(1.3), trackBody)
+      .handle;
   } else {
     const groundBody = world.createRigidBody(
       RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0)
     );
-    world.createCollider(
-      RAPIER_MOD.ColliderDesc.cuboid(1000, 0.5, 1000).setFriction(1.2),
-      groundBody
-    );
+    groundHandle = world
+      .createCollider(RAPIER_MOD.ColliderDesc.cuboid(1000, 0.5, 1000).setFriction(1.2), groundBody)
+      .handle;
   }
 
   const spawn = options.track?.startPos ?? { x: 0, z: 0, headingRad: 0 };
@@ -218,9 +284,11 @@ export async function simulateDrive(
   // additional mass stacks on top of the collider's own density-derived
   // mass, so the harness was previously simulating a ~225.76kg car against
   // constants tuned for 220kg.
-  world
-    .createCollider(RAPIER_MOD.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis)
-    .setMass(CHASSIS_MASS);
+  const chassisCollider = world.createCollider(
+    RAPIER_MOD.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS),
+    chassis
+  );
+  chassisCollider.setMass(CHASSIS_MASS);
 
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const startPos = chassis.translation();
@@ -326,6 +394,47 @@ export async function simulateDrive(
       const offTrackMeters = checkTrackLimits(options.track, pos.x, pos.z).distanceFromEdgeMeters;
       maxOffTrackMeters = Math.max(maxOffTrackMeters, offTrackMeters);
       options.onStep?.(i * timestep, offTrackMeters);
+    }
+    // Diagnostic-only capture (see onTelemetry's own comment): read-only
+    // after world.step(), so this cannot affect the simulation in any way.
+    if (options.onTelemetry) {
+      const p = chassis.translation();
+      const r = chassis.rotation();
+      const wheels: WheelTelemetry[] = [];
+      for (let w = 0; w < CAR_WHEELS.length; w++) {
+        wheels.push({
+          isInContact: controller.wheelIsInContact(w),
+          suspensionForce: controller.wheelSuspensionForce(w) ?? 0,
+          suspensionLength: controller.wheelSuspensionLength(w) ?? 0,
+          forwardImpulse: controller.wheelForwardImpulse(w) ?? 0,
+          sideImpulse: controller.wheelSideImpulse(w) ?? 0,
+        });
+      }
+      // Who the chassis rigid body is touching THIS step (read-only):
+      // distinguishes "ground" (the plane under the track) from "track"
+      // (the ribbon trimesh) by raw collider handle. Any other partner is
+      // skipped (the only other collider in the world is the chassis's own).
+      const chassisContacts: string[] = [];
+      if (options.captureChassisContacts) {
+        world.contactPairsWith(chassisCollider, (otherCollider) => {
+          if (otherCollider.handle === groundHandle) chassisContacts.push("ground");
+          else if (otherCollider.handle === trackHandle) chassisContacts.push("track");
+        });
+      }
+      options.onTelemetry({
+        elapsedSeconds: i * timestep,
+        position: { x: p.x, y: p.y, z: p.z },
+        tiltRad: tilt,
+        speedMs: computeSignedForwardSpeed(chassis.linvel(), yawFromRotation(r)),
+        offTrackMeters: options.track
+          ? checkTrackLimits(options.track, p.x, p.z).distanceFromEdgeMeters
+          : 0,
+        throttle: stepInput.throttle,
+        brake: stepInput.brake,
+        steer: stepInput.steer,
+        wheels,
+        chassisContacts,
+      });
     }
   }
 
