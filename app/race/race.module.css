@@ -128,6 +128,47 @@
   pointer-events: none;
 }
 
+/* Manual gears HUD (plan section 13): current gear with an rpm bar above
+   it that fills toward redline and turns red at the shift point - the
+   shift light that makes the auto-assist's optimal band visible. */
+.gearBox {
+  position: absolute;
+  bottom: 16px;
+  right: 192px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.gear {
+  color: #fff;
+  font-family: var(--font-geist-mono);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 16px;
+  border-radius: 4px;
+}
+
+.rpmTrack {
+  width: 96px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rpmFill {
+  height: 100%;
+  width: 0%;
+  background: #ffd23f;
+  transition: width 0.05s linear;
+}
+
 .energyTrack {
   position: absolute;
   bottom: 56px;

@@ -10,6 +10,12 @@ import {
   createCarController,
   speedSensitiveSteerScale,
 } from "../lib/physics/vehicle";
+import {
+  IDLE_RPM,
+  createGearboxState,
+  engineTorqueMultiplier,
+  gearThrustFactor,
+} from "../lib/physics/gearbox";
 
 describe("speedSensitiveSteerScale", () => {
   it("gives full lock at a standstill and low speed", () => {
@@ -71,8 +77,24 @@ describe("applyCarControls caps Push-to-Pass boost at a safe ceiling", () => {
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
-    applyCarControls(controller, { throttle: 1, brake: 0, steer: 0 }, DEFAULT_ENGINE_FORCE, 1, 0, 0, true);
-    expect(controller.wheelEngineForce(2)).toBeCloseTo(DEFAULT_ENGINE_FORCE, 0);
+    // Gears are on (the same path production uses): at a standstill the
+    // engine sits at idle rpm in 1st, so unboosted thrust is the full base
+    // force scaled by the gearbox's torque curve and 1st-gear ratio.
+    const gearbox = createGearboxState(true);
+    const idleRpmThrust =
+      DEFAULT_ENGINE_FORCE * engineTorqueMultiplier(IDLE_RPM) * gearThrustFactor(1);
+    expect(idleRpmThrust).toBeLessThan(DEFAULT_ENGINE_FORCE);
+    applyCarControls(
+      controller,
+      { throttle: 1, brake: 0, steer: 0 },
+      DEFAULT_ENGINE_FORCE,
+      1,
+      0,
+      0,
+      true,
+      { state: gearbox, shiftUp: false, shiftDown: false }
+    );
+    expect(controller.wheelEngineForce(2)).toBeCloseTo(idleRpmThrust, 1);
 
     applyCarControls(
       controller,
@@ -81,8 +103,10 @@ describe("applyCarControls caps Push-to-Pass boost at a safe ceiling", () => {
       1.6,
       0,
       0,
-      true
+      true,
+      { state: gearbox, shiftUp: false, shiftDown: false }
     );
+    // The geared boost runs through the same verified safe ceiling.
     expect(controller.wheelEngineForce(2)).toBeCloseTo(BOOSTED_ENGINE_FORCE_CAP, 0);
   });
 });

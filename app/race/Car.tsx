@@ -32,6 +32,14 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createEnergySystem } from "@/lib/physics/energy";
+import {
+  createGearboxState,
+  engineTorqueMultiplier,
+  rpmForGear,
+  IDLE_RPM,
+  REDLINE_RPM,
+  SHIFT_UP_RPM,
+} from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
@@ -115,6 +123,8 @@ export function Car({
   tireRef,
   assistsRef,
   damageRef,
+  gearRef,
+  rpmRef,
   minimapGroupRef,
   minimapMarkerRef,
   positionRef,
@@ -153,6 +163,8 @@ export function Car({
   tireRef?: React.RefObject<HTMLDivElement | null>;
   assistsRef?: React.RefObject<HTMLDivElement | null>;
   damageRef?: React.RefObject<HTMLDivElement | null>;
+  gearRef?: React.RefObject<HTMLDivElement | null>;
+  rpmRef?: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef?: React.RefObject<SVGGElement | null>;
   minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
   positionRef?: React.RefObject<HTMLDivElement | null>;
@@ -187,8 +199,12 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible } =
+  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear } =
     useDriveInput(cameraModeRef, racingLineVisibleRef);
+  // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
+  // per car. `auto` follows the autoGear toggle (synced each physics tick
+  // below) so the HUD and drive model always agree with the assist state.
+  const gearboxRef = useRef(createGearboxState(true));
   const lapTimerRef = useRef(
     createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
   );
@@ -360,6 +376,9 @@ export function Car({
       }> = [];
 
       for (let i = 0; i < steps; i++) {
+        // Diagnostic drive uses the auto gearbox (fixed-input thrust probe),
+        // never the player's live manual selection.
+        gearboxRef.current.auto = true;
         applyCarControls(
           controller,
           { throttle: detail.throttle, brake: detail.brake, steer: detail.steer },
@@ -367,7 +386,8 @@ export function Car({
           1,
           DEFAULT_BRAKE_FORCE,
           controller.currentVehicleSpeed(),
-          true
+          true,
+          { state: gearboxRef.current, shiftUp: false, shiftDown: false }
         );
         applyLoadSensitiveFriction(controller, aeroMode.current);
         controller.updateVehicle(timestep);
@@ -513,6 +533,10 @@ export function Car({
     const raceStarted = raceStartRef?.current ?? true;
     const gatedDriveInput = raceStarted ? driveInput : { ...driveInput, throttle: 0 };
 
+    // Sync the gearbox's assist mode to the live toggle (useDriveInput
+    // owns the G key, Car.tsx owns the gear state) before the drive model
+    // and HUD both read it this tick.
+    gearboxRef.current.auto = autoGear.current;
     applyCarControls(
       controller,
       gatedDriveInput,
@@ -520,7 +544,12 @@ export function Car({
       energyStatus.engineForceMultiplier,
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed(),
-      tractionControlEnabled.current
+      tractionControlEnabled.current,
+      {
+        state: gearboxRef.current,
+        shiftUp: gatedDriveInput.shiftUp,
+        shiftDown: gatedDriveInput.shiftDown,
+      }
     );
 
     // A fresh set is fitted the instant the player switches compounds
@@ -622,7 +651,24 @@ export function Car({
       assistsRef.current.textContent =
         `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
         `  ABS ${absEnabled.current ? "ON" : "OFF"}` +
+        `  GEARS ${autoGear.current ? "AUTO" : "M"}` +
         (racingLineVisible.current ? "" : "  LINE OFF");
+    }
+    // Manual gears HUD (plan section 13): the current gear up top, and
+    // below it an rpm bar anchored at idle that redlines-turns-red at the
+    // shift point - the "shift light" that teaches the auto-assist's
+    // optimal band (the skill manual drivers learn by feel).
+    if (gearRef?.current || rpmRef?.current) {
+      const rpm = rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear);
+      if (gearRef?.current) {
+        gearRef.current.textContent = `${gearboxRef.current.gear}`;
+      }
+      if (rpmRef?.current) {
+        const fraction = Math.min(1, Math.max(0, (rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)));
+        rpmRef.current.style.width = `${(fraction * 100).toFixed(1)}%`;
+        rpmRef.current.style.background =
+          rpm >= SHIFT_UP_RPM ? "#ff3b3b" : engineTorqueMultiplier(rpm) >= 0.99 ? "#39ff88" : "#ffd23f";
+      }
     }
     if (damageRef?.current) {
       const damagePercent = Math.round(damageGripMultiplierRef.current * 100);

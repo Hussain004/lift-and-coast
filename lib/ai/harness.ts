@@ -23,6 +23,7 @@ import {
   createCarController,
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
+import { createGearboxState, rpmForGear } from "../physics/gearbox";
 import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "../tracks/mesh";
 import { checkTrackLimits } from "../tracks/trackLimits";
 import type { TrackData } from "../tracks/types";
@@ -80,6 +81,13 @@ export interface StabilityOptions {
    */
   tractionControlEnabled?: boolean;
   /**
+   * Auto gearbox (plan section 5 depth feature 4) - defaults to true,
+   * matching every production caller (Car.tsx, AICar.tsx and this harness).
+   * Set false to run the legacy flat-force model (the no-gearbox path of
+   * applyCarControls) for A/B comparisons against the geared car.
+   */
+  autoGear?: boolean;
+  /**
    * Per-step off-track distance (meters, 0 = on track), only called when
    * `track` is given. StabilityResult only keeps the single worst value
    * over the whole run - this is for tuning scripts/tests that need the
@@ -136,6 +144,10 @@ export interface TelemetrySample {
   throttle: number;
   brake: number;
   steer: number;
+  /** Selected gear after this tick's gearbox update (1-based, see gearbox.ts). */
+  gear: number;
+  /** Engine rpm implied by current speed + gear, see rpmForGear. */
+  rpm: number;
   wheels: WheelTelemetry[];
   /**
    * Which other colliders the chassis rigid body is currently touching.
@@ -294,6 +306,11 @@ export async function simulateDrive(
   const startPos = chassis.translation();
   const startRotation = chassis.rotation();
   const startYaw = yawFromRotation(startRotation);
+  // Auto gearbox for the whole run (plan section 5 depth feature 4): the
+  // harness obeys the same gear-modulated physics as the player/AI. Always
+  // auto so scripted-input scenarios (which never send shift requests) get
+  // the optimal-gear behavior rather than being stuck in 1st.
+  const gearbox = createGearboxState(true);
 
   let maxTilt = 0;
   let maxOffTrackMeters = 0;
@@ -353,7 +370,12 @@ export async function simulateDrive(
       stepInput.boostMultiplier ?? options.boostMultiplier ?? 1,
       options.brakeForce,
       controller.currentVehicleSpeed(),
-      options.tractionControlEnabled ?? true
+      options.tractionControlEnabled ?? true,
+      // gears are on for every caller except explicit legacy A/B runs
+      // (options.autoGear === false) - see the option's own comment.
+      options.autoGear === false
+        ? undefined
+        : { state: gearbox, shiftUp: false, shiftDown: false }
     );
     applyLoadSensitiveFriction(controller, stepAeroMode);
     controller.updateVehicle(timestep);
@@ -432,6 +454,8 @@ export async function simulateDrive(
         throttle: stepInput.throttle,
         brake: stepInput.brake,
         steer: stepInput.steer,
+        gear: gearbox.gear,
+        rpm: rpmForGear(controller.currentVehicleSpeed(), gearbox.gear),
         wheels,
         chassisContacts,
       });

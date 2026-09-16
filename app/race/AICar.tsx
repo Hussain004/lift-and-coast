@@ -31,6 +31,7 @@ import {
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
+import { createGearboxState } from "@/lib/physics/gearbox";
 import { checkTrackLimits, computeSurfaceGripMultiplier } from "@/lib/tracks/trackLimits";
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
@@ -93,6 +94,10 @@ export function AICar({
   const chassisRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Mesh>(null);
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(null);
+  // Auto gearbox (plan section 5 depth feature 4): the AI shifted by the
+  // same rpm policy as the player's auto-assist - always auto, the AI never
+  // drives in manual mode.
+  const gearboxRef = useRef(createGearboxState(true));
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const lapTimerRef = useRef(
@@ -182,7 +187,20 @@ export function AICar({
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
     const raceStarted = raceStartRef?.current ?? true;
     const gatedControls = raceStarted ? controls : { ...controls, throttle: 0 };
-    applyCarControls(controller, gatedControls, DEFAULT_ENGINE_FORCE, 1, DEFAULT_BRAKE_FORCE, speedMs, true);
+    // Auto gearbox (shift requests left false): the AI driver shifts by the
+    // same rpm policy as the player's assist, never manually - the AI obeys
+    // the exact same gear-modulated physics the player drives under.
+    gearboxRef.current.auto = true;
+    applyCarControls(
+      controller,
+      gatedControls,
+      DEFAULT_ENGINE_FORCE,
+      1,
+      DEFAULT_BRAKE_FORCE,
+      speedMs,
+      true,
+      { state: gearboxRef.current, shiftUp: false, shiftDown: false }
+    );
 
     const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
     applyLoadSensitiveFriction(controller, "high-downforce", 1, surfaceGripMultiplier);

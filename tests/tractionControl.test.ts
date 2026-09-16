@@ -10,6 +10,7 @@ import {
   createCarController,
   tractionControlThrottleScale,
 } from "../lib/physics/vehicle";
+import { IDLE_RPM, createGearboxState, engineTorqueMultiplier, gearThrustFactor } from "../lib/physics/gearbox";
 import { simulateDrive } from "../lib/ai/harness";
 
 describe("tractionControlThrottleScale", () => {
@@ -56,6 +57,12 @@ describe("applyCarControls wires traction control into live wheel engine force",
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
+    // Shared gearbox for both calls: at a standstill it stays in 1st at
+    // idle rpm, so the baseline thrust both scale off is the gear-modulated
+    // idle force (see gearbox.ts), not the raw DEFAULT_ENGINE_FORCE.
+    const gearbox = createGearboxState(true);
+    const idleRpmThrust =
+      DEFAULT_ENGINE_FORCE * engineTorqueMultiplier(IDLE_RPM) * gearThrustFactor(1);
     applyCarControls(
       controller,
       { throttle: 1, brake: 0, steer: 1 },
@@ -63,7 +70,8 @@ describe("applyCarControls wires traction control into live wheel engine force",
       1,
       0,
       0,
-      true
+      true,
+      { state: gearbox, shiftUp: false, shiftDown: false }
     );
     const withTC = controller.wheelEngineForce(2) ?? 0;
 
@@ -74,12 +82,13 @@ describe("applyCarControls wires traction control into live wheel engine force",
       1,
       0,
       0,
-      false
+      false,
+      { state: gearbox, shiftUp: false, shiftDown: false }
     );
     const withoutTC = controller.wheelEngineForce(2) ?? 0;
 
     expect(withTC).toBeLessThan(withoutTC);
-    expect(withoutTC).toBeCloseTo(DEFAULT_ENGINE_FORCE, 0);
+    expect(withoutTC).toBeCloseTo(idleRpmThrust, 1);
   });
 
   it("does not touch engine force on a straight line regardless of the TC toggle", async () => {
@@ -91,6 +100,9 @@ describe("applyCarControls wires traction control into live wheel engine force",
     world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS_HALF_EXTENTS), chassis);
     const controller = createCarController(RAPIER, world, chassis);
 
+    const gearbox = createGearboxState(true);
+    const idleRpmThrust =
+      DEFAULT_ENGINE_FORCE * engineTorqueMultiplier(IDLE_RPM) * gearThrustFactor(1);
     applyCarControls(
       controller,
       { throttle: 1, brake: 0, steer: 0 },
@@ -98,7 +110,8 @@ describe("applyCarControls wires traction control into live wheel engine force",
       1,
       0,
       0,
-      true
+      true,
+      { state: gearbox, shiftUp: false, shiftDown: false }
     );
     const withTC = controller.wheelEngineForce(2) ?? 0;
 
@@ -109,12 +122,13 @@ describe("applyCarControls wires traction control into live wheel engine force",
       1,
       0,
       0,
-      false
+      false,
+      { state: gearbox, shiftUp: false, shiftDown: false }
     );
     const withoutTC = controller.wheelEngineForce(2) ?? 0;
 
     expect(withTC).toBeCloseTo(withoutTC, 5);
-    expect(withTC).toBeCloseTo(DEFAULT_ENGINE_FORCE, 0);
+    expect(withTC).toBeCloseTo(idleRpmThrust, 1);
   });
 });
 

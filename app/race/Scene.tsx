@@ -232,6 +232,8 @@ export function Scene({
   tireRef,
   assistsRef,
   damageRef,
+  gearRef,
+  rpmRef,
   minimapGroupRef,
   minimapMarkerRef,
   aiMinimapMarkerRef,
@@ -252,6 +254,8 @@ export function Scene({
   tireRef: React.RefObject<HTMLDivElement | null>;
   assistsRef: React.RefObject<HTMLDivElement | null>;
   damageRef: React.RefObject<HTMLDivElement | null>;
+  gearRef: React.RefObject<HTMLDivElement | null>;
+  rpmRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
   aiMinimapMarkerRef: React.RefObject<SVGCircleElement | null>;
@@ -302,6 +306,8 @@ export function Scene({
           tireRef={tireRef}
           assistsRef={assistsRef}
           damageRef={damageRef}
+          gearRef={gearRef}
+          rpmRef={rpmRef}
           minimapGroupRef={minimapGroupRef}
           minimapMarkerRef={minimapMarkerRef}
           positionRef={positionRef}

@@ -8,10 +8,30 @@ Save the juice. Send the apex.
 
 ## Status
 
-Phase 0 (vertical slice): a single car on a real Silverstone circuit layout,
-driven with a real Rapier vehicle controller, keyboard input, and a chase
-camera. Elevation, camber, kerbs, surface zones, the racing line, tire
-modeling, and AI are not built yet.
+A real Silverstone circuit (with elevation, camber, kerbs and surface
+zones) driven by a Rapier raycast-vehicle chassis with six-speed-era
+sequential manual gears plus an auto-gear assist (plan section 5's depth
+feature 4), keyboard input, chase/cockpit cameras, and rewind. Built on top
+of the vertical slice:
+
+- Energy harvesting + one-shot Push-to-Pass boost (Hold Shift)
+- Active Aero: high-downforce vs low-drag mode (E)
+- Tire compounds, wear and compound-grip degradation (1/2/3)
+- Assists: traction control (T), ABS (B), racing line (L); manual vs
+  auto gears (Q/Z shift, G toggles the assist)
+- Ghost laps + personal bests persisted in IndexedDB
+- Quick Race vs one AI opponent (runs the same physics as the player),
+  playable Qualifying, live race position, 5s rewind with lap-clock rollback
+- Track-limit enforcement (warning -> penalty / lap invalidation), damage,
+  minimap, sector times, delta timer, RPM/gear HUD
+- Headless vehicle-stability harness (`lib/ai/harness.ts`) hot-lapping the
+  real trimesh under stress scenarios, plus an AI stability diagnostic
+  suite - all part of the test suite.
+
+Not built yet: the session-setup menu (plan sections 7-8), gamepad/wheel
+input (section 5), AI energy/aero deployment (first attempt destabilized
+the AI and was reverted; see the project memory docs), and day/night or
+weather.
 
 ## Track data
 
@@ -46,7 +66,9 @@ Open http://localhost:3000. Click Drive, then use WASD or the arrow keys.
 Hold R to rewind the last few seconds after spinning off. Hold Shift to
 deploy harvested energy for a power boost (Push-to-Pass). Press E to toggle
 Active Aero between high-downforce cornering mode and a low-drag mode for a
-higher top speed on the straights.
+higher top speed on the straights. Press Q/Z to shift up/down and G to
+toggle the auto-gear assist, T for traction control, B for ABS, L for the
+racing line, C for the camera, and 1/2/3 to fit soft/medium/hard tires.
 
 ## Testing
 

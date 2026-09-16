@@ -3,6 +3,13 @@ import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import { loadSensitivityScale } from "./tireModel";
 import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
+import {
+  engineTorqueMultiplier,
+  gearThrustFactor,
+  rpmForGear,
+  updateGearbox,
+  type GearboxState,
+} from "./gearbox";
 
 export interface WheelLayout {
   /** Position of the wheel relative to the chassis center. */
@@ -121,9 +128,10 @@ export const ANGULAR_DAMPING = 6;
 // This is a single fixed force, not a real car's per-gear torque curve, so
 // it can't also hit a real F1 0-200 time (~4.5-4.8s) - quadratic drag makes
 // a fixed force taper harder as speed climbs while a real car shifts gears
-// to stay near peak thrust past 200 km/h. Closing that gap needs a per-gear
-// torque curve (plan section 5, depth feature 4: manual gears), which is
-// future work, not a change to this constant.
+// to stay near peak thrust past 200 km/h. This constant is now the per-gear
+// torque curve's BASE force: gearbox.ts multiplies it by a torque curve
+// over rpm (plan section 5, depth feature 4: manual gears), peaking at
+// exactly this value in 1st gear so the validated launch feel is preserved.
 //
 // Stability re-verified at 1450N: a straight-line 15s full-throttle sweep
 // shows no instability (well under the 0.6 rad flip threshold). Braking, not
@@ -142,11 +150,11 @@ export const DEFAULT_ENGINE_FORCE = 1450;
 // recovers in 1.1s/0.13 rad, 1900N spirals into a sustained wheelie (front
 // wheels lose contact for 3.65s, pitch past 0.5 rad and not recovering).
 // A single fixed force can't hit both a real F1 0-100 (~2.5s, needs 1450N)
-// and 0-200 time (~4.5-4.8s, needs a per-gear torque curve this game
-// doesn't have) - closing that second gap is future work (plan section 5,
-// depth feature 4: manual gears), not something to force out of this one
-// constant. Capping the boosted force here keeps boost safe in the
-// meantime while still giving it a real, felt kick over unboosted driving.
+// and 0-200 time (~4.5-4.8s) - the per-gear torque curve that closes that
+// second gap now exists (gearbox.ts, plan section 5 depth feature 4), with
+// this same 1450N as its curve's peak, so it stays a ceiling concern only.
+// Capping the boosted force here keeps boost safe in the meantime while
+// still giving it a real, felt kick over unboosted driving.
 export const BOOSTED_ENGINE_FORCE_CAP = 1750;
 export const DEFAULT_BRAKE_FORCE = 40;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
@@ -430,6 +438,19 @@ export function applyDragImpulse(
   body.applyImpulse({ x: -v.x * scale, y: 0, z: -v.z * scale }, true);
 }
 
+/**
+ * Optional gearbox wiring for applyCarControls (plan section 5, depth
+ * feature 4: manual gears, implemented in gearbox.ts). `state` is mutated
+ * in place every call so the caller's gear selection persists across ticks.
+ */
+export interface GearboxControl {
+  state: GearboxState;
+  /** Edge-triggered shift-up request (manual mode only - see gearbox.ts). */
+  shiftUp: boolean;
+  /** Edge-triggered shift-down request (manual mode only - see gearbox.ts). */
+  shiftDown: boolean;
+}
+
 export function applyCarControls(
   controller: Rapier.DynamicRayCastVehicleController,
   { throttle, brake, steer }: { throttle: number; brake: number; steer: number },
@@ -437,10 +458,30 @@ export function applyCarControls(
   boostMultiplier: number,
   maxBrakeForce: number,
   currentSpeedMs: number,
-  tractionControlEnabled: boolean
+  tractionControlEnabled: boolean,
+  // Plan section 5 depth feature 4 (manual gears): when given, the engine's
+  // fixed base force becomes a per-gear torque curve (see gearbox.ts) - the
+  // gearbox state is mutated here so the caller's gear selection persists
+  // across ticks, and the resulting force never exceeds the same
+  // BOOSTED_ENGINE_FORCE_CAP ceiling (peak thrust in 1st at peak torque is
+  // exactly baseEngineForce). When omitted, behaves exactly as before the
+  // gearbox existed - the legacy flat-force model.
+  gearbox?: GearboxControl
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
-  const engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
+  let engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
+  if (gearbox) {
+    updateGearbox(gearbox.state, {
+      speedMs: currentSpeedMs,
+      shiftUp: gearbox.shiftUp,
+      shiftDown: gearbox.shiftDown,
+    });
+    const rpm = rpmForGear(currentSpeedMs, gearbox.state.gear);
+    engineForce = Math.min(
+      baseEngineForce * boostMultiplier * engineTorqueMultiplier(rpm) * gearThrustFactor(gearbox.state.gear),
+      BOOSTED_ENGINE_FORCE_CAP
+    );
+  }
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   CAR_WHEELS.forEach((wheel, i) => {
     controller.setWheelEngineForce(i, wheel.isDriven ? throttle * throttleScale * engineForce : 0);

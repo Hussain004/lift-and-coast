@@ -75,6 +75,8 @@ function RaceContent() {
   const tireRef = useRef<HTMLDivElement>(null);
   const assistsRef = useRef<HTMLDivElement>(null);
   const damageRef = useRef<HTMLDivElement>(null);
+  const gearRef = useRef<HTMLDivElement>(null);
+  const rpmRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
   const aiMinimapMarkerRef = useRef<SVGCircleElement>(null);
@@ -97,6 +99,8 @@ function RaceContent() {
         tireRef={tireRef}
         assistsRef={assistsRef}
         damageRef={damageRef}
+        gearRef={gearRef}
+        rpmRef={rpmRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
         aiMinimapMarkerRef={aiMinimapMarkerRef}
@@ -111,7 +115,7 @@ function RaceContent() {
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
         E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
         soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to
-        toggle the racing line.
+        toggle the racing line. Q/Z to shift gears, G to toggle auto-gears.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
@@ -126,6 +130,14 @@ function RaceContent() {
       <div className={styles.sectors} ref={sectorsRef} />
       <div className={styles.speed} ref={speedRef}>
         0 km/h
+      </div>
+      <div className={styles.gearBox}>
+        <div className={styles.rpmTrack}>
+          <div className={styles.rpmFill} ref={rpmRef} />
+        </div>
+        <div className={styles.gear} ref={gearRef}>
+          1
+        </div>
       </div>
       <div className={styles.aeroMode} ref={aeroModeRef} />
       <div className={styles.tire} ref={tireRef} />

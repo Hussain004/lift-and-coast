@@ -22,6 +22,14 @@ export interface DriveInput {
   steer: number;
   rewind: boolean;
   deploy: boolean;
+  /**
+   * Edge-triggered shift requests (manual gear mode only), latched in
+   * keydown and consumed exactly once by the update() call that follows -
+   * holding the key down does not shift every frame. See update()'s
+   * copy/clear/restore below.
+   */
+  shiftUp: boolean;
+  shiftDown: boolean;
 }
 
 const STEER_RATE = 4;
@@ -61,11 +69,14 @@ const LEFT_KEYS = ["KeyA", "ArrowLeft"];
 const RIGHT_KEYS = ["KeyD", "ArrowRight"];
 const REWIND_KEYS = ["KeyR"];
 const DEPLOY_KEYS = ["ShiftLeft", "ShiftRight"];
+const SHIFT_UP_KEYS = ["KeyQ"];
+const SHIFT_DOWN_KEYS = ["KeyZ"];
 const AERO_MODE_TOGGLE_KEY = "KeyE";
 const CAMERA_MODE_TOGGLE_KEY = "KeyC";
 const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
 const ABS_TOGGLE_KEY = "KeyB";
 const RACING_LINE_TOGGLE_KEY = "KeyL";
+const AUTO_GEAR_TOGGLE_KEY = "KeyG";
 
 const anyPressed = (keys: Set<string>, codes: string[]) =>
   codes.some((code) => keys.has(code));
@@ -96,6 +107,8 @@ export function useDriveInput(
     steer: 0,
     rewind: false,
     deploy: false,
+    shiftUp: false,
+    shiftDown: false,
   });
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
@@ -106,6 +119,11 @@ export function useDriveInput(
   // right default until it does).
   const tractionControlEnabled = useRef(true);
   const absEnabled = useRef(true);
+  // Auto-gear assist (plan section 5 depth feature 4: manual gears) - same
+  // default-ON reasoning as the other assists: sequential manual shifting is
+  // the skill to learn, but until a "Pro" tier exists the shipped default is
+  // the assisted gearbox, toggled off with G for real paddles.
+  const autoGear = useRef(true);
   const internalRacingLineVisible = useRef(true);
   // On by default (plan section 13's "optional ideal-line overlay assist") -
   // same "no Pro difficulty tier yet" reasoning as tractionControlEnabled/
@@ -136,6 +154,18 @@ export function useDriveInput(
       if (e.code === RACING_LINE_TOGGLE_KEY && !keys.current.has(e.code)) {
         racingLineVisible.current = !racingLineVisible.current;
       }
+      if (e.code === AUTO_GEAR_TOGGLE_KEY && !keys.current.has(e.code)) {
+        autoGear.current = !autoGear.current;
+      }
+      // Shift requests latch on the rising edge (no OS key-repeat, same
+      // edge detection as the toggles above) and are consumed by the next
+      // update() - see the copy/clear/restore in update() below.
+      if (SHIFT_UP_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+        input.current.shiftUp = true;
+      }
+      if (SHIFT_DOWN_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+        input.current.shiftDown = true;
+      }
       keys.current.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keys.current.delete(e.code);
@@ -160,8 +190,18 @@ export function useDriveInput(
     tractionControlEnabled,
     absEnabled,
     racingLineVisible,
+    autoGear,
     update(dt: number) {
       const pressed = keys.current;
+      // Shift requests are edge-triggered: keydown latches them, this tick
+      // consumes them exactly once (copied out before the fields are
+      // cleared, so holding Q/Z down can't shift every frame), and they're
+      // restored onto the returned input for the tick's consumers
+      // (applyCarControls' gearbox handling).
+      const shiftUp = input.current.shiftUp;
+      const shiftDown = input.current.shiftDown;
+      input.current.shiftUp = false;
+      input.current.shiftDown = false;
       const steerTarget =
         (anyPressed(pressed, LEFT_KEYS) ? 1 : 0) -
         (anyPressed(pressed, RIGHT_KEYS) ? 1 : 0);
@@ -181,6 +221,8 @@ export function useDriveInput(
         : 0;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
+      input.current.shiftUp = shiftUp;
+      input.current.shiftDown = shiftDown;
       return input.current;
     },
   };
