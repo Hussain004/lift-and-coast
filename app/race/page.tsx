@@ -82,6 +82,7 @@ function RaceContent() {
   const raceResultRef = useRef<HTMLDivElement>(null);
   const countdownRef = useRef<HTMLDivElement>(null);
   const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
+  const penaltyToastRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -104,6 +105,7 @@ function RaceContent() {
         raceLaps={raceLaps}
         countdownRef={countdownRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
+        penaltyToastRef={penaltyToastRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
@@ -129,6 +131,7 @@ function RaceContent() {
       <div className={styles.assists} ref={assistsRef} />
       <div className={styles.damage} ref={damageRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
+      <div className={styles.penaltyToast} ref={penaltyToastRef} />
       <svg
         className={styles.minimap}
         width={MINIMAP_SIZE_PX}

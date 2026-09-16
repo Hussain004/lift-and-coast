@@ -240,6 +240,7 @@ export function Scene({
   raceLaps,
   countdownRef,
   qualifyingDisplayRef,
+  penaltyToastRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -260,6 +261,7 @@ export function Scene({
   raceLaps?: number;
   countdownRef: React.RefObject<HTMLDivElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
+  penaltyToastRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState());
@@ -307,6 +309,7 @@ export function Scene({
           raceStartRef={raceStartRef}
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}
+          penaltyToastRef={penaltyToastRef}
           track={track}
         />
         <AICar

@@ -264,6 +264,26 @@
   display: none;
 }
 
+.penaltyToast {
+  position: absolute;
+  top: 104px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ff3b3b;
+  font-family: var(--font-geist-mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 16px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.penaltyToast:empty {
+  display: none;
+}
+
 .countdown {
   position: absolute;
   top: 30%;

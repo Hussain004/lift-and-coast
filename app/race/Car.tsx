@@ -67,6 +67,7 @@ const DEFAULT_RACE_LAPS = 3;
 // independently off the same violation rather than one suppressing the
 // other (see the ponytail note at the call site for what this doesn't do).
 const RACE_TRACK_LIMIT_PENALTY_SECONDS = 5;
+const PENALTY_TOAST_DURATION_SECONDS = 2.5;
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
   green: "#39ff88",
@@ -122,6 +123,7 @@ export function Car({
   raceStartRef,
   qualifyingRef,
   qualifyingDisplayRef,
+  penaltyToastRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -171,6 +173,8 @@ export function Car({
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
+  /** Live "+Ns PENALTY" flash for the race-mode track-limit penalty below. */
+  penaltyToastRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -187,6 +191,10 @@ export function Car({
   );
   const raceElapsedSecondsRef = useRef(0);
   const raceFinishedRef = useRef(false);
+  // Race clock timestamp (not lap-relative currentLapSeconds, which resets
+  // every lap and could strand the toast if a penalty lands late in a lap)
+  // to hide the penalty toast at.
+  const penaltyToastHideAtRef = useRef<number | null>(null);
   const qualifyingDisplayedRef = useRef(false);
   const bestLapRef = useRef<number | null>(null);
   const deltaTrackerRef = useRef(createDeltaTracker());
@@ -681,6 +689,14 @@ export function Car({
       // exist.
       if (!raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
         raceFinishedRef.current = true;
+        // raceElapsedSecondsRef stops advancing once raceFinishedRef flips
+        // (see the guard above it), so the penalty toast's hide-at clock
+        // would otherwise freeze too - clear it here rather than leave it
+        // stuck on screen next to the finish banner until reload.
+        if (penaltyToastRef?.current) {
+          penaltyToastRef.current.textContent = "";
+        }
+        penaltyToastHideAtRef.current = null;
         const finalPosition = raceRef?.current
           ? computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters)
           : 1;
@@ -750,11 +766,14 @@ export function Car({
         // rewind reaches back far enough to clear lapInvalidRef (see the
         // rewind-resume block above) - undoing the mistake stops it from
         // costing another invalidated lap, but the race-clock penalty
-        // already happened. No live "+5s" toast either; the only feedback
-        // is the final time on the finish banner. Revisit if either gap
-        // turns out to matter in practice.
+        // already happened. Revisit if that gap turns out to matter in
+        // practice.
         if (!raceFinishedRef.current) {
           raceElapsedSecondsRef.current += RACE_TRACK_LIMIT_PENALTY_SECONDS;
+          if (penaltyToastRef?.current) {
+            penaltyToastRef.current.textContent = `+${RACE_TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
+          }
+          penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
         }
       }
       lapInvalidRef.current = true;
@@ -795,6 +814,15 @@ export function Car({
 
     if (trackLimitRef?.current) {
       trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
+    }
+
+    if (
+      penaltyToastRef?.current &&
+      penaltyToastHideAtRef.current !== null &&
+      raceElapsedSecondsRef.current >= penaltyToastHideAtRef.current
+    ) {
+      penaltyToastRef.current.textContent = "";
+      penaltyToastHideAtRef.current = null;
     }
 
     if (minimapGroupRef?.current) {
