@@ -94,3 +94,94 @@ export async function savePersonalBest(trackId: string, record: PersonalBestReco
   const db = await openDB();
   await putRecord(db, trackId, record);
 }
+
+function getAllRecords(db: IDBDatabase): Promise<Record<string, PersonalBestRecord>> {
+  return new Promise((resolve, reject) => {
+    const store = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME);
+    const keysRequest = store.getAllKeys();
+    const valuesRequest = store.getAll();
+    let keys: IDBValidKey[] | null = null;
+    let values: PersonalBestRecord[] | null = null;
+    const maybeResolve = () => {
+      if (keys === null || values === null) return;
+      const result: Record<string, PersonalBestRecord> = {};
+      keys.forEach((key, i) => {
+        result[String(key)] = values![i];
+      });
+      resolve(result);
+    };
+    keysRequest.onsuccess = () => {
+      keys = keysRequest.result;
+      maybeResolve();
+    };
+    valuesRequest.onsuccess = () => {
+      values = valuesRequest.result;
+      maybeResolve();
+    };
+    keysRequest.onerror = () => reject(keysRequest.error);
+    valuesRequest.onerror = () => reject(valuesRequest.error);
+  });
+}
+
+export interface SaveBundle {
+  schemaVersion: 1;
+  exportedAt: string;
+  personalBests: Record<string, PersonalBestRecord>;
+}
+
+/**
+ * Plan section 10: "Export/import: a 'dump my save' button (JSON file) and
+ * re-import - backup and device transfer without a backend." Bundles every
+ * track's personal best (including ghost data - the whole point of a
+ * backup is not losing your hot lap, not just the number) into one JSON
+ * object; the caller (the export button) turns this into a downloadable
+ * file.
+ */
+export async function exportSaveData(): Promise<SaveBundle> {
+  if (typeof indexedDB === "undefined") {
+    return { schemaVersion: 1, exportedAt: new Date().toISOString(), personalBests: {} };
+  }
+  const db = await openDB();
+  const personalBests = await getAllRecords(db);
+  return { schemaVersion: 1, exportedAt: new Date().toISOString(), personalBests };
+}
+
+/**
+ * Restores a bundle from exportSaveData - used for both device transfer and
+ * a local backup restore. Overwrites any existing record for the same
+ * trackId (a restore is expected to replace, not merge, matching what a
+ * user asking to "re-import my save" wants). Throws on malformed input so
+ * the caller (the import button) can show a real error instead of silently
+ * doing nothing.
+ */
+export async function importSaveData(bundle: unknown): Promise<void> {
+  if (
+    typeof bundle !== "object" ||
+    bundle === null ||
+    !("personalBests" in bundle) ||
+    typeof (bundle as { personalBests: unknown }).personalBests !== "object" ||
+    (bundle as { personalBests: unknown }).personalBests === null
+  ) {
+    throw new Error("Not a valid Lift & Coast save file.");
+  }
+  const personalBests = (bundle as { personalBests: Record<string, unknown> }).personalBests;
+  for (const [trackId, record] of Object.entries(personalBests)) {
+    if (!isPersonalBestRecord(record)) {
+      throw new Error(`Not a valid Lift & Coast save file: bad record for "${trackId}".`);
+    }
+  }
+  if (typeof indexedDB === "undefined") return;
+  const db = await openDB();
+  for (const [trackId, record] of Object.entries(personalBests as Record<string, PersonalBestRecord>)) {
+    await putRecord(db, trackId, record);
+  }
+}
+
+function isPersonalBestRecord(value: unknown): value is PersonalBestRecord {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as PersonalBestRecord).bestLapSeconds === "number" &&
+    Array.isArray((value as PersonalBestRecord).ghost)
+  );
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SaveTransfer } from "./SaveTransfer";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -14,6 +15,7 @@ export default function Home() {
       <p className={styles.tip}>
         Lift &amp; coast: it&apos;s not slow, it&apos;s strategic.
       </p>
+      <SaveTransfer />
     </div>
   );
 }
