@@ -369,20 +369,23 @@ export function yawFromQuaternion(x: number, y: number, z: number, w: number): n
 
 /**
  * A reliable, signed "forward speed" (positive = moving forward, negative =
- * reversing), computed directly from linear velocity and heading - a
- * substitute for Rapier's own controller.currentVehicleSpeed() where that's
- * needed as an input to other logic (steer scaling, traction control
- * gating, an AI's target-speed following), not for driving the wheels
- * themselves. Found via a sustained (10s+) full-throttle, real-trimesh
- * headless run (see tests/aiOpponent.test.ts) that currentVehicleSpeed()
- * intermittently reports the wrong SIGN at high speed while its magnitude
- * stays correct - confirmed against the chassis's own raw linear velocity
- * magnitude, which stayed smooth and correct the entire time the reported
- * speed was flipping sign every few frames. Not yet adopted by Car.tsx's
- * existing call sites - this fixes the AI's own speed-dependent control
- * logic without touching the player's already-shipped, already-verified
- * code path in the same pass as an unrelated feature; worth revisiting for
- * the player too as a follow-up.
+ * reversing), computed directly from linear velocity and heading. Use it
+ * wherever a *signed* speed is consumed as a control input - the AI's
+ * target-speed following (pathFollower.ts), AICar.tsx, and the harness's own
+ * DriveState / reported final speed. Rapier's controller.currentVehicleSpeed()
+ * intermittently reports the wrong SIGN at sustained high speed on the real
+ * trimesh (magnitude stays correct), found via a 10s+ full-throttle headless
+ * run (see tests/aiOpponent.test.ts) and confirmed against the chassis's raw
+ * linear velocity, which stayed smooth while the reported speed flipped sign
+ * every few frames.
+ *
+ * The player's own Car.tsx call sites deliberately still read the raw
+ * controller.currentVehicleSpeed(): every consumer there takes Math.abs or
+ * squares it (speedSensitiveSteerScale, tractionControlThrottleScale,
+ * rpmForGear/updateGearbox, computeDownforceN, the km/h HUD, tire-wear
+ * distance), so a wrong sign cannot reach the control path.
+ * tests/speedSignInsensitivity.test.ts guards that property. This helper is
+ * for signed consumers only, and is never what drives the wheels.
  */
 export function computeSignedForwardSpeed(
   linvel: { x: number; z: number },

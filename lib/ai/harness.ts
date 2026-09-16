@@ -164,6 +164,7 @@ export interface TelemetrySample {
 
 export interface StabilityResult {
   maxTiltRad: number;
+  /** Signed forward speed at the end of the run (see computeSignedForwardSpeed). */
   finalSpeedMs: number;
   /** Net straight-line displacement from start to end position. */
   distanceMeters: number;
@@ -474,7 +475,12 @@ export async function simulateDrive(
 
   return {
     maxTiltRad: maxTilt,
-    finalSpeedMs: controller.currentVehicleSpeed(),
+    // computeSignedForwardSpeed, not controller.currentVehicleSpeed(): this
+    // is a reported result (nothing downstream feeds it back into the
+    // simulation), and the raw read can flip sign at high speed, which made
+    // any assertion on it - or an A/B comparison between two runs - flaky.
+    // See computeSignedForwardSpeed's own comment.
+    finalSpeedMs: computeSignedForwardSpeed(chassis.linvel(), endYaw),
     distanceMeters,
     distanceTraveledMeters,
     maxOffTrackMeters,
