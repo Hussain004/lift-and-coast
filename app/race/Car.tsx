@@ -59,6 +59,13 @@ const SECTOR_COUNT = 3;
 // doesn't have yet. Configurable via a ?laps= URL param (see page.tsx) in
 // the meantime - a real slider still needs the menu system to live in.
 const DEFAULT_RACE_LAPS = 3;
+// Plan section 5 depth feature 7: "all four wheels off at a corner exit ->
+// lap invalidation (time trial) or warning -> time penalty (race)". This
+// project has no separate mode selection - every drive tracks a personal
+// best AND runs a Quick Race at once - so both consequences apply
+// independently off the same violation rather than one suppressing the
+// other (see the ponytail note at the call site for what this doesn't do).
+const RACE_TRACK_LIMIT_PENALTY_SECONDS = 5;
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
   green: "#39ff88",
@@ -705,6 +712,16 @@ export function Car({
       // not just its most recent moment.
       if (!lapInvalidRef.current) {
         lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+        // ponytail: applied once here and never refunded, even if a later
+        // rewind reaches back far enough to clear lapInvalidRef (see the
+        // rewind-resume block above) - undoing the mistake stops it from
+        // costing another invalidated lap, but the race-clock penalty
+        // already happened. No live "+5s" toast either; the only feedback
+        // is the final time on the finish banner. Revisit if either gap
+        // turns out to matter in practice.
+        if (!raceFinishedRef.current) {
+          raceElapsedSecondsRef.current += RACE_TRACK_LIMIT_PENALTY_SECONDS;
+        }
       }
       lapInvalidRef.current = true;
     }
