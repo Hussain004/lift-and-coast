@@ -257,6 +257,24 @@ export function Car({
   );
 
   useEffect(() => {
+    // A full page reload rather than resetting each of this component's
+    // (and AICar's, and the grid-start countdown's) many lap/race-scoped
+    // refs by hand - this project has no menu/results state machine to
+    // return to yet (see the finish-banner comment below), and a manual
+    // reset would need every one of those refs kept in perfect sync
+    // forever as new race-scoped state gets added. Reloading the exact
+    // current URL re-mounts everything from scratch (Rapier world
+    // included) and keeps any ?laps= param for free.
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === "Enter" && raceFinishedRef.current) {
+        window.location.reload();
+      }
+    }
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, []);
+
+  useEffect(() => {
     const body = chassisRef.current;
     if (!body) return;
     const controller = createCarController(rapier, world, body);
@@ -586,6 +604,15 @@ export function Car({
     }
 
     if (isRewindingRef.current) return;
+    // Grid start (Scene.tsx): the car is stationary during the countdown
+    // (throttle is locked in useBeforePhysicsStep above), but lapTimerRef
+    // accumulates currentLapSeconds every frame regardless of whether the
+    // car moves - without this guard, every session's first lap started
+    // ~3.75s in the hole from mount alone, corrupting it as a potential
+    // personal best/delta-timer reference the instant the countdown
+    // shipped. Nothing below this point needs to run while waiting: no
+    // progress is being made yet.
+    if (!(raceStartRef?.current ?? true)) return;
 
     const t = body.translation();
     const status = checkTrackLimits(track, t.x, t.z);
@@ -617,7 +644,8 @@ export function Car({
           ? computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters)
           : 1;
         raceResultRef.current.textContent =
-          `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}`;
+          `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
+          `  //  PRESS ENTER TO RESTART`;
       }
       const wasNewBest =
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);

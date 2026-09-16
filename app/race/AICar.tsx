@@ -147,9 +147,15 @@ export function AICar({
       return;
     }
 
-    const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
-    if (raceRef?.current) {
-      raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
+    // Grid start (Scene.tsx) - same reasoning as Car.tsx's identical guard:
+    // the lap timer accumulates currentLapSeconds every tick regardless of
+    // whether the car is actually moving, so it must not run during the
+    // countdown (the AI is held stationary by the throttle gate below too).
+    if (raceStartRef?.current ?? true) {
+      const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
+      if (raceRef?.current) {
+        raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
+      }
     }
 
     const rot = body.rotation();
