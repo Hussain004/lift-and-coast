@@ -111,6 +111,7 @@ export function Car({
   raceResultRef,
   raceRef,
   raceLaps = DEFAULT_RACE_LAPS,
+  raceStartRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -150,6 +151,13 @@ export function Car({
   raceRef?: React.RefObject<RaceState>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
+  /**
+   * Grid start (Scene.tsx's RaceStartCountdown) - throttle is locked out
+   * while false. Undefined behaves as already-started (no countdown), so
+   * this stays optional for anything that mounts Car.tsx without Scene's
+   * countdown wiring.
+   */
+  raceStartRef?: React.RefObject<boolean>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -457,9 +465,14 @@ export function Car({
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
 
+    // Grid start: throttle only, so the car can still brake/steer to hold
+    // its spot before the lights go out, but can't jump the start.
+    const raceStarted = raceStartRef?.current ?? true;
+    const gatedDriveInput = raceStarted ? driveInput : { ...driveInput, throttle: 0 };
+
     applyCarControls(
       controller,
-      driveInput,
+      gatedDriveInput,
       DEFAULT_ENGINE_FORCE,
       energyStatus.engineForceMultiplier,
       DEFAULT_BRAKE_FORCE,

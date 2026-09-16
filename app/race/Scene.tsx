@@ -16,6 +16,55 @@ import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 
 const track = silverstone as TrackData;
 
+// Grid start (plan section 7): counts down on screen, then flips
+// raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
+// a synchronized launch instead of whoever's tab finished loading first.
+// Deliberately does NOT stagger the two cars' spawn positions along the
+// track to make this feel like a real grid: createLapTimer only arms once
+// a car is more than 3m BEHIND the start line (see lapTimer.ts), so a car
+// spawned meaningfully behind it would arm immediately and count its very
+// first crossing of the line as a completed lap. The current lateral-only
+// spawn offset (AICar.tsx) stays inside that deadzone, so this doesn't
+// touch it - a real staggered grid needs the lap timer taught about a
+// race-start grace period first.
+const COUNTDOWN_SECONDS = 3;
+const GO_DISPLAY_SECONDS = 0.75;
+
+function RaceStartCountdown({
+  raceStartRef,
+  countdownRef,
+}: {
+  raceStartRef: React.RefObject<boolean>;
+  countdownRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const elapsedRef = useRef(0);
+  const finishedRef = useRef(false);
+
+  useFrame((_, dt) => {
+    if (finishedRef.current) return;
+    elapsedRef.current += dt;
+    const elapsed = elapsedRef.current;
+
+    if (elapsed < COUNTDOWN_SECONDS) {
+      if (countdownRef.current) {
+        countdownRef.current.textContent = String(Math.ceil(COUNTDOWN_SECONDS - elapsed));
+      }
+      return;
+    }
+    // Flip the instant "GO!" appears, not after it fades - the countdown
+    // display's own tail shouldn't add extra locked-throttle time.
+    if (!raceStartRef.current) raceStartRef.current = true;
+    if (elapsed < COUNTDOWN_SECONDS + GO_DISPLAY_SECONDS) {
+      if (countdownRef.current) countdownRef.current.textContent = "GO!";
+      return;
+    }
+    finishedRef.current = true;
+    if (countdownRef.current) countdownRef.current.textContent = "";
+  });
+
+  return null;
+}
+
 // Half of the box geometry's height below (see GRASS_BELOW_TRACK_METERS for
 // why the ground surface isn't flush with the track trimesh).
 const GROUND_HALF_HEIGHT = 0.5;
@@ -188,6 +237,7 @@ export function Scene({
   positionRef,
   raceResultRef,
   raceLaps,
+  countdownRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -206,9 +256,11 @@ export function Scene({
   raceResultRef: React.RefObject<HTMLDivElement | null>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
+  countdownRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState());
+  const raceStartRef = useRef(false);
   const visualRef = useRef<THREE.Mesh>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
 
@@ -248,11 +300,13 @@ export function Scene({
           raceResultRef={raceResultRef}
           raceRef={raceRef}
           raceLaps={raceLaps}
+          raceStartRef={raceStartRef}
           track={track}
         />
-        <AICar track={track} raceRef={raceRef} minimapMarkerRef={aiMinimapMarkerRef} />
+        <AICar track={track} raceRef={raceRef} minimapMarkerRef={aiMinimapMarkerRef} raceStartRef={raceStartRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
+      <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />
     </Canvas>
   );
 }

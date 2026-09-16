@@ -80,6 +80,7 @@ function RaceContent() {
   const aiMinimapMarkerRef = useRef<SVGCircleElement>(null);
   const positionRef = useRef<HTMLDivElement>(null);
   const raceResultRef = useRef<HTMLDivElement>(null);
+  const countdownRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className={styles.wrap}>
@@ -100,6 +101,7 @@ function RaceContent() {
         positionRef={positionRef}
         raceResultRef={raceResultRef}
         raceLaps={raceLaps}
+        countdownRef={countdownRef}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
@@ -113,6 +115,7 @@ function RaceContent() {
         P1
       </div>
       <div className={styles.raceResult} ref={raceResultRef} />
+      <div className={styles.countdown} ref={countdownRef} />
       <div className={styles.delta} ref={deltaRef} />
       <div className={styles.sectors} ref={sectorsRef} />
       <div className={styles.speed} ref={speedRef}>

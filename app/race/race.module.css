@@ -243,3 +243,21 @@
 .raceResult:empty {
   display: none;
 }
+
+.countdown {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ffd23f;
+  font-family: var(--font-geist-mono);
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-shadow: 0 0 16px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.countdown:empty {
+  display: none;
+}

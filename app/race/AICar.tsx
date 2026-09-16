@@ -77,10 +77,13 @@ export function AICar({
   track,
   raceRef,
   minimapMarkerRef,
+  raceStartRef,
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
   minimapMarkerRef?: React.RefObject<SVGCircleElement | null>;
+  /** Grid start (Scene.tsx) - throttle is locked out while false. */
+  raceStartRef?: React.RefObject<boolean>;
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
@@ -159,7 +162,10 @@ export function AICar({
     const speedMs = computeSignedForwardSpeed(body.linvel(), yaw);
     const controls = computeAIControls(racingLine, pos.x, pos.z, yaw, speedMs);
 
-    applyCarControls(controller, controls, DEFAULT_ENGINE_FORCE, 1, DEFAULT_BRAKE_FORCE, speedMs, true);
+    // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
+    const raceStarted = raceStartRef?.current ?? true;
+    const gatedControls = raceStarted ? controls : { ...controls, throttle: 0 };
+    applyCarControls(controller, gatedControls, DEFAULT_ENGINE_FORCE, 1, DEFAULT_BRAKE_FORCE, speedMs, true);
 
     const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
     applyLoadSensitiveFriction(controller, "high-downforce", 1, surfaceGripMultiplier);
