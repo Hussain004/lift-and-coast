@@ -47,21 +47,61 @@ export interface AIControls {
   throttle: number;
   brake: number;
   steer: number;
-  /**
-   * The nearest line point's own zone. Exposed for a future AI energy/
-   * aero strategy (plan section 6) - not consumed by anything yet. A
-   * first attempt at that (deploy Push-to-Pass and switch to low-drag
-   * aero whenever zone === "throttle") flipped the AI car on the real
-   * track: "throttle" includes corner-exit acceleration while still
-   * turning, and cutting grip or adding engine force there destabilizes
-   * it (checked at a full lap-plus, 150s - a 90s check missed it
-   * entirely). computeAIControls's throttle/brake decision doesn't know
-   * about the boost that gets applied after it, so it can't compensate.
-   * Solving this needs the energy decision feeding back into that
-   * decision, not a simple gate on zone - deferred, not attempted again
-   * without that.
-   */
+  /** The nearest line point's own zone (for HUD/diagnostics). */
   zone: ThrottleZone;
+  /**
+   * The nearest line point's own boostEligible flag (see racingLine.ts) -
+   * whether deploying Push-to-Pass right now would actually let the car
+   * carry more speed, not a zone it's currently in. A first attempt at AI
+   * energy strategy gated boost/aero on zone === "throttle" directly and
+   * flipped the car on the real track (checked at a full lap-plus, 150s -
+   * a 90s check missed it): "throttle" includes corner-exit acceleration
+   * while still turning, and computeAIControls's throttle/brake decision
+   * didn't know a boost was coming, so it couldn't compensate - the
+   * corner braking point was planned against the UNBOOSTED profile even
+   * once boost pushed the car past it. Fixed not by changing this
+   * function's control law, but by giving the caller a second, boosted
+   * speed profile (see useBoostedSpeed below) whose OWN backward pass
+   * already plans the correct, earlier braking point for a boosted
+   * approach - so a caller that only sets useBoostedSpeed=true while
+   * boostEligible is also true can never ask this function to chase a
+   * speed target that ignores the boost being applied.
+   *
+   * A SECOND attempt built exactly that (this field, useBoostedSpeed,
+   * boostedTargetSpeedMs) and wired it into a closed-loop AI+energy-system
+   * driver in the 150s headless harness. The corner-braking-point bug
+   * above was genuinely fixed - verified: boostEligible is never true
+   * where the unboosted profile is already brake-hard, by construction of
+   * the shared backward pass (see racingLine.ts's computeCappedSpeedProfile
+   * and its own unit tests). It STILL flipped the car, but not from any
+   * flaw in this mechanism: the actual flip happened 17+ seconds after the
+   * nearest boost deployment ever ran, at a corner nowhere near it. A
+   * threshold sweep on the minimum speed-gap required to deploy (the
+   * `margin` in the eligibility gate) produced an outright knife-edge, not
+   * a safety margin: >3, >3.5, >4.5, >5.5, and >8 all flipped (some
+   * violently, 90m+ off-track and negative final speed), while >4, >5, and
+   * >6 came back essentially byte-identical to the no-boost baseline
+   * (maxTiltRad ~0.113 either way). Picking one of the passing values and
+   * shipping it would be superstition, not a fix - there is no reason to
+   * believe Silverstone's specific geometry (or any other track, or a
+   * slightly different physics/timestep) keeps that same value on the safe
+   * side. This confirms the AI's chaotic sensitivity (see the module
+   * comment on LOOKAHEAD_POINTS) isn't specific to zone-gated boost/aero
+   * gating - ANY behavioral perturbation to this AI, however individually
+   * well-reasoned, can shift its trajectory enough to walk into an
+   * unrelated stability cliff elsewhere on the same lap, arbitrarily far
+   * downstream in time. A real fix would need computeAIControls (or the
+   * whole pure-pursuit approach) to be robust to its own trajectory
+   * drifting from a fixed pre-computed path, not just to the specific
+   * boost/aero coupling - a materially bigger redesign than "close the
+   * loop on one actuator," not attempted here. boostEligible/
+   * boostedTargetSpeedMs/useBoostedSpeed are kept as tested, inert
+   * groundwork (unused by anything - see racingLine.test.ts and this
+   * file's own tests) since the underlying math is sound and could serve
+   * a future attempt, or a player-facing "where would boosting help"
+   * overlay, which needs none of the closed-loop AI risk above.
+   */
+  boostEligible: boolean;
 }
 
 /**
@@ -74,13 +114,20 @@ export interface AIControls {
  * carYaw uses the same convention as vehicle.ts's yawFromQuaternion
  * (forward is -Z at yaw 0), and steer uses the same sign as
  * useDriveInput's own input.steer (positive = left, matching LEFT_KEYS).
+ *
+ * useBoostedSpeed (default false, so every existing caller is unaffected):
+ * targets line[nearest].boostedTargetSpeedMs instead of targetSpeedMs -
+ * pass true only on ticks where the caller is actually applying boosted
+ * engine force this same tick (see AICar.tsx), so the speed this function
+ * chases always matches the force actually being applied.
  */
 export function computeAIControls(
   line: RacingLinePoint[],
   carX: number,
   carZ: number,
   carYaw: number,
-  carSpeedMs: number
+  carSpeedMs: number,
+  useBoostedSpeed = false
 ): AIControls {
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ);
@@ -98,10 +145,11 @@ export function computeAIControls(
   while (yawError < -Math.PI) yawError += 2 * Math.PI;
   const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
 
-  const targetSpeed = line[nearest].targetSpeedMs;
+  const nearestPoint = line[nearest];
+  const targetSpeed = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
   const speedError = targetSpeed - carSpeedMs;
   const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
   const brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
 
-  return { throttle, brake, steer, zone: line[nearest].zone };
+  return { throttle, brake, steer, zone: nearestPoint.zone, boostEligible: nearestPoint.boostEligible };
 }

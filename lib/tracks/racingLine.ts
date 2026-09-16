@@ -1,3 +1,4 @@
+import { DEPLOY_BOOST_MULTIPLIER } from "../physics/energy";
 import type { TrackData } from "./types";
 
 // Plan section 4 point 8 ("racing line... drives the AI and the optional
@@ -87,6 +88,28 @@ export interface RacingLinePoint {
   position: [number, number, number];
   /** Physically-plausible target speed at this point, m/s. */
   targetSpeedMs: number;
+  /**
+   * Same profile, but assuming Push-to-Pass boost (see energy.ts) is being
+   * deployed on approach - only ever higher than targetSpeedMs where a
+   * boost-eligible straight/corner-exit lets you actually carry more speed,
+   * and identical to it wherever a real corner's braking distance (backward
+   * pass, unboosted MAX_DECEL_MS2 - brakes aren't boosted) is already the
+   * binding constraint. See boostEligible and the module comment on
+   * computeCappedSpeedProfile for why this falls out of the same two-pass
+   * algorithm for free instead of needing separate lookahead logic.
+   */
+  boostedTargetSpeedMs: number;
+  /**
+   * True where deploying boost right now would actually let the car carry
+   * more speed than the unboosted profile - i.e. an acceleration-limited
+   * stretch (a straight, a corner exit), not a deceleration-limited one
+   * (already braking for what's ahead). This is what makes boost deployment
+   * closed-loop rather than a naive zone gate: a corner's braking point is
+   * governed by the SAME unboosted decel pass in both profiles, so this
+   * flag can never stay true into the zone where boosting would actually
+   * cause an overspeed problem.
+   */
+  boostEligible: boolean;
   /** For coloring/HUD: how much this point asks the driver to lift/brake. */
   zone: ThrottleZone;
   /** Arc length from this point to the next (wrapping at the lap), meters. */
@@ -101,6 +124,45 @@ function unitTangentAt(points: readonly (readonly [number, number, number])[], i
   const tz = q[2] - p[2];
   const len = Math.hypot(tx, tz) || 1;
   return { x: tx / len, z: tz / len };
+}
+
+/**
+ * The backward (braking-distance) then forward (accel-distance) squeeze
+ * that turns a raw per-point speed cap into a physically-reachable profile.
+ * Backward runs to completion first (using the real, unboosted decelMs2 -
+ * brakes aren't boosted), THEN forward runs against that already-capped
+ * array - so raising accelMs2 for a "boosted" call can only ever raise
+ * values in acceleration-limited regions (straights, corner exits): a
+ * decel-limited value already fixed by the backward pass is a `Math.min`
+ * ceiling the forward pass can lower further but never lift back up. This
+ * is the mechanism that makes a boosted profile automatically respect real
+ * braking distance into the next corner without any separate lookahead
+ * calculation - see boostEligible on RacingLinePoint.
+ */
+function computeCappedSpeedProfile(
+  rawSpeedCap: Float64Array,
+  segmentLengths: Float64Array,
+  accelMs2: number,
+  decelMs2: number
+): Float64Array {
+  const n = rawSpeedCap.length;
+  const speed = Float64Array.from(rawSpeedCap);
+  for (let lap = 0; lap < SPEED_PASS_LAPS; lap++) {
+    for (let k = 0; k < n; k++) {
+      const i = (n - 1 - k + n) % n;
+      const next = (i + 1) % n;
+      const maxReachable = Math.sqrt(speed[next] ** 2 + 2 * decelMs2 * segmentLengths[i]);
+      speed[i] = Math.min(speed[i], maxReachable);
+    }
+  }
+  for (let lap = 0; lap < SPEED_PASS_LAPS; lap++) {
+    for (let i = 0; i < n; i++) {
+      const prev = (i - 1 + n) % n;
+      const maxReachable = Math.sqrt(speed[prev] ** 2 + 2 * accelMs2 * segmentLengths[prev]);
+      speed[i] = Math.min(speed[i], maxReachable);
+    }
+  }
+  return speed;
 }
 
 function boxFilterPass(values: Float64Array, radius: number): Float64Array {
@@ -206,22 +268,19 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, maxLateralSpeed));
   }
 
-  const targetSpeedMs = Float64Array.from(curveOnlySpeed);
-  for (let lap = 0; lap < SPEED_PASS_LAPS; lap++) {
-    for (let k = 0; k < n; k++) {
-      const i = (n - 1 - k + n) % n;
-      const next = (i + 1) % n;
-      const maxReachable = Math.sqrt(targetSpeedMs[next] ** 2 + 2 * MAX_DECEL_MS2 * segmentLengths[i]);
-      targetSpeedMs[i] = Math.min(targetSpeedMs[i], maxReachable);
-    }
-  }
-  for (let lap = 0; lap < SPEED_PASS_LAPS; lap++) {
-    for (let i = 0; i < n; i++) {
-      const prev = (i - 1 + n) % n;
-      const maxReachable = Math.sqrt(targetSpeedMs[prev] ** 2 + 2 * MAX_ACCEL_MS2 * segmentLengths[prev]);
-      targetSpeedMs[i] = Math.min(targetSpeedMs[i], maxReachable);
-    }
-  }
+  const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, MAX_ACCEL_MS2, MAX_DECEL_MS2);
+
+  // Same raw cap and the same real (unboosted) decel limit - only the
+  // forward/accel side is boosted, matching how Push-to-Pass actually
+  // works (more engine force, not better brakes). See boostEligible's own
+  // comment for why this alone is enough to keep the corner braking point
+  // correct without extra logic.
+  const boostedTargetSpeedMs = computeCappedSpeedProfile(
+    curveOnlySpeed,
+    segmentLengths,
+    MAX_ACCEL_MS2 * DEPLOY_BOOST_MULTIPLIER,
+    MAX_DECEL_MS2
+  );
 
   // Display-only smoothed copy of the final, physically-capped speed
   // profile, used ONLY to classify each point's zone for the on-track
@@ -249,6 +308,11 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     result[i] = {
       position: positions[i],
       targetSpeedMs: targetSpeedMs[i],
+      boostedTargetSpeedMs: boostedTargetSpeedMs[i],
+      // Epsilon guards against the two independent pass computations
+      // disagreeing by float noise even where they're conceptually meant
+      // to be identical (both decel-limited by the same backward pass).
+      boostEligible: boostedTargetSpeedMs[i] > targetSpeedMs[i] + 0.05,
       zone: classifyZone(decelNeeded),
       distanceToNextMeters: segmentLengths[i],
     };

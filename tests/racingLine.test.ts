@@ -8,6 +8,7 @@ import {
   type RacingLinePoint,
   type ThrottleZone,
 } from "../lib/tracks/racingLine";
+import { DEPLOY_BOOST_MULTIPLIER } from "../lib/physics/energy";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -212,6 +213,51 @@ describe("computeRacingLine speed profile", () => {
   });
 });
 
+describe("computeRacingLine boosted speed profile", () => {
+  it("is never lower than the unboosted profile anywhere on the lap", () => {
+    const line = computeRacingLine(track);
+    for (const p of line) {
+      expect(p.boostedTargetSpeedMs).toBeGreaterThanOrEqual(p.targetSpeedMs - 1e-6);
+    }
+  });
+
+  it("is eligible on a real fraction of the lap, but not all of it (both states actually occur)", () => {
+    const line = computeRacingLine(track);
+    const eligibleFraction = line.filter((p) => p.boostEligible).length / line.length;
+    expect(eligibleFraction).toBeGreaterThan(0.05);
+    expect(eligibleFraction).toBeLessThan(0.95);
+  });
+
+  it("is never eligible where the unboosted profile is already brake-hard (a real braking zone)", () => {
+    // The whole point of deriving boostEligible from the same backward pass
+    // instead of a hand-picked lookahead distance: a point already braking
+    // hard for what's ahead must never also read as "safe to boost" - see
+    // RacingLinePoint.boostEligible's own comment for why the algorithm
+    // guarantees this rather than needing a separate check.
+    const line = computeRacingLine(track);
+    for (const p of line) {
+      if (p.zone === "brake-hard") expect(p.boostEligible).toBe(false);
+    }
+  });
+
+  it("never asks for more forward acceleration than the boosted cap between consecutive points", () => {
+    const line = computeRacingLine(track);
+    const n = line.length;
+    const epsilon = 0.05;
+    const boostedAccelCap = MAX_ACCEL_MS2 * DEPLOY_BOOST_MULTIPLIER;
+    for (let i = 0; i < n; i++) {
+      const a = line[i];
+      const b = line[(i + 1) % n];
+      const dist = Math.hypot(b.position[0] - a.position[0], b.position[2] - a.position[2]);
+      if (dist < 1e-6) continue;
+      const signedAccel = (b.boostedTargetSpeedMs ** 2 - a.boostedTargetSpeedMs ** 2) / (2 * dist);
+      expect(signedAccel).toBeLessThanOrEqual(boostedAccelCap + epsilon);
+      // Braking is still real-brakes-only, unboosted.
+      expect(signedAccel).toBeGreaterThanOrEqual(-MAX_DECEL_MS2 - epsilon);
+    }
+  });
+});
+
 describe("buildRacingLineRibbon", () => {
   const ZONE_COLOR: Record<ThrottleZone, [number, number, number]> = {
     throttle: [0, 1, 0],
@@ -277,7 +323,14 @@ describe("updateLiveZoneColors", () => {
   function buildStraightLine(length: number, targetSpeedMs: number): RacingLinePoint[] {
     const line: RacingLinePoint[] = [];
     for (let i = 0; i < length; i++) {
-      line.push({ position: [0, 0, -i], targetSpeedMs, zone: "throttle", distanceToNextMeters: 1 });
+      line.push({
+        position: [0, 0, -i],
+        targetSpeedMs,
+        boostedTargetSpeedMs: targetSpeedMs,
+        boostEligible: false,
+        zone: "throttle",
+        distanceToNextMeters: 1,
+      });
     }
     return line;
   }

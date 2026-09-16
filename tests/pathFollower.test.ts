@@ -12,7 +12,14 @@ import type { RacingLinePoint } from "../lib/tracks/racingLine";
 function buildStraightLine(length: number, targetSpeedMs = 70): RacingLinePoint[] {
   const line: RacingLinePoint[] = [];
   for (let i = 0; i < length; i++) {
-    line.push({ position: [0, 0, -i], targetSpeedMs, zone: "throttle", distanceToNextMeters: 1 });
+    line.push({
+      position: [0, 0, -i],
+      targetSpeedMs,
+      boostedTargetSpeedMs: targetSpeedMs,
+      boostEligible: false,
+      zone: "throttle",
+      distanceToNextMeters: 1,
+    });
   }
   return line;
 }
@@ -75,5 +82,30 @@ describe("computeAIControls speed control", () => {
     expect(onSlowLine.throttle).toBe(0);
     expect(onFastLine.throttle).toBeGreaterThan(0);
     expect(onFastLine.brake).toBe(0);
+  });
+
+  it("targets boostedTargetSpeedMs instead of targetSpeedMs when useBoostedSpeed is true", () => {
+    // Confirms the override param actually switches which precomputed
+    // field drives the decision - not just accepted and ignored, the exact
+    // failure mode that would make a harness sweep of this look identical
+    // to baseline and hide a real bug.
+    const line: RacingLinePoint[] = buildStraightLine(200, 20).map((p) => ({
+      ...p,
+      boostedTargetSpeedMs: 70,
+    }));
+    const speed = 40; // above the unboosted target, below the boosted one
+    const unboosted = computeAIControls(line, 0, 0, 0, speed, false);
+    const boosted = computeAIControls(line, 0, 0, 0, speed, true);
+    expect(unboosted.brake).toBeGreaterThan(0);
+    expect(unboosted.throttle).toBe(0);
+    expect(boosted.throttle).toBeGreaterThan(0);
+    expect(boosted.brake).toBe(0);
+  });
+
+  it("exposes the nearest point's own boostEligible flag unchanged", () => {
+    const eligible = buildStraightLine(200, 40).map((p) => ({ ...p, boostEligible: true }));
+    const notEligible = buildStraightLine(200, 40);
+    expect(computeAIControls(eligible, 0, 0, 0, 20).boostEligible).toBe(true);
+    expect(computeAIControls(notEligible, 0, 0, 0, 20).boostEligible).toBe(false);
   });
 });

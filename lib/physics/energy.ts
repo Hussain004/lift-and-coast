@@ -16,7 +16,10 @@ export interface EnergyStatus {
 
 const HARVEST_FRACTION_PER_SECOND = 0.15;
 const DEPLOY_DRAIN_FRACTION_PER_SECOND = 0.25;
-const DEPLOY_BOOST_MULTIPLIER = 1.6;
+// Exported so racingLine.ts's boosted speed profile (see boostedTargetSpeedMs)
+// can derive its accel bonus from the same number instead of a second,
+// independently-tuned constant that could drift out of sync with it.
+export const DEPLOY_BOOST_MULTIPLIER = 1.6;
 
 /**
  * The game's namesake mechanic: harvest energy under braking, deploy it on
