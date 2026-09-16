@@ -80,6 +80,27 @@ const SUSPENSION_STIFFNESS = 18;
 // travel has no visual side effect.
 const REAR_MAX_SUSPENSION_TRAVEL = 0.5;
 
+// Front wheels pin at their mechanical floor under sustained high-speed
+// downforce + braking weight transfer: with only 0.22 travel the floor sits
+// at 0.18 - 0.22 = -0.04 length, and the front needs ~0.9-1.0kN of support
+// there, so it rests ON the hard floor instead of reaching a force-balance
+// equilibrium. That is the same "pinned at the mechanical limit" state the
+// rear had before REAR_MAX_SUSPENSION_TRAVEL fixed it (force calc glitches
+// to 0 for a step and kicks the chassis pitch); on the front it additionally
+// rides the body low enough (~y 0.57) that the chassis cuboid nose scrapes
+// the trimesh at ~50 m/s, which the per-wheel telemetry diagnostic proved to
+// be the AI flip mechanism (see tests/aiTelemetry.test.ts and memory
+// [[lift_and_coast_ai_flip_nose_scrape]]).
+//
+// The fix is the SAME direction as the rear: give the front enough travel
+// (0.5) that it reaches a real equilibrium instead of bottoming out. The
+// front's force-balance point (~0.23 compression) is only just past the old
+// 0.22 stop, so ride height barely moves - what changes is the hard floor
+// disappearing, along with the stop-impact pitch kicks that drive the nose
+// into the track. Directionally symmetric with the rear fix; verified at
+// 150s on both the baseline and the failing cross-track-gain perturbation.
+const FRONT_MAX_SUSPENSION_TRAVEL = 0.5;
+
 // Single source of truth for chassis + tuning constants, shared by the
 // real game (Car.tsx) and the headless stability harness (lib/ai/harness.ts)
 // so both always simulate the exact same car.
@@ -199,7 +220,7 @@ export function createCarController(
     controller.setWheelSuspensionRelaxation(i, 2.0);
     controller.setWheelMaxSuspensionTravel(
       i,
-      CAR_WHEELS[i].isDriven ? REAR_MAX_SUSPENSION_TRAVEL : 0.22
+      CAR_WHEELS[i].isDriven ? REAR_MAX_SUSPENSION_TRAVEL : FRONT_MAX_SUSPENSION_TRAVEL
     );
     // Values above 1.0 amplify lateral impulses and are a known flip
     // trigger in Bullet-derived raycast vehicles - keep this at 1.0.

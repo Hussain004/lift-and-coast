@@ -20,19 +20,25 @@ import type { TrackData } from "../lib/tracks/types";
  * headless harness, capturing per-wheel telemetry via simulateDrive's
  * onTelemetry hook (contact flag, suspension force/length, longitudinal and
  * lateral impulses), then prints dense per-step windows around every
- * significant off-track excursion and, with `--fail`-style perturbation,
- * through an actual flip - so the physical mechanism (traction loss,
- * wheel-lift, bottom-out...) can be CHARACTERIZED rather than another gain
- * swept blind.
+ * significant off-track excursion and, with perturbation sweep, the largest
+ * impact events - so the physical mechanism (traction loss, wheel-lift,
+ * bottom-out...) can be CHARACTERIZED rather than another gain swept blind.
  *
- * Full report (slow, ~2 x 150s sims):  AI_TELEMETRY=1 npx vitest run tests/aiTelemetry.test.ts
+ * The perturbation sweep doubles as the 150s regression guard for the
+ * nose-scrape fix (FRONT_MAX_SUSPENSION_TRAVEL): the gains listed below
+ * flipped the AI (~1.05 rad) before the fix and are guarded to not flip
+ * again, since AI behavior is chaotic-sensitive to one-step changes.
+ *
+ * Full report (slow, ~4 x 150s sims):  AI_TELEMETRY=1 npx vitest run tests/aiTelemetry.test.ts
  */
 
 const FLIP_THRESHOLD_RAD = 0.6;
 const GATED = !process.env.AI_TELEMETRY;
 
-// The documented-failing perturbation: cross-track steering gain 0.001
-// flipped the AI (maxTiltRad ~1.05) during the knife-edge investigation.
+// These cross-track steering gains all flipped the AI (~1.05 rad) during
+// the knife-edge investigation - the chassis-nose scrape mechanism that
+// FRONT_MAX_SUSPENSION_TRAVEL (see vehicle.ts) then fixed. The sweep below
+// guards each gain at a full 150s so the fix can't silently regress.
 const CROSS_TRACK_GAINS_TO_TRY = [0.001, -0.001, 0.004];
 
 const WHEEL_NAMES = ["FL", "FR", "RL", "RR"];
@@ -281,24 +287,22 @@ describe.skipIf(GATED)("AI telemetry diagnostic (AI_TELEMETRY=1)", () => {
     printExcursionAnalysis(run.samples);
   }, 60000);
 
-  it("failing perturbation (cross-track gain): prints per-wheel telemetry through the flip", async () => {
-    let flipRun: Awaited<ReturnType<typeof runOnce>> | null = null;
-    let flipGain: number | null = null;
+  it("cross-track gain perturbations no longer flip (150s guard for the nose-scrape fix)", async () => {
     for (const gain of CROSS_TRACK_GAINS_TO_TRY) {
       const run = await runOnce(150, gain);
       printRunSummary(run, `CROSS-TRACK GAIN ${gain}`);
-      if (run.maxTiltRad >= FLIP_THRESHOLD_RAD) {
-        flipRun = run;
-        flipGain = gain;
-        break;
+      expect(run.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(run.maxOffTrackMeters).toBeLessThan(25);
+      expect(run.distanceTraveledMeters).toBeGreaterThan(5000);
+      if (gain === CROSS_TRACK_GAINS_TO_TRY[0]) {
+        // Representative post-fix run: whole-run wheel stats (incl. any
+        // remaining nose-scrape steps / minimum clearance) plus the largest
+        // remaining single-step speed event, to characterize what the AI's
+        // most violent moment looks like after the fix.
+        wholeRunStats(run.samples);
+        printFlipAnalysis(run.samples);
       }
     }
-    expect(flipRun).not.toBeNull();
-    const run = flipRun!;
-    console.log(`\n== FLIP FOUND with cross-track gain ${flipGain} ==`);
-    wholeRunStats(run.samples);
-    printExcursionAnalysis(run.samples);
-    printFlipAnalysis(run.samples);
   }, 180000);
 });
 
