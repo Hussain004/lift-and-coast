@@ -244,6 +244,26 @@
   display: none;
 }
 
+.qualifying {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #b967ff;
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 16px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.qualifying:empty {
+  display: none;
+}
+
 .countdown {
   position: absolute;
   top: 30%;

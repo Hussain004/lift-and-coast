@@ -36,6 +36,7 @@ import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import type { RaceState } from "@/lib/race/racePosition";
+import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { TrackData } from "@/lib/tracks/types";
 
 const CHASSIS_SIZE: [number, number, number] = [
@@ -78,12 +79,15 @@ export function AICar({
   raceRef,
   minimapMarkerRef,
   raceStartRef,
+  qualifyingRef,
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
   minimapMarkerRef?: React.RefObject<SVGCircleElement | null>;
   /** Grid start (Scene.tsx) - throttle is locked out while false. */
   raceStartRef?: React.RefObject<boolean>;
+  /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
+  qualifyingRef?: React.RefObject<QualifyingTimes>;
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
@@ -155,6 +159,13 @@ export function AICar({
       const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
       if (raceRef?.current) {
         raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
+      }
+      // Playable Qualifying: the AI's own first completed lap, recorded
+      // once - no eligibility/invalidation concept for the AI (it doesn't
+      // rewind or run track-limit checks the way the player does), so any
+      // completed first lap counts.
+      if (qualifyingRef?.current && qualifyingRef.current.ai === null && lap.lastLapSeconds !== null) {
+        qualifyingRef.current.ai = lap.lastLapSeconds;
       }
     }
 

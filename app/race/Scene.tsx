@@ -13,6 +13,7 @@ import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
+import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 
 const track = silverstone as TrackData;
 
@@ -238,6 +239,7 @@ export function Scene({
   raceResultRef,
   raceLaps,
   countdownRef,
+  qualifyingDisplayRef,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -257,10 +259,12 @@ export function Scene({
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   countdownRef: React.RefObject<HTMLDivElement | null>;
+  qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState());
   const raceStartRef = useRef(false);
+  const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes());
   const visualRef = useRef<THREE.Mesh>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
 
@@ -301,9 +305,17 @@ export function Scene({
           raceRef={raceRef}
           raceLaps={raceLaps}
           raceStartRef={raceStartRef}
+          qualifyingRef={qualifyingRef}
+          qualifyingDisplayRef={qualifyingDisplayRef}
           track={track}
         />
-        <AICar track={track} raceRef={raceRef} minimapMarkerRef={aiMinimapMarkerRef} raceStartRef={raceStartRef} />
+        <AICar
+          track={track}
+          raceRef={raceRef}
+          minimapMarkerRef={aiMinimapMarkerRef}
+          raceStartRef={raceStartRef}
+          qualifyingRef={qualifyingRef}
+        />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
       <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />

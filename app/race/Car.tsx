@@ -40,6 +40,7 @@ import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { computeRacePosition, type RaceState } from "@/lib/race/racePosition";
+import { polePosition, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import {
@@ -119,6 +120,8 @@ export function Car({
   raceRef,
   raceLaps = DEFAULT_RACE_LAPS,
   raceStartRef,
+  qualifyingRef,
+  qualifyingDisplayRef,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -165,6 +168,9 @@ export function Car({
    * countdown wiring.
    */
   raceStartRef?: React.RefObject<boolean>;
+  /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
+  qualifyingRef?: React.RefObject<QualifyingTimes>;
+  qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -181,6 +187,7 @@ export function Car({
   );
   const raceElapsedSecondsRef = useRef(0);
   const raceFinishedRef = useRef(false);
+  const qualifyingDisplayedRef = useRef(false);
   const bestLapRef = useRef<number | null>(null);
   const deltaTrackerRef = useRef(createDeltaTracker());
   // Set whenever this lap's progress jumped discontinuously (a rewind, or
@@ -637,7 +644,34 @@ export function Car({
     }
 
     const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
+
+    // Playable Qualifying (plan section 7): whoever's first completed lap
+    // is faster is "on pole". Deliberately unconditional on `eligible` -
+    // symmetric with AICar.tsx's own unconditional recording, since there's
+    // no second qualifying run here for a track-limit deletion to make
+    // meaningful; requiring a clean lap would just mean the overlay often
+    // never fires. Checked every frame (not just inside the
+    // crossedFinishLine block below) since the two cars' first laps
+    // usually finish on different frames - the comparison can only fire
+    // once BOTH sides are in, whichever car's crossing happens to be
+    // second. See lib/race/qualifying.ts for why this is an informational
+    // overlay on the existing race, not a real grid-setting session.
+    if (qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
+      const pole = qualifyingRef?.current ? polePosition(qualifyingRef.current) : null;
+      if (pole !== null && qualifyingRef?.current) {
+        qualifyingDisplayedRef.current = true;
+        const playerTime = qualifyingRef.current.player as number;
+        const aiTime = qualifyingRef.current.ai as number;
+        qualifyingDisplayRef.current.textContent =
+          `QUALIFYING - YOU ${formatLapTime(playerTime)}  AI ${formatLapTime(aiTime)}  -  ` +
+          `${pole === "player" ? "YOU" : "AI"} ON POLE`;
+      }
+    }
+
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+      if (qualifyingRef?.current && qualifyingRef.current.player === null) {
+        qualifyingRef.current.player = lap.lastLapSeconds;
+      }
       // ponytail: the race "ends" here as a HUD banner only - driving,
       // physics, and the AI keep going, and there's no results/menu
       // screen to return to (plan section 8's menu state machine doesn't
