@@ -9,27 +9,14 @@ import {
   buildMinimapPath,
   computeMinimapTransform,
 } from "@/lib/tracks/minimap";
-import silverstone from "@/data/tracks/silverstone.json";
-import type { TrackData } from "@/lib/tracks/types";
+import { getTrack } from "@/lib/tracks/trackData";
+import { parseTrackId } from "@/lib/tracks/registry";
+import { parseRaceLaps } from "@/lib/race/sessionSetup";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
   loading: () => <div className={styles.loading}>Loading track...</div>,
 });
-
-const track = silverstone as TrackData;
-// Module-level, not per-render - the track data is static, so the path only
-// needs building once for the whole app lifetime. Live per-frame updates
-// only change the wrapping <g>'s transform (see Car.tsx), not this path.
-const minimapPathD = buildMinimapPath(track);
-// Matches the chassis's own spawn rotation (rotation={[0, startPos.headingRad, 0]}
-// in Car.tsx) exactly, so there's no visible snap on the first live frame.
-const initialMinimapTransform = computeMinimapTransform(
-  track.startPos.x,
-  track.startPos.z,
-  track.startPos.headingRad
-);
-import { parseRaceLaps } from "@/lib/race/sessionSetup";
 
 const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
 const MINIMAP_MARKER_POINTS =
@@ -51,7 +38,21 @@ export default function RacePage() {
 }
 
 function RaceContent() {
-  const raceLaps = parseRaceLaps(useSearchParams().get("laps"));
+  const searchParams = useSearchParams();
+  const raceLaps = parseRaceLaps(searchParams.get("laps"));
+  const track = getTrack(parseTrackId(searchParams.get("track")));
+  const trackName = track.name.toUpperCase();
+  // Resolved per-render from the selected track - only changes on a URL
+  // change (this page is client-only with no other state), so the build
+  // cost is paid once per session.
+  const minimapPathD = buildMinimapPath(track);
+  // Matches the chassis's own spawn rotation (rotation={[0, startPos.headingRad, 0]}
+  // in Car.tsx) exactly, so there's no visible snap on the first live frame.
+  const initialMinimapTransform = computeMinimapTransform(
+    track.startPos.x,
+    track.startPos.z,
+    track.startPos.headingRad
+  );
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
   const deltaRef = useRef<HTMLDivElement>(null);
@@ -76,6 +77,7 @@ function RaceContent() {
   return (
     <div className={styles.wrap}>
       <Scene
+        track={track}
         speedRef={speedRef}
         lapRef={lapRef}
         deltaRef={deltaRef}
@@ -99,6 +101,7 @@ function RaceContent() {
         penaltyToastRef={penaltyToastRef}
       />
       <div className={styles.hud}>
+        <span className={styles.trackName}>{trackName}</span>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
         E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
         soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to

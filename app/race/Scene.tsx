@@ -7,15 +7,12 @@ import { Physics, RigidBody, type RapierRigidBody } from "@react-three/rapier";
 import { Car } from "./Car";
 import { AICar } from "./AICar";
 import { Track } from "./Track";
-import silverstone from "@/data/tracks/silverstone.json";
 import type { TrackData } from "@/lib/tracks/types";
 import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
-
-const track = silverstone as TrackData;
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -222,6 +219,7 @@ function ChaseCamera({
 }
 
 export function Scene({
+  track,
   speedRef,
   lapRef,
   deltaRef,
@@ -244,6 +242,8 @@ export function Scene({
   qualifyingDisplayRef,
   penaltyToastRef,
 }: {
+  /** Selected circuit - see the home-screen session setup / ?track= param. */
+  track: TrackData;
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   deltaRef: React.RefObject<HTMLDivElement | null>;

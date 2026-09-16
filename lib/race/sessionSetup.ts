@@ -1,11 +1,12 @@
 // Plan section 8 (Game Flow & Screens): Session Setup. Quick Race lap
-// count, owned here and shared by the home-screen setup panel
-// (app/SessionSetup.tsx) and the race page's ?laps= URL param, so both
-// clamp identically and the "until session-setup UI exists" comments in
-// race/page.tsx and Car.tsx can be retired. The bounds are a correctness
-// guard, not a tuning knob - an unbounded value would let a typo (or a
-// shared link) produce a 0-lap "race" that finishes on the very first
-// crossing, or one so long it's never realistically finished.
+// count and track, owned here and shared by the home-screen setup panel
+// (app/SessionSetup.tsx) and the race page's ?laps= / ?track= URL params,
+// so both clamp identically. The bounds are a correctness guard, not a
+// tuning knob - an unbounded value would let a typo (or a shared link)
+// produce a 0-lap "race" that finishes on the very first crossing, or one
+// so long it's never realistically finished.
+import { DEFAULT_TRACK_ID, isKnownTrackId } from "../tracks/registry";
+
 export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
 export const DEFAULT_RACE_LAPS = 3;
@@ -18,19 +19,24 @@ export function parseRaceLaps(raw: string | null): number {
 
 // localStorage-backed "last selections" (plan section 10: localStorage is
 // for settings/state like this, IndexedDB for save data): the session
-// opens with the previously picked lap count instead of always resetting
-// to the default. Storage is injected rather than read globally so this
-// logic is unit-testable without a DOM; the default falls back to a
-// guarded global so SSR / privacy modes just get the default prefs.
+// opens with the previously picked lap count and track instead of always
+// resetting to the defaults. Storage is injected rather than read globally
+// so this logic is unit-testable without a DOM; the default falls back to
+// a guarded global so SSR / privacy modes just get the default prefs.
 const SESSION_SETUP_KEY = "lift-and-coast.session-setup.v1";
 
 export interface SessionSetupPrefs {
   raceLaps: number;
+  trackId: string;
 }
 
 function clampLaps(n: unknown): number {
   if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_RACE_LAPS;
   return Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, Math.round(n)));
+}
+
+function clampTrackId(raw: unknown): string {
+  return typeof raw === "string" && isKnownTrackId(raw) ? raw : DEFAULT_TRACK_ID;
 }
 
 function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
@@ -46,14 +52,21 @@ function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
 export function loadSessionSetupPrefs(
   storage: Pick<Storage, "getItem" | "setItem"> | null = defaultStorage()
 ): SessionSetupPrefs {
-  if (!storage) return { raceLaps: DEFAULT_RACE_LAPS };
+  const defaults: SessionSetupPrefs = {
+    raceLaps: DEFAULT_RACE_LAPS,
+    trackId: DEFAULT_TRACK_ID,
+  };
+  if (!storage) return defaults;
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
-    if (!raw) return { raceLaps: DEFAULT_RACE_LAPS };
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown };
-    return { raceLaps: clampLaps(parsed.raceLaps) };
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown };
+    return {
+      raceLaps: clampLaps(parsed.raceLaps),
+      trackId: clampTrackId(parsed.trackId),
+    };
   } catch {
-    return { raceLaps: DEFAULT_RACE_LAPS };
+    return defaults;
   }
 }
 
@@ -63,7 +76,13 @@ export function saveSessionSetupPrefs(
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(SESSION_SETUP_KEY, JSON.stringify({ raceLaps: clampLaps(prefs.raceLaps) }));
+    storage.setItem(
+      SESSION_SETUP_KEY,
+      JSON.stringify({
+        raceLaps: clampLaps(prefs.raceLaps),
+        trackId: clampTrackId(prefs.trackId),
+      })
+    );
   } catch {
     // Storage full / unavailable - non-fatal, defaults cover the next load.
   }

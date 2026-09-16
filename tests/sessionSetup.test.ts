@@ -7,6 +7,7 @@ import {
   parseRaceLaps,
   saveSessionSetupPrefs,
 } from "../lib/race/sessionSetup";
+import { DEFAULT_TRACK_ID } from "../lib/tracks/registry";
 
 describe("parseRaceLaps", () => {
   it("returns the default for no param", () => {
@@ -50,20 +51,27 @@ function fakeStorage(initial: Record<string, string> = {}): {
 
 describe("loadSessionSetupPrefs", () => {
   it("defaults when no storage exists", () => {
-    expect(loadSessionSetupPrefs(null)).toEqual({ raceLaps: DEFAULT_RACE_LAPS });
+    expect(loadSessionSetupPrefs(null)).toEqual({
+      raceLaps: DEFAULT_RACE_LAPS,
+      trackId: DEFAULT_TRACK_ID,
+    });
   });
 
   it("defaults when nothing was saved", () => {
     expect(loadSessionSetupPrefs(fakeStorage().storage)).toEqual({
       raceLaps: DEFAULT_RACE_LAPS,
+      trackId: DEFAULT_TRACK_ID,
     });
   });
 
-  it("reads the saved lap count", () => {
+  it("reads the saved lap count and track", () => {
     const { storage } = fakeStorage({
-      "lift-and-coast.session-setup.v1": JSON.stringify({ raceLaps: 7 }),
+      "lift-and-coast.session-setup.v1": JSON.stringify({
+        raceLaps: 7,
+        trackId: "spa",
+      }),
     });
-    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 7 });
+    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 7, trackId: "spa" });
   });
 
   it("clamps corrupt or out-of-range saved values", () => {
@@ -75,32 +83,59 @@ describe("loadSessionSetupPrefs", () => {
     const garbage = fakeStorage({
       "lift-and-coast.session-setup.v1": "not json at all",
     });
-    expect(loadSessionSetupPrefs(garbage.storage).raceLaps).toBe(DEFAULT_RACE_LAPS);
+    expect(loadSessionSetupPrefs(garbage.storage)).toEqual({
+      raceLaps: DEFAULT_RACE_LAPS,
+      trackId: DEFAULT_TRACK_ID,
+    });
 
     const wrongShape = fakeStorage({
       "lift-and-coast.session-setup.v1": JSON.stringify({ laps: 9 }),
     });
     expect(loadSessionSetupPrefs(wrongShape.storage).raceLaps).toBe(DEFAULT_RACE_LAPS);
   });
+
+  it("falls back to the default track for an unknown saved id", () => {
+    const { storage } = fakeStorage({
+      "lift-and-coast.session-setup.v1": JSON.stringify({
+        raceLaps: 5,
+        trackId: "nurburgring",
+      }),
+    });
+    expect(loadSessionSetupPrefs(storage).trackId).toBe(DEFAULT_TRACK_ID);
+  });
 });
 
 describe("saveSessionSetupPrefs", () => {
-  it("persists the clamped value", () => {
+  it("persists the clamped values", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 9 }, storage);
-    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 9 });
-    expect(dump()["lift-and-coast.session-setup.v1"]).toBe(JSON.stringify({ raceLaps: 9 }));
+    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza" }, storage);
+    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 9, trackId: "monza" });
+    expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
+      JSON.stringify({ raceLaps: 9, trackId: "monza" })
+    );
   });
 
   it("clamps and rounds before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 4.6 }, storage);
+    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka" }, storage);
     expect(loadSessionSetupPrefs(storage).raceLaps).toBe(5);
-    saveSessionSetupPrefs({ raceLaps: 0 }, storage);
-    expect(dump()["lift-and-coast.session-setup.v1"]).toBe(JSON.stringify({ raceLaps: MIN_RACE_LAPS }));
+    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka" }, storage);
+    expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
+      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka" })
+    );
+  });
+
+  it("clamps an unknown track id to the default before saving", () => {
+    const { storage, dump } = fakeStorage();
+    saveSessionSetupPrefs({ raceLaps: 3, trackId: "monaco" }, storage);
+    expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
+      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID })
+    );
   });
 
   it("does nothing when storage is unavailable", () => {
-    expect(() => saveSessionSetupPrefs({ raceLaps: 3 }, null)).not.toThrow();
+    expect(() =>
+      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa" }, null)
+    ).not.toThrow();
   });
 });

@@ -166,17 +166,48 @@ function buildTrack(rawPath: string, id: string, name: string): TrackJson {
 }
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const track = buildTrack(
-  `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
-  "silverstone",
-  "Silverstone Circuit"
-);
 
-writeFileSync(
-  `${scriptDir}/../data/tracks/silverstone.json`,
-  JSON.stringify(track)
-);
+// Plan section 4 / Phase 4 (content scale-out): one raw GeoJSON per circuit
+// from the bacinger/f1-circuits dataset (MIT), built through the same
+// project-resample-spline pipeline. The dataset's `length` property is the
+// real-circuit reference length, printed below as a sanity check; the built
+// lengthMeters from resampling lands within a percent or two (the source
+// polyline already approximates the real geometry).
+const TRACKS: { rawPath: string; id: string; name: string }[] = [
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
+    id: "silverstone",
+    name: "Silverstone Circuit",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/be-1925.geojson`,
+    id: "spa",
+    name: "Circuit de Spa-Francorchamps",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/it-1922.geojson`,
+    id: "monza",
+    name: "Autodromo Nazionale Monza",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/jp-1962.geojson`,
+    id: "suzuka",
+    name: "Suzuka International Racing Course",
+  },
+];
 
-console.log(
-  `Built ${track.name}: ${track.centerline.length} points, ${track.lengthMeters}m (reference: 5891m)`
-);
+let totalPoints = 0;
+for (const { rawPath, id, name } of TRACKS) {
+  const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
+  const referenceLength = raw.features[0].properties.length;
+  const track = buildTrack(rawPath, id, name);
+  writeFileSync(
+    `${scriptDir}/../data/tracks/${id}.json`,
+    JSON.stringify(track)
+  );
+  totalPoints += track.centerline.length;
+  console.log(
+    `Built ${track.name}: ${track.centerline.length} points, ${track.lengthMeters}m (reference: ${referenceLength}m)`
+  );
+}
+console.log(`Total centerline points across ${TRACKS.length} tracks: ${totalPoints}`);
