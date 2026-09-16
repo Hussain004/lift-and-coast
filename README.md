@@ -8,17 +8,21 @@ Save the juice. Send the apex.
 
 ## Status
 
-A real Silverstone circuit (with elevation, camber, kerbs and surface
-zones) driven by a Rapier raycast-vehicle chassis with six-speed-era
-sequential manual gears plus an auto-gear assist (plan section 5's depth
-feature 4), keyboard input, chase/cockpit cameras, and rewind. Built on top
-of the vertical slice:
+A real Silverstone circuit layout (authorable widths, corner geometry and
+start line from the f1-circuits dataset; still a flat ribbon at y=0 — no
+elevation/camber keyframes yet, and no authored kerbs) driven by a Rapier
+raycast-vehicle chassis with seven-speed sequential manual gears plus an
+auto-gear assist (plan section 5, depth feature 4), keyboard input,
+gamepad/wheel analog input (plan section 5), chase/cockpit cameras, and
+rewind. Built on top of the vertical slice:
 
 - Energy harvesting + one-shot Push-to-Pass boost (Hold Shift)
 - Active Aero: high-downforce vs low-drag mode (E)
 - Tire compounds, wear and compound-grip degradation (1/2/3)
 - Assists: traction control (T), ABS (B), racing line (L); manual vs
   auto gears (Q/Z shift, G toggles the assist)
+- Off-track surface zones approximated by distance-from-edge grip falloff
+  (real per-zone asphalt/kerb/grass tags are future work)
 - Ghost laps + personal bests persisted in IndexedDB
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
@@ -28,10 +32,10 @@ of the vertical slice:
   real trimesh under stress scenarios, plus an AI stability diagnostic
   suite - all part of the test suite.
 
-Not built yet: the session-setup menu (plan sections 7-8), gamepad/wheel
-input (section 5), AI energy/aero deployment (first attempt destabilized
-the AI and was reverted; see the project memory docs), and day/night or
-weather.
+Not built yet: elevation/camber, kerbs, the session-setup menu (plan
+sections 7-8), difficulty tiers, AI energy/aero deployment (first attempt
+destabilized the AI and was reverted; see the project memory docs), and
+day/night or weather.
 
 ## Track data
 
