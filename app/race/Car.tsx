@@ -56,8 +56,9 @@ const SECTOR_COUNT = 3;
 // Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
 // AI opponent that exists today, not the full session-setup lap-count
 // slider (plan section 8) - that needs a menu/state machine this project
-// doesn't have yet. A fixed default is the smallest useful step.
-const RACE_LAPS = 3;
+// doesn't have yet. Configurable via a ?laps= URL param (see page.tsx) in
+// the meantime - a real slider still needs the menu system to live in.
+const DEFAULT_RACE_LAPS = 3;
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
   green: "#39ff88",
@@ -109,6 +110,7 @@ export function Car({
   positionRef,
   raceResultRef,
   raceRef,
+  raceLaps = DEFAULT_RACE_LAPS,
   track,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -146,6 +148,8 @@ export function Car({
    * position without either car needing a ref to the other's internals.
    */
   raceRef?: React.RefObject<RaceState>;
+  /** Quick Race lap count - see page.tsx's ?laps= URL param. */
+  raceLaps?: number;
   track: TrackData;
 }) {
   const { startPos } = track;
@@ -594,13 +598,13 @@ export function Car({
       // RACE_LAPS first - the banner only triggers off the player's own
       // finish-line crossing. Upgrade once session setup/results screens
       // exist.
-      if (!raceFinishedRef.current && lap.lapCount >= RACE_LAPS && raceResultRef?.current) {
+      if (!raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
         raceFinishedRef.current = true;
         const finalPosition = raceRef?.current
           ? computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters)
           : 1;
         raceResultRef.current.textContent =
-          `P${finalPosition} - ${RACE_LAPS}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}`;
+          `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}`;
       }
       const wasNewBest =
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);

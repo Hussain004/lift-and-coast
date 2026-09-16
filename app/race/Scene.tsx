@@ -187,6 +187,7 @@ export function Scene({
   aiMinimapMarkerRef,
   positionRef,
   raceResultRef,
+  raceLaps,
 }: {
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -203,6 +204,8 @@ export function Scene({
   aiMinimapMarkerRef: React.RefObject<SVGCircleElement | null>;
   positionRef: React.RefObject<HTMLDivElement | null>;
   raceResultRef: React.RefObject<HTMLDivElement | null>;
+  /** Quick Race lap count - see page.tsx's ?laps= URL param. */
+  raceLaps?: number;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState());
@@ -244,6 +247,7 @@ export function Scene({
           positionRef={positionRef}
           raceResultRef={raceResultRef}
           raceRef={raceRef}
+          raceLaps={raceLaps}
           track={track}
         />
         <AICar track={track} raceRef={raceRef} minimapMarkerRef={aiMinimapMarkerRef} />

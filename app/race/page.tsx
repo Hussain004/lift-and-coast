@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef } from "react";
+import { Suspense, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
 import {
   MINIMAP_SIZE_PX,
@@ -28,6 +29,21 @@ const initialMinimapTransform = computeMinimapTransform(
   track.startPos.z,
   track.startPos.headingRad
 );
+// Quick Race lap count, configurable via ?laps= until session-setup UI
+// (plan section 8) exists to pick it from a menu. Clamped rather than
+// trusting the URL directly - an unbounded value would let a typo (or a
+// shared link) produce e.g. a 0-lap "race" that finishes on the very
+// first crossing, or one so long it's never realistically finished.
+const MIN_RACE_LAPS = 1;
+const MAX_RACE_LAPS = 20;
+const DEFAULT_RACE_LAPS = 3;
+
+function parseRaceLaps(raw: string | null): number {
+  const n = raw === null ? NaN : parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DEFAULT_RACE_LAPS;
+  return Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, n));
+}
+
 const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
 const MINIMAP_MARKER_POINTS =
   `${MINIMAP_CENTER_PX},${MINIMAP_CENTER_PX - 8} ` +
@@ -35,6 +51,20 @@ const MINIMAP_MARKER_POINTS =
   `${MINIMAP_CENTER_PX + 6},${MINIMAP_CENTER_PX + 6}`;
 
 export default function RacePage() {
+  return (
+    // useSearchParams requires a Suspense boundary for static prerendering
+    // (Next.js opts the whole route into client-only rendering below it
+    // otherwise) - the fallback is never actually seen in practice, since
+    // this whole page is already client-only ("use client" above) and the
+    // param read resolves synchronously on first render.
+    <Suspense fallback={null}>
+      <RaceContent />
+    </Suspense>
+  );
+}
+
+function RaceContent() {
+  const raceLaps = parseRaceLaps(useSearchParams().get("laps"));
   const speedRef = useRef<HTMLDivElement>(null);
   const lapRef = useRef<HTMLDivElement>(null);
   const deltaRef = useRef<HTMLDivElement>(null);
@@ -69,6 +99,7 @@ export default function RacePage() {
         aiMinimapMarkerRef={aiMinimapMarkerRef}
         positionRef={positionRef}
         raceResultRef={raceResultRef}
+        raceLaps={raceLaps}
       />
       <div className={styles.hud}>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
