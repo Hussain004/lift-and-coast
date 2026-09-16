@@ -12,6 +12,7 @@ import {
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
 import { parseRaceLaps } from "@/lib/race/sessionSetup";
+import { parseChampRound } from "@/lib/race/championship";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
@@ -40,6 +41,7 @@ export default function RacePage() {
 function RaceContent() {
   const searchParams = useSearchParams();
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
+  const champRound = parseChampRound(searchParams.get("champ"));
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
   // Resolved per-render from the selected track - only changes on a URL
@@ -96,6 +98,7 @@ function RaceContent() {
         positionRef={positionRef}
         raceResultRef={raceResultRef}
         raceLaps={raceLaps}
+        champRound={champRound}
         countdownRef={countdownRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}

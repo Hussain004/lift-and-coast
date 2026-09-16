@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { exportSaveData, importSaveData } from "@/lib/persistence/personalBests";
+import { exportSaveData, importSaveData } from "@/lib/persistence/saveBundle";
 import styles from "./page.module.css";
 
 const FILENAME = "lift-and-coast-save.json";
@@ -45,7 +45,7 @@ export function SaveTransfer() {
     try {
       const text = await file.text();
       await importSaveData(JSON.parse(text));
-      showMessage("Save imported. Personal bests updated.");
+      showMessage("Save imported. Bests and championship updated.");
     } catch {
       showMessage("Could not import that file - is it a Lift & Coast save?");
     }

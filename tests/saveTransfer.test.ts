@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { exportSaveData, importSaveData } from "../lib/persistence/personalBests";
+import { exportSaveData, importSaveData } from "../lib/persistence/saveBundle";
+import { createSeason } from "../lib/race/championship";
 
 // indexedDB is undefined in this project's plain-node test environment (see
-// vitest.config.ts) - same convention as the rest of personalBests.ts,
-// which has no existing tests for its own IndexedDB-touching internals
-// either. What IS testable without a browser: importSaveData's input
-// validation (throws before ever touching indexedDB) and exportSaveData's
-// documented fallback shape when indexedDB is unavailable.
+// vitest.config.ts) - same convention as the rest of the persistence layer,
+// which has no tests for its IndexedDB-touching internals either. What IS
+// testable without a browser: importSaveData's input validation (throws
+// before ever touching indexedDB) and exportSaveData's documented fallback
+// shape when indexedDB is unavailable.
 describe("importSaveData validation", () => {
   it.each([
     ["null", null],
@@ -19,6 +20,10 @@ describe("importSaveData validation", () => {
   });
 
   it("accepts a well-formed empty bundle", async () => {
+    await expect(importSaveData({ schemaVersion: 2, personalBests: {} })).resolves.toBeUndefined();
+  });
+
+  it("still accepts a legacy v1 bundle with no championship field", async () => {
     await expect(importSaveData({ schemaVersion: 1, personalBests: {} })).resolves.toBeUndefined();
   });
 
@@ -38,13 +43,38 @@ describe("importSaveData validation", () => {
       })
     ).resolves.toBeUndefined();
   });
+
+  it("rejects a malformed championship season", async () => {
+    await expect(
+      importSaveData({
+        personalBests: {},
+        championship: { schemaVersion: 1, createdAt: "2026-01-01", rounds: "nope" },
+      })
+    ).rejects.toThrow("bad championship season");
+    await expect(
+      importSaveData({
+        personalBests: {},
+        championship: { schemaVersion: 1, createdAt: "2026-01-01", rounds: [{ trackId: "not-a-track" }] },
+      })
+    ).rejects.toThrow("bad championship season");
+  });
+
+  it("accepts a well-formed championship season", async () => {
+    await expect(
+      importSaveData({
+        personalBests: {},
+        championship: createSeason(["silverstone", "monza"], "2026-01-01"),
+      })
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("exportSaveData", () => {
   it("returns an empty bundle with the right shape when indexedDB is unavailable", async () => {
     const bundle = await exportSaveData();
-    expect(bundle.schemaVersion).toBe(1);
+    expect(bundle.schemaVersion).toBe(2);
     expect(bundle.personalBests).toEqual({});
+    expect(bundle.championship).toBeNull();
     expect(() => new Date(bundle.exportedAt).toISOString()).not.toThrow();
   });
 });

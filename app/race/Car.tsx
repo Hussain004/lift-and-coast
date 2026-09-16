@@ -52,6 +52,8 @@ import { computeRacePosition, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
+import { recordChampionshipResult } from "@/lib/persistence/championship";
+import { pointsForPosition } from "@/lib/race/championship";
 import {
   allWheelsOffTrack,
   checkTrackLimits,
@@ -131,6 +133,7 @@ export function Car({
   raceResultRef,
   raceRef,
   raceLaps = DEFAULT_RACE_LAPS,
+  champRound = null,
   raceStartRef,
   qualifyingRef,
   qualifyingDisplayRef,
@@ -178,6 +181,12 @@ export function Car({
   raceRef?: React.RefObject<RaceState>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
+  /**
+   * Championship round index from page.tsx's ?champ= param, or null for a
+   * one-off race. When set, finishing writes the player's position into the
+   * active season (see recordChampionshipResult).
+   */
+  champRound?: number | null;
   /**
    * Grid start (Scene.tsx's RaceStartCountdown) - throttle is locked out
    * while false. Undefined behaves as already-started (no countdown), so
@@ -732,12 +741,14 @@ export function Car({
         qualifyingRef.current.player = lap.lastLapSeconds;
       }
       // ponytail: the race "ends" here as a HUD banner only - driving,
-      // physics, and the AI keep going, and there's no results/menu
+      // physics, and the AI keep going, and there's no in-race results/menu
       // screen to return to (plan section 8's menu state machine doesn't
       // exist yet). Also doesn't account for the AI finishing its own
       // RACE_LAPS first - the banner only triggers off the player's own
-      // finish-line crossing. Upgrade once session setup/results screens
-      // exist.
+      // finish-line crossing. A championship round is still scored correctly
+      // (the finish order is settled the moment the player crosses, see
+      // finalPosition below); a dedicated results screen would just show it
+      // in place. Upgrade once session setup/results screens exist.
       if (!raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
         raceFinishedRef.current = true;
         // raceElapsedSecondsRef stops advancing once raceFinishedRef flips
@@ -751,8 +762,17 @@ export function Car({
         const finalPosition = raceRef?.current
           ? computeRacePosition(raceRef.current.player, raceRef.current.ai, track.lengthMeters)
           : 1;
+        let championshipSuffix = "";
+        if (champRound !== null) {
+          championshipSuffix =
+            `  //  ROUND ${champRound + 1}: P${finalPosition} (+${pointsForPosition(finalPosition)} PTS)`;
+          // Fire-and-forget, same as the personal-best write below: the
+          // standings panel reads this back when the player returns home.
+          recordChampionshipResult(champRound, finalPosition).catch(() => {});
+        }
         raceResultRef.current.textContent =
           `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
+          championshipSuffix +
           `  //  PRESS ENTER TO RESTART`;
       }
       const wasNewBest =

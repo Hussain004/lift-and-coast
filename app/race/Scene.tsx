@@ -238,6 +238,7 @@ export function Scene({
   positionRef,
   raceResultRef,
   raceLaps,
+  champRound,
   countdownRef,
   qualifyingDisplayRef,
   penaltyToastRef,
@@ -263,6 +264,8 @@ export function Scene({
   raceResultRef: React.RefObject<HTMLDivElement | null>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
+  /** Championship round index from ?champ=, or null for a one-off race. */
+  champRound?: number | null;
   countdownRef: React.RefObject<HTMLDivElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
@@ -314,6 +317,7 @@ export function Scene({
           raceResultRef={raceResultRef}
           raceRef={raceRef}
           raceLaps={raceLaps}
+          champRound={champRound}
           raceStartRef={raceStartRef}
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}

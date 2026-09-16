@@ -29,6 +29,10 @@ the vertical slice:
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
 - Session setup on the home screen: track picker + Quick Race lap-count
   slider (1-20), both remembered via localStorage
+- Championship mode (plan sections 7-8): a season of one race at each
+  registered circuit, F1-style points (25-18-...), standings on the home
+  screen; the active season lives in IndexedDB and travels in the save
+  export/import bundle
 - Track-limit enforcement (warning -> penalty / lap invalidation), damage,
   minimap, sector times, delta timer, RPM/gear HUD
 - Headless vehicle-stability harness (`lib/ai/harness.ts`) hot-lapping the
@@ -37,7 +41,7 @@ the vertical slice:
 
 Not built yet: elevation/camber, kerbs, the full session flow (team/driver
 select, world map, time-of-day lighting presets - plan sections 7-8),
-Championship mode, difficulty tiers (blocked by the AI's
+difficulty tiers (blocked by the AI's
 chaotic-sensitivity findings, see pathFollower.ts), AI energy/aero
 deployment (first attempt destabilized the AI and was reverted; see the
 project memory docs), and day/night or weather.
@@ -90,6 +94,10 @@ traction control, B for ABS, L for the racing line, C for the camera, and
 up automatically for analog steering (left stick) and throttle/brake (stick
 or triggers), through the same input shaping and brake ramp as the
 keyboard.
+
+Start a Championship season on the home screen to race one round at every
+circuit for F1-style points; the standings there update as each round is
+scored, and the season is saved in IndexedDB alongside your best laps.
 
 ## Testing
 
