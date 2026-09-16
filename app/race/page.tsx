@@ -29,20 +29,7 @@ const initialMinimapTransform = computeMinimapTransform(
   track.startPos.z,
   track.startPos.headingRad
 );
-// Quick Race lap count, configurable via ?laps= until session-setup UI
-// (plan section 8) exists to pick it from a menu. Clamped rather than
-// trusting the URL directly - an unbounded value would let a typo (or a
-// shared link) produce e.g. a 0-lap "race" that finishes on the very
-// first crossing, or one so long it's never realistically finished.
-const MIN_RACE_LAPS = 1;
-const MAX_RACE_LAPS = 20;
-const DEFAULT_RACE_LAPS = 3;
-
-function parseRaceLaps(raw: string | null): number {
-  const n = raw === null ? NaN : parseInt(raw, 10);
-  if (!Number.isFinite(n)) return DEFAULT_RACE_LAPS;
-  return Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, n));
-}
+import { parseRaceLaps } from "@/lib/race/sessionSetup";
 
 const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
 const MINIMAP_MARKER_POINTS =

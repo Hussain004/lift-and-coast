@@ -26,16 +26,20 @@ rewind. Built on top of the vertical slice:
 - Ghost laps + personal bests persisted in IndexedDB
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
+- Session setup on the home screen: Quick Race lap-count slider (1-20,
+  remembers your last pick via localStorage)
 - Track-limit enforcement (warning -> penalty / lap invalidation), damage,
   minimap, sector times, delta timer, RPM/gear HUD
 - Headless vehicle-stability harness (`lib/ai/harness.ts`) hot-lapping the
   real trimesh under stress scenarios, plus an AI stability diagnostic
   suite - all part of the test suite.
 
-Not built yet: elevation/camber, kerbs, the session-setup menu (plan
-sections 7-8), difficulty tiers, AI energy/aero deployment (first attempt
-destabilized the AI and was reverted; see the project memory docs), and
-day/night or weather.
+Not built yet: elevation/camber, kerbs, the full session flow (team/driver
+select, world map, time-of-day lighting presets - plan sections 7-8),
+difficulty tiers (blocked by the AI's chaotic-sensitivity findings, see
+pathFollower.ts), AI energy/aero deployment (first attempt destabilized
+the AI and was reverted; see the project memory docs), and day/night or
+weather.
 
 ## Track data
 
@@ -66,16 +70,17 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. Click Drive, then use WASD or the arrow keys.
-Hold R to rewind the last few seconds after spinning off. Hold Shift to
-deploy harvested energy for a power boost (Push-to-Pass). Press E to toggle
-Active Aero between high-downforce cornering mode and a low-drag mode for a
-higher top speed on the straights. Press Q/Z to shift up/down and G to
-toggle the auto-gear assist, T for traction control, B for ABS, L for the
-racing line, C for the camera, and 1/2/3 to fit soft/medium/hard tires. A
-connected gamepad or wheel is picked up automatically for analog steering
-(left stick) and throttle/brake (stick or triggers), through the same input
-shaping and brake ramp as the keyboard.
+Open http://localhost:3000. Pick the Quick Race lap count on the home
+screen (1-20, remembered between sessions), then Drive and use WASD or the
+arrow keys. Hold R to rewind the last few seconds after spinning off. Hold
+Shift to deploy harvested energy for a power boost (Push-to-Pass). Press E
+to toggle Active Aero between high-downforce cornering mode and a low-drag
+mode for a higher top speed on the straights. Press Q/Z to shift up/down
+and G to toggle the auto-gear assist, T for traction control, B for ABS, L
+for the racing line, C for the camera, and 1/2/3 to fit soft/medium/hard
+tires. A connected gamepad or wheel is picked up automatically for analog
+steering (left stick) and throttle/brake (stick or triggers), through the
+same input shaping and brake ramp as the keyboard.
 
 ## Testing
 

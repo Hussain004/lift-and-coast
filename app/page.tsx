@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { SaveTransfer } from "./SaveTransfer";
+import { SessionSetup } from "./SessionSetup";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -9,9 +9,7 @@ export default function Home() {
         LIFT <span>&</span> COAST
       </h1>
       <p className={styles.tagline}>Save the juice. Send the apex.</p>
-      <Link href="/race" className={styles.play}>
-        Drive
-      </Link>
+      <SessionSetup />
       <p className={styles.tip}>
         Lift &amp; coast: it&apos;s not slow, it&apos;s strategic.
       </p>

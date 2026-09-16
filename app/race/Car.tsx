@@ -44,6 +44,7 @@ import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
@@ -63,11 +64,10 @@ import type { TrackData } from "@/lib/tracks/types";
 const REWIND_CAPACITY_SECONDS = 5;
 const SECTOR_COUNT = 3;
 // Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
-// AI opponent that exists today, not the full session-setup lap-count
-// slider (plan section 8) - that needs a menu/state machine this project
-// doesn't have yet. Configurable via a ?laps= URL param (see page.tsx) in
-// the meantime - a real slider still needs the menu system to live in.
-const DEFAULT_RACE_LAPS = 3;
+// AI opponent that exists today. Lap count comes from the home-screen
+// session-setup slider (lib/race/sessionSetup.ts, plan section 8) via the
+// ?laps= URL param it drives; the param stays as a direct-entry/shared-
+// link affordance.
 // Plan section 5 depth feature 7: "all four wheels off at a corner exit ->
 // lap invalidation (time trial) or warning -> time penalty (race)". This
 // project has no separate mode selection - every drive tracks a personal
