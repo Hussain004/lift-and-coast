@@ -25,6 +25,15 @@ import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
 // specific corner becomes the failure point, so this value was picked with
 // real margin from the instability band observed at 30+ points, not by
 // chasing the single best-looking run.
+// Confirmed with actual numbers later (see AIControls.boostEligible's own
+// comment and [[lift_and_coast_ai_boost_knife_edge]]): a cross-track
+// steering-correction term swept from 0.0005-0.004 found isolated safe
+// values (0.0005, 0.003) sandwiched between destabilizing ones (0.001,
+// 0.0015, 0.002, 0.004), each failure's worst excursion landing at a
+// different lap position (65s/92s/60s/112s) - not one bad track-mesh spot.
+// The safe values moved maxOffTrackMeters by ~2%, i.e. did nothing. There is
+// no gain here that both matters and survives; this is closed, not
+// under-tuned.
 const LOOKAHEAD_POINTS = 25;
 const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error reaches this.
 const STEER_GAIN = 1.0;
