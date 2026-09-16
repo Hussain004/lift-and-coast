@@ -199,7 +199,7 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear } =
+  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
     useDriveInput(cameraModeRef, racingLineVisibleRef);
   // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
   // per car. `auto` follows the autoGear toggle (synced each physics tick
@@ -652,6 +652,7 @@ export function Car({
         `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
         `  ABS ${absEnabled.current ? "ON" : "OFF"}` +
         `  GEARS ${autoGear.current ? "AUTO" : "M"}` +
+        `  PAD ${gamepadConnected.current ? "ON" : "OFF"}` +
         (racingLineVisible.current ? "" : "  LINE OFF");
     }
     // Manual gears HUD (plan section 13): the current gear up top, and

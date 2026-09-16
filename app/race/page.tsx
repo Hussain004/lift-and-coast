@@ -116,6 +116,8 @@ function RaceContent() {
         E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
         soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to
         toggle the racing line. Q/Z to shift gears, G to toggle auto-gears.
+        A connected gamepad/wheel drives with analog steering (left stick) and
+        throttle/brake (stick or triggers) automatically.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---

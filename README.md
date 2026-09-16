@@ -68,7 +68,10 @@ deploy harvested energy for a power boost (Push-to-Pass). Press E to toggle
 Active Aero between high-downforce cornering mode and a low-drag mode for a
 higher top speed on the straights. Press Q/Z to shift up/down and G to
 toggle the auto-gear assist, T for traction control, B for ABS, L for the
-racing line, C for the camera, and 1/2/3 to fit soft/medium/hard tires.
+racing line, C for the camera, and 1/2/3 to fit soft/medium/hard tires. A
+connected gamepad or wheel is picked up automatically for analog steering
+(left stick) and throttle/brake (stick or triggers), through the same input
+shaping and brake ramp as the keyboard.
 
 ## Testing
 

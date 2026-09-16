@@ -1,5 +1,13 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { stepSteering } from "./steering";
+import {
+  applyAxisDeadzone,
+  engaged,
+  findConnectedGamepad,
+  readGamepadAxes,
+  shapeAnalogAxis,
+  splitPedalAxis,
+} from "./gamepad";
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 
@@ -124,6 +132,9 @@ export function useDriveInput(
   // the skill to learn, but until a "Pro" tier exists the shipped default is
   // the assisted gearbox, toggled off with G for real paddles.
   const autoGear = useRef(true);
+  // Whether a gamepad/wheel is connected (plan section 5 input shaping) -
+  // polled per physics tick, read by the HUD for a visible device indicator.
+  const gamepadConnected = useRef(false);
   const internalRacingLineVisible = useRef(true);
   // On by default (plan section 13's "optional ideal-line overlay assist") -
   // same "no Pro difficulty tier yet" reasoning as tractionControlEnabled/
@@ -191,6 +202,7 @@ export function useDriveInput(
     absEnabled,
     racingLineVisible,
     autoGear,
+    gamepadConnected,
     update(dt: number) {
       const pressed = keys.current;
       // Shift requests are edge-triggered: keydown latches them, this tick
@@ -206,19 +218,54 @@ export function useDriveInput(
         (anyPressed(pressed, LEFT_KEYS) ? 1 : 0) -
         (anyPressed(pressed, RIGHT_KEYS) ? 1 : 0);
 
-      input.current.steer = stepSteering(
-        input.current.steer,
-        steerTarget,
-        dt,
-        STEER_RATE,
-        STEER_CENTER_RATE
-      );
-      input.current.throttle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
-      input.current.brake = anyPressed(pressed, BRAKE_KEYS)
-        ? absEnabled.current
-          ? Math.min(1, input.current.brake + dt / BRAKE_RAMP_SECONDS)
-          : 1
-        : 0;
+      // Gamepad/wheel analog input (plan section 5): polled at 60Hz like
+      // the keyboard, merged per-channel. Steering is pure analog (shaped
+      // deadzone + response curve, no rate limit - the analog signal IS
+      // the smoothing); pedals share the keyboard's brake ramp below
+      // because the ramp is the documented anti-pitch instability guard,
+      // and analog braking needs the same protection (see BRAKE_RAMP_SECONDS
+      // and the comment on the keyboard path two sections up).
+      let padSteer: number | null = null;
+      let padThrottle: number | null = null;
+      let padBrake: number | null = null;
+      const pad = findConnectedGamepad();
+      gamepadConnected.current = pad !== null;
+      if (pad) {
+        const raw = readGamepadAxes(pad);
+        if (engaged(raw.steer)) padSteer = shapeAnalogAxis(raw.steer);
+        if (engaged(raw.pedalAxis)) {
+          const split = splitPedalAxis(shapeAnalogAxis(raw.pedalAxis));
+          padThrottle = Math.max(split.throttleTarget, applyAxisDeadzone(raw.triggerThrottle));
+          padBrake = Math.max(split.brakeTarget, applyAxisDeadzone(raw.triggerBrake));
+        } else {
+          const triggerThrottle = applyAxisDeadzone(raw.triggerThrottle);
+          const triggerBrake = applyAxisDeadzone(raw.triggerBrake);
+          if (triggerThrottle > 0) padThrottle = triggerThrottle;
+          if (triggerBrake > 0) padBrake = triggerBrake;
+        }
+      }
+
+      input.current.steer =
+        padSteer !== null
+          ? padSteer
+          : stepSteering(input.current.steer, steerTarget, dt, STEER_RATE, STEER_CENTER_RATE);
+
+      const keyboardThrottle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
+      input.current.throttle =
+        padThrottle !== null ? Math.max(keyboardThrottle, padThrottle) : keyboardThrottle;
+
+      // Unified brake target from both input sources, ramped with the same
+      // guard as the keyboard path: instant release, rate-limited
+      // application (and raw full-force application with ABS off - the
+      // documented ABS-off tradeoff applies to gamepad braking too).
+      const keyboardBrake = anyPressed(pressed, BRAKE_KEYS) ? 1 : 0;
+      const brakeTarget = padBrake !== null ? Math.max(keyboardBrake, padBrake) : keyboardBrake;
+      input.current.brake =
+        brakeTarget === 0
+          ? 0
+          : absEnabled.current
+            ? Math.min(input.current.brake + dt / BRAKE_RAMP_SECONDS, brakeTarget)
+            : brakeTarget;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
       input.current.shiftUp = shiftUp;
