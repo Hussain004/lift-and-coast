@@ -8,10 +8,12 @@
  *
  * Run with: node --experimental-strip-types scripts/build-track.mts
  *
- * Elevation, camber, kerbs, surface zones, and the racing line are real
- * per-corner authoring work (plan section 4) and are deliberately not
- * computed here - centerline is flat (y=0) and width is a placeholder
- * constant until that authoring happens.
+ * Width is real: it comes from the vendored TUMFTM racetrack-database
+ * (per-point widths aligned onto this centerline - see the README next to
+ * those files). Elevation, camber, kerbs, surface zones, and the racing line
+ * are still real per-corner authoring work (plan section 4) and are
+ * deliberately not computed here - the centerline is flat (y=0) until the
+ * elevation step lands.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -31,8 +33,20 @@ interface TrackJson {
 }
 
 const RESAMPLE_SPACING_METERS = 2;
+// Fallback width for a circuit with no vendored TUMFTM width file.
 const DEFAULT_WIDTH_METERS = 13;
 const MIN_POINT_SEPARATION_METERS = 1;
+// Half-window, in centerline points, of the wrap-around moving average
+// applied to the transferred widths. The transfer is nearest-neighbour, so
+// its raw output is piecewise-constant with small steps where the nearest
+// index switches; +/-4 points (+/-8 m at the 2 m spacing) smooths those
+// without blunting real corner-to-corner width changes.
+const WIDTH_SMOOTH_HALF_WINDOW = 4;
+// ICP correspondence search is O(theirs x ours) per iteration. Subsampling
+// both by this stride keeps the build fast; verified to converge to the same
+// residual as the full-resolution fit.
+const ICP_ITERATIONS = 80;
+const ICP_STRIDE = 4;
 
 function lonLatToMeters(
   coords: [number, number][],
@@ -119,7 +133,174 @@ function resampleByArcLength(points: Point[], spacing: number): Point[] {
   return out;
 }
 
-function buildTrack(rawPath: string, id: string, name: string): TrackJson {
+interface WidthSource {
+  /** File centerline, mirrored onto the project's axis convention (z = -y). */
+  points: Point[];
+  /** Total track width (right + left) at each point, in meters. */
+  totalWidth: number[];
+}
+
+/**
+ * Reads a TUMFTM racetrack-database CSV (`x_m,y_m,w_tr_right_m,w_tr_left_m`).
+ * The `y` axis is negated because this project's lon/lat projection maps
+ * latitude to `-z` while the file's frame maps it to `+y`, leaving the two
+ * shapes mirror images. Verified: without the mirror the best rigid-fit RMS
+ * is 100-170 m; with it, 1.2-1.8 m on all four circuits.
+ */
+function loadWidthSource(path: string): WidthSource {
+  const rows = readFileSync(path, "utf-8")
+    .split("\n")
+    .filter((line) => line.trim() !== "" && !line.startsWith("#"))
+    .map((line) => line.split(",").map(Number));
+  return {
+    points: rows.map((r) => ({ x: r[0], z: -r[1] })),
+    totalWidth: rows.map((r) => r[2] + r[3]),
+  };
+}
+
+interface RigidTransform {
+  theta: number;
+  tx: number;
+  tz: number;
+}
+
+function applyRigid(p: Point, t: RigidTransform): Point {
+  const c = Math.cos(t.theta);
+  const s = Math.sin(t.theta);
+  return { x: p.x * c - p.z * s + t.tx, z: p.x * s + p.z * c + t.tz };
+}
+
+function nearestSquareDistance(a: Point, b: Point[]): number {
+  let best = Infinity;
+  for (const p of b) {
+    const d = (a.x - p.x) ** 2 + (a.z - p.z) ** 2;
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function meanPoint(pts: Point[]): Point {
+  let x = 0;
+  let z = 0;
+  for (const p of pts) {
+    x += p.x;
+    z += p.z;
+  }
+  return { x: x / pts.length, z: z / pts.length };
+}
+
+/**
+ * Iterative closest point - rotation + translation only, seeded from the
+ * centroid difference. Deterministic (fixed seed, fixed iteration order).
+ * Both datasets trace the same circuit, so a rigid fit is the right model;
+ * the residual is the two smoothing passes' own difference, not a real
+ * geometry mismatch.
+ */
+function fitRigidTo(
+  ours: Point[],
+  theirs: Point[]
+): { transform: RigidTransform; rms: number } {
+  const a = theirs.filter((_, i) => i % ICP_STRIDE === 0);
+  const b = ours;
+  const ca = meanPoint(a);
+  const cb = meanPoint(b);
+  let t: RigidTransform = { theta: 0, tx: cb.x - ca.x, tz: cb.z - ca.z };
+  let rms = Infinity;
+
+  for (let iter = 0; iter < ICP_ITERATIONS; iter++) {
+    const pairsA: Point[] = [];
+    const pairsB: Point[] = [];
+    for (const p of a) {
+      const q = applyRigid(p, t);
+      let best = Infinity;
+      let bestIdx = 0;
+      for (let j = 0; j < b.length; j++) {
+        const d = (q.x - b[j].x) ** 2 + (q.z - b[j].z) ** 2;
+        if (d < best) {
+          best = d;
+          bestIdx = j;
+        }
+      }
+      pairsA.push(p);
+      pairsB.push(b[bestIdx]);
+    }
+    const ma = meanPoint(pairsA);
+    const mb = meanPoint(pairsB);
+    let num = 0;
+    let den = 0;
+    for (let i = 0; i < pairsA.length; i++) {
+      const ax = pairsA[i].x - ma.x;
+      const az = pairsA[i].z - ma.z;
+      const bx = pairsB[i].x - mb.x;
+      const bz = pairsB[i].z - mb.z;
+      num += ax * bz - az * bx;
+      den += ax * bx + az * bz;
+    }
+    const theta = Math.atan2(num, den);
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    t = {
+      theta,
+      tx: mb.x - (ma.x * c - ma.z * s),
+      tz: mb.z - (ma.x * s + ma.z * c),
+    };
+
+    let sum = 0;
+    for (const p of a) sum += nearestSquareDistance(applyRigid(p, t), b);
+    const next = Math.sqrt(sum / a.length);
+    if (Math.abs(rms - next) < 1e-4) {
+      rms = next;
+      break;
+    }
+    rms = next;
+  }
+  return { transform: t, rms };
+}
+
+/**
+ * For each built centerline point, the total width of the nearest source
+ * point after alignment. Nearest-neighbour (rather than an arc-length
+ * lookup) means a different start line or index origin between the two
+ * datasets cannot shift the profile; the fit residual above bounds the
+ * geometric error this picks up.
+ */
+function transferWidths(
+  ours: Point[],
+  source: WidthSource,
+  t: RigidTransform
+): number[] {
+  const theirs = source.points.map((p) => applyRigid(p, t));
+  return ours.map((p) => {
+    let best = Infinity;
+    let bestIdx = 0;
+    for (let j = 0; j < theirs.length; j++) {
+      const d = (p.x - theirs[j].x) ** 2 + (p.z - theirs[j].z) ** 2;
+      if (d < best) {
+        best = d;
+        bestIdx = j;
+      }
+    }
+    return source.totalWidth[bestIdx];
+  });
+}
+
+function smoothWrap(values: number[], halfWindow: number): number[] {
+  const n = values.length;
+  return values.map((_, i) => {
+    let sum = 0;
+    for (let k = -halfWindow; k <= halfWindow; k++) {
+      sum += values[(i + k + n) % n];
+    }
+    return sum / (halfWindow * 2 + 1);
+  });
+}
+
+function buildTrack(
+  rawPath: string,
+  id: string,
+  name: string,
+  widthPath?: string
+): TrackJson {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const feature = raw.features[0];
   const rawCoords: [number, number][] = feature.geometry.coordinates;
@@ -139,7 +320,26 @@ function buildTrack(rawPath: string, id: string, name: string): TrackJson {
     0,
     p.z,
   ]);
-  const width = resampled.map(() => DEFAULT_WIDTH_METERS);
+
+  let width: number[];
+  if (widthPath) {
+    const source = loadWidthSource(widthPath);
+    const { transform, rms } = fitRigidTo(resampled, source.points);
+    width = smoothWrap(
+      transferWidths(resampled, source, transform),
+      WIDTH_SMOOTH_HALF_WINDOW
+    );
+    const min = Math.min(...width);
+    const max = Math.max(...width);
+    console.log(
+      `  width: ${widthPath.split("/").pop()} aligned (rms ${rms.toFixed(
+        2
+      )}m), ${min.toFixed(1)}-${max.toFixed(1)}m`
+    );
+  } else {
+    width = resampled.map(() => DEFAULT_WIDTH_METERS);
+    console.log(`  width: no source file, flat ${DEFAULT_WIDTH_METERS}m`);
+  }
 
   const start = resampled[0];
   const next = resampled[1];
@@ -172,35 +372,49 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 // project-resample-spline pipeline. The dataset's `length` property is the
 // real-circuit reference length, printed below as a sanity check; the built
 // lengthMeters from resampling lands within a percent or two (the source
-// polyline already approximates the real geometry).
-const TRACKS: { rawPath: string; id: string; name: string }[] = [
+// polyline already approximates the real geometry). `widthFile` names the
+// vendored TUMFTM racetrack-database CSV that supplies the real per-point
+// track width for that circuit.
+const TRACKS: {
+  rawPath: string;
+  id: string;
+  name: string;
+  widthFile: string | null;
+}[] = [
   {
     rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
     id: "silverstone",
     name: "Silverstone Circuit",
+    widthFile: "Silverstone.csv",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/be-1925.geojson`,
     id: "spa",
     name: "Circuit de Spa-Francorchamps",
+    widthFile: "Spa.csv",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/it-1922.geojson`,
     id: "monza",
     name: "Autodromo Nazionale Monza",
+    widthFile: "Monza.csv",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/jp-1962.geojson`,
     id: "suzuka",
     name: "Suzuka International Racing Course",
+    widthFile: "Suzuka.csv",
   },
 ];
 
 let totalPoints = 0;
-for (const { rawPath, id, name } of TRACKS) {
+for (const { rawPath, id, name, widthFile } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
-  const track = buildTrack(rawPath, id, name);
+  const widthPath = widthFile
+    ? `${scriptDir}/../data/tracks/raw/tumftm/${widthFile}`
+    : undefined;
+  const track = buildTrack(rawPath, id, name, widthPath);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)

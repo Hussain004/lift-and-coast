@@ -22,6 +22,16 @@ const REFERENCE_LENGTHS: Record<string, number> = {
 
 const RESAMPLE_SPACING_METERS = 2;
 
+// Mean per-track width (metres) and the absolute bounds each point must
+// stay within, as built from the vendored TUMFTM width files. Silverstone
+// is genuinely the widest of the four; the others sit near 9.5m.
+const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = {
+  silverstone: { min: 10.5, max: 19.0, mean: 13.8 },
+  monza: { min: 7.0, max: 13.5, mean: 9.4 },
+  spa: { min: 7.0, max: 17.5, mean: 9.8 },
+  suzuka: { min: 7.0, max: 16.5, mean: 9.8 },
+};
+
 describe("parseTrackId", () => {
   it("accepts every known id", () => {
     for (const entry of TRACKS) {
@@ -97,6 +107,26 @@ describe("built track data integrity", () => {
         for (const [, y] of track.centerline) {
           expect(y).toBe(0);
         }
+      });
+
+      it("carries real per-point widths, not a flat placeholder", () => {
+        // Built from the vendored TUMFTM racetrack-database (see
+        // data/tracks/raw/tumftm/README.md). These bands are the values as
+        // built from that data: wide enough to absorb small pipeline
+        // changes, tight enough to catch a regression to the old flat 13m
+        // placeholder or a broken centerline alignment.
+        const band = WIDTH_BANDS[entry.id];
+        expect(band).toBeDefined();
+        const w = track.width;
+        let sum = 0;
+        for (const value of w) {
+          expect(value).toBeGreaterThan(band.min);
+          expect(value).toBeLessThan(band.max);
+          sum += value;
+        }
+        expect(Math.abs(sum / w.length - band.mean)).toBeLessThan(0.5);
+        // The along-lap variation is the whole point of using real data.
+        expect(Math.max(...w) - Math.min(...w)).toBeGreaterThan(1.5);
       });
 
       it("is resampled at a uniform ~2m spacing", () => {

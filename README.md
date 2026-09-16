@@ -8,10 +8,11 @@ Save the juice. Send the apex.
 
 ## Status
 
-A set of real circuit layouts (authorable widths, corner geometry and
-start line from the f1-circuits dataset; still flat ribbons at y=0 — no
-elevation/camber keyframes yet, and no authored kerbs): Silverstone,
-Monza, Spa-Francorchamps and Suzuka. Driven by a Rapier raycast-vehicle
+A set of real circuit layouts (corner geometry and start line from the
+f1-circuits dataset, real per-point track widths from the TUMFTM
+racetrack-database; still flat ribbons at y=0 — no elevation/camber
+keyframes yet, and no authored kerbs): Silverstone, Monza, Spa-Francorchamps
+and Suzuka. Driven by a Rapier raycast-vehicle
 chassis with seven-speed sequential manual gears plus an auto-gear assist
 (plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
 input (plan section 5), chase/cockpit cameras, and rewind. Built on top of
@@ -59,6 +60,16 @@ list (Silverstone, Monza, Spa, Suzuka). Rebuild with:
 ```bash
 npm run build:track
 ```
+
+The width of each point is real, not a placeholder: it is transferred from
+the vendored `TUMFTM/racetrack-database` files in
+`data/tracks/raw/tumftm/` (per-point widths extracted from satellite
+imagery; LGPL-3.0, see the README there). The build mirrors their frame,
+rigidly aligns their centerline onto ours with a small deterministic ICP
+(1.2–1.8 m RMS), then reads off the total width at the nearest point and
+smooths it along the lap. That is what makes Silverstone genuinely wide
+(~13.8 m mean) and Monza/Spa/Suzuka narrower (~9.5 m) instead of every
+circuit being a flat 13 m.
 
 Adding a circuit is: drop its raw GeoJSON in `data/tracks/raw/`, add a row
 to `scripts/build-track.mts`, run the build, and register its id/name in
