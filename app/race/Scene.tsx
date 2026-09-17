@@ -99,8 +99,10 @@ function Ground({ track }: { track: TrackData }) {
 // (plan section 9). Cockpit: camera near the driver's seat looking ahead
 // along the car's own heading, for the "steep FOV... speed sensation" feel
 // the plan calls for - a wider FOV than chase makes the same speed read as
-// faster, the standard cockpit-cam trick.
-const CHASE_OFFSET = new THREE.Vector3(0, 2.2, 7);
+// faster, the standard cockpit-cam trick. Chase sits a little further back
+// and higher than the obvious framing: with real F1/track proportions the
+// car otherwise fills the frame and reads oversized (player feedback).
+const CHASE_OFFSET = new THREE.Vector3(0, 2.6, 8.5);
 const COCKPIT_OFFSET = new THREE.Vector3(0, 0.65, -0.3);
 const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
