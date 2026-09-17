@@ -175,7 +175,12 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
       const b = push(p[0] + sign * rightX[i] * outerI, p[1] + height, p[2] + sign * rightZ[i] * outerI, stripe);
       const c = push(q[0] + sign * rightX[j] * innerJ, q[1], q[2] + sign * rightZ[j] * innerJ, stripe);
       const d = push(q[0] + sign * rightX[j] * outerJ, q[1] + height, q[2] + sign * rightZ[j] * outerJ, stripe);
-      indices.push(a, b, c, b, d, c);
+      // Mirroring the quad (sign) flips its facing, so the left run needs
+      // the opposite winding or its front faces point down and the whole
+      // run is backface-culled from any above-track camera - every left
+      // kerb invisible, bare terrain where the stripes should be.
+      if (sign < 0) indices.push(a, c, b, b, c, d);
+      else indices.push(a, b, c, b, d, c);
     }
   }
 

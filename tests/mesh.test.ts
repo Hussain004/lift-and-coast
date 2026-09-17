@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildRibbonGeometry } from "../lib/tracks/mesh";
+import { buildKerbGeometry, buildRibbonGeometry } from "../lib/tracks/mesh";
+import { TRACKS } from "../lib/tracks/registry";
+import { getTrack } from "../lib/tracks/trackData";
 import type { TrackData } from "../lib/tracks/types";
 
 function square(width: number): TrackData {
@@ -56,4 +58,29 @@ describe("buildRibbonGeometry", () => {
       expect(idx).toBeLessThan(vertexCount);
     }
   });
+});
+
+describe("buildKerbGeometry", () => {
+  for (const entry of TRACKS) {
+    it(`${entry.id} winds every kerb triangle facing up, on both sides`, () => {
+      // Regression: mirroring a quad across the centerline flips its
+      // facing, so one index order cannot serve both runs - the left run
+      // used the right run's order and every left kerb faced down,
+      // backface-culled from any above-track camera (bare terrain where
+      // the stripes should be, reported as track segments missing).
+      const { positions, indices } = buildKerbGeometry(getTrack(entry.id));
+      expect(indices.length).toBeGreaterThan(0);
+      for (let t = 0; t < indices.length; t += 3) {
+        // Y of (e1 x e2) for the triangle - positive means facing up.
+        const ax = positions[indices[t] * 3];
+        const az = positions[indices[t] * 3 + 2];
+        const bx = positions[indices[t + 1] * 3];
+        const bz = positions[indices[t + 1] * 3 + 2];
+        const cx = positions[indices[t + 2] * 3];
+        const cz = positions[indices[t + 2] * 3 + 2];
+        const normalY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+        expect(normalY).toBeGreaterThan(0);
+      }
+    });
+  }
 });
