@@ -13,8 +13,9 @@ import {
 } from "@/lib/tracks/racingLine";
 import type { TrackData } from "@/lib/tracks/types";
 
-// Lifts the racing line's rendered geometry just above the flat (y=0) track
-// surface (see mesh.ts's own comment) so it doesn't z-fight with it.
+// Lifts the racing line's rendered geometry just above the track surface
+// (the racing line carries the centerline's own y, and so does the ribbon's
+// cross-section - see mesh.ts) so it doesn't z-fight with it.
 const RACING_LINE_HEIGHT_OFFSET = 0.05;
 // Wide colored stripe (like an F1 game's throttle map), not a thin wire -
 // half this value each side of the line's own center. 1.3 (2.6m total)
@@ -56,7 +57,7 @@ function RacingLine({
       RACING_LINE_HALF_WIDTH_METERS,
       ZONE_COLOR
     );
-    // Lift every vertex above the track surface - positions are flat
+    // Lift every vertex above the track surface - positions are
     // [x, y, z, ...] triples, so the y component is every 3rd value
     // starting at index 1.
     for (let i = 1; i < positions.length; i += 3) {

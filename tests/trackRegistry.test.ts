@@ -32,6 +32,26 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = 
   suzuka: { min: 7.0, max: 16.5, mean: 9.8 },
 };
 
+// Elevation as built from the vendored DEM samples (see
+// scripts/fetch-elevation.mts and the averaging constants in
+// scripts/build-track.mts). `range` is the lap's total relief in meters - the
+// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m and Spa
+// 92m - and `maxGrade` the steepest point. The grade ceiling is the important
+// one: the raw DEM samples produce 50-84% grades and step 30m between
+// neighbouring 90m cells, so a regression in the averaging shows up here as a
+// spike rather than as a subtly wrong lap. The bands are the built values with
+// room around them, so a tweak to the averaging radius passes but a profile
+// that has lost its smoothing (or its relief) does not.
+const ELEVATION_BANDS: Record<
+  string,
+  { range: [number, number]; maxGrade: number }
+> = {
+  silverstone: { range: [8, 16], maxGrade: 0.04 },
+  monza: { range: [14, 28], maxGrade: 0.07 },
+  spa: { range: [80, 120], maxGrade: 0.16 },
+  suzuka: { range: [36, 56], maxGrade: 0.1 },
+};
+
 describe("parseTrackId", () => {
   it("accepts every known id", () => {
     for (const entry of TRACKS) {
@@ -102,11 +122,33 @@ describe("built track data integrity", () => {
     describe(entry.id, () => {
       const track = getTrack(entry.id);
 
-      it("has one width per centerline point, all flat at y=0", () => {
+      it("has one width per centerline point", () => {
         expect(track.width.length).toBe(track.centerline.length);
-        for (const [, y] of track.centerline) {
-          expect(y).toBe(0);
+      });
+
+      it("carries real elevation, normalized to the start line", () => {
+        // The profile is baked from vendored DEM samples and normalized so
+        // startPos sits at y=0 - which is what lets spawn/reset/camera code
+        // use a track-relative floor (see scripts/build-track.mts).
+        expect(track.centerline[0][1]).toBeCloseTo(0, 6);
+        const band = ELEVATION_BANDS[entry.id];
+        expect(band).toBeDefined();
+
+        let min = Infinity;
+        let max = -Infinity;
+        let maxGrade = 0;
+        const line = track.centerline;
+        for (let i = 0; i < line.length; i++) {
+          const a = line[i];
+          const b = line[(i + 1) % line.length];
+          min = Math.min(min, a[1]);
+          max = Math.max(max, a[1]);
+          const run = Math.hypot(b[0] - a[0], b[2] - a[2]);
+          if (run > 0) maxGrade = Math.max(maxGrade, Math.abs(b[1] - a[1]) / run);
         }
+        expect(max - min).toBeGreaterThan(band.range[0]);
+        expect(max - min).toBeLessThan(band.range[1]);
+        expect(maxGrade).toBeLessThan(band.maxGrade);
       });
 
       it("carries real per-point widths, not a flat placeholder", () => {

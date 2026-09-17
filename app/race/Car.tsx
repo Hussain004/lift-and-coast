@@ -22,7 +22,6 @@ import {
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
   OFF_TRACK_RESET_METERS,
-  WORLD_EDGE_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -58,6 +57,7 @@ import {
   allWheelsOffTrack,
   checkTrackLimits,
   computeSurfaceGripMultiplier,
+  worldEdgeResetMeters,
 } from "@/lib/tracks/trackLimits";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
@@ -469,9 +469,12 @@ export function Car({
     const limitStatus = checkTrackLimits(track, pos.x, pos.z);
     if (
       limitStatus.distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
-      Math.hypot(pos.x, pos.z) > WORLD_EDGE_RESET_METERS
+      Math.hypot(pos.x, pos.z) > worldEdgeResetMeters(track)
     ) {
       const q = startRotationRef.current;
+      // Track-relative spawn height: startPos is the start/finish line's own
+      // x/z, and the elevation build normalizes that point to y=0 (see
+      // scripts/build-track.mts), so 1m above it is still right.
       body.setTranslation({ x: startPos.x, y: 1, z: startPos.z }, true);
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);

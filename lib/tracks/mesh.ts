@@ -1,28 +1,34 @@
 import type { TrackData } from "./types";
 
-// The track trimesh is flat at y=0 (see buildRibbonGeometry below). The
-// grass ground plane surrounding it should sit this far below that, not
-// flush (a raycast wheel can ping-pong between two colliders at the exact
+// The track and the grass runoff around it are separate colliders that meet
+// along the ribbon's edge. The grass should sit this far below the ribbon,
+// not flush (a raycast wheel can ping-pong between two colliders at the exact
 // same height) and not much more (a bigger gap becomes a literal curb a
 // wheel has to climb crossing from grass back onto the track - the original
 // 5cm gap did exactly that, producing a sharp pitch spike reported as the
 // car "twitching" every so often during normal driving, whenever a corner
 // was taken wide enough to touch grass and come back). Both Scene.tsx and
-// the headless harness derive their ground collider's height from this.
+// the headless harness derive their ground collider's height from this; since
+// the ribbon gained real elevation it is applied to the runoff's own
+// elevation-following surface (see lib/tracks/terrain.ts) rather than to a
+// global plane height.
 export const GRASS_BELOW_TRACK_METERS = 0.01;
 
 export interface RibbonGeometry {
-  /** Flat [x, y, z, x, y, z, ...] vertex positions. */
+  /** [x, y, z, x, y, z, ...] vertex positions. */
   positions: Float32Array;
   /** Triangle vertex indices. */
   indices: Uint32Array;
 }
 
 /**
- * Builds a flat ribbon mesh along a closed centerline, offsetting each
- * point left/right by half its width. The track is currently flat
- * (centerline y is always 0), so this skips per-vertex normal computation
- * from geometry - revisit once elevation/camber keyframes exist.
+ * Builds a ribbon mesh along a closed centerline, offsetting each point
+ * left/right by half its width. Each cross-section is horizontal (the
+ * centerline's own y at that point) - the surface follows the lap's
+ * elevation but has no camber or banking, which is what the track data
+ * currently describes. That means the ribbon does carry a real slope along
+ * the track, so callers must compute vertex normals from the geometry (see
+ * Track.tsx) rather than assume a flat, up-facing surface.
  */
 export function buildRibbonGeometry(track: TrackData): RibbonGeometry {
   const n = track.centerline.length;

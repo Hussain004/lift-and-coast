@@ -1,4 +1,8 @@
 import type { TrackData } from "./types";
+import {
+  TRACK_EDGE_MARGIN_METERS,
+  WORLD_EDGE_RESET_METERS,
+} from "../physics/vehicle";
 
 export interface TrackLimitStatus {
   /** 0 if within the track's width, meters past the edge otherwise. */
@@ -77,4 +81,36 @@ export function allWheelsOffTrack(
   wheelPositions: { x: number; z: number }[]
 ): boolean {
   return wheelPositions.every((p) => checkTrackLimits(track, p.x, p.z).isOffTrack);
+}
+
+/**
+ * Distance from the track's projection origin reached by its furthest
+ * centerline point - the radius every point of the racing surface sits
+ * inside. Used to size the two things that must contain the whole circuit:
+ * the world-edge reset radius below and the built grass field (see
+ * lib/tracks/terrain.ts).
+ */
+export function trackExtentMeters(track: TrackData): number {
+  let extent = 0;
+  for (let i = 0; i < track.centerline.length; i++) {
+    const [x, , z] = track.centerline[i];
+    const radius = Math.hypot(x, z);
+    if (radius > extent) extent = radius;
+  }
+  return extent;
+}
+
+/**
+ * Absolute-distance backstop for a car that has driven off the end of the
+ * circuit entirely - see WORLD_EDGE_RESET_METERS and
+ * TRACK_EDGE_MARGIN_METERS. Track-relative rather than a bare constant: the
+ * guard exists to stop a car leaving the finite ground field, so a circuit
+ * larger than the constant has to push the boundary out with it, or the
+ * reset fires on ordinary racing surface.
+ */
+export function worldEdgeResetMeters(track: TrackData): number {
+  return Math.max(
+    WORLD_EDGE_RESET_METERS,
+    trackExtentMeters(track) + TRACK_EDGE_MARGIN_METERS
+  );
 }

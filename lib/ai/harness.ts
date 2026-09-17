@@ -14,7 +14,6 @@ import {
   CHASSIS_MASS,
   LINEAR_DAMPING,
   OFF_TRACK_RESET_METERS,
-  WORLD_EDGE_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -24,8 +23,9 @@ import {
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
 import { createGearboxState, rpmForGear } from "../physics/gearbox";
-import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "../tracks/mesh";
-import { checkTrackLimits } from "../tracks/trackLimits";
+import { buildRibbonGeometry } from "../tracks/mesh";
+import { buildTerrainGeometry } from "../tracks/terrain";
+import { checkTrackLimits, worldEdgeResetMeters } from "../tracks/trackLimits";
 import type { TrackData } from "../tracks/types";
 
 export interface DriveInputPlan {
@@ -257,17 +257,21 @@ export async function simulateDrive(
   let trackHandle = -1;
 
   if (options.track) {
-    // Matches Scene.tsx exactly: grass cuboid under everything plus the
-    // track trimesh on top, so a car pushed off the ribbon (e.g. by hard
-    // steering) lands on grass like it does in the real game, instead of
-    // free-falling through a void and reading as a "flip" that has nothing
-    // to do with the vehicle. Surface height derived from
+    // Matches Scene.tsx exactly: the elevation-following grass field under
+    // everything plus the track trimesh on top, so a car pushed off the
+    // ribbon (e.g. by hard steering) lands on grass like it does in the real
+    // game, instead of free-falling through a void and reading as a "flip"
+    // that has nothing to do with the vehicle. This used to be a flat cuboid
+    // at one altitude, which stopped being the same surface as the game's the
+    // moment the track gained elevation. Surface height derived from
     // GRASS_BELOW_TRACK_METERS - see its definition for why that gap.
-    const groundBody = world.createRigidBody(
-      RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -(0.5 + GRASS_BELOW_TRACK_METERS), 0)
-    );
+    const terrain = buildTerrainGeometry(options.track);
+    const groundBody = world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed());
     groundHandle = world
-      .createCollider(RAPIER_MOD.ColliderDesc.cuboid(1250, 0.5, 1250).setFriction(0.6), groundBody)
+      .createCollider(
+        RAPIER_MOD.ColliderDesc.trimesh(terrain.positions, terrain.indices).setFriction(0.6),
+        groundBody
+      )
       .handle;
 
     const { positions, indices } = buildRibbonGeometry(options.track);
@@ -324,16 +328,16 @@ export async function simulateDrive(
   for (let i = 0; i < steps; i++) {
     // Matches Car.tsx: past this distance off-track, snap back to the start
     // line rather than let the car keep going - a long enough straight-line
-    // run off-course eventually crosses the finite ground plane's edge and
+    // run off-course eventually crosses the finite ground field's edge and
     // crashes the physics engine entirely (found via this harness). Also
     // matches Car.tsx's absolute-distance-from-origin backstop
-    // (WORLD_EDGE_RESET_METERS) - see its definition for why the ribbon-
-    // distance check alone isn't enough.
+    // (worldEdgeResetMeters) - see its definition for why the ribbon-
+    // distance check alone isn't enough, and why it is track-relative.
     if (options.track) {
       const p = chassis.translation();
       if (
         checkTrackLimits(options.track, p.x, p.z).distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
-        Math.hypot(p.x, p.z) > WORLD_EDGE_RESET_METERS
+        Math.hypot(p.x, p.z) > worldEdgeResetMeters(options.track)
       ) {
         chassis.setTranslation(startPos, true);
         chassis.setRotation(startRotation, true);

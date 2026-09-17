@@ -1,14 +1,19 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Physics, RigidBody, type RapierRigidBody } from "@react-three/rapier";
+import {
+  Physics,
+  RigidBody,
+  TrimeshCollider,
+  type RapierRigidBody,
+} from "@react-three/rapier";
 import { Car } from "./Car";
 import { AICar } from "./AICar";
 import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
-import { GRASS_BELOW_TRACK_METERS } from "@/lib/tracks/mesh";
+import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
@@ -63,20 +68,27 @@ function RaceStartCountdown({
   return null;
 }
 
-// Half of the box geometry's height below (see GRASS_BELOW_TRACK_METERS for
-// why the ground surface isn't flush with the track trimesh).
-const GROUND_HALF_HEIGHT = 0.5;
+/**
+ * Grass runoff, built from the circuit's own elevation profile so it follows
+ * the ribbon up and down the lap instead of sitting at a single altitude (see
+ * lib/tracks/terrain.ts for why, and for the exact rule) - a plane at one
+ * fixed height would be tens of metres wrong at Spa. Wired to the same
+ * trimesh collider the harness uses, so the two cannot disagree.
+ */
+function Ground({ track }: { track: TrackData }) {
+  const { positions, indices, geometry } = useMemo(() => {
+    const { positions, indices } = buildTerrainGeometry(track);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.computeVertexNormals();
+    return { positions, indices, geometry };
+  }, [track]);
 
-function Ground() {
   return (
-    <RigidBody
-      type="fixed"
-      colliders="cuboid"
-      friction={0.6}
-      position={[0, -(GROUND_HALF_HEIGHT + GRASS_BELOW_TRACK_METERS), 0]}
-    >
-      <mesh receiveShadow>
-        <boxGeometry args={[2500, GROUND_HALF_HEIGHT * 2, 2500]} />
+    <RigidBody type="fixed" colliders={false} friction={0.6}>
+      <TrimeshCollider args={[positions, indices]} />
+      <mesh geometry={geometry} receiveShadow>
         <meshStandardMaterial color="#2b2b2b" />
       </mesh>
     </RigidBody>
@@ -292,7 +304,7 @@ export function Scene({
       <ambientLight intensity={0.6} />
       <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
-        <Ground />
+        <Ground track={track} />
         <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
         <Car
           chassisRef={chassisRef}

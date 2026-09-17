@@ -21,7 +21,6 @@ import {
   DEFAULT_STABILIZE_STRENGTH,
   LINEAR_DAMPING,
   OFF_TRACK_RESET_METERS,
-  WORLD_EDGE_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
   applyLoadSensitiveFriction,
@@ -32,7 +31,11 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createGearboxState } from "@/lib/physics/gearbox";
-import { checkTrackLimits, computeSurfaceGripMultiplier } from "@/lib/tracks/trackLimits";
+import {
+  checkTrackLimits,
+  computeSurfaceGripMultiplier,
+  worldEdgeResetMeters,
+} from "@/lib/tracks/trackLimits";
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
@@ -143,11 +146,11 @@ export function AICar({
     const limitStatus = checkTrackLimits(track, pos.x, pos.z);
     // Same safety backstop as the player's car (Car.tsx) - without it, a
     // path-follower bug or a bad launch could leave the AI stuck off-course
-    // or run it past the finite ground plane's edge for the rest of the
+    // or run it past the finite ground field's edge for the rest of the
     // session with nothing to recover it.
     if (
       limitStatus.distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
-      Math.hypot(pos.x, pos.z) > WORLD_EDGE_RESET_METERS
+      Math.hypot(pos.x, pos.z) > worldEdgeResetMeters(track)
     ) {
       body.setTranslation({ x: spawnX, y: 1, z: spawnZ }, true);
       body.setRotation({ x: spawnQuat.x, y: spawnQuat.y, z: spawnQuat.z, w: spawnQuat.w }, true);

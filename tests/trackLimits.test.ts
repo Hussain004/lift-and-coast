@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { allWheelsOffTrack, checkTrackLimits } from "../lib/tracks/trackLimits";
+import {
+  allWheelsOffTrack,
+  checkTrackLimits,
+  trackExtentMeters,
+  worldEdgeResetMeters,
+} from "../lib/tracks/trackLimits";
+import { TRACKS } from "../lib/tracks/registry";
+import { getTrack } from "../lib/tracks/trackData";
+import {
+  TRACK_EDGE_MARGIN_METERS,
+  WORLD_EDGE_RESET_METERS,
+} from "../lib/physics/vehicle";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -87,5 +98,40 @@ describe("allWheelsOffTrack", () => {
       pointAtLateralOffset(200, halfWidth + 6),
     ];
     expect(allWheelsOffTrack(track, wheels)).toBe(true);
+  });
+});
+
+describe("trackExtentMeters / worldEdgeResetMeters", () => {
+  it("leaves every circuit the margin clear of the reset boundary", () => {
+    for (const entry of TRACKS) {
+      const circuit = getTrack(entry.id);
+      const extent = trackExtentMeters(circuit);
+      expect(extent).toBeGreaterThan(500);
+      expect(worldEdgeResetMeters(circuit)).toBeGreaterThanOrEqual(
+        extent + TRACK_EDGE_MARGIN_METERS
+      );
+    }
+  });
+
+  it("pushes the boundary out for a circuit bigger than the bare constant", () => {
+    // Monza reaches ~1217m from the projection origin on its own, past
+    // WORLD_EDGE_RESET_METERS: with the old flat constant the reset fired on
+    // ordinary racing surface (the Parabolica) rather than on the horizon.
+    const monza = getTrack("monza");
+    const extent = trackExtentMeters(monza);
+    expect(extent).toBeGreaterThan(WORLD_EDGE_RESET_METERS);
+    expect(worldEdgeResetMeters(monza)).toBeCloseTo(
+      extent + TRACK_EDGE_MARGIN_METERS,
+      6
+    );
+    expect(worldEdgeResetMeters(monza)).toBeGreaterThan(WORLD_EDGE_RESET_METERS);
+  });
+
+  it("keeps a circuit that fits inside the bare constant on the constant", () => {
+    const circuit = getTrack("silverstone");
+    expect(trackExtentMeters(circuit) + TRACK_EDGE_MARGIN_METERS).toBeLessThan(
+      WORLD_EDGE_RESET_METERS
+    );
+    expect(worldEdgeResetMeters(circuit)).toBe(WORLD_EDGE_RESET_METERS);
   });
 });

@@ -10,10 +10,16 @@
  *
  * Width is real: it comes from the vendored TUMFTM racetrack-database
  * (per-point widths aligned onto this centerline - see the README next to
- * those files). Elevation, camber, kerbs, surface zones, and the racing line
- * are still real per-corner authoring work (plan section 4) and are
- * deliberately not computed here - the centerline is flat (y=0) until the
- * elevation step lands.
+ * those files). Elevation is real too: it comes from vendored DEM samples of
+ * each circuit's own coordinates (see scripts/fetch-elevation.mts), averaged
+ * in the projected plane and normalized so the start/finish line sits at y=0.
+ * The profile is therefore real but coarse - a 90m DEM reports the terrain
+ * around the circuit, not the asphalt's own grade, so it is averaged over a
+ * wide disc and should be read as the broad shape of the lap, not a surveyed
+ * surface (and it cannot resolve a bridge, so a self-crossing reads as a flat
+ * junction). Camber, kerbs, surface zones and the racing line are still
+ * per-corner authoring work (plan section 4) and are deliberately not
+ * computed here.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -42,6 +48,18 @@ const MIN_POINT_SEPARATION_METERS = 1;
 // index switches; +/-4 points (+/-8 m at the 2 m spacing) smooths those
 // without blunting real corner-to-corner width changes.
 const WIDTH_SMOOTH_HALF_WINDOW = 4;
+// Elevation averaging radius, in meters, in the projected plane. The DEM is
+// ~90m per sample and reports the hillside next to the track as often as the
+// track itself - raw samples produce grades of 50-84% (Spa), which no real
+// circuit has - so the average has to be wide. It also has to be wide for a
+// second reason: consecutive DEM cells step by up to 30m where they straddle
+// a cliff (Spa's profile jumps 400m -> 439m between samples 25m apart), and
+// only a disc several cells across spreads a step like that out into a
+// credible grade. With this value the built profiles read Silverstone 11m of
+// relief at a 2% peak grade, Monza 20m/4%, Suzuka 45m/6% and Spa 92m/11%,
+// which is the right ballpark for the real circuits (see
+// tests/trackRegistry.test.ts).
+const ELEVATION_FIELD_RADIUS_METERS = 300;
 // ICP correspondence search is O(theirs x ours) per iteration. Subsampling
 // both by this stride keeps the build fast; verified to converge to the same
 // residual as the full-resolution fit.
@@ -295,11 +313,85 @@ function smoothWrap(values: number[], halfWindow: number): number[] {
   });
 }
 
+interface ElevationSource {
+  /** The same projected raw polyline the centerline was splined through. */
+  points: Point[];
+  /** One elevation per point, in meters. */
+  elevation: number[];
+}
+
+/**
+ * Reads the vendored DEM samples fetched by scripts/fetch-elevation.mts:
+ * lon/lat pairs walked along the lap at a fixed spacing, one elevation each.
+ * They are projected here with the same `lonLatToMeters` (and the same
+ * circuit centre) as the centerline, so both live in one frame.
+ */
+function loadElevationSource(
+  path: string,
+  centerLon: number,
+  centerLat: number
+): ElevationSource {
+  const raw = JSON.parse(readFileSync(path, "utf-8"));
+  const coordinates: [number, number][] = raw.coordinates;
+  const elevation: number[] = raw.elevationMeters;
+  if (!Array.isArray(elevation) || elevation.length !== coordinates.length) {
+    throw new Error(
+      `${path}: expected one elevation per coordinate, got ${elevation?.length} for ${coordinates?.length}`
+    );
+  }
+  return { points: lonLatToMeters(coordinates, centerLon, centerLat), elevation };
+}
+
+/**
+ * Ground elevation at each built centerline point: the distance-weighted mean
+ * of every vendored DEM sample within ELEVATION_FIELD_RADIUS_METERS of the
+ * point *in the projected plane*.
+ *
+ * Weighting in 2D rather than along the track is what makes a self-crossing
+ * consistent. Suzuka is a figure-8 whose two arms pass within ~1m of each
+ * other in plan while sitting ~5m apart in height, and a 90m DEM cannot see
+ * the bridge that separates them: it reports one ground elevation for both.
+ * Smoothing along the track gives the arms different answers anyway (their
+ * approaches run over different hillsides), which forces the terrain into a
+ * choice it cannot make - see lib/tracks/terrain.ts. A 2D neighbourhood is
+ * the same neighbourhood for both arms, so their profiles agree wherever
+ * they touch, and the crossing comes out as the flat junction the data
+ * actually describes.
+ *
+ * A weighted mean passes slopes through unchanged and only rounds off
+ * curvature, so the wide radius costs profile detail rather than gradient.
+ */
+function averageElevations(ours: Point[], source: ElevationSource): number[] {
+  const radius = ELEVATION_FIELD_RADIUS_METERS;
+  const radiusSq = radius * radius;
+  return ours.map((p) => {
+    let sum = 0;
+    let weight = 0;
+    let nearestSq = Infinity;
+    let nearestElevation = 0;
+    for (let i = 0; i < source.points.length; i++) {
+      const dx = p.x - source.points[i].x;
+      const dz = p.z - source.points[i].z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < nearestSq) {
+        nearestSq = distSq;
+        nearestElevation = source.elevation[i];
+      }
+      if (distSq >= radiusSq) continue;
+      const w = (1 - Math.sqrt(distSq) / radius) ** 2;
+      sum += source.elevation[i] * w;
+      weight += w;
+    }
+    return weight > 0 ? sum / weight : nearestElevation;
+  });
+}
+
 function buildTrack(
   rawPath: string,
   id: string,
   name: string,
-  widthPath?: string
+  widthPath?: string,
+  elevationPath?: string
 ): TrackJson {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const feature = raw.features[0];
@@ -315,9 +407,29 @@ function buildTrack(
   const fine = catmullRomClosed(controlPoints, 20);
   const resampled = resampleByArcLength(fine, RESAMPLE_SPACING_METERS);
 
-  const centerline: [number, number, number][] = resampled.map((p) => [
+  let elevation: number[] = resampled.map(() => 0);
+  if (elevationPath) {
+    const source = loadElevationSource(elevationPath, centerLon, centerLat);
+    const field = averageElevations(resampled, source);
+    // Normalize the start/finish line to y=0 so spawning, resetting and the
+    // camera all keep working off a track-relative floor unchanged - the
+    // runtime only ever needs the profile's shape, and the DEM's own datum
+    // (which disagrees with the dataset's `altitude` property by tens of
+    // meters) is meaningless for physics.
+    const offset = field[0];
+    elevation = field.map((e) => e - offset);
+    const min = Math.min(...elevation);
+    const max = Math.max(...elevation);
+    console.log(
+      `  elevation: ${elevationPath.split("/").pop()} baked, ${min.toFixed(
+        1
+      )} to ${max.toFixed(1)}m (start at 0)`
+    );
+  }
+
+  const centerline: [number, number, number][] = resampled.map((p, i) => [
     p.x,
-    0,
+    elevation[i],
     p.z,
   ]);
 
@@ -374,47 +486,57 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 // lengthMeters from resampling lands within a percent or two (the source
 // polyline already approximates the real geometry). `widthFile` names the
 // vendored TUMFTM racetrack-database CSV that supplies the real per-point
-// track width for that circuit.
+// track width for that circuit, and `elevationFile` the vendored DEM samples
+// (both null when a dataset has no coverage for a circuit - the build then
+// falls back to a flat 13m ribbon at y=0).
 const TRACKS: {
   rawPath: string;
   id: string;
   name: string;
   widthFile: string | null;
+  elevationFile: string | null;
 }[] = [
   {
     rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
     id: "silverstone",
     name: "Silverstone Circuit",
     widthFile: "Silverstone.csv",
+    elevationFile: "silverstone.json",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/be-1925.geojson`,
     id: "spa",
     name: "Circuit de Spa-Francorchamps",
     widthFile: "Spa.csv",
+    elevationFile: "spa.json",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/it-1922.geojson`,
     id: "monza",
     name: "Autodromo Nazionale Monza",
     widthFile: "Monza.csv",
+    elevationFile: "monza.json",
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/jp-1962.geojson`,
     id: "suzuka",
     name: "Suzuka International Racing Course",
     widthFile: "Suzuka.csv",
+    elevationFile: "suzuka.json",
   },
 ];
 
 let totalPoints = 0;
-for (const { rawPath, id, name, widthFile } of TRACKS) {
+for (const { rawPath, id, name, widthFile, elevationFile } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
   const widthPath = widthFile
     ? `${scriptDir}/../data/tracks/raw/tumftm/${widthFile}`
     : undefined;
-  const track = buildTrack(rawPath, id, name, widthPath);
+  const elevationPath = elevationFile
+    ? `${scriptDir}/../data/tracks/raw/elevation/${elevationFile}`
+    : undefined;
+  const track = buildTrack(rawPath, id, name, widthPath, elevationPath);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)

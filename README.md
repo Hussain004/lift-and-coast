@@ -10,8 +10,8 @@ Save the juice. Send the apex.
 
 A set of real circuit layouts (corner geometry and start line from the
 f1-circuits dataset, real per-point track widths from the TUMFTM
-racetrack-database; still flat ribbons at y=0 — no elevation/camber
-keyframes yet, and no authored kerbs): Silverstone, Monza, Spa-Francorchamps
+racetrack-database, real elevation from a vendored Copernicus DEM; no camber
+and no authored kerbs yet): Silverstone, Monza, Spa-Francorchamps
 and Suzuka. Driven by a Rapier raycast-vehicle
 chassis with seven-speed sequential manual gears plus an auto-gear assist
 (plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
@@ -40,7 +40,7 @@ the vertical slice:
   real trimesh under stress scenarios, a per-track AI stability gate, plus
   an AI stability diagnostic suite - all part of the test suite.
 
-Not built yet: elevation/camber, kerbs, the full session flow (team/driver
+Not built yet: camber, kerbs, the full session flow (team/driver
 select, world map, time-of-day lighting presets - plan sections 7-8),
 difficulty tiers (blocked by the AI's
 chaotic-sensitivity findings, see pathFollower.ts), AI energy/aero
@@ -70,6 +70,21 @@ rigidly aligns their centerline onto ours with a small deterministic ICP
 smooths it along the lap. That is what makes Silverstone genuinely wide
 (~13.8 m mean) and Monza/Spa/Suzuka narrower (~9.5 m) instead of every
 circuit being a flat 13 m.
+
+Elevation is real too. `scripts/fetch-elevation.mts` walks each circuit's own
+polyline at a fixed 25 m spacing, samples Open-Meteo's `/v1/elevation`
+(Copernicus DEM GLO-90, ~90 m per sample) and vendors the result in
+`data/tracks/raw/elevation/`; the build then averages those samples in the
+*projected plane* (a 300 m disc) and normalizes the start/finish line to
+y=0. The averaging is 2D rather than along the lap on purpose: a DEM cannot
+see the Suzuka overpass, so the two arms of a self-crossing have to read the
+same hillside, or the ground under one of them ends up metres out. It is
+coarse by nature - it reports the terrain around the circuit, not a surveyed
+grade - so read the profile as the broad shape of the lap (about 11 m of
+relief at Silverstone, 20 m at Monza, 45 m at Suzuka, 92 m at Spa). Cars
+drive and land on a grass height field built from that profile
+(`lib/tracks/terrain.ts`) instead of a flat plane, so running wide at Spa
+puts the car on the hillside rather than 50 m down in a void.
 
 Adding a circuit is: drop its raw GeoJSON in `data/tracks/raw/`, add a row
 to `scripts/build-track.mts`, run the build, and register its id/name in

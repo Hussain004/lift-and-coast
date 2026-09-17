@@ -179,16 +179,31 @@ export const OFF_TRACK_RESET_METERS = 700;
 // measures distance from the nearest point on the track's own ribbon, which
 // stays fixed once a car drives past the far end of the track's extent - so
 // a car continuing in roughly the direction the track was already heading
-// can reach the finite grass plane's actual edge (a fixed 1250m half-extent
-// in both Scene.tsx and the harness, independent of engine force) while
-// still reading well under OFF_TRACK_RESET_METERS off the ribbon. Found via
-// exactly this failure after raising DEFAULT_ENGINE_FORCE: a cycling-steer
-// scenario crossed the real grass edge and fell into unbounded freefall (the
-// same NaN-inducing failure as leaving any finite ground plane) while its
-// ribbon-relative off-track distance was still under 700m. This checks
-// absolute distance from the origin directly - a backstop independent of
-// track shape or heading, with real margin below the actual 1250m edge.
+// can run off the finite grass entirely while still reading well under
+// OFF_TRACK_RESET_METERS off the ribbon. Found via exactly this failure after
+// raising DEFAULT_ENGINE_FORCE: a cycling-steer scenario crossed the real
+// grass edge and fell into unbounded freefall (the same NaN-inducing failure
+// as leaving any finite ground plane) while its ribbon-relative off-track
+// distance was still under 700m. This checks absolute distance from the
+// origin directly - a backstop independent of track shape or heading - and
+// the grass field is sized from this same radius plus
+// TERRAIN_OUTER_MARGIN_METERS (see lib/tracks/terrain.ts), so the reset
+// always fires while the car is still standing on ground.
 export const WORLD_EDGE_RESET_METERS = 1150;
+
+/**
+ * How far past the circuit's own furthest point the world-edge backstop
+ * above is allowed to sit. Some circuits are larger than
+ * WORLD_EDGE_RESET_METERS from their own projection origin - Monza's
+ * centerline reaches 1217m - and the old fixed radius teleported the car
+ * back to the start line part way around them (verified in the harness:
+ * Monza's AI never completed a lap, it was reset at a legitimate corner
+ * every time; the per-track gate never noticed because it only checks
+ * distance travelled, which the resets don't subtract). See
+ * worldEdgeResetMeters in trackLimits.ts, which is what Scene.tsx and the
+ * harness actually call.
+ */
+export const TRACK_EDGE_MARGIN_METERS = 150;
 
 /**
  * Builds a DynamicRayCastVehicleController on top of an existing chassis
