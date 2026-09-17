@@ -17,6 +17,17 @@ export interface TrackLimitStatus {
    * startPos (verified against the real track data).
    */
   progressMeters: number;
+  /**
+   * Signed lateral offset from the nearest centerline point, in meters,
+   * positive to the right of the direction of travel. Same magnitude as the
+   * nearest-point distance (before the half-width is subtracted), exposed for
+   * the surface classifier (see lib/tracks/surfaces.ts) so it can tell which
+   * side of the track a wheel is on - and therefore which side's kerb,
+   * gravel or grass.
+   */
+  lateralMeters: number;
+  /** Index of the nearest centerline point, for per-point zone lookups. */
+  nearestIndex: number;
 }
 
 /**
@@ -39,21 +50,45 @@ export function checkTrackLimits(track: TrackData, x: number, z: number): TrackL
   const halfWidth = track.width[nearestIdx] / 2;
   const distanceFromEdgeMeters = Math.max(0, Math.sqrt(nearestDistSq) - halfWidth);
   const progressMeters = (nearestIdx / track.centerline.length) * track.lengthMeters;
-  return { distanceFromEdgeMeters, isOffTrack: distanceFromEdgeMeters > 0, progressMeters };
+  // Which side of the centerline the point is on: project onto the local
+  // right vector (same right = (-tangentZ, tangentX) convention as
+  // buildRibbonGeometry's offsets).
+  const n = track.centerline.length;
+  const before = track.centerline[(nearestIdx - 1 + n) % n];
+  const after = track.centerline[(nearestIdx + 1) % n];
+  const tangentX = after[0] - before[0];
+  const tangentZ = after[2] - before[2];
+  const tangentLength = Math.hypot(tangentX, tangentZ) || 1;
+  const rightX = -tangentZ / tangentLength;
+  const rightZ = tangentX / tangentLength;
+  const center = track.centerline[nearestIdx];
+  const side = (x - center[0]) * rightX + (z - center[2]) * rightZ;
+  const distance = Math.sqrt(nearestDistSq);
+  const lateralMeters = (side < 0 ? -1 : 1) * distance;
+  return {
+    distanceFromEdgeMeters,
+    isOffTrack: distanceFromEdgeMeters > 0,
+    progressMeters,
+    lateralMeters,
+    nearestIndex: nearestIdx,
+  };
 }
 
 // Plan section 5, depth feature 6 (kerb & surface interaction) / section 4
-// point 7 (surface zones): this track's data has no authored per-zone
-// surface tags yet (asphalt/kerb/grass/gravel), so this approximates "how
-// far into the grass" a car is using the same distanceFromEdgeMeters this
-// module already computes for the off-track warning/invalidation above,
-// rather than a second geometry system. Grip falls off smoothly over the
-// first few meters past the edge (where real grass starts mattering) down
-// to a harsh but still-drivable floor, instead of an instant on/off
-// track-limits-style cliff - revisit with real per-zone grip/drag once the
-// track pipeline authors them.
+// point 7 (surface zones): grass (no authored per-zone tags for it in the
+// track data) reuses this module's falloff, the pre-zone approximation it
+// has always shipped - surfaces.ts classifies the track's own authored
+// surface zones (kerb/gravel) and delegates everything past them here via
+// the same distanceFromEdgeMeters this module already computes, rather than
+// a second geometry system. Grip falls off smoothly over the first few
+// meters past the edge (where real grass starts mattering) down to a
+// still-drivable floor: harsh enough to be a real penalty, gentle enough
+// that a wide exit never snowballs into an unrecoverable slide (see the
+// floor note in surfaces.ts - the per-track AI gate measured the 0.35 floor
+// doing exactly that on Suzuka). Never an instant on/off
+// track-limits-style cliff.
 const SURFACE_GRIP_FALLOFF_METERS = 4;
-const MIN_SURFACE_GRIP_FRACTION = 0.35;
+const MIN_SURFACE_GRIP_FRACTION = 0.6;
 
 /**
  * A below-1x-only grip multiplier for driving off the track surface -

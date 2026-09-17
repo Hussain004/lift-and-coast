@@ -23,8 +23,10 @@ the vertical slice:
 - Tire compounds, wear and compound-grip degradation (1/2/3)
 - Assists: traction control (T), ABS (B), racing line (L); manual vs
   auto gears (Q/Z shift, G toggles the assist)
-- Off-track surface zones approximated by distance-from-edge grip falloff
-  (real per-zone asphalt/kerb/grass tags are future work)
+- Kerbs + surface zones: red/white kerb strips at the apex of every derived
+  corner (per-corner severity: sausage/aggressive/low), gravel runoff beyond
+  them, and grass with a distance-from-edge grip falloff - all classified per
+  wheel, sampled from real per-point zones (plan section 4 points 6-7)
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
@@ -40,7 +42,7 @@ the vertical slice:
   real trimesh under stress scenarios, a per-track AI stability gate, plus
   an AI stability diagnostic suite - all part of the test suite.
 
-Not built yet: camber, kerbs, the full session flow (team/driver
+Not built yet: camber, the full session flow (team/driver
 select, world map, time-of-day lighting presets - plan sections 7-8),
 difficulty tiers (blocked by the AI's
 chaotic-sensitivity findings, see pathFollower.ts), AI energy/aero

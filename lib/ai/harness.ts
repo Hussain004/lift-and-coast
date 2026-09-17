@@ -16,16 +16,24 @@ import {
   OFF_TRACK_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
+  applyKerbRideHeights,
   applyLoadSensitiveFriction,
+  applySurfaceDragImpulse,
   computeSignedForwardSpeed,
   computeStabilizingTorque,
   createCarController,
+  wheelGroundPositions,
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
 import { createGearboxState, rpmForGear } from "../physics/gearbox";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { checkTrackLimits, worldEdgeResetMeters } from "../tracks/trackLimits";
+import {
+  meanSurfaceDrag,
+  sampleSurface,
+  wheelSurfaceGrips,
+} from "../tracks/surfaces";
 import type { TrackData } from "../tracks/types";
 
 export interface DriveInputPlan {
@@ -382,7 +390,32 @@ export async function simulateDrive(
         ? undefined
         : { state: gearbox, shiftUp: false, shiftDown: false }
     );
-    applyLoadSensitiveFriction(controller, stepAeroMode);
+    // Surface zones (plan section 4 point 7 / section 5 depth feature 6), the
+    // same per-wheel classification the live game runs (Car.tsx/AICar.tsx).
+    // Only when driving a real circuit: a flat-plane scenario has no
+    // centerline to classify against, and leaving those runs exactly as they
+    // were keeps every existing scripted-input stability test measuring the
+    // car it was originally tuned on rather than a new one.
+    const surfaceSamples = options.track
+      ? wheelGroundPositions(chassis).map((wheel) =>
+          sampleSurface(options.track as TrackData, wheel.x, wheel.z)
+        )
+      : null;
+    if (surfaceSamples) {
+      applyKerbRideHeights(
+        controller,
+        surfaceSamples.map((sample) => sample.kerbRiseMeters)
+      );
+      applyLoadSensitiveFriction(
+        controller,
+        stepAeroMode,
+        1,
+        wheelSurfaceGrips(surfaceSamples),
+        1
+      );
+    } else {
+      applyLoadSensitiveFriction(controller, stepAeroMode);
+    }
     controller.updateVehicle(timestep);
 
     const torque = computeStabilizingTorque(
@@ -402,6 +435,11 @@ export async function simulateDrive(
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), stepAeroMode);
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
     applyDragImpulse(chassis, stepAeroMode, timestep);
+    applySurfaceDragImpulse(
+      chassis,
+      surfaceSamples ? meanSurfaceDrag(surfaceSamples) : 0,
+      timestep
+    );
 
     world.step();
     const tilt = tiltFromUpright(chassis.rotation());

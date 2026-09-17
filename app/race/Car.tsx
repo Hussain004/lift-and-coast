@@ -24,9 +24,12 @@ import {
   OFF_TRACK_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
+  applyKerbRideHeights,
   applyLoadSensitiveFriction,
+  applySurfaceDragImpulse,
   computeStabilizingTorque,
   createCarController,
+  wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
@@ -56,9 +59,13 @@ import { pointsForPosition } from "@/lib/race/championship";
 import {
   allWheelsOffTrack,
   checkTrackLimits,
-  computeSurfaceGripMultiplier,
   worldEdgeResetMeters,
 } from "@/lib/tracks/trackLimits";
+import {
+  meanSurfaceDrag,
+  sampleSurface,
+  wheelSurfaceGrips,
+} from "@/lib/tracks/surfaces";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
@@ -580,12 +587,24 @@ export function Car({
       TIRE_COMPOUNDS[tireCompound.current],
       tireWornMetersRef.current
     );
-    const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
+    // Per-wheel surfaces (plan section 4 point 7 / section 5 depth feature 6),
+    // replacing the old single chassis-center distanceFromEdgeMeters
+    // approximation: each wheel is classified separately, so clipping an apex
+    // kerb or dropping one wheel into a gravel trap acts on that wheel rather
+    // than being averaged across the whole car. Two wheels off is a very
+    // different car from four, which is the skill this exists to create.
+    const surfaceSamples = wheelGroundPositions(body).map((wheel) =>
+      sampleSurface(track, wheel.x, wheel.z)
+    );
+    applyKerbRideHeights(
+      controller,
+      surfaceSamples.map((sample) => sample.kerbRiseMeters)
+    );
     applyLoadSensitiveFriction(
       controller,
       aeroMode.current,
       compoundGripMultiplier,
-      surfaceGripMultiplier,
+      wheelSurfaceGrips(surfaceSamples),
       damageGripMultiplierRef.current
     );
     controller.updateVehicle(world.timestep);
@@ -600,6 +619,10 @@ export function Car({
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current);
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     applyDragImpulse(body, aeroMode.current, world.timestep);
+    // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
+    // above - a wide moment costs time, and a gravel trap takes the car off
+    // the driver's hands entirely rather than merely slowing it.
+    applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
 
     rewindBufferRef.current.push(snapshotOf(body));
   });
@@ -700,6 +723,7 @@ export function Car({
     if (!(raceStartRef?.current ?? true)) return;
 
     const t = body.translation();
+    const bodyRot = body.rotation();
     const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
 
@@ -824,12 +848,7 @@ export function Car({
     // - separate from and stricter than the chassis-center-based warning
     // below, so this only flags once the car has genuinely left the track,
     // not while merely running wide with grip still on one side.
-    const bodyRot = body.rotation();
-    const bodyQuat = new THREE.Quaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
-    const wheelWorldPositions = CAR_WHEELS.map((wheel) => {
-      const local = new THREE.Vector3(...wheel.position).applyQuaternion(bodyQuat);
-      return { x: t.x + local.x, z: t.z + local.z };
-    });
+    const wheelWorldPositions = wheelGroundPositions(body);
     if (allWheelsOffTrack(track, wheelWorldPositions)) {
       // Only record the timestamp on the first violation this lap - a
       // rewind must reach back to the START of the infraction to undo it,

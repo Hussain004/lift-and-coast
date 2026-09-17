@@ -31,7 +31,26 @@ export const CAR_WHEELS: WheelLayout[] = [
   { position: [0.82, -0.35, 1.3], radius: 0.34, isSteering: false, isDriven: true },
 ];
 
-const SUSPENSION_REST_LENGTH = 0.18;
+/**
+ * The four wheels' ground-plane positions (x, z) in CAR_WHEELS order, for the
+ * surface sampler (lib/tracks/surfaces.ts) and the all-four-wheels-off check.
+ * Suspension travel is ignored: a wheel is classified by where its contact
+ * patch is, and up to ~0.25m of travel is immaterial against a 7-18m track
+ * width, whereas reading every wheel's live suspension length back out of the
+ * controller each step is not free. Shared by Car.tsx, AICar.tsx and the
+ * headless harness so all three classify the same four points.
+ */
+export function wheelGroundPositions(body: RigidBody): { x: number; z: number }[] {
+  const t = body.translation();
+  const r = body.rotation();
+  const rotation = new Quaternion(r.x, r.y, r.z, r.w);
+  return CAR_WHEELS.map((wheel) => {
+    const local = new Vector3(...wheel.position).applyQuaternion(rotation);
+    return { x: t.x + local.x, z: t.z + local.z };
+  });
+}
+
+export const SUSPENSION_REST_LENGTH = 0.18;
 // Lower than this project's original value of 30, so the chassis actually
 // rolls visibly under cornering load instead of staying nearly flat. The
 // stabilizing torque and angular damping turned out NOT to be the cause of
@@ -283,28 +302,38 @@ export const STATIC_WHEEL_LOAD_N = (CHASSIS_MASS * 9.81) / 4;
  * downforce->load coupling above is negligible at cornering speeds (see
  * aero.ts) - tire compound degradation (compoundGripMultiplier, see
  * computeCompoundGripMultiplier in tireModel.ts), surface grip
- * (surfaceGripMultiplier, see computeSurfaceGripMultiplier in
- * trackLimits.ts, for driving off the track edge), and impact damage
- * (damageGripMultiplier, see applyImpactDamage in damage.ts), each
- * defaulting to 1 (fresh tire, on track, undamaged - no change from before
- * these parameters existed). All five scales only ever multiply below 1x
- * on top of each other, so the sideFrictionStiffness safety ceiling still
- * holds no matter how worn the tires are, how far off-track the car has
- * gone, or how damaged it is.
+ * (surfaceGripMultiplier, see the surface zones in lib/tracks/surfaces.ts),
+ * and impact damage (damageGripMultiplier, see applyImpactDamage in
+ * damage.ts), each defaulting to 1 (fresh tire, on track, undamaged - no
+ * change from before these parameters existed). All five scales only ever
+ * multiply below 1x on top of each other, so the sideFrictionStiffness
+ * safety ceiling still holds no matter how worn the tires are, how far
+ * off-track the car has gone, or how damaged it is.
+ *
+ * surfaceGripMultiplier accepts either one scale for the whole car (the
+ * chassis-center approximation this used before per-wheel surfaces existed)
+ * or one per wheel in CAR_WHEELS order. Per-wheel is what the live game and
+ * the harness both pass now: a wheel on a kerb, in grass, or in a gravel trap
+ * loses grip on its own, which is what makes running wide with one side
+ * unsettle the car instead of merely slowing it. Keep every entry <= 1.
  */
 export function applyLoadSensitiveFriction(
   controller: Rapier.DynamicRayCastVehicleController,
   aeroMode: AeroMode = "high-downforce",
   compoundGripMultiplier: number = 1,
-  surfaceGripMultiplier: number = 1,
+  surfaceGripMultiplier: number | readonly number[] = 1,
   damageGripMultiplier: number = 1
 ) {
-  const gripScale =
+  const sharedGripScale =
     aeroGripMultiplier(aeroMode) *
     compoundGripMultiplier *
-    surfaceGripMultiplier *
     damageGripMultiplier;
   for (let i = 0; i < CAR_WHEELS.length; i++) {
+    const surfaceScale =
+      typeof surfaceGripMultiplier === "number"
+        ? surfaceGripMultiplier
+        : (surfaceGripMultiplier[i] ?? 1);
+    const gripScale = sharedGripScale * surfaceScale;
     const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
     const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N) * gripScale;
     controller.setWheelFrictionSlip(i, BASE_FRICTION_SLIP * scale);
@@ -312,6 +341,33 @@ export function applyLoadSensitiveFriction(
       i,
       Math.min(BASE_SIDE_FRICTION_STIFFNESS, BASE_SIDE_FRICTION_STIFFNESS * scale)
     );
+  }
+}
+
+/**
+ * Emulates a wheel riding up onto a raised kerb, in CAR_WHEELS order, as a
+ * per-wheel ride height in meters (0 for a wheel not on a kerb).
+ *
+ * A raised kerb is a real surface height change, but it is *not* modelled as
+ * collider geometry: a kerb strip is an overlapping collider that meets the
+ * ribbon at one edge and the grass field at the other, and this project has
+ * already been bitten once by a 5cm step between two overlapping ground
+ * colliders (see GRASS_BELOW_TRACK_METERS in lib/tracks/mesh.ts - a raycast
+ * wheel ping-pongs between them and the car twitches). Shortening the
+ * suspension's rest length instead raises the chassis by exactly that much
+ * with no collider change at all, no raycast ambiguity, and no energy
+ * injection - it is a position input, so it cannot flip the car the way a
+ * vertical impulse can.
+ *
+ * It is deliberately called every step with the sample's own rise (0 when
+ * off a kerb), so a wheel that leaves a kerb is restored in the same step.
+ */
+export function applyKerbRideHeights(
+  controller: Rapier.DynamicRayCastVehicleController,
+  rises: readonly number[]
+) {
+  for (let i = 0; i < CAR_WHEELS.length; i++) {
+    controller.setWheelSuspensionRestLength(i, SUSPENSION_REST_LENGTH - (rises[i] ?? 0));
   }
 }
 
@@ -452,6 +508,30 @@ export function applyDragImpulse(
   const speed = Math.hypot(v.x, v.z);
   if (speed < 0.01) return;
   const dragN = computeDragN(speed, mode);
+  const scale = (dragN * timestep) / speed;
+  body.applyImpulse({ x: -v.x * scale, y: 0, z: -v.z * scale }, true);
+}
+
+/**
+ * Speed-proportional drag for whatever surface the car is standing on,
+ * separate from the aero drag above because the two have nothing to do with
+ * each other: aero drag is a function of body speed and aero mode, this is a
+ * function of grip surface. `dragCoefficient` is N per (m/s) - see
+ * lib/tracks/surfaces.ts for grass's and gravel's values, and its own comment
+ * for why gravel's is large enough to actually bog the car. Takes the mean
+ * over the four wheels, so a car with one wheel in a trap is dragged a
+ * quarter as hard as one fully in it.
+ */
+export function applySurfaceDragImpulse(
+  body: RigidBody,
+  dragCoefficient: number,
+  timestep: number
+) {
+  if (dragCoefficient <= 0) return;
+  const v = body.linvel();
+  const speed = Math.hypot(v.x, v.z);
+  if (speed < 0.01) return;
+  const dragN = dragCoefficient * speed;
   const scale = (dragN * timestep) / speed;
   body.applyImpulse({ x: -v.x * scale, y: 0, z: -v.z * scale }, true);
 }

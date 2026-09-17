@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
-import { buildRibbonGeometry } from "@/lib/tracks/mesh";
+import { buildKerbGeometry, buildRibbonGeometry } from "@/lib/tracks/mesh";
 import {
   buildRacingLineRibbon,
   computeRacingLine,
@@ -128,13 +128,28 @@ export function Track({
   chassisRef?: React.RefObject<RapierRigidBody | null>;
   racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
-  const { positions, indices, geometry } = useMemo(() => {
+  const { positions, indices, geometry, kerbGeometry } = useMemo(() => {
     const { positions, indices } = buildRibbonGeometry(track);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
-    return { positions, indices, geometry };
+    // Visual kerb strips (plan section 4 point 6) - everything about how the
+    // kerbs are placed and shaped lives in lib/tracks/surfaces.ts; this is
+    // only geometry. The strips are NOT physics colliders: riding a kerb is
+    // emulated per-wheel in the vehicle code (see applyKerbRideHeights) so
+    // the collider set stays exactly ribbon + terrain, and no raycast wheel
+    // ever meets two surfaces at one point. Plain material, single-sided:
+    // the stripe quads are wound with their outward face toward the strip's
+    // own side of the track, so both runs of quads show their front faces.
+    const { positions: kerbPositions, colors: kerbColors, indices: kerbIndices } =
+      buildKerbGeometry(track);
+    const kerbGeometry = new THREE.BufferGeometry();
+    kerbGeometry.setAttribute("position", new THREE.BufferAttribute(kerbPositions, 3));
+    kerbGeometry.setAttribute("color", new THREE.BufferAttribute(kerbColors, 3));
+    kerbGeometry.setIndex(new THREE.BufferAttribute(kerbIndices, 1));
+    kerbGeometry.computeVertexNormals();
+    return { positions, indices, geometry, kerbGeometry };
   }, [track]);
 
   return (
@@ -145,6 +160,9 @@ export function Track({
           <meshStandardMaterial color="#3a3a3a" />
         </mesh>
       </RigidBody>
+      <mesh geometry={kerbGeometry}>
+        <meshStandardMaterial vertexColors />
+      </mesh>
       <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
     </>
   );

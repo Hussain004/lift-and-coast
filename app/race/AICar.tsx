@@ -23,19 +23,23 @@ import {
   OFF_TRACK_RESET_METERS,
   applyCarControls,
   applyDragImpulse,
+  applyKerbRideHeights,
   applyLoadSensitiveFriction,
+  applySurfaceDragImpulse,
   computeSignedForwardSpeed,
   computeStabilizingTorque,
   createCarController,
+  wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createGearboxState } from "@/lib/physics/gearbox";
+import { checkTrackLimits, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
 import {
-  checkTrackLimits,
-  computeSurfaceGripMultiplier,
-  worldEdgeResetMeters,
-} from "@/lib/tracks/trackLimits";
+  meanSurfaceDrag,
+  sampleSurface,
+  wheelSurfaceGrips,
+} from "@/lib/tracks/surfaces";
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
@@ -205,8 +209,23 @@ export function AICar({
       { state: gearboxRef.current, shiftUp: false, shiftDown: false }
     );
 
-    const surfaceGripMultiplier = computeSurfaceGripMultiplier(limitStatus.distanceFromEdgeMeters);
-    applyLoadSensitiveFriction(controller, "high-downforce", 1, surfaceGripMultiplier);
+    // Per-wheel surfaces, identical to Car.tsx and the headless harness (see
+    // lib/tracks/surfaces.ts) - the AI must drive the same car the player
+    // does, kerbs and gravel included, or the stability gate would be
+    // testing something the game never runs.
+    const surfaceSamples = wheelGroundPositions(body).map((wheel) =>
+      sampleSurface(track, wheel.x, wheel.z)
+    );
+    applyKerbRideHeights(
+      controller,
+      surfaceSamples.map((sample) => sample.kerbRiseMeters)
+    );
+    applyLoadSensitiveFriction(
+      controller,
+      "high-downforce",
+      1,
+      wheelSurfaceGrips(surfaceSamples)
+    );
     controller.updateVehicle(world.timestep);
 
     const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
@@ -219,6 +238,7 @@ export function AICar({
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), "high-downforce");
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     applyDragImpulse(body, "high-downforce", world.timestep);
+    applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
   });
 
   useFrame(() => {

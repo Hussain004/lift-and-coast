@@ -1,4 +1,5 @@
 import type { TrackData } from "./types";
+import { KERB_WIDTH_METERS, kerbHeightMeters, surfaceZones } from "./surfaces";
 
 // The track and the grass runoff around it are separate colliders that meet
 // along the ribbon's edge. The grass should sit this far below the ribbon,
@@ -74,4 +75,113 @@ export function buildRibbonGeometry(track: TrackData): RibbonGeometry {
   }
 
   return { positions, indices };
+}
+
+export interface KerbGeometry extends RibbonGeometry {
+  /** [r, g, b, ...] in 0-1, one per position triple (see KERB_STRIPE_COLORS). */
+  colors: Float32Array;
+}
+
+// Arc length of one kerb stripe, in meters - one quad of the built geometry.
+// Real painted kerbs alternate every ~1m, but this project's centerline is
+// resampled at exactly 2m, so 2m is the finest stripe the geometry can draw
+// with a hard edge (each quad one solid colour, alternating). At 1.5m the
+// stripes would alias into a gradient.
+export const KERB_STRIPE_METERS = 2;
+// Two-colour alternating stripes. Deliberately the classic red/white instead
+// of this project's HUD palette: a kerb is scenery, not UI, and the read
+// ("that's a kerb") is the whole point.
+const KERB_STRIPE_COLORS: [number, number, number][] = [
+  [0.82, 0.16, 0.16],
+  [0.9, 0.9, 0.9],
+];
+
+/**
+ * Builds the visible kerb strips for the zones surfaceZones derives (plan
+ * section 4 point 6). Visual only: the physics of riding a kerb is a
+ * per-wheel suspension ride height, not collider geometry, for the same
+ * overlapping-collider reason GRASS_BELOW_TRACK_METERS documents above - so
+ * this mesh is added to the scene and never handed to Rapier.
+ *
+ * Each quad is its own four vertices rather than a shared strip, so a stripe
+ * edge is a hard colour change instead of a two-metre gradient, and so a run
+ * of kerbs can be emitted without any run bookkeeping: a quad is emitted
+ * wherever two consecutive points carry the same kerb type on the same side.
+ * A type change (low -> aggressive) therefore leaves a one-quad gap, which
+ * also reads as the real joint between two kerb sections.
+ *
+ * The strip runs from the ribbon edge (at the ribbon's own y) up to the kerb
+ * height at its outer edge, i.e. a ramp matching the ramp the physics applies
+ * over the first fraction of a metre - so there is no vertical face at the
+ * ribbon edge, which a driver would otherwise see as a wall the car ignores.
+ */
+export function buildKerbGeometry(track: TrackData): KerbGeometry {
+  const zones = surfaceZones(track);
+  const n = track.centerline.length;
+
+  // Cumulative arc length, for the stripe phase.
+  const arc = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const a = track.centerline[i];
+    const b = track.centerline[(i + 1) % n];
+    arc[i + 1] = arc[i] + Math.hypot(b[0] - a[0], b[2] - a[2]);
+  }
+
+  // Right unit vector per point (same convention as buildRibbonGeometry).
+  const rightX = new Float64Array(n);
+  const rightZ = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const before = track.centerline[(i - 1 + n) % n];
+    const after = track.centerline[(i + 1) % n];
+    const tx = after[0] - before[0];
+    const tz = after[2] - before[2];
+    const len = Math.hypot(tx, tz) || 1;
+    rightX[i] = -tz / len;
+    rightZ[i] = tx / len;
+  }
+
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  const push = (
+    x: number,
+    y: number,
+    z: number,
+    color: [number, number, number]
+  ): number => {
+    positions.push(x, y, z);
+    colors.push(color[0], color[1], color[2]);
+    return positions.length / 3 - 1;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const p = track.centerline[i];
+    const q = track.centerline[j];
+    for (const side of ["left", "right"] as const) {
+      const type = zones[i][side];
+      // No quad where either end has no kerb, or where the type changes.
+      if (!type || zones[j][side] !== type) continue;
+      const sign = side === "right" ? 1 : -1;
+      const height = kerbHeightMeters(type);
+      const stripe =
+        KERB_STRIPE_COLORS[Math.floor(arc[i] / KERB_STRIPE_METERS) % KERB_STRIPE_COLORS.length];
+      const innerI = track.width[i] / 2;
+      const outerI = innerI + KERB_WIDTH_METERS;
+      const innerJ = track.width[j] / 2;
+      const outerJ = innerJ + KERB_WIDTH_METERS;
+      const a = push(p[0] + sign * rightX[i] * innerI, p[1], p[2] + sign * rightZ[i] * innerI, stripe);
+      const b = push(p[0] + sign * rightX[i] * outerI, p[1] + height, p[2] + sign * rightZ[i] * outerI, stripe);
+      const c = push(q[0] + sign * rightX[j] * innerJ, q[1], q[2] + sign * rightZ[j] * innerJ, stripe);
+      const d = push(q[0] + sign * rightX[j] * outerJ, q[1] + height, q[2] + sign * rightZ[j] * outerJ, stripe);
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    colors: new Float32Array(colors),
+    indices: new Uint32Array(indices),
+  };
 }
