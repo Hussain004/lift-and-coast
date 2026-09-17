@@ -175,12 +175,26 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
       const b = push(p[0] + sign * rightX[i] * outerI, p[1] + height, p[2] + sign * rightZ[i] * outerI, stripe);
       const c = push(q[0] + sign * rightX[j] * innerJ, q[1], q[2] + sign * rightZ[j] * innerJ, stripe);
       const d = push(q[0] + sign * rightX[j] * outerJ, q[1] + height, q[2] + sign * rightZ[j] * outerJ, stripe);
-      // Mirroring the quad (sign) flips its facing, so the left run needs
-      // the opposite winding or its front faces point down and the whole
-      // run is backface-culled from any above-track camera - every left
-      // kerb invisible, bare terrain where the stripes should be.
-      if (sign < 0) indices.push(a, c, b, b, c, d);
-      else indices.push(a, b, c, b, d, c);
+      // Wind each triangle from its measured facing. Mirroring the quad
+      // across the centerline flips its facing, so the left run needs the
+      // opposite order from the right run - and at very tight inside
+      // corners (Monaco's hairpin/Rascasse) consecutive edge points nearly
+      // coincide and a quad can fold, which no fixed order survives. Same
+      // vertices either way, so striping, counts and runs are untouched;
+      // only the front face is guaranteed up.
+      const normalY = (i0: number, i1: number, i2: number): number => {
+        const ax = positions[i0 * 3];
+        const az = positions[i0 * 3 + 2];
+        const bx = positions[i1 * 3];
+        const bz = positions[i1 * 3 + 2];
+        const cx = positions[i2 * 3];
+        const cz = positions[i2 * 3 + 2];
+        return (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+      };
+      if (normalY(a, b, c) > 0) indices.push(a, b, c);
+      else indices.push(a, c, b);
+      if (normalY(b, d, c) > 0) indices.push(b, d, c);
+      else indices.push(b, c, d);
     }
   }
 

@@ -17,14 +17,15 @@ import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
 // un-smoothed centerline curvature that produced the "AI wanders off
 // track" symptom the smoothed, shared profile fixes.
 // Checked against the real Silverstone trimesh over a full 150s run (more
-// than a full lap): swept lookahead 10-35 points with gain 0.7-1.2. Shorter
-// lookaheads track tightly over a short run but compound into large
-// (30m+) off-track excursions and occasional near-flips (maxTiltRad
-// approaching 1.0) once a full lap's worth of corners has been driven -
-// this system is sensitive enough that small tuning changes shift which
-// specific corner becomes the failure point, so this value was picked with
-// real margin from the instability band observed at 30+ points, not by
-// chasing the single best-looking run.
+// than a full lap): swept a *fixed* lookahead of 10-35 points with gain
+// 0.7-1.2. On Silverstone's fast layout a short fixed lookahead tracks
+// tightly over a short run but compounds into large (30m+) off-track
+// excursions and occasional near-flips (maxTiltRad approaching 1.0) once a
+// full lap's worth of corners has been driven - this system is sensitive
+// enough that small tuning changes shift which specific corner becomes the
+// failure point, so the fast-track value was picked with real margin from
+// the instability band observed at 30+ points, not by chasing the single
+// best-looking run.
 // Confirmed with actual numbers later (see AIControls.boostEligible's own
 // comment and [[lift_and_coast_ai_boost_knife_edge]]): a cross-track
 // steering-correction term swept from 0.0005-0.004 found isolated safe
@@ -34,7 +35,28 @@ import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
 // The safe values moved maxOffTrackMeters by ~2%, i.e. did nothing. There is
 // no gain here that both matters and survives; this is closed, not
 // under-tuned.
-const LOOKAHEAD_POINTS = 25;
+//
+// The value that sweep validated is a *distance* (25 points = 50m at the
+// builder's 2m resample spacing), and a fixed point count only equals that
+// distance at the speed it was swept at. Monaco's street layout breaks the
+// equivalence: at the Grand Hotel hairpin the car is down to ~12-15 m/s,
+// where a fixed 50m preview reaches around the far side of a 15-20m-radius
+// loop, so pure pursuit steers straight across the infield - measured as a
+// 60m+ "off-track" excursion on every lap. A real driver's preview scales
+// with speed, so the lookahead now does too: a 1.0s preview (one second of
+// travel), floored at 24m and capped at the swept fast-track 50m. That cap
+// is reached at 50 m/s, so on a fast circuit's quickest corners and
+// straights it is exactly the value the sweep picked; it only shortens where
+// the car is genuinely slow, which is precisely where a long preview
+// overshoots a tight corner. The 24m floor is the tight-street value: below
+// ~24 m/s (Monaco's hairpin, its chicanes) the preview stops shrinking,
+// since an even shorter one would give up the stability the sweep was
+// protecting. Re-validated over the full 180s harness on all five registered
+// circuits (see tests/trackAIStability.test.ts), where it keeps every car on
+// track - Monaco included (worst excursion ~23m, down from 61m+).
+const LOOKAHEAD_SECONDS = 1.0;
+const LOOKAHEAD_MIN_METERS = 24;
+const LOOKAHEAD_MAX_METERS = 50;
 const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error reaches this.
 const STEER_GAIN = 1.0;
 
@@ -95,7 +117,7 @@ export interface AIControls {
    * believe Silverstone's specific geometry (or any other track, or a
    * slightly different physics/timestep) keeps that same value on the safe
    * side. This confirms the AI's chaotic sensitivity (see the module
-   * comment on LOOKAHEAD_POINTS) isn't specific to zone-gated boost/aero
+   * comment on the lookahead constants) isn't specific to zone-gated boost/aero
    * gating - ANY behavioral perturbation to this AI, however individually
    * well-reasoned, can shift its trajectory enough to walk into an
    * unrelated stability cliff elsewhere on the same lap, arbitrarily far
@@ -114,8 +136,8 @@ export interface AIControls {
 }
 
 /**
- * Pure-pursuit-style path following: steers toward a fixed lookahead point
- * on the given racing line, and targets that line's own precomputed speed
+ * Pure-pursuit-style path following: steers toward a speed-scaled lookahead
+ * point on the given racing line, and targets that line's own precomputed speed
  * at the car's current position - which already anticipates corners ahead
  * (see racingLine.ts's backward pass), so no separate curvature lookahead
  * is needed here for speed.
@@ -141,7 +163,21 @@ export function computeAIControls(
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ);
 
-  const [lookX, , lookZ] = line[(nearest + LOOKAHEAD_POINTS) % n].position;
+  // Preview distance scales with speed - see LOOKAHEAD_SECONDS above. Walk
+  // the line by its own segment lengths rather than assuming a fixed point
+  // spacing, so this stays correct if the builder's resample spacing changes.
+  const lookaheadMeters = Math.min(
+    LOOKAHEAD_MAX_METERS,
+    Math.max(LOOKAHEAD_MIN_METERS, Math.abs(carSpeedMs) * LOOKAHEAD_SECONDS)
+  );
+  let lookaheadIndex = nearest;
+  let previewedMeters = 0;
+  while (previewedMeters < lookaheadMeters) {
+    previewedMeters += line[lookaheadIndex].distanceToNextMeters;
+    lookaheadIndex = (lookaheadIndex + 1) % n;
+  }
+
+  const [lookX, , lookZ] = line[lookaheadIndex].position;
   const dx = lookX - carX;
   const dz = lookZ - carZ;
   // Solving forward = (-sin(yaw), -cos(yaw)) for yaw given a desired

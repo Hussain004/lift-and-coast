@@ -127,7 +127,7 @@ describe("saveSessionSetupPrefs", () => {
 
   it("clamps an unknown track id to the default before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 3, trackId: "monaco" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 3, trackId: "not-a-registered-track" }, storage);
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
       JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID })
     );

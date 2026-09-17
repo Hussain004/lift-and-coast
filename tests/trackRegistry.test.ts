@@ -18,25 +18,29 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   monza: 5793,
   spa: 7004,
   suzuka: 5807,
+  monaco: 3337,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
 
 // Mean per-track width (metres) and the absolute bounds each point must
-// stay within, as built from the vendored TUMFTM width files. Silverstone
-// is genuinely the widest of the four; the others sit near 9.5m.
+// stay within. Silverstone is genuinely the widest; the others sit near
+// 9.5m. Monaco is hand-authored (TUMFTM has no coverage - see
+// scripts/build-track.mts): 7m at the hairpin, ~12m on the fast sections.
 const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = {
   silverstone: { min: 10.5, max: 19.0, mean: 13.8 },
   monza: { min: 7.0, max: 13.5, mean: 9.4 },
   spa: { min: 7.0, max: 17.5, mean: 9.8 },
   suzuka: { min: 7.0, max: 16.5, mean: 9.8 },
+  monaco: { min: 6.5, max: 12.5, mean: 9.9 },
 };
 
 // Elevation as built from the vendored DEM samples (see
 // scripts/fetch-elevation.mts and the averaging constants in
 // scripts/build-track.mts). `range` is the lap's total relief in meters - the
-// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m and Spa
-// 92m - and `maxGrade` the steepest point. The grade ceiling is the important
+// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m, Spa 92m
+// and Monaco 32m (hand-authored keyframes: the urban DEM inverts there, see
+// build-track.mts) - and `maxGrade` the steepest point. The grade ceiling is the important
 // one: the raw DEM samples produce 50-84% grades and step 30m between
 // neighbouring 90m cells, so a regression in the averaging shows up here as a
 // spike rather than as a subtly wrong lap. The bands are the built values with
@@ -50,6 +54,7 @@ const ELEVATION_BANDS: Record<
   monza: { range: [14, 28], maxGrade: 0.07 },
   spa: { range: [80, 120], maxGrade: 0.16 },
   suzuka: { range: [36, 56], maxGrade: 0.1 },
+  monaco: { range: [28, 42], maxGrade: 0.12 },
 };
 
 describe("parseTrackId", () => {
@@ -85,7 +90,7 @@ describe("getTrackName / isKnownTrackId", () => {
 });
 
 describe("registry contents", () => {
-  it("has four circuits with unique ids and short labels", () => {
+  it("has five circuits with unique ids and short labels", () => {
     expect(TRACKS.length).toBeGreaterThanOrEqual(4);
     expect(new Set(TRACKS.map((t) => t.id)).size).toBe(TRACKS.length);
     for (const entry of TRACKS) {
@@ -100,6 +105,7 @@ describe("registry contents", () => {
     expect(ids).toContain("monza");
     expect(ids).toContain("spa");
     expect(ids).toContain("suzuka");
+    expect(ids).toContain("monaco");
   });
 });
 
@@ -153,8 +159,10 @@ describe("built track data integrity", () => {
 
       it("carries real per-point widths, not a flat placeholder", () => {
         // Built from the vendored TUMFTM racetrack-database (see
-        // data/tracks/raw/tumftm/README.md). These bands are the values as
-        // built from that data: wide enough to absorb small pipeline
+        // data/tracks/raw/tumftm/README.md) - except Monaco, whose widths
+        // are hand-authored segments (TUMFTM has no coverage, see
+        // scripts/build-track.mts). These bands are the values as built
+        // from that data: wide enough to absorb small pipeline
         // changes, tight enough to catch a regression to the old flat 13m
         // placeholder or a broken centerline alignment.
         const band = WIDTH_BANDS[entry.id];

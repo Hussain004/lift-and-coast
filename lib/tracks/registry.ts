@@ -17,6 +17,7 @@ export const TRACKS: TrackMeta[] = [
   { id: "monza", name: "Autodromo Nazionale Monza", shortName: "Monza" },
   { id: "spa", name: "Circuit de Spa-Francorchamps", shortName: "Spa" },
   { id: "suzuka", name: "Suzuka International Racing Course", shortName: "Suzuka" },
+  { id: "monaco", name: "Circuit de Monaco", shortName: "Monaco" },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;

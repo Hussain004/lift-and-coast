@@ -391,11 +391,65 @@ function buildTrack(
   id: string,
   name: string,
   widthPath?: string,
-  elevationPath?: string
+  elevationPath?: string,
+  // Hand-authored width segments ([fromMeters, toMeters, width]) in lap
+  // stations from the start line, for circuits the TUMFTM database does not
+  // cover (Monaco). Piecewise-constant here; the shared smoother below
+  // rounds the transitions. Must cover the whole lap - a gap throws, so a
+  // mis-authored table fails the build instead of shipping a 13m default
+  // somewhere. An approximation of the real street widths (7m at the
+  // hairpin, ~12m on the straights), documented as such: replace with
+  // measured data if a source ever exists.
+  manualWidths?: [number, number, number][],
+  // Hand-authored elevation keyframes ([stationMeters, y]) for circuits
+  // where the DEM cannot supply even the broad shape: Monaco is a dense
+  // street circuit on a steep hill above the sea, and the 90m DSM reports
+  // rooftops while the 300m averaging disc mixes hillside with open water,
+  // which baked an inverted profile (start highest, port 42m below it).
+  // Cosine-interpolated cyclically, so any keyframe set closes smoothly.
+  // Shape and relief (~35m climb to Casino) follow the real circuit;
+  // magnitudes are ballpark, documented as such.
+  manualElevation?: [number, number][],
+  manualElevationBlendRadiusMeters?: number,
+  // Raw arc distance (meters along the source polyline from its first
+  // vertex) to rotate the loop so index 0 lands on, for datasets whose
+  // first vertex is mid-lap rather than on the start/finish straight
+  // (Monaco's starts on the Beau Rivage climb). Rotation preserves order
+  // and direction; only the lap line, grid and station-indexed tables move.
+  // The DEM averaging and TUMFTM alignment are index-agnostic, unaffected.
+  startAtMeters?: number,
 ): TrackJson {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const feature = raw.features[0];
-  const rawCoords: [number, number][] = feature.geometry.coordinates;
+  let rawCoords: [number, number][] = feature.geometry.coordinates;
+  if (startAtMeters !== undefined) {
+    // Walk to the target arc distance, then rotate so that vertex is first.
+    // Distances in meters via the same equirectangular projection the build
+    // uses below (raw degrees would silently misplace the cut).
+    const meanLat =
+      rawCoords.reduce((s, c) => s + c[1], 0) / rawCoords.length;
+    const mLon = 111320 * Math.cos((meanLat * Math.PI) / 180);
+    const segLen = (a: [number, number], b: [number, number]) =>
+      Math.hypot((b[0] - a[0]) * mLon, (b[1] - a[1]) * 111320);
+    let total = 0;
+    for (let i = 0; i < rawCoords.length; i++) {
+      total += segLen(rawCoords[i], rawCoords[(i + 1) % rawCoords.length]);
+    }
+    let acc = 0;
+    let cut = 0;
+    let best = Infinity;
+    const target = ((startAtMeters % total) + total) % total;
+    for (let i = 0; i < rawCoords.length; i++) {
+      const dist = Math.abs(acc - target);
+      if (dist < best) {
+        best = dist;
+        cut = i;
+      }
+      acc += segLen(rawCoords[i], rawCoords[(i + 1) % rawCoords.length]);
+    }
+    rawCoords = [...rawCoords.slice(cut), ...rawCoords.slice(0, cut)];
+    console.log(`  rotated loop to raw vertex ${cut} (~${startAtMeters}m) for the start line`);
+  }
 
   const lons = rawCoords.map((c) => c[0]);
   const lats = rawCoords.map((c) => c[1]);
@@ -408,7 +462,61 @@ function buildTrack(
   const resampled = resampleByArcLength(fine, RESAMPLE_SPACING_METERS);
 
   let elevation: number[] = resampled.map(() => 0);
-  if (elevationPath) {
+  if (manualElevation) {
+    const keys = [...manualElevation].sort((a, b) => a[0] - b[0]);
+    let total = 0;
+    for (let i = 0; i < resampled.length; i++) {
+      const a = resampled[i];
+      const b = resampled[(i + 1) % resampled.length];
+      total += Math.hypot(b.x - a.x, b.z - a.z);
+    }
+    const at = (d: number): number => {
+      const dd = ((d % total) + total) % total;
+      let i = keys.length - 1;
+      while (!(keys[i][0] <= dd || i === 0)) i--;
+      const a = keys[i];
+      const b = keys[(i + 1) % keys.length];
+      const bStation = b[0] <= a[0] ? b[0] + total : b[0];
+      const u = bStation === a[0] ? 0 : (dd < a[0] ? dd + total - a[0] : dd - a[0]) / (bStation - a[0]);
+      const s = (1 - Math.cos(u * Math.PI)) / 2;
+      return a[1] + (b[1] - a[1]) * s;
+    };
+    // Stations are index*spacing throughout the runtime (startPos,
+    // sectors, AI), so keyframes use that convention, not chord length.
+    elevation = resampled.map((_, i) => at(i * RESAMPLE_SPACING_METERS));
+    if (manualElevationBlendRadiusMeters) {
+      // The keyframes are station-indexed (1D): where two arms of the lap
+      // pass close in plan at genuinely different heights - the hairpin,
+      // the port - they disagree, and the nearest-point terrain between
+      // them tilts into a wall through the lower arm (the failure
+      // lib/tracks/terrain.ts documents). Blend in the projected plane
+      // with the same kernel averageElevations uses for DEM samples, so
+      // overlapping arms agree the way Suzuka's crossing does. Re-anchor
+      // the start line afterwards, since blending moves it.
+      const R = manualElevationBlendRadiusMeters;
+      const src = elevation;
+      elevation = resampled.map((p) => {
+        let sum = 0;
+        let wsum = 0;
+        for (let j = 0; j < resampled.length; j++) {
+          const q = resampled[j];
+          const d = Math.hypot(p.x - q.x, p.z - q.z);
+          if (d >= R) continue;
+          const w = (1 - d / R) ** 2;
+          sum += src[j] * w;
+          wsum += w;
+        }
+        return sum / wsum;
+      });
+      const b0 = elevation[0];
+      elevation = elevation.map((e) => e - b0);
+    }
+    const min = Math.min(...elevation);
+    const max = Math.max(...elevation);
+    console.log(
+      `  elevation: hand-authored keyframes, ${min.toFixed(1)} to ${max.toFixed(1)}m (start at 0)`
+    );
+  } else if (elevationPath) {
     const source = loadElevationSource(elevationPath, centerLon, centerLat);
     const field = averageElevations(resampled, source);
     // Normalize the start/finish line to y=0 so spawning, resetting and the
@@ -447,6 +555,21 @@ function buildTrack(
       `  width: ${widthPath.split("/").pop()} aligned (rms ${rms.toFixed(
         2
       )}m), ${min.toFixed(1)}-${max.toFixed(1)}m`
+    );
+  } else if (manualWidths) {
+    const raw = resampled.map((_, i) => {
+      const d = i * RESAMPLE_SPACING_METERS;
+      const seg = manualWidths.find(([from, to]) => d >= from && d < to);
+      if (!seg) {
+        throw new Error(`${id}: no manual width covers lap station ${d}m`);
+      }
+      return seg[2];
+    });
+    width = smoothWrap(raw, WIDTH_SMOOTH_HALF_WINDOW);
+    const min = Math.min(...width);
+    const max = Math.max(...width);
+    console.log(
+      `  width: hand-authored segments (TUMFTM has no coverage), ${min.toFixed(1)}-${max.toFixed(1)}m`
     );
   } else {
     width = resampled.map(() => DEFAULT_WIDTH_METERS);
@@ -488,13 +611,18 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 // vendored TUMFTM racetrack-database CSV that supplies the real per-point
 // track width for that circuit, and `elevationFile` the vendored DEM samples
 // (both null when a dataset has no coverage for a circuit - the build then
-// falls back to a flat 13m ribbon at y=0).
+// falls back to a flat 13m ribbon at y=0, unless `manualWidths` carries a
+// hand-authored width profile, as it does for Monaco which TUMFTM skips).
 const TRACKS: {
   rawPath: string;
   id: string;
   name: string;
   widthFile: string | null;
   elevationFile: string | null;
+  manualWidths?: [number, number, number][];
+  manualElevation?: [number, number][];
+  manualElevationBlendRadiusMeters?: number;
+  startAtMeters?: number;
 }[] = [
   {
     rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
@@ -524,10 +652,71 @@ const TRACKS: {
     widthFile: "Suzuka.csv",
     elevationFile: "suzuka.json",
   },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/mc-1929.geojson`,
+    id: "monaco",
+    name: "Circuit de Monaco",
+    widthFile: null,
+    elevationFile: null,
+    // Stations from the start line (natural zero sits mid pit-straight -
+    // verified against the corner sequence, see the Monaco commit). Real
+    // street widths are ~7m at the hairpin and ~12m on the fast sections.
+    manualWidths: [
+      [0, 350, 12],
+      [350, 550, 10],
+      [550, 800, 9],
+      [800, 1000, 10],
+      [1000, 1200, 9],
+      [1200, 1420, 7],
+      [1420, 1600, 9],
+      [1600, 2200, 11],
+      [2200, 2400, 9],
+      [2400, 2560, 10],
+      [2560, 2860, 9],
+      [2860, 3150, 9],
+      [3150, 3340, 12],
+    ],
+    // The dataset starts mid-lap on the Beau Rivage climb; rotate so index
+    // 0 (lap line, grid) sits mid pit-straight (corner-sequence verified).
+    startAtMeters: 2378,
+    // Climb to Casino, down to the port, flat along the water, gentle rise
+    // back to the line. Relief ~32m, steepest ~11% (the Beau Rivage climb
+    // and the Mirabeau descent). The descent is shaped so the hairpin's two
+    // arms agree: their fold stacks within ~20m in plan, and the terrain
+    // field is nearest-point, so if the entry arm (st ~1212-1240, arriving
+    // from Mirabeau) sat much above the exit arm (st ~1390-1450, climbing to
+    // Portier) the ground between them would rise through the lower ribbon.
+    // The keyframes therefore land both arms low and level near the hairpin
+    // (the same problem build-track's DEM averaging solves at Suzuka, handled
+    // here by 2D-blending the keyframes - see manualElevationBlendRadiusMeters).
+    manualElevation: [
+      [0, 0],
+      [450, 2],
+      [800, 27],
+      [900, 32],
+      [1020, 24],
+      [1150, 15],
+      [1240, 12],
+      [1300, 12],
+      [1370, 12],
+      [1450, 10],
+      [1500, 7.5],
+      [1700, 2],
+      [2200, 2],
+      [2320, 0],
+      [2470, 0],
+      [2780, 0],
+      [3000, 3],
+      [3150, 4],
+    ],
+    // 2D-blend the keyframes so overlapping arms (hairpin, port) agree the
+    // way the DEM pipeline's own averaging makes Suzuka's crossing agree.
+    manualElevationBlendRadiusMeters: 40,
+  },
 ];
 
 let totalPoints = 0;
-for (const { rawPath, id, name, widthFile, elevationFile } of TRACKS) {
+for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
   const widthPath = widthFile
@@ -536,7 +725,7 @@ for (const { rawPath, id, name, widthFile, elevationFile } of TRACKS) {
   const elevationPath = elevationFile
     ? `${scriptDir}/../data/tracks/raw/elevation/${elevationFile}`
     : undefined;
-  const track = buildTrack(rawPath, id, name, widthPath, elevationPath);
+  const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)

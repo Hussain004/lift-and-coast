@@ -25,6 +25,14 @@ const EXPECTED_CORNER_COUNTS: Record<string, number> = {
   monza: 11,
   spa: 19,
   suzuka: 18,
+  monaco: 19,
+};
+
+// Sausage kerbs stay exceptional everywhere - except Monaco, whose street
+// layout packs several genuinely tight (hairpin-grade) corners into a lap,
+// so it structurally earns more of them than any permanent circuit.
+const SAUSAGE_SHARE_CAP: Record<string, number> = {
+  monaco: 0.2,
 };
 
 /**
@@ -226,7 +234,7 @@ describe("derived zones (real circuits)", () => {
       expect(
         sausagePoints / kerbPoints,
         `${meta.id} sausage share of kerb points`
-      ).toBeLessThan(0.1);
+      ).toBeLessThan(SAUSAGE_SHARE_CAP[meta.id] ?? 0.1);
 
       // Grip and rise both order strictly low > aggressive > sausage, and
       // the rise stays under the documented nose-scrape cap (0.08m).

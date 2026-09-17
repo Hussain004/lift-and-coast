@@ -120,6 +120,7 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   monza: 10,
   spa: 50,
   suzuka: 20,
+  monaco: 20,
 };
 
 describe("buildTerrainGeometry (real circuits)", () => {
