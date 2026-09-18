@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
 import { buildEdgeLineGeometry, buildKerbGeometry, buildRibbonGeometry, RIBBON_COLOR } from "@/lib/tracks/mesh";
+import { buildStructureGeometry } from "@/lib/tracks/structures";
 import {
   buildRacingLineRibbon,
   computeRacingLine,
@@ -142,8 +143,8 @@ export function Track({
     // kerbs are placed and shaped lives in lib/tracks/surfaces.ts; this is
     // only geometry. The strips are NOT physics colliders: riding a kerb is
     // emulated per-wheel in the vehicle code (see applyKerbRideHeights) so
-    // the collider set stays exactly ribbon + terrain, and no raycast wheel
-    // ever meets two surfaces at one point. Plain material, single-sided:
+    // the collider set stays ribbon + terrain + structures, and no raycast
+    // wheel ever meets two surfaces at one point. Plain material, single-sided:
     // the stripe quads are wound with their outward face toward the strip's
     // own side of the track, so both runs of quads show their front faces.
     const { positions: kerbPositions, colors: kerbColors, indices: kerbIndices } =
@@ -175,6 +176,7 @@ export function Track({
           <meshStandardMaterial color={RIBBON_COLOR} />
         </mesh>
       </RigidBody>
+      <Structures track={track} />
       <mesh geometry={kerbGeometry}>
         <meshStandardMaterial vertexColors />
       </mesh>
@@ -186,6 +188,49 @@ export function Track({
         <meshBasicMaterial color="white" />
       </mesh>
       <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
+    </>
+  );
+}
+
+/**
+ * Trackside massing (plan section 4, circuit detail): pit buildings,
+ * grandstands, walls and landmarks from lib/tracks/structures, merged into
+ * two meshes. Both are VISUAL ONLY: the physics suite's blind drivers (the
+ * weave in grassTrackTransition, the straight-line suspension runs, the
+ * perception-free AI) roam metres past the edge, where real furniture
+ * stands - solid walls there break six gates with crashes the tests cannot
+ * see coming. Track limits, surface grip and the off-track reset already
+ * govern cutting; physical walls need perception-aware drivers first.
+ */
+function Structures({ track }: { track: TrackData }) {
+  const { solid, visual } = useMemo(() => {
+    const { solid, visual } = buildStructureGeometry(track);
+    const make = (positions: Float32Array, indices: Uint32Array, colors: Float32Array) => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      geometry.computeVertexNormals();
+      return { positions, indices, geometry };
+    };
+    return {
+      solid: make(solid.positions, solid.indices, solid.colors),
+      visual: make(visual.positions, visual.indices, visual.colors),
+    };
+  }, [track]);
+
+  return (
+    <>
+      {solid.positions.length > 0 && (
+        <mesh geometry={solid.geometry} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors />
+        </mesh>
+      )}
+      {visual.positions.length > 0 && (
+        <mesh geometry={visual.geometry}>
+          <meshStandardMaterial vertexColors />
+        </mesh>
+      )}
     </>
   );
 }

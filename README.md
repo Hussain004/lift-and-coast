@@ -29,6 +29,11 @@ the vertical slice:
   wheel, sampled from real per-point zones (plan section 4 points 6-7).
   Painted white edge lines outline both sides of the asphalt for the full
   lap, so the road edge reads against sunlit grass as well as shade
+- Trackside architecture from mapped data: pit buildings, named grandstands
+  (stepped massing with red walls and roofed columns), pit walls derived
+  from the mapped pit lanes, fences, Monaco's tunnel roofs and Suzuka's
+  ferris wheel - all placed from vendored OpenStreetMap footprints, visual
+  only (plan section 4, circuit detail)
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback

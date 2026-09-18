@@ -273,6 +273,9 @@ export async function simulateDrive(
     // at one altitude, which stopped being the same surface as the game's the
     // moment the track gained elevation. Surface height derived from
     // GRASS_BELOW_TRACK_METERS - see its definition for why that gap.
+    // Trackside massing (Track.tsx <Structures>) is visual-only in both
+    // worlds: solid furniture where the blind test drivers roam would read
+    // as physics failures, so walls and buildings render but never collide.
     const terrain = buildTerrainGeometry(options.track);
     const groundBody = world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed());
     groundHandle = world
