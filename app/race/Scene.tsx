@@ -457,7 +457,7 @@ export function Scene({
   const raceRef = useRef<RaceState>(createRaceState());
   const raceStartRef = useRef(false);
   const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes());
-  const visualRef = useRef<THREE.Mesh>(null);
+  const visualRef = useRef<THREE.Group>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
   const lighting = TIME_OF_DAY_LIGHTING[timeOfDay] ?? TIME_OF_DAY_LIGHTING.day;

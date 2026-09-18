@@ -69,6 +69,7 @@ import {
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
+import { F1CarBody } from "./F1CarBody";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 
@@ -153,11 +154,11 @@ export function Car({
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
-   * A ref to the chassis mesh itself, not the physics body - see its usage
+   * A ref to the car body group itself, not the physics body - see its usage
    * site in Scene.tsx for why the chase camera needs this instead of
    * chassisRef.
    */
-  visualRef?: React.RefObject<THREE.Mesh | null>;
+  visualRef?: React.RefObject<THREE.Group | null>;
   /**
    * Shared with Scene.tsx's camera component (see useDriveInput's own
    * comment for why) - created there and passed down so both this
@@ -999,22 +1000,9 @@ export function Car({
           have caught it. Only the chassis body should ever be solid.
         */}
         <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-        <mesh ref={visualRef} castShadow>
-          <boxGeometry args={CHASSIS_SIZE} />
-          <meshStandardMaterial color={bodyColor} />
-        </mesh>
-        {CAR_WHEELS.map((wheel, i) => (
-          <group key={i} position={wheel.position}>
-            <group ref={(el) => { steerRefs.current[i] = el; }}>
-              <group ref={(el) => { spinRefs.current[i] = el; }}>
-                <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-                  <cylinderGeometry args={[wheel.radius, wheel.radius, 0.28, 16]} />
-                  <meshStandardMaterial color="#111111" />
-                </mesh>
-              </group>
-            </group>
-          </group>
-        ))}
+        <group ref={visualRef}>
+          <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
+        </group>
       </RigidBody>
     </>
   );

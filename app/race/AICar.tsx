@@ -34,6 +34,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createGearboxState, rpmForGear } from "@/lib/physics/gearbox";
+import { F1CarBody } from "./F1CarBody";
 import { checkTrackLimits, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
 import {
   meanSurfaceDrag,
@@ -49,20 +50,14 @@ import type { RaceState } from "@/lib/race/racePosition";
 import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { TrackData } from "@/lib/tracks/types";
 
-const CHASSIS_SIZE: [number, number, number] = [
-  CHASSIS_HALF_EXTENTS[0] * 2,
-  CHASSIS_HALF_EXTENTS[1] * 2,
-  CHASSIS_HALF_EXTENTS[2] * 2,
-];
-
 // Lateral offset from the player's own grid slot (Car.tsx spawns at
 // startPos directly) so the two cars don't spawn overlapping - a fraction
+const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
 // of the track's own half-width at the start line rather than a fixed
 // distance, so it scales across tracks of different widths and stays well
 // clear of computeSurfaceGripMultiplier's edge penalty (checked against
 // Silverstone: 13m width, so this lands about 2.3m off the centerline,
 // nowhere near the edge).
-const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
 
 /**
  * A single AI opponent (plan section 6): follows the same ideal-line
@@ -108,7 +103,6 @@ export function AICar({
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
-  const visualRef = useRef<THREE.Mesh>(null);
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(null);
   // Auto gearbox (plan section 5 depth feature 4): the AI shifted by the
   // same rpm policy as the player's auto-assist - always auto, the AI never
@@ -306,22 +300,7 @@ export function AICar({
       {/* colliders={false} + one explicit collider - see Car.tsx's own
           comment for why the auto-collider generation is unsafe here. */}
       <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-      <mesh ref={visualRef} castShadow>
-        <boxGeometry args={CHASSIS_SIZE} />
-        <meshStandardMaterial color={bodyColor} />
-      </mesh>
-      {CAR_WHEELS.map((wheel, i) => (
-        <group key={i} position={wheel.position}>
-          <group ref={(el) => { steerRefs.current[i] = el; }}>
-            <group ref={(el) => { spinRefs.current[i] = el; }}>
-              <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[wheel.radius, wheel.radius, 0.28, 16]} />
-                <meshStandardMaterial color="#111111" />
-              </mesh>
-            </group>
-          </group>
-        </group>
-      ))}
+      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
     </RigidBody>
   );
 }
