@@ -1,0 +1,23 @@
+LIFT & COAST - LEGAL NOTICE
+==============================
+
+Unofficial fan game. LIFT & COAST is not affiliated with, endorsed by, or
+connected to Formula One World Championship Limited, the Fédération
+Internationale de l'Automobile (FIA), or any team, driver, or circuit.
+Team and driver names, race numbers, circuit names, and all related marks
+are the property of their respective owners and are used here
+descriptively, to identify the real-world 2026 season this game follows.
+No "F1", "Formula 1", or "Formula One" branding appears in the game's own
+title, slug, or description.
+
+Third-party data bundled with this repository:
+
+- Circuit geometry: bacinger/f1-circuits dataset (MIT License), raw
+  GeoJSON in data/tracks/raw/.
+- Per-point track widths: TUMFTM racetrack-database files in
+  data/tracks/raw/tumftm/ (GNU LGPL-3.0 - see LICENSE-LGPL-3.0.txt
+  alongside them; only the published data files are used).
+- Elevation samples: Copernicus DEM GLO-90 via the Open-Meteo elevation
+  API, vendored in data/tracks/raw/elevation/.
+- Menu world-map coastlines: Natural Earth 110m land (public domain),
+  simplified at vendor time into data/world.json.

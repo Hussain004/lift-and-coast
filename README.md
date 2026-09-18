@@ -163,3 +163,9 @@ runs on demand: `AI_TELEMETRY=1 npx vitest run tests/aiTelemetry.test.ts`.
 Zero-config on Vercel: connect this repository as a Vercel project. No
 environment variables or server infrastructure are required; all game state
 lives in the browser.
+
+## Legal
+
+Unofficial fan game - not affiliated with or endorsed by Formula One,
+the FIA, or any team, driver, or circuit. See NOTICE for the full
+disclaimer and third-party data licenses.
