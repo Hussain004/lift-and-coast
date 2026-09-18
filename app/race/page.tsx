@@ -15,6 +15,7 @@ import { parseRaceLaps, parseTimeOfDay } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
+import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
@@ -49,7 +50,7 @@ function RaceContent() {
   const trackName = track.name.toUpperCase();
   // Garage pick from the home screen (see lib/race/roster.ts): the player
   // runs the team primary, the teammate-opponent the secondary.
-  const { team } = resolveRosterSelection(
+  const { team, driver, teammate } = resolveRosterSelection(
     parseTeamId(searchParams.get("team")),
     parseDriverCode(searchParams.get("driver"))
   );
@@ -124,43 +125,58 @@ function RaceContent() {
         timeOfDay={timeOfDay}
       />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
-      <div className={styles.hud}>
-        <span className={styles.trackName}>{trackName}</span>
-        WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
-        E to toggle aero mode. Press C to cycle cameras, V for orbit view. Press 1/2/3 for
-        soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to
-        toggle the racing line. Q/Z to shift gears, G to toggle auto-gears.
-        Press M to mute. A connected gamepad/wheel drives with analog
-        steering (left stick) and throttle/brake (stick or triggers)
-        automatically.
+      {/* Timing tower, broadcast style: live lap/position plus both cars. */}
+      <div className={styles.tower}>
+        <div className={styles.towerEvent}>{trackName}</div>
+        <div className={styles.lap} ref={lapRef}>
+          LAP 1 --:--.---  BEST --:--.---
+        </div>
+        <div className={styles.position} ref={positionRef}>
+          P1
+        </div>
+        <div className={styles.towerRow}>
+          <span className={styles.codeChip} style={{ background: team.primaryColor }}>
+            {driver.code}
+          </span>
+          <span>YOU</span>
+        </div>
+        <div className={styles.towerRow}>
+          <span className={styles.codeChip} style={{ background: team.secondaryColor }}>
+            {teammate.code}
+          </span>
+          <span>RIVAL</span>
+        </div>
+        <div className={styles.sectors} ref={sectorsRef} />
+        <div className={styles.delta} ref={deltaRef} />
       </div>
-      <div className={styles.lap} ref={lapRef}>
-        LAP 1 --:--.---  BEST --:--.---
-      </div>
-      <div className={styles.position} ref={positionRef}>
-        P1
+      {/* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
+          tires, aero and assist flags. */}
+      <div className={styles.bottomBar}>
+        <div className={styles.gear} ref={gearRef}>
+          1
+        </div>
+        <div className={styles.bbCenter}>
+          <div className={styles.speed} ref={speedRef}>
+            0 km/h
+          </div>
+          <div className={styles.rpmTrack}>
+            <div className={styles.rpmFill} ref={rpmRef} />
+          </div>
+          <div className={styles.energyTrack}>
+            <div className={styles.energyFill} ref={energyRef} />
+          </div>
+        </div>
+        <div className={styles.bbRight}>
+          <div className={styles.tire} ref={tireRef} />
+          <div className={styles.aeroMode} ref={aeroModeRef} />
+          <div className={styles.assists} ref={assistsRef} />
+          <div className={styles.damage} ref={damageRef} />
+          <div className={styles.mute} ref={muteRef} />
+        </div>
       </div>
       <div className={styles.raceResult} ref={raceResultRef} />
       <div className={styles.qualifying} ref={qualifyingDisplayRef} />
       <div className={styles.countdown} ref={countdownRef} />
-      <div className={styles.delta} ref={deltaRef} />
-      <div className={styles.sectors} ref={sectorsRef} />
-      <div className={styles.speed} ref={speedRef}>
-        0 km/h
-      </div>
-      <div className={styles.gearBox}>
-        <div className={styles.rpmTrack}>
-          <div className={styles.rpmFill} ref={rpmRef} />
-        </div>
-        <div className={styles.gear} ref={gearRef}>
-          1
-        </div>
-      </div>
-      <div className={styles.aeroMode} ref={aeroModeRef} />
-      <div className={styles.tire} ref={tireRef} />
-      <div className={styles.assists} ref={assistsRef} />
-      <div className={styles.damage} ref={damageRef} />
-      <div className={styles.mute} ref={muteRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.penaltyToast} ref={penaltyToastRef} />
       <svg
@@ -184,9 +200,7 @@ function RaceContent() {
             heading-arrow rotation math to get backwards. */}
         <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
       </svg>
-      <div className={styles.energyTrack}>
-        <div className={styles.energyFill} ref={energyRef} />
-      </div>
+      <ControlsPanel />
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />

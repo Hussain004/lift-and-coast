@@ -14,7 +14,9 @@ export interface OrbitState {
 
 export const ORBIT_MIN_PITCH = -0.15;
 export const ORBIT_MAX_PITCH = 1.25;
-export const ORBIT_MIN_RADIUS = 4;
+// Minimum radius clears the car's own 4m length - any closer and the body
+// surrounds the near plane and the framing degenerates.
+export const ORBIT_MIN_RADIUS = 7;
 export const ORBIT_MAX_RADIUS = 120;
 
 /** Anchor an orbit on a world point, framed from behind-above. The offset

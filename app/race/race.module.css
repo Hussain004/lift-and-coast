@@ -17,59 +17,72 @@
   letter-spacing: 2px;
 }
 
-.hud {
+/* Timing tower, broadcast style: event, live lap/position, both cars,
+   sectors, delta - one vertical stack at mid-left with an F1-red edge. */
+.tower {
   position: absolute;
-  bottom: 16px;
   left: 16px;
-  color: #fff;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 3px solid #e10600;
+  padding-left: 10px;
   font-family: var(--font-geist-mono);
-  font-size: 13px;
   letter-spacing: 1px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 4px;
   pointer-events: none;
 }
 
-.trackName {
+.towerEvent {
   color: #39ff88;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 2px;
 }
 
-.trackName::after {
-  content: " · ";
-  color: #777;
-  font-weight: 400;
-}
-
 .lap {
-  position: absolute;
-  top: 16px;
-  left: 16px;
   color: #fff;
-  font-family: var(--font-geist-mono);
   font-size: 15px;
-  letter-spacing: 1px;
   background: rgba(0, 0, 0, 0.4);
   padding: 6px 12px;
   border-radius: 4px;
-  pointer-events: none;
+}
+
+.position {
+  color: #39ff88;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.towerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.codeChip {
+  color: #0a0a0a;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .delta {
-  position: absolute;
-  top: 56px;
-  left: 16px;
   color: #fff;
-  font-family: var(--font-geist-mono);
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 1px;
   background: rgba(0, 0, 0, 0.4);
   padding: 6px 12px;
   border-radius: 4px;
-  pointer-events: none;
 }
 
 .delta:empty {
@@ -85,18 +98,12 @@
 }
 
 .sectors {
-  position: absolute;
-  top: 96px;
-  left: 16px;
   color: #fff;
-  font-family: var(--font-geist-mono);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 1px;
   background: rgba(0, 0, 0, 0.4);
   padding: 6px 12px;
   border-radius: 4px;
-  pointer-events: none;
   display: flex;
   gap: 12px;
 }
@@ -125,51 +132,58 @@
   display: none;
 }
 
-.speed {
+/* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
+   tires, aero and flags in one dark strip with an F1-red top edge. */
+.bottomBar {
   position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 16px;
-  right: 16px;
-  color: #39ff88;
-  font-family: var(--font-geist-mono);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 16px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-/* Manual gears HUD (plan section 13): current gear with an rpm bar above
-   it that fills toward redline and turns red at the shift point - the
-   shift light that makes the auto-assist's optimal band visible. */
-.gearBox {
-  position: absolute;
-  bottom: 16px;
-  right: 192px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  align-items: stretch;
+  background: rgba(10, 10, 14, 0.72);
+  border-top: 2px solid #e10600;
+  border-radius: 6px;
+  font-family: var(--font-geist-mono);
+  letter-spacing: 1px;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .gear {
   color: #fff;
-  font-family: var(--font-geist-mono);
-  font-size: 28px;
+  font-size: 44px;
+  font-style: italic;
   font-weight: 700;
-  letter-spacing: 1px;
   line-height: 1;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 16px;
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 8px 18px;
+  border-right: 1px solid #333;
 }
 
+.bbCenter {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-right: 1px solid #333;
+}
+
+.speed {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* Manual gears readout lives in the bottom bar now (plan section 13):
+   the rpm bar above the energy bar, gear big at the bar's left edge. */
 .rpmTrack {
-  width: 96px;
+  width: 180px;
   height: 8px;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -182,15 +196,11 @@
 }
 
 .energyTrack {
-  position: absolute;
-  bottom: 56px;
-  right: 16px;
-  width: 160px;
-  height: 10px;
-  background: rgba(0, 0, 0, 0.4);
+  width: 180px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   overflow: hidden;
-  pointer-events: none;
 }
 
 .energyFill {
@@ -200,52 +210,36 @@
   transition: width 0.1s linear;
 }
 
+.bbRight {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 18px;
+}
+
 .aeroMode {
-  position: absolute;
-  bottom: 74px;
-  right: 16px;
   color: #6bd1ff;
-  font-family: var(--font-geist-mono);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 1px;
-  pointer-events: none;
 }
 
 .tire {
-  position: absolute;
-  bottom: 90px;
-  right: 16px;
   color: #ff9f4a;
-  font-family: var(--font-geist-mono);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 1px;
-  pointer-events: none;
 }
 
 .assists {
-  position: absolute;
-  bottom: 106px;
-  right: 16px;
   color: #aaaaaa;
-  font-family: var(--font-geist-mono);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 1px;
-  pointer-events: none;
 }
 
 .damage {
-  position: absolute;
-  bottom: 122px;
-  right: 16px;
   color: #ff6b6b;
-  font-family: var(--font-geist-mono);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 1px;
-  pointer-events: none;
 }
 
 .damage:empty {
@@ -253,15 +247,9 @@
 }
 
 .mute {
-  position: absolute;
-  bottom: 138px;
-  right: 16px;
   color: #aaaaaa;
-  font-family: var(--font-geist-mono);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 1px;
-  pointer-events: none;
 }
 
 .mute:empty {
@@ -277,19 +265,56 @@
   pointer-events: none;
 }
 
-.position {
+/* Key-binding reference docked under the minimap; the button keeps
+   pointer events while the rest of the HUD stays click-through. */
+.controlsPanel {
   position: absolute;
-  top: 194px;
+  top: 200px;
   right: 16px;
-  color: #39ff88;
+  width: 196px;
+  background: rgba(10, 10, 14, 0.72);
+  border-radius: 6px;
   font-family: var(--font-geist-mono);
-  font-size: 15px;
-  font-weight: 700;
   letter-spacing: 1px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 4px;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+.controlsToggle {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #39ff88;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.controlsList {
+  margin: 0;
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.controlsRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.controlsRow dt {
+  color: #fff;
+}
+
+.controlsRow dd {
+  margin: 0;
+  color: #888;
 }
 
 .raceResult {
