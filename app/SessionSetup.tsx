@@ -9,6 +9,7 @@ import {
   loadSessionSetupPrefs,
   saveSessionSetupPrefs,
 } from "@/lib/race/sessionSetup";
+import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import styles from "./sessionSetup.module.css";
 
@@ -23,6 +24,9 @@ export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
   const [trackId, setTrackId] = useState(initial.trackId);
+  // Live roster pick from the team/driver panel above - carried on the Drive
+  // link so the race grid dresses both cars (see lib/race/roster.ts).
+  const { teamId, driverCode } = useRosterSelection();
 
   const persist = (laps: number, id: string) => {
     saveSessionSetupPrefs({ raceLaps: laps, trackId: id });
@@ -76,7 +80,7 @@ export function SessionSetup() {
         <span>{MAX_RACE_LAPS}</span>
       </div>
       <Link
-        href={`/race?laps=${raceLaps}&track=${parseTrackId(trackId)}`}
+        href={`/race?laps=${raceLaps}&track=${parseTrackId(trackId)}&team=${parseTeamId(teamId)}&driver=${parseDriverCode(driverCode)}`}
         className={styles.drive}
       >
         Drive

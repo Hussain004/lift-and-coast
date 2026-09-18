@@ -257,9 +257,15 @@ export function Scene({
   countdownRef,
   qualifyingDisplayRef,
   penaltyToastRef,
+  playerBodyColor,
+  aiBodyColor,
 }: {
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
+  /** Garage pick (see lib/race/roster.ts) - team primary for the player. */
+  playerBodyColor: string;
+  /** Garage pick - team secondary for the teammate-opponent. */
+  aiBodyColor: string;
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   deltaRef: React.RefObject<HTMLDivElement | null>;
@@ -338,6 +344,7 @@ export function Scene({
           qualifyingDisplayRef={qualifyingDisplayRef}
           penaltyToastRef={penaltyToastRef}
           track={track}
+          bodyColor={playerBodyColor}
         />
         <AICar
           track={track}
@@ -345,6 +352,7 @@ export function Scene({
           minimapMarkerRef={aiMinimapMarkerRef}
           raceStartRef={raceStartRef}
           qualifyingRef={qualifyingRef}
+          bodyColor={aiBodyColor}
         />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />

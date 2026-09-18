@@ -1,0 +1,132 @@
+.setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 18px 24px 22px;
+  background: rgba(255, 255, 255, 0.02);
+  width: min(360px, 100%);
+}
+
+.label {
+  color: #999;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.teams {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.team {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.team:hover {
+  border-color: #39ff88;
+  color: #39ff88;
+}
+
+.teamActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(57, 255, 136, 0.1);
+  border: 1px solid #39ff88;
+  border-radius: 4px;
+  color: #39ff88;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.drivers {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.driver {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-family: var(--font-geist-mono);
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.driver:hover {
+  border-color: #39ff88;
+  color: #39ff88;
+}
+
+.driverActive {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(57, 255, 136, 0.1);
+  border: 1px solid #39ff88;
+  border-radius: 4px;
+  color: #39ff88;
+  font-family: var(--font-geist-mono);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.number {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.code {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.name {
+  font-size: 11px;
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+.teammate {
+  color: #555;
+  font-size: 11px;
+  letter-spacing: 1px;
+}

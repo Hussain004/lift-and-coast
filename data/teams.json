@@ -1,0 +1,64 @@
+{
+  "teams": [
+    {
+      "id": "aurora",
+      "name": "Aurora Grand Prix",
+      "primaryColor": "#39ff88",
+      "secondaryColor": "#0e5c38",
+      "drivers": [
+        { "code": "VOS", "name": "Elian Voss", "number": 7 },
+        { "code": "KES", "name": "Mara Kessler", "number": 19 }
+      ]
+    },
+    {
+      "id": "cinder",
+      "name": "Cinder Racing",
+      "primaryColor": "#ff5a3c",
+      "secondaryColor": "#571b0f",
+      "drivers": [
+        { "code": "VEN", "name": "Dario Venn", "number": 27 },
+        { "code": "OKA", "name": "June Okafor", "number": 33 }
+      ]
+    },
+    {
+      "id": "cobalt",
+      "name": "Cobalt Motorsport",
+      "primaryColor": "#4aa8ff",
+      "secondaryColor": "#10314f",
+      "drivers": [
+        { "code": "LIN", "name": "Theo Lindqvist", "number": 12 },
+        { "code": "DUA", "name": "Ines Duarte", "number": 21 }
+      ]
+    },
+    {
+      "id": "solaris",
+      "name": "Solaris Racing",
+      "primaryColor": "#ffd23f",
+      "secondaryColor": "#54400d",
+      "drivers": [
+        { "code": "FAL", "name": "Niko Falk", "number": 77 },
+        { "code": "RAM", "name": "Priya Raman", "number": 91 }
+      ]
+    },
+    {
+      "id": "onyx",
+      "name": "Onyx Grand Prix",
+      "primaryColor": "#b48cff",
+      "secondaryColor": "#3a2a5c",
+      "drivers": [
+        { "code": "HOL", "name": "Casper Holt", "number": 69 },
+        { "code": "SOR", "name": "Aya Sorensen", "number": 99 }
+      ]
+    },
+    {
+      "id": "argent",
+      "name": "Argent Racing",
+      "primaryColor": "#cfd6dd",
+      "secondaryColor": "#3c4248",
+      "drivers": [
+        { "code": "AUB", "name": "Milo Aubert", "number": 24 },
+        { "code": "LIG", "name": "Noa Lindgren", "number": 94 }
+      ]
+    }
+  ]
+}

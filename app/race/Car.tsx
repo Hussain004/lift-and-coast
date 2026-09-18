@@ -146,6 +146,7 @@ export function Car({
   qualifyingDisplayRef,
   penaltyToastRef,
   track,
+  bodyColor = "#39ff88",
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
@@ -207,6 +208,8 @@ export function Car({
   /** Live "+Ns PENALTY" flash for the race-mode track-limit penalty below. */
   penaltyToastRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
+  /** Garage pick (see lib/race/roster.ts) - the team's primary livery. */
+  bodyColor?: string;
 }) {
   const { startPos } = track;
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
@@ -923,7 +926,7 @@ export function Car({
       minimapGroupRef.current.setAttribute("transform", computeMinimapTransform(t.x, t.z, yaw));
     }
     if (minimapMarkerRef?.current) {
-      minimapMarkerRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : "#39ff88");
+      minimapMarkerRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : bodyColor);
     }
   });
 
@@ -931,7 +934,7 @@ export function Car({
     <>
       <mesh ref={ghostMeshRef} visible={false}>
         <boxGeometry args={CHASSIS_SIZE} />
-        <meshStandardMaterial color="#39ff88" transparent opacity={0.3} depthWrite={false} />
+        <meshStandardMaterial color={bodyColor} transparent opacity={0.3} depthWrite={false} />
       </mesh>
       <RigidBody
         ref={chassisRef}
@@ -962,7 +965,7 @@ export function Car({
         <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
         <mesh ref={visualRef} castShadow>
           <boxGeometry args={CHASSIS_SIZE} />
-          <meshStandardMaterial color="#39ff88" />
+          <meshStandardMaterial color={bodyColor} />
         </mesh>
         {CAR_WHEELS.map((wheel, i) => (
           <group key={i} position={wheel.position}>

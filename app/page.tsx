@@ -1,6 +1,7 @@
 import { Championship } from "./Championship";
 import { SaveTransfer } from "./SaveTransfer";
 import { SessionSetup } from "./SessionSetup";
+import { TeamSetup } from "./TeamSetup";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -10,6 +11,7 @@ export default function Home() {
         LIFT <span>&</span> COAST
       </h1>
       <p className={styles.tagline}>Save the juice. Send the apex.</p>
+      <TeamSetup />
       <SessionSetup />
       <Championship />
       <p className={styles.tip}>

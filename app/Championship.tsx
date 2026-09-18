@@ -13,6 +13,7 @@ import {
 } from "@/lib/race/championship";
 import { clearSeason, loadSeason, saveSeason } from "@/lib/persistence/championship";
 import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
+import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
 import styles from "./page.module.css";
 
@@ -26,6 +27,9 @@ import styles from "./page.module.css";
 export function Championship() {
   const [season, setSeason] = useState<ChampionshipSeason | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Same live roster pick as SessionSetup's Drive link - championship rounds
+  // grid the same two cars.
+  const { teamId, driverCode } = useRosterSelection();
 
   useEffect(() => {
     let cancelled = false;
@@ -146,7 +150,7 @@ export function Championship() {
         {!complete && (
           <Link
             className={styles.championshipButton}
-            href={`/race?champ=${next}&track=${season.rounds[next].trackId}&laps=${DEFAULT_RACE_LAPS}`}
+            href={`/race?champ=${next}&track=${season.rounds[next].trackId}&laps=${DEFAULT_RACE_LAPS}&team=${parseTeamId(teamId)}&driver=${parseDriverCode(driverCode)}`}
           >
             Race round {next + 1}
           </Link>

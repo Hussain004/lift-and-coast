@@ -13,6 +13,7 @@ import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
 import { parseRaceLaps } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
+import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
@@ -44,6 +45,12 @@ function RaceContent() {
   const champRound = parseChampRound(searchParams.get("champ"));
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
+  // Garage pick from the home screen (see lib/race/roster.ts): the player
+  // runs the team primary, the teammate-opponent the secondary.
+  const { team } = resolveRosterSelection(
+    parseTeamId(searchParams.get("team")),
+    parseDriverCode(searchParams.get("driver"))
+  );
   // Resolved per-render from the selected track - only changes on a URL
   // change (this page is client-only with no other state), so the build
   // cost is paid once per session.
@@ -80,6 +87,8 @@ function RaceContent() {
     <div className={styles.wrap}>
       <Scene
         track={track}
+        playerBodyColor={team.primaryColor}
+        aiBodyColor={team.secondaryColor}
         speedRef={speedRef}
         lapRef={lapRef}
         deltaRef={deltaRef}
@@ -153,13 +162,13 @@ function RaceContent() {
               group as the track path, so it inherits the egocentric
               transform for free instead of needing its own rotation math
               (unlike the player's own fixed, always-up-pointing marker
-              below). Matches AICar.tsx's own chassis color. */}
-          <circle ref={aiMinimapMarkerRef} cx={track.startPos.x} cy={track.startPos.z} r={5} fill="#ff5a3c" />
+              below). Matches the teammate-opponent's own chassis color. */}
+          <circle ref={aiMinimapMarkerRef} cx={track.startPos.x} cy={track.startPos.z} r={5} fill={team.secondaryColor} />
         </g>
         {/* Fixed at the box center, always pointing up - the world rotates
             around this marker instead of the marker rotating, so there's no
             heading-arrow rotation math to get backwards. */}
-        <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill="#39ff88" />
+        <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
       </svg>
       <div className={styles.energyTrack}>
         <div className={styles.energyFill} ref={energyRef} />

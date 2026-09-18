@@ -88,6 +88,7 @@ export function AICar({
   minimapMarkerRef,
   raceStartRef,
   qualifyingRef,
+  bodyColor = "#ff5a3c",
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
@@ -96,6 +97,8 @@ export function AICar({
   raceStartRef?: React.RefObject<boolean>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
+  /** Garage pick (see lib/race/roster.ts) - the teammate-opponent's secondary livery. */
+  bodyColor?: string;
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
@@ -276,7 +279,7 @@ export function AICar({
       <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
       <mesh ref={visualRef} castShadow>
         <boxGeometry args={CHASSIS_SIZE} />
-        <meshStandardMaterial color="#ff5a3c" />
+        <meshStandardMaterial color={bodyColor} />
       </mesh>
       {CAR_WHEELS.map((wheel, i) => (
         <group key={i} position={wheel.position}>
