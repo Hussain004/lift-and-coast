@@ -17,6 +17,7 @@ import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import { GRASS_COLOR } from "@/lib/tracks/mesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
@@ -116,6 +117,47 @@ const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
 const TCAM_FOV = 70;
 const TV_FOV = 55;
+
+// Plan section 8 (Session Setup): time-of-day lighting presets. One table,
+// not scattered ternaries, so adding a preset is one row and every light in
+// the scene stays consistent by construction. Deliberately no night -
+// driving it fairly would need headlights and lit track furniture.
+const TIME_OF_DAY_LIGHTING: Record<
+  TimeOfDay,
+  {
+    sky: string;
+    ambientColor: string;
+    ambientIntensity: number;
+    sunColor: string;
+    sunIntensity: number;
+    sunPosition: [number, number, number];
+  }
+> = {
+  day: {
+    sky: "#87ceeb",
+    ambientColor: "#ffffff",
+    ambientIntensity: 0.45,
+    sunColor: "#ffffff",
+    sunIntensity: 1.5,
+    sunPosition: [50, 80, 20],
+  },
+  sunset: {
+    sky: "#dd8a4e",
+    ambientColor: "#ffdcbf",
+    ambientIntensity: 0.32,
+    sunColor: "#ffc27d",
+    sunIntensity: 1.7,
+    sunPosition: [90, 22, 10],
+  },
+  overcast: {
+    sky: "#9aa3ab",
+    ambientColor: "#cdd5dd",
+    ambientIntensity: 0.6,
+    sunColor: "#dfe8f2",
+    sunIntensity: 0.85,
+    sunPosition: [20, 80, -30],
+  },
+};
 
 // A plain helper (not inlined at the call site) so the mutation below isn't
 // a direct assignment to a property of the value useThree() returns, which
@@ -305,6 +347,7 @@ export function Scene({
   playerBodyColor,
   aiBodyColor,
   audioRef,
+  timeOfDay = "day",
 }: {
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
@@ -333,6 +376,8 @@ export function Scene({
   raceResultRef: React.RefObject<HTMLDivElement | null>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
+  /** Lighting preset - see page.tsx's ?tod= URL param. */
+  timeOfDay?: TimeOfDay;
   /** Championship round index from ?champ=, or null for a one-off race. */
   champRound?: number | null;
   countdownRef: React.RefObject<HTMLDivElement | null>;
@@ -346,6 +391,7 @@ export function Scene({
   const visualRef = useRef<THREE.Mesh>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
+  const lighting = TIME_OF_DAY_LIGHTING[timeOfDay] ?? TIME_OF_DAY_LIGHTING.day;
 
   return (
     <Canvas
@@ -356,10 +402,15 @@ export function Scene({
         far: 3000,
       }}
     >
-      <color attach="background" args={["#87ceeb"]} />
-      <fog attach="fog" args={["#87ceeb", 40, 220]} />
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[50, 80, 20]} intensity={1.5} castShadow />
+      <color attach="background" args={[lighting.sky]} />
+      <fog attach="fog" args={[lighting.sky, 40, 220]} />
+      <ambientLight intensity={lighting.ambientIntensity} color={lighting.ambientColor} />
+      <directionalLight
+        position={lighting.sunPosition}
+        intensity={lighting.sunIntensity}
+        color={lighting.sunColor}
+        castShadow
+      />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground track={track} />
         <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />

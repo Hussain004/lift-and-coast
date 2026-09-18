@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RACE_LAPS,
+  DEFAULT_TIME_OF_DAY,
   MAX_RACE_LAPS,
   MIN_RACE_LAPS,
   loadSessionSetupPrefs,
   parseRaceLaps,
+  parseTimeOfDay,
   saveSessionSetupPrefs,
 } from "../lib/race/sessionSetup";
 import { DEFAULT_TRACK_ID } from "../lib/tracks/registry";
@@ -33,6 +35,16 @@ describe("parseRaceLaps", () => {
   });
 });
 
+describe("parseTimeOfDay", () => {
+  it("passes the three presets through and defaults everything else", () => {
+    expect(parseTimeOfDay("day")).toBe("day");
+    expect(parseTimeOfDay("sunset")).toBe("sunset");
+    expect(parseTimeOfDay("overcast")).toBe("overcast");
+    expect(parseTimeOfDay("night")).toBe(DEFAULT_TIME_OF_DAY);
+    expect(parseTimeOfDay(null)).toBe(DEFAULT_TIME_OF_DAY);
+  });
+});
+
 function fakeStorage(initial: Record<string, string> = {}): {
   storage: Pick<Storage, "getItem" | "setItem">;
   dump: () => Record<string, string>;
@@ -54,6 +66,7 @@ describe("loadSessionSetupPrefs", () => {
     expect(loadSessionSetupPrefs(null)).toEqual({
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
+      timeOfDay: DEFAULT_TIME_OF_DAY,
     });
   });
 
@@ -61,6 +74,7 @@ describe("loadSessionSetupPrefs", () => {
     expect(loadSessionSetupPrefs(fakeStorage().storage)).toEqual({
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
+      timeOfDay: DEFAULT_TIME_OF_DAY,
     });
   });
 
@@ -71,7 +85,31 @@ describe("loadSessionSetupPrefs", () => {
         trackId: "spa",
       }),
     });
-    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 7, trackId: "spa" });
+    // Blobs saved before time-of-day existed carry no tod - they load as day.
+    expect(loadSessionSetupPrefs(storage)).toEqual({
+      raceLaps: 7,
+      trackId: "spa",
+      timeOfDay: "day",
+    });
+  });
+
+  it("reads a saved time-of-day and clamps an unknown one", () => {
+    const { storage } = fakeStorage({
+      "lift-and-coast.session-setup.v1": JSON.stringify({
+        raceLaps: 3,
+        trackId: "spa",
+        timeOfDay: "sunset",
+      }),
+    });
+    expect(loadSessionSetupPrefs(storage).timeOfDay).toBe("sunset");
+    const bad = fakeStorage({
+      "lift-and-coast.session-setup.v1": JSON.stringify({
+        raceLaps: 3,
+        trackId: "spa",
+        timeOfDay: "night",
+      }),
+    });
+    expect(loadSessionSetupPrefs(bad.storage).timeOfDay).toBe(DEFAULT_TIME_OF_DAY);
   });
 
   it("clamps corrupt or out-of-range saved values", () => {
@@ -86,6 +124,7 @@ describe("loadSessionSetupPrefs", () => {
     expect(loadSessionSetupPrefs(garbage.storage)).toEqual({
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
+      timeOfDay: DEFAULT_TIME_OF_DAY,
     });
 
     const wrongShape = fakeStorage({
@@ -108,34 +147,41 @@ describe("loadSessionSetupPrefs", () => {
 describe("saveSessionSetupPrefs", () => {
   it("persists the clamped values", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza" }, storage);
-    expect(loadSessionSetupPrefs(storage)).toEqual({ raceLaps: 9, trackId: "monza" });
+    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast" }, storage);
+    expect(loadSessionSetupPrefs(storage)).toEqual({
+      raceLaps: 9,
+      trackId: "monza",
+      timeOfDay: "overcast",
+    });
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 9, trackId: "monza" })
+      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast" })
     );
   });
 
   it("clamps and rounds before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka", timeOfDay: "day" }, storage);
     expect(loadSessionSetupPrefs(storage).raceLaps).toBe(5);
-    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day" }, storage);
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka" })
+      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day" })
     );
   });
 
   it("clamps an unknown track id to the default before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 3, trackId: "not-a-registered-track" }, storage);
+    saveSessionSetupPrefs(
+      { raceLaps: 3, trackId: "not-a-registered-track", timeOfDay: "day" },
+      storage
+    );
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID })
+      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day" })
     );
   });
 
   it("does nothing when storage is unavailable", () => {
     expect(() =>
-      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa" }, null)
+      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day" }, null)
     ).not.toThrow();
   });
 });

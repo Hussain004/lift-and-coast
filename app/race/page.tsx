@@ -11,7 +11,7 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
@@ -53,6 +53,7 @@ function RaceContent() {
     parseTeamId(searchParams.get("team")),
     parseDriverCode(searchParams.get("driver"))
   );
+  const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
   // Resolved per-render from the selected track - only changes on a URL
   // change (this page is client-only with no other state), so the build
   // cost is paid once per session.
@@ -120,6 +121,7 @@ function RaceContent() {
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
+        timeOfDay={timeOfDay}
       />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
       <div className={styles.hud}>

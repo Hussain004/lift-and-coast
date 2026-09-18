@@ -12,6 +12,17 @@ export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
 export const DEFAULT_RACE_LAPS = 3;
 
+// Plan section 8 (Session Setup): time-of-day lighting preset. Deliberately
+// no night: driving it fairly would need headlights and lit track
+// furniture, a whole feature - these three all read with the same lighting
+// rig, only rebalanced.
+export type TimeOfDay = "day" | "sunset" | "overcast";
+export const DEFAULT_TIME_OF_DAY: TimeOfDay = "day";
+
+export function parseTimeOfDay(raw: string | null): TimeOfDay {
+  return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
+}
+
 export function parseRaceLaps(raw: string | null): number {
   const n = raw === null ? NaN : parseInt(raw, 10);
   if (!Number.isFinite(n)) return DEFAULT_RACE_LAPS;
@@ -29,6 +40,7 @@ const SESSION_SETUP_KEY = "lift-and-coast.session-setup.v1";
 export interface SessionSetupPrefs {
   raceLaps: number;
   trackId: string;
+  timeOfDay: TimeOfDay;
 }
 
 function clampLaps(n: unknown): number {
@@ -38,6 +50,10 @@ function clampLaps(n: unknown): number {
 
 function clampTrackId(raw: unknown): string {
   return typeof raw === "string" && isKnownTrackId(raw) ? raw : DEFAULT_TRACK_ID;
+}
+
+function clampTimeOfDay(raw: unknown): TimeOfDay {
+  return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
 }
 
 function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
@@ -56,15 +72,17 @@ export function loadSessionSetupPrefs(
   const defaults: SessionSetupPrefs = {
     raceLaps: DEFAULT_RACE_LAPS,
     trackId: DEFAULT_TRACK_ID,
+    timeOfDay: DEFAULT_TIME_OF_DAY,
   };
   if (!storage) return defaults;
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown };
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown };
     return {
       raceLaps: clampLaps(parsed.raceLaps),
       trackId: clampTrackId(parsed.trackId),
+      timeOfDay: clampTimeOfDay(parsed.timeOfDay),
     };
   } catch {
     return defaults;
@@ -82,6 +100,7 @@ export function saveSessionSetupPrefs(
       JSON.stringify({
         raceLaps: clampLaps(prefs.raceLaps),
         trackId: clampTrackId(prefs.trackId),
+        timeOfDay: clampTimeOfDay(prefs.timeOfDay),
       })
     );
   } catch {
@@ -108,4 +127,17 @@ export function useSessionTrackId(): string {
     return () => window.removeEventListener(SESSION_SETUP_CHANGE_EVENT, refresh);
   }, []);
   return trackId;
+}
+
+/** Live full prefs for panels that read more than the track (session setup
+ * owns laps, championship rounds need the light) - same event, whole
+ * object, so a preset click refreshes every link on the page. */
+export function useSessionSetupPrefs(): SessionSetupPrefs {
+  const [prefs, setPrefs] = useState<SessionSetupPrefs>(() => loadSessionSetupPrefs());
+  useEffect(() => {
+    const refresh = () => setPrefs(loadSessionSetupPrefs());
+    window.addEventListener(SESSION_SETUP_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(SESSION_SETUP_CHANGE_EVENT, refresh);
+  }, []);
+  return prefs;
 }

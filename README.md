@@ -32,8 +32,9 @@ the vertical slice:
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
-- Session setup on the home screen: track picker + Quick Race lap-count
-  slider (1-20), both remembered via localStorage
+- Session setup on the home screen: garage (team/driver), world map with
+  track previews, Quick Race lap-count slider (1-20) and time-of-day
+  lighting (day/sunset/overcast) - all remembered via localStorage
 - Championship mode (plan sections 7-8): a season of one race at each
   registered circuit, F1-style points (25-18-...), standings on the home
   screen; the active season lives in IndexedDB and travels in the save
