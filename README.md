@@ -40,6 +40,9 @@ the vertical slice:
   export/import bundle
 - Track-limit enforcement (warning -> penalty / lap invalidation), damage,
   minimap, sector times, delta timer, RPM/gear HUD
+- Synthesized race audio (Web Audio, zero samples): rpm-tracking engines
+  for both cars with positional opponent panning, tire-screech on slides,
+  impact thumps; M mutes (remembered via localStorage)
 - Headless vehicle-stability harness (`lib/ai/harness.ts`) hot-lapping the
   real trimesh under stress scenarios, a per-track AI stability gate, plus
   an AI stability diagnostic suite - all part of the test suite.

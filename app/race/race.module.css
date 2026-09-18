@@ -252,6 +252,22 @@
   display: none;
 }
 
+.mute {
+  position: absolute;
+  bottom: 138px;
+  right: 16px;
+  color: #aaaaaa;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+
+.mute:empty {
+  display: none;
+}
+
 .minimap {
   position: absolute;
   top: 16px;

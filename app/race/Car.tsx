@@ -69,6 +69,8 @@ import {
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
+import type { AudioSnapshot } from "@/lib/audio/raceAudio";
+import { impactGain01, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 
 const REWIND_CAPACITY_SECONDS = 5;
 const SECTOR_COUNT = 3;
@@ -147,6 +149,7 @@ export function Car({
   penaltyToastRef,
   track,
   bodyColor = "#39ff88",
+  audioRef,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
@@ -210,6 +213,9 @@ export function Car({
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - the team's primary livery. */
   bodyColor?: string;
+  /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
+   * car fills in the player half every render frame from live telemetry. */
+  audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { startPos } = track;
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
@@ -218,7 +224,7 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const { world, rapier } = useRapier();
-  const { update, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
+  const { update, input, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
     useDriveInput(cameraModeRef, racingLineVisibleRef);
   // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
   // per car. `auto` follows the autoGear toggle (synced each physics tick
@@ -713,6 +719,27 @@ export function Car({
       const damagePercent = Math.round(damageGripMultiplierRef.current * 100);
       damageRef.current.textContent = damagePercent < 100 ? `DAMAGE ${damagePercent}%` : "";
     }
+    // Race audio snapshot (see lib/audio/raceAudio.ts): runs before the
+    // rewind/countdown early returns below so the engine idles on the grid
+    // and revs with the throttle even before the lights go out.
+    if (audioRef) {
+      const p = body.translation();
+      const r = body.rotation();
+      const yaw = yawFromQuaternion(r.x, r.y, r.z, r.w);
+      const lv = body.linvel();
+      // Same forward/right convention as the minimap (see
+      // lib/tracks/minimap.ts): forward is (-sin yaw, -cos yaw).
+      const forwardMs = lv.x * -Math.sin(yaw) + lv.z * -Math.cos(yaw);
+      const lateralMs = lv.x * Math.cos(yaw) - lv.z * Math.sin(yaw);
+      audioRef.current.player = {
+        rpm01: rpmTo01(rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear)),
+        throttle01: Math.min(1, Math.max(0, input.current.throttle)),
+        skid01: skidAmount01(lateralMs, forwardMs),
+        x: p.x,
+        z: p.z,
+        yawRad: yaw,
+      };
+    }
 
     if (isRewindingRef.current) return;
     // Grid start (Scene.tsx): the car is stationary during the countdown
@@ -949,6 +976,15 @@ export function Car({
             damageGripMultiplierRef.current,
             payload.totalForceMagnitude
           );
+          // Thump for the race audio rig (see app/race/RaceAudioRig.tsx) -
+          // same force scale as the damage model, so only chassis-scale hits
+          // speak.
+          if (audioRef) {
+            const strength = impactGain01(payload.totalForceMagnitude);
+            if (strength > 0) {
+              audioRef.current.impact = { strength01: strength, atMs: performance.now() };
+            }
+          }
         }}
       >
         {/*

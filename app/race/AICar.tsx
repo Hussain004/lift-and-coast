@@ -33,7 +33,7 @@ import {
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN } from "@/lib/physics/aero";
-import { createGearboxState } from "@/lib/physics/gearbox";
+import { createGearboxState, rpmForGear } from "@/lib/physics/gearbox";
 import { checkTrackLimits, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
 import {
   meanSurfaceDrag,
@@ -43,6 +43,8 @@ import {
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import type { AudioSnapshot } from "@/lib/audio/raceAudio";
+import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
 import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { TrackData } from "@/lib/tracks/types";
@@ -89,6 +91,7 @@ export function AICar({
   raceStartRef,
   qualifyingRef,
   bodyColor = "#ff5a3c",
+  audioRef,
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
@@ -99,6 +102,9 @@ export function AICar({
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   /** Garage pick (see lib/race/roster.ts) - the teammate-opponent's secondary livery. */
   bodyColor?: string;
+  /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
+   * car fills in the opponent half every render frame from live telemetry. */
+  audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
@@ -108,6 +114,10 @@ export function AICar({
   // same rpm policy as the player's auto-assist - always auto, the AI never
   // drives in manual mode.
   const gearboxRef = useRef(createGearboxState(true));
+  // Latest gated controls for the audio snapshot below - recomputing
+  // computeAIControls in useFrame would pay a second nearest-line scan per
+  // render frame on top of the physics step's own.
+  const lastControlsRef = useRef({ throttle: 0, yaw: 0, lvx: 0, lvz: 0 });
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const lapTimerRef = useRef(
@@ -197,6 +207,8 @@ export function AICar({
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
     const raceStarted = raceStartRef?.current ?? true;
     const gatedControls = raceStarted ? controls : { ...controls, throttle: 0 };
+    const lv = body.linvel();
+    lastControlsRef.current = { throttle: gatedControls.throttle, yaw, lvx: lv.x, lvz: lv.z };
     // Auto gearbox (shift requests left false): the AI driver shifts by the
     // same rpm policy as the player's assist, never manually - the AI obeys
     // the exact same gear-modulated physics the player drives under.
@@ -251,6 +263,23 @@ export function AICar({
     if (minimapMarkerRef?.current && pos) {
       minimapMarkerRef.current.setAttribute("cx", pos.x.toFixed(1));
       minimapMarkerRef.current.setAttribute("cy", pos.z.toFixed(1));
+    }
+    // Opponent half of the race audio snapshot (see
+    // app/race/RaceAudioRig.tsx) - same rpm policy as the player's own
+    // shift bar, so the two engines read as the same machinery.
+    if (audioRef && pos) {
+      const c = lastControlsRef.current;
+      // Same forward/right convention as Car.tsx's own snapshot.
+      const forwardMs = c.lvx * -Math.sin(c.yaw) + c.lvz * -Math.cos(c.yaw);
+      const lateralMs = c.lvx * Math.cos(c.yaw) - c.lvz * Math.sin(c.yaw);
+      audioRef.current.opponent = {
+        rpm01: rpmTo01(rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear)),
+        throttle01: Math.min(1, Math.max(0, c.throttle)),
+        skid01: skidAmount01(lateralMs, forwardMs),
+        x: pos.x,
+        z: pos.z,
+        yawRad: c.yaw,
+      };
     }
     CAR_WHEELS.forEach((wheel, i) => {
       const steerGroup = steerRefs.current[i];

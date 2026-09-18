@@ -15,6 +15,7 @@ import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import { GRASS_COLOR } from "@/lib/tracks/mesh";
+import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
@@ -259,6 +260,7 @@ export function Scene({
   penaltyToastRef,
   playerBodyColor,
   aiBodyColor,
+  audioRef,
 }: {
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
@@ -266,6 +268,8 @@ export function Scene({
   playerBodyColor: string;
   /** Garage pick - team secondary for the teammate-opponent. */
   aiBodyColor: string;
+  /** Shared with the race audio rig - both cars fill it in every frame. */
+  audioRef?: React.RefObject<AudioSnapshot>;
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   deltaRef: React.RefObject<HTMLDivElement | null>;
@@ -345,6 +349,7 @@ export function Scene({
           penaltyToastRef={penaltyToastRef}
           track={track}
           bodyColor={playerBodyColor}
+          audioRef={audioRef}
         />
         <AICar
           track={track}
@@ -353,6 +358,7 @@ export function Scene({
           raceStartRef={raceStartRef}
           qualifyingRef={qualifyingRef}
           bodyColor={aiBodyColor}
+          audioRef={audioRef}
         />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />

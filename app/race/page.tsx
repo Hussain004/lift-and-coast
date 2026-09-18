@@ -14,6 +14,8 @@ import { parseTrackId } from "@/lib/tracks/registry";
 import { parseRaceLaps } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
+import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
+import { RaceAudioRig } from "./RaceAudioRig";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
@@ -82,6 +84,12 @@ function RaceContent() {
   const countdownRef = useRef<HTMLDivElement>(null);
   const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
   const penaltyToastRef = useRef<HTMLDivElement>(null);
+  const muteRef = useRef<HTMLDivElement>(null);
+  // Shared with the race audio rig (see app/race/RaceAudioRig.tsx): both
+  // cars write their latest telemetry here every render frame, and the rig
+  // pumps it into the synth voices - plain mutable data, never React state,
+  // at audio-unrelated rates.
+  const audioRef = useRef(defaultAudioSnapshot());
 
   return (
     <div className={styles.wrap}>
@@ -111,15 +119,18 @@ function RaceContent() {
         countdownRef={countdownRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}
+        audioRef={audioRef}
       />
+      <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
       <div className={styles.hud}>
         <span className={styles.trackName}>{trackName}</span>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
         E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
         soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to
         toggle the racing line. Q/Z to shift gears, G to toggle auto-gears.
-        A connected gamepad/wheel drives with analog steering (left stick) and
-        throttle/brake (stick or triggers) automatically.
+        Press M to mute. A connected gamepad/wheel drives with analog
+        steering (left stick) and throttle/brake (stick or triggers)
+        automatically.
       </div>
       <div className={styles.lap} ref={lapRef}>
         LAP 1 --:--.---  BEST --:--.---
@@ -147,6 +158,7 @@ function RaceContent() {
       <div className={styles.tire} ref={tireRef} />
       <div className={styles.assists} ref={assistsRef} />
       <div className={styles.damage} ref={damageRef} />
+      <div className={styles.mute} ref={muteRef} />
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.penaltyToast} ref={penaltyToastRef} />
       <svg
