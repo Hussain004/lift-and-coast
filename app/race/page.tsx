@@ -125,7 +125,7 @@ function RaceContent() {
       <div className={styles.hud}>
         <span className={styles.trackName}>{trackName}</span>
         WASD / arrows to drive. Hold R to rewind. Hold Shift to deploy. Press
-        E to toggle aero mode. Press C to toggle camera. Press 1/2/3 for
+        E to toggle aero mode. Press C to cycle cameras. Press 1/2/3 for
         soft/medium/hard tires. Press T to toggle TC, B to toggle ABS, L to
         toggle the racing line. Q/Z to shift gears, G to toggle auto-gears.
         Press M to mute. A connected gamepad/wheel drives with analog

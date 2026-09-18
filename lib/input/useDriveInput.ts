@@ -11,7 +11,14 @@ import {
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 
-export type CameraMode = "chase" | "cockpit";
+export type CameraMode = "chase" | "cockpit" | "t-cam";
+
+/** C-key cycle order (plan section 9: chase, cockpit, then the TV T-cam). */
+export function nextCameraMode(mode: CameraMode): CameraMode {
+  if (mode === "chase") return "cockpit";
+  if (mode === "cockpit") return "t-cam";
+  return "chase";
+}
 
 // Explicit selection (one key per compound) rather than a cycle - fitting
 // a fresh set of a SPECIFIC compound is always one keystroke, instead of
@@ -150,7 +157,7 @@ export function useDriveInput(
           aeroMode.current === "high-downforce" ? "low-drag" : "high-downforce";
       }
       if (e.code === CAMERA_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
-        cameraMode.current = cameraMode.current === "chase" ? "cockpit" : "chase";
+        cameraMode.current = nextCameraMode(cameraMode.current);
       }
       const selectedCompound = TIRE_COMPOUND_KEYS[e.code];
       if (selectedCompound && !keys.current.has(e.code)) {

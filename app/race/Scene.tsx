@@ -104,10 +104,16 @@ function Ground({ track }: { track: TrackData }) {
 // faster, the standard cockpit-cam trick. Chase sits a little further back
 // and higher than the obvious framing: with real F1/track proportions the
 // car otherwise fills the frame and reads oversized (player feedback).
+// T-cam: the broadcast look - above and just behind the car, staring down
+// the track. Same yaw-only unsmoothed construction as the other two modes
+// (see below); the chassis stays visible, sitting low in frame the way a
+// real T-cam frames the nose.
 const CHASE_OFFSET = new THREE.Vector3(0, 2.6, 8.5);
 const COCKPIT_OFFSET = new THREE.Vector3(0, 0.65, -0.3);
+const TCAM_OFFSET = new THREE.Vector3(0, 2.2, 5.0);
 const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
+const TCAM_FOV = 70;
 
 // A plain helper (not inlined at the call site) so the mutation below isn't
 // a direct assignment to a property of the value useThree() returns, which
@@ -208,6 +214,23 @@ function ChaseCamera({
       );
       camera.lookAt(lookAt.current);
       setPerspectiveFov(camera, COCKPIT_FOV);
+    } else if (mode === "t-cam") {
+      // Same unsmoothed position + aim construction as cockpit (see above),
+      // only higher, further back, and aimed further ahead with a downward
+      // tilt so the chassis sits low in frame - no lag filter on either
+      // term, for the same speed-dependent-gap reason documented below.
+      offset.current.copy(TCAM_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
+      desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
+      camera.position.copy(desiredPos.current);
+
+      forward.current.set(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
+      lookAt.current.set(
+        desiredPos.current.x + forward.current.x * 30,
+        t.y + 0.9,
+        desiredPos.current.z + forward.current.z * 30
+      );
+      camera.lookAt(lookAt.current);
+      setPerspectiveFov(camera, TCAM_FOV);
     } else {
       offset.current.copy(CHASE_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
