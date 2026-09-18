@@ -11,12 +11,13 @@ import {
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 
-export type CameraMode = "chase" | "cockpit" | "t-cam";
+export type CameraMode = "chase" | "cockpit" | "t-cam" | "tv";
 
-/** C-key cycle order (plan section 9: chase, cockpit, then the TV T-cam). */
+/** C-key cycle order (plan section 9: chase, cockpit, TV T-cam, broadcast). */
 export function nextCameraMode(mode: CameraMode): CameraMode {
   if (mode === "chase") return "cockpit";
   if (mode === "cockpit") return "t-cam";
+  if (mode === "t-cam") return "tv";
   return "chase";
 }
 

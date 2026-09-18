@@ -18,6 +18,7 @@ import { GRASS_COLOR } from "@/lib/tracks/mesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
+import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 
@@ -114,6 +115,7 @@ const TCAM_OFFSET = new THREE.Vector3(0, 2.2, 5.0);
 const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
 const TCAM_FOV = 70;
+const TV_FOV = 55;
 
 // A plain helper (not inlined at the call site) so the mutation below isn't
 // a direct assignment to a property of the value useThree() returns, which
@@ -131,9 +133,14 @@ function setPerspectiveFov(camera: THREE.Camera, fov: number) {
 function ChaseCamera({
   target,
   cameraMode,
+  raceRef,
+  track,
 }: {
   target: React.RefObject<THREE.Object3D | null>;
   cameraMode: React.RefObject<CameraMode>;
+  /** Car.tsx writes the player's live progress here every frame. */
+  raceRef: React.RefObject<RaceState>;
+  track: TrackData;
 }) {
   const { camera } = useThree();
   const desiredPos = useRef(new THREE.Vector3(0, 3, 8));
@@ -142,6 +149,9 @@ function ChaseCamera({
   const forward = useRef(new THREE.Vector3());
   const worldPos = useRef(new THREE.Vector3());
   const worldQuat = useRef(new THREE.Quaternion());
+  // Fixed trackside stands (see lib/race/broadcastCams.ts) - geometry per
+  // track, computed once; the per-frame work is one nearest-ahead lookup.
+  const cams = useMemo(() => buildBroadcastCams(track), [track]);
 
   useFrame((_, dt) => {
     const object = target.current;
@@ -231,6 +241,17 @@ function ChaseCamera({
       );
       camera.lookAt(lookAt.current);
       setPerspectiveFov(camera, TCAM_FOV);
+    } else if (mode === "tv") {
+      // Broadcast (see lib/race/broadcastCams.ts): a hard cut to whichever
+      // fixed stand sits nearest ahead of the car, aiming back at the car
+      // itself as it approaches and recedes. A cut is one frame's snap - no
+      // blend, no filter - so like every other mode here there is nothing
+      // to drift or lag.
+      const progress = raceRef.current?.player.progressMeters ?? 0;
+      const cam = cams[selectBroadcastCam(cams, progress, track.lengthMeters)];
+      camera.position.set(cam.x, cam.y, cam.z);
+      camera.lookAt(t.x, t.y + 0.8, t.z);
+      setPerspectiveFov(camera, TV_FOV);
     } else {
       offset.current.copy(CHASE_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
@@ -384,7 +405,7 @@ export function Scene({
           audioRef={audioRef}
         />
       </Physics>
-      <ChaseCamera target={visualRef} cameraMode={cameraModeRef} />
+      <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
       <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />
     </Canvas>
   );
