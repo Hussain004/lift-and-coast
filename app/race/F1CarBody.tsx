@@ -39,10 +39,14 @@ export function F1CarBody({
   bodyColor,
   steerRefs,
   spinRefs,
+  flapRef,
 }: {
   bodyColor: string;
   steerRefs: React.RefObject<(THREE.Group | null)[]>;
   spinRefs: React.RefObject<(THREE.Group | null)[]>;
+  /** Animated by the owner (see Car.tsx): rotates the rear-wing flap open
+   * in low-drag mode. Absent, the flap sits shut - the AI never deploys. */
+  flapRef?: React.RefObject<THREE.Group | null>;
 }) {
   const body = useMemo(
     () =>
@@ -54,10 +58,12 @@ export function F1CarBody({
   );
   const colorFor = (color: BodyPanelColor): string =>
     color === "livery" ? bodyColor : PART_COLORS[color];
+  const statics = body.panels.filter((p) => !p.flap);
+  const flap = body.panels.find((p) => p.flap);
 
   return (
     <>
-      {body.panels.map((panel, i) => (
+      {statics.map((panel, i) => (
         <mesh
           key={`panel-${i}`}
           position={panel.position}
@@ -67,6 +73,17 @@ export function F1CarBody({
           <meshStandardMaterial color={colorFor(panel.color)} />
         </mesh>
       ))}
+      {flap && (
+        <group
+          ref={flapRef}
+          position={[flap.position[0], flap.position[1], flap.position[2] - flap.size[2] / 2]}
+        >
+          <mesh position={[0, 0, flap.size[2] / 2]} castShadow>
+            <boxGeometry args={flap.size} />
+            <meshStandardMaterial color={colorFor(flap.color)} />
+          </mesh>
+        </group>
+      )}
       <mesh position={body.helmet.position} castShadow>
         <sphereGeometry args={[body.helmet.radius, 16, 12]} />
         <meshStandardMaterial color={colorFor("helmet")} />

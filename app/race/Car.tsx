@@ -72,6 +72,7 @@ import type { TrackData } from "@/lib/tracks/types";
 import { F1CarBody } from "./F1CarBody";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
+import { FLAP_OPEN_RAD, stepFlapAngle } from "@/lib/race/carBody";
 
 const REWIND_CAPACITY_SECONDS = 5;
 const SECTOR_COUNT = 3;
@@ -224,6 +225,9 @@ export function Car({
   );
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
+  // Rear-wing flap pivot (see app/race/F1CarBody.tsx) - rotated open in
+  // low-drag mode, like the real active-aero flap.
+  const flapRef = useRef<THREE.Group | null>(null);
   const { world, rapier } = useRapier();
   const { update, input, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
     useDriveInput(cameraModeRef, racingLineVisibleRef);
@@ -685,6 +689,13 @@ export function Car({
       aeroModeRef.current.textContent =
         aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE";
     }
+    // Active-aero flap (plan section 5): the rear-wing top element rotates
+    // open in low-drag mode and shut otherwise, rate-limited like a real
+    // actuator rather than snapping.
+    if (flapRef.current) {
+      const target = aeroMode.current === "low-drag" ? FLAP_OPEN_RAD : 0;
+      flapRef.current.rotation.x = stepFlapAngle(flapRef.current.rotation.x, target, dt);
+    }
     if (tireRef?.current) {
       const gripPercent = Math.round(
         computeCompoundGripMultiplier(TIRE_COMPOUNDS[tireCompound.current], tireWornMetersRef.current) *
@@ -1001,7 +1012,7 @@ export function Car({
         */}
         <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
         <group ref={visualRef}>
-          <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
+          <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} flapRef={flapRef} />
         </group>
       </RigidBody>
     </>

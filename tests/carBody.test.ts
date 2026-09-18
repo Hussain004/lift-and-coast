@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CHASSIS_HALF_EXTENTS, CAR_WHEELS } from "../lib/physics/vehicle";
-import { computeF1BodyPanels } from "../lib/race/carBody";
+import {
+  FLAP_OPEN_RAD,
+  computeF1BodyPanels,
+  stepFlapAngle,
+} from "../lib/race/carBody";
 
 const [HX, , HZ] = CHASSIS_HALF_EXTENTS;
 const stations = CAR_WHEELS.map((w) => ({ x: w.position[0], z: w.position[2] }));
@@ -124,5 +128,29 @@ describe("computeF1BodyPanels", () => {
     expect(helmet.position[1] + helmet.radius).toBeGreaterThan(
       halo.position[1] + halo.tube
     );
+  });
+
+  it("marks exactly the rear-wing plane as the moving flap", () => {
+    const { panels } = build();
+    const flaps = panels.filter((p) => p.flap);
+    expect(flaps.length).toBe(1);
+    // Top rear, spanning most of the wing width.
+    expect(flaps[0].position[1]).toBeGreaterThan(0.5);
+    expect(flaps[0].position[2]).toBeGreaterThan(1.5);
+    expect(flaps[0].size[0]).toBeGreaterThan(1.2);
+  });
+
+  it("steps the flap without overshoot and tolerates bad dt", () => {
+    expect(FLAP_OPEN_RAD).toBeLessThan(0);
+    expect(stepFlapAngle(0, FLAP_OPEN_RAD, 0)).toBe(0);
+    expect(stepFlapAngle(0, FLAP_OPEN_RAD, -1)).toBe(0);
+    // Snaps fully open within a quarter second, then holds.
+    expect(stepFlapAngle(0, FLAP_OPEN_RAD, 1)).toBe(FLAP_OPEN_RAD);
+    expect(stepFlapAngle(FLAP_OPEN_RAD, FLAP_OPEN_RAD, 1)).toBe(FLAP_OPEN_RAD);
+    // Partial step moves toward the target without passing it.
+    const mid = stepFlapAngle(0, FLAP_OPEN_RAD, 0.05);
+    expect(mid).toBeLessThan(0);
+    expect(mid).toBeGreaterThan(FLAP_OPEN_RAD);
+    expect(stepFlapAngle(FLAP_OPEN_RAD, 0, 1)).toBe(0);
   });
 });

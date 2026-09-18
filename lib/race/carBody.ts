@@ -28,6 +28,10 @@ export interface BodyPanel {
   size: [number, number, number];
   position: [number, number, number];
   color: BodyPanelColor;
+  /** The one moving part: the rear-wing top flap, rendered by the
+   * component inside a pivot group at its leading edge and rotated open
+   * in low-drag mode (see app/race/F1CarBody.tsx). */
+  flap?: boolean;
 }
 
 export interface F1BodyGeometry {
@@ -49,9 +53,10 @@ export function computeF1BodyPanels(
   const box = (
     size: [number, number, number],
     position: [number, number, number],
-    color: BodyPanelColor
+    color: BodyPanelColor,
+    flap = false
   ) => {
-    panels.push({ size, position, color });
+    panels.push({ size, position, color, flap });
   };
 
   // Nose: two shrinking steps from the tip into the monocoque.
@@ -80,9 +85,9 @@ export function computeF1BodyPanels(
     box([0.08, 0.12, 0.2], [side * 0.15, -0.24, -hz + 0.1], "carbon");
     box([0.05, 0.28, 0.5], [side * 0.9, -0.2, -hz - 0.05], "livery");
   }
-  // Rear wing assembly: main plane, endplates, pylons, beam wing reaching
-  // the endplates on both sides.
-  box([1.5, 0.06, 0.4], [0, 0.62, hz - 0.15], "carbon");
+  // Rear wing assembly: main plane (the moving flap - see flap above),
+  // endplates, pylons, beam wing reaching the endplates on both sides.
+  box([1.5, 0.06, 0.4], [0, 0.62, hz - 0.15], "carbon", true);
   for (const side of [-1, 1] as const) {
     box([0.05, 0.5, 0.5], [side * 0.75, 0.5, hz - 0.15], "livery");
     box([0.08, 0.3, 0.25], [side * 0.1, 0.45, hz - 0.2], "carbon");
@@ -119,4 +124,16 @@ export function computeF1BodyPanels(
     helmet: { radius: 0.16, position: [0, 0.47, 0.3] },
     halo: { radius: 0.3, tube: 0.045, position: [0, 0.5, 0.3] },
   };
+}
+
+/** Open angle of the DRS-style flap: trailing edge up, like the real thing. */
+export const FLAP_OPEN_RAD = -0.5;
+/** Flap actuator speed - snaps open/shut in about a fifth of a second. */
+export const FLAP_RATE_RAD_S = 2.5;
+
+/** Rate-limited step toward the flap target: no overshoot, dt-safe. */
+export function stepFlapAngle(current: number, target: number, dtSeconds: number): number {
+  const remaining = target - current;
+  const step = Math.sign(remaining) * Math.min(Math.abs(remaining), FLAP_RATE_RAD_S * Math.max(0, dtSeconds));
+  return current + step;
 }
