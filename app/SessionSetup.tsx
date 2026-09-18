@@ -8,22 +8,24 @@ import {
   MIN_RACE_LAPS,
   loadSessionSetupPrefs,
   saveSessionSetupPrefs,
+  useSessionTrackId,
 } from "@/lib/race/sessionSetup";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
-import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
+import { parseTrackId } from "@/lib/tracks/registry";
 import styles from "./sessionSetup.module.css";
 
-// Plan section 8 (Session Setup): the lap-count slider and track picker
-// that the race page's ?laps= / ?track= URL params were always the
-// stand-in for. Persists the last picks (plan section 10) so the next
-// session opens the way the previous one left it. Difficulty is
-// deliberately absent: AI difficulty tiers are blocked by the
-// chaotic-sensitivity findings (see pathFollower.ts), and the assists are
-// in-race toggles by design.
+// Plan section 8 (Session Setup): the lap-count slider plus the Drive link.
+// The track picker used to be a button row here; it now lives on the world
+// map pins above (app/WorldMap.tsx), and this panel reads the same shared
+// trackId through the session-setup change event - one picker, two readers.
+// Persists the last picks (plan section 10) so the next session opens the
+// way the previous one left it. Difficulty is deliberately absent: AI
+// difficulty tiers are blocked by the chaotic-sensitivity findings (see
+// pathFollower.ts), and the assists are in-race toggles by design.
 export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
-  const [trackId, setTrackId] = useState(initial.trackId);
+  const trackId = useSessionTrackId();
   // Live roster pick from the team/driver panel above - carried on the Drive
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
@@ -34,25 +36,6 @@ export function SessionSetup() {
 
   return (
     <div className={styles.setup}>
-      <div className={styles.tracks} role="radiogroup" aria-label="Circuit">
-        {TRACKS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="radio"
-            aria-checked={trackId === entry.id}
-            onClick={() => {
-              setTrackId(entry.id);
-              persist(raceLaps, entry.id);
-            }}
-            className={
-              trackId === entry.id ? styles.trackActive : styles.track
-            }
-          >
-            {entry.shortName}
-          </button>
-        ))}
-      </div>
       <div className={styles.sliderRow}>
         <span className={styles.label}>QUICK RACE — LAPS</span>
         <span className={styles.readout} aria-live="polite">

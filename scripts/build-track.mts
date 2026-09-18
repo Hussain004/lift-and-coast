@@ -716,6 +716,22 @@ const TRACKS: {
 ];
 
 let totalPoints = 0;
+// Menu-safe outline per circuit (plan section 8: track preview): the race
+// route's per-track JSON is ~550KB of centerline the menu bundle must never
+// pull in (see lib/tracks/registry.ts), so the build also emits this tiny
+// sidecar - a stride-sampled top-down outline plus the facts the preview
+// prints. x/z are the projected meters themselves, so the preview draws
+// them with the minimap's own convention (X -> path X, Z -> path Y, no
+// flip), which is north-up because the projection is z-south-positive.
+// Direction of travel as seen on that north-up drawing: positive signed
+// area in y-down screen coords runs clockwise.
+const OUTLINE_POINTS = 120;
+const outlines: {
+  id: string;
+  lengthMeters: number;
+  direction: "clockwise" | "counterclockwise";
+  points: [number, number][];
+}[] = [];
 for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
@@ -730,9 +746,26 @@ for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualEl
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)
   );
+  const stride = Math.max(1, Math.floor(track.centerline.length / OUTLINE_POINTS));
+  const points = track.centerline
+    .filter((_, i) => i % stride === 0)
+    .map(([x, , z]): [number, number] => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]);
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x0, z0] = points[i];
+    const [x1, z1] = points[(i + 1) % points.length];
+    area += x0 * z1 - x1 * z0;
+  }
+  outlines.push({
+    id,
+    lengthMeters: track.lengthMeters,
+    direction: area >= 0 ? "clockwise" : "counterclockwise",
+    points,
+  });
   totalPoints += track.centerline.length;
   console.log(
     `Built ${track.name}: ${track.centerline.length} points, ${track.lengthMeters}m (reference: ${referenceLength}m)`
   );
 }
+writeFileSync(`${scriptDir}/../data/tracks/outlines.json`, JSON.stringify(outlines));
 console.log(`Total centerline points across ${TRACKS.length} tracks: ${totalPoints}`);

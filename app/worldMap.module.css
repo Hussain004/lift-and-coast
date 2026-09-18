@@ -1,0 +1,118 @@
+.setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 18px 24px 22px;
+  background: rgba(255, 255, 255, 0.02);
+  width: min(560px, 100%);
+}
+
+.label {
+  color: #999;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.map {
+  width: 100%;
+  height: auto;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #222;
+  border-radius: 4px;
+}
+
+.graticule {
+  stroke: #222;
+  stroke-width: 1;
+}
+
+.graticuleBright {
+  stroke: #2e2e2e;
+  stroke-width: 1;
+}
+
+.pin {
+  cursor: pointer;
+  outline: none;
+}
+
+.pin:focus-visible .pinDot,
+.pin:focus-visible .pinActive {
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.pinDot {
+  fill: #555;
+  transition: fill 0.15s;
+}
+
+.pin:hover .pinDot {
+  fill: #fff;
+}
+
+.pinActive {
+  fill: #39ff88;
+}
+
+.pinRing {
+  fill: none;
+  stroke: #39ff88;
+  stroke-width: 1.5;
+  opacity: 0.4;
+}
+
+.pinLabel {
+  fill: #39ff88;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.outline {
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 280px;
+}
+
+.trackName {
+  color: #39ff88;
+  font-size: 14px;
+  letter-spacing: 2px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  color: #999;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.statRow span:last-child {
+  color: #ddd;
+}

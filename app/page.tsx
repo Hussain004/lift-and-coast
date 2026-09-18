@@ -2,6 +2,7 @@ import { Championship } from "./Championship";
 import { SaveTransfer } from "./SaveTransfer";
 import { SessionSetup } from "./SessionSetup";
 import { TeamSetup } from "./TeamSetup";
+import { WorldMap } from "./WorldMap";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
       </h1>
       <p className={styles.tagline}>Save the juice. Send the apex.</p>
       <TeamSetup />
+      <WorldMap />
       <SessionSetup />
       <Championship />
       <p className={styles.tip}>

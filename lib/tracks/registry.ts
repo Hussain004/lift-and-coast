@@ -10,14 +10,21 @@ export interface TrackMeta {
   name: string;
   /** Short label for the session-setup track picker buttons. */
   shortName: string;
+  /** Real-world reference facts (not derived): corner count from the
+   * circuit's own map, and the map pin from the raw dataset's centroid.
+   * Still metadata, not geometry - two floats and a count cost nothing in
+   * the menu bundle (see the note above). */
+  corners: number;
+  lat: number;
+  lon: number;
 }
 
 export const TRACKS: TrackMeta[] = [
-  { id: "silverstone", name: "Silverstone Circuit", shortName: "Silverstone" },
-  { id: "monza", name: "Autodromo Nazionale Monza", shortName: "Monza" },
-  { id: "spa", name: "Circuit de Spa-Francorchamps", shortName: "Spa" },
-  { id: "suzuka", name: "Suzuka International Racing Course", shortName: "Suzuka" },
-  { id: "monaco", name: "Circuit de Monaco", shortName: "Monaco" },
+  { id: "silverstone", name: "Silverstone Circuit", shortName: "Silverstone", corners: 18, lat: 52.0718, lon: -1.0164 },
+  { id: "monza", name: "Autodromo Nazionale Monza", shortName: "Monza", corners: 11, lat: 45.6234, lon: 9.2865 },
+  { id: "spa", name: "Circuit de Spa-Francorchamps", shortName: "Spa", corners: 19, lat: 50.4347, lon: 5.9686 },
+  { id: "suzuka", name: "Suzuka International Racing Course", shortName: "Suzuka", corners: 18, lat: 34.8446, lon: 136.5328 },
+  { id: "monaco", name: "Circuit de Monaco", shortName: "Monaco", corners: 19, lat: 43.7372, lon: 7.4253 },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;

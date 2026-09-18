@@ -16,17 +16,11 @@ import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
 import type { TrackData } from "../lib/tracks/types";
 
-// Real corner counts, F1-style corner lists differ by a couple between
-// references, so these bound the derived runs instead of matching exactly.
-// The derivation's own thresholds were calibrated so the run count lands in
-// this band (see the comment on KERB_MAX_RADIUS_METERS in surfaces.ts).
-const EXPECTED_CORNER_COUNTS: Record<string, number> = {
-  silverstone: 18,
-  monza: 11,
-  spa: 19,
-  suzuka: 18,
-  monaco: 19,
-};
+// Real corner counts live on the registry entries (TrackMeta.corners):
+// F1-style corner lists differ by a couple between references, so these
+// bound the derived runs instead of matching exactly. The derivation's own
+// thresholds were calibrated so the run count lands in this band (see the
+// comment on KERB_MAX_RADIUS_METERS in surfaces.ts).
 
 // Sausage kerbs stay exceptional everywhere - except Monaco, whose street
 // layout packs several genuinely tight (hairpin-grade) corners into a lap,
@@ -171,7 +165,7 @@ describe("derived zones (real circuits)", () => {
     for (const meta of TRACKS) {
       const track = getTrack(meta.id);
       const zones = surfaceZones(track);
-      const expected = EXPECTED_CORNER_COUNTS[meta.id];
+      const expected = meta.corners;
       const leftRuns = runCounts(zones.map((z) => z.left !== null));
       const rightRuns = runCounts(zones.map((z) => z.right !== null));
       expect(leftRuns, `${meta.id} left kerb runs`).toBeGreaterThanOrEqual(expected - 2);

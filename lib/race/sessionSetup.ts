@@ -5,6 +5,7 @@
 // tuning knob - an unbounded value would let a typo (or a shared link)
 // produce a 0-lap "race" that finishes on the very first crossing, or one
 // so long it's never realistically finished.
+import { useEffect, useState } from "react";
 import { DEFAULT_TRACK_ID, isKnownTrackId } from "../tracks/registry";
 
 export const MIN_RACE_LAPS = 1;
@@ -85,5 +86,26 @@ export function saveSessionSetupPrefs(
     );
   } catch {
     // Storage full / unavailable - non-fatal, defaults cover the next load.
+    return;
   }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SESSION_SETUP_CHANGE_EVENT));
+  }
+}
+
+/** Fired on window whenever saveSessionSetupPrefs persists, so every setup
+ * panel on the page (world-map pins, Drive link) re-reads the same track
+ * without prop drilling - same pattern as lib/race/roster.ts. */
+export const SESSION_SETUP_CHANGE_EVENT = "lift-and-coast:session-setup-change";
+
+/** Live track pick for setup panels: re-reads whenever any panel persists,
+ * so the world map highlight and the Drive link always agree. */
+export function useSessionTrackId(): string {
+  const [trackId, setTrackId] = useState<string>(() => loadSessionSetupPrefs().trackId);
+  useEffect(() => {
+    const refresh = () => setTrackId(loadSessionSetupPrefs().trackId);
+    window.addEventListener(SESSION_SETUP_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(SESSION_SETUP_CHANGE_EVENT, refresh);
+  }, []);
+  return trackId;
 }

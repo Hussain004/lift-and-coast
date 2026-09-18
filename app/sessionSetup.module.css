@@ -10,43 +10,6 @@
   width: min(360px, 100%);
 }
 
-.tracks {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.track {
-  background: none;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #888;
-  font-family: var(--font-geist-mono);
-  font-size: 11px;
-  letter-spacing: 1px;
-  padding: 6px 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.track:hover {
-  border-color: #39ff88;
-  color: #39ff88;
-}
-
-.trackActive {
-  background: rgba(57, 255, 136, 0.1);
-  border-color: #39ff88;
-  color: #39ff88;
-  font-family: var(--font-geist-mono);
-  font-size: 11px;
-  letter-spacing: 1px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
 .sliderRow {
   display: flex;
   align-items: baseline;
