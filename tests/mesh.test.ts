@@ -5,7 +5,9 @@ import {
   buildRibbonGeometry,
   EDGE_LINE_WIDTH_METERS,
   GRASS_COLOR,
+  GRAVEL_COLOR,
   RIBBON_COLOR,
+  hexToLinearRgb,
 } from "../lib/tracks/mesh";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
@@ -70,25 +72,29 @@ describe("buildRibbonGeometry", () => {
 describe("ground surface colors", () => {
   it("keeps the asphalt visibly distinct from the grass", () => {
     // Regression for the "random missing track areas" report: the ribbon
-    // rendered everywhere (proven by painting it red), but #3a3a3a asphalt
-    // on #2b2b2b grass is a 1.25:1 luminance ratio, which this scene's
-    // lighting renders as one undifferentiated dark plain - every ribbon
-    // edge invisible, and every genuine terrain-cover patch (since fixed in
-    // terrain.ts) reading as a hole rather than a shaded road. The floor
-    // below keeps margin under the current ~1.66:1 without prescribing the
-    // art direction.
+    // rendered everywhere (proven by painting it red), but gray-on-gray
+    // grass let sunlit runoff reach ribbon brightness, so every ribbon
+    // edge could vanish. The grass is now a real green, so separation is
+    // hue as well as luminance: this pins the green dominance plus a
+    // luminance ratio floor (measured ~1.27), either of which alone would
+    // be a weaker guard than both together.
+    const [gr, gg, gb] = hexToLinearRgb(GRASS_COLOR);
+    expect(gg).toBeGreaterThan(gr * 1.5);
+    expect(gg).toBeGreaterThan(gb * 1.5);
     const luminance = (hex: string): number => {
-      const linear = [1, 3, 5].map((at) => {
-        const channel = parseInt(hex.slice(at, at + 2), 16) / 255;
-        return channel <= 0.03928
-          ? channel / 12.92
-          : ((channel + 0.055) / 1.055) ** 2.4;
-      });
-      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      const [r, g, b] = hexToLinearRgb(hex);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
     const ratio =
       (luminance(RIBBON_COLOR) + 0.05) / (luminance(GRASS_COLOR) + 0.05);
-    expect(ratio).toBeGreaterThan(1.5);
+    expect(ratio).toBeGreaterThan(1.2);
+  });
+
+  it("keeps the gravel tan distinct from the grass", () => {
+    const [gr, gg, gb] = hexToLinearRgb(GRAVEL_COLOR);
+    // Warm tan: red and green both well above blue.
+    expect(gr).toBeGreaterThan(gb * 1.5);
+    expect(gg).toBeGreaterThan(gb * 1.5);
   });
 });
 

@@ -14,7 +14,6 @@ import { AICar } from "./AICar";
 import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
-import { GRASS_COLOR } from "@/lib/tracks/mesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
@@ -87,9 +86,10 @@ function RaceStartCountdown({
  */
 function Ground({ track }: { track: TrackData }) {
   const { positions, indices, geometry } = useMemo(() => {
-    const { positions, indices } = buildTerrainGeometry(track);
+    const { positions, indices, colors } = buildTerrainGeometry(track);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
     return { positions, indices, geometry };
@@ -99,7 +99,7 @@ function Ground({ track }: { track: TrackData }) {
     <RigidBody type="fixed" colliders={false} friction={0.6}>
       <TrimeshCollider args={[positions, indices]} />
       <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial color={GRASS_COLOR} />
+        <meshStandardMaterial vertexColors />
       </mesh>
     </RigidBody>
   );

@@ -1,5 +1,16 @@
 import type { TrackData } from "./types";
-import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "./mesh";
+import {
+  buildRibbonGeometry,
+  GRASS_BELOW_TRACK_METERS,
+  GRASS_COLOR,
+  GRAVEL_COLOR,
+  hexToLinearRgb,
+} from "./mesh";
+import {
+  GRAVEL_WIDTH_METERS,
+  KERB_WIDTH_METERS,
+  surfaceZones,
+} from "./surfaces";
 import { worldEdgeResetMeters } from "./trackLimits";
 
 /**
@@ -61,6 +72,9 @@ export interface TerrainGeometry {
   positions: Float32Array;
   /** Triangle vertex indices, wound counter-clockwise seen from above. */
   indices: Uint32Array;
+  /** [r, g, b, ...] linear-space vertex colors, one triple per position
+   * triple: grass green everywhere except the gravel traps (see below). */
+  colors: Float32Array;
   /** Grid dimensions and placement, exposed for tests and diagnostics. */
   columns: number;
   rows: number;
@@ -110,6 +124,7 @@ function computeTerrain(track: TrackData): TerrainGeometry {
   const originZ = -half;
 
   const positions = new Float32Array(columns * rows * 3);
+  const nearestIdx = new Uint32Array(columns * rows);
   for (let row = 0; row < rows; row++) {
     const z = originZ + row * cellMeters;
     for (let column = 0; column < columns; column++) {
@@ -117,6 +132,7 @@ function computeTerrain(track: TrackData): TerrainGeometry {
 
       let nearestSq = Infinity;
       let height = 0;
+      let nearest = 0;
       for (let i = 0; i < count; i++) {
         const dx = x - cx[i];
         const dz = z - cz[i];
@@ -124,10 +140,13 @@ function computeTerrain(track: TrackData): TerrainGeometry {
         if (distSq < nearestSq) {
           nearestSq = distSq;
           height = cy[i];
+          nearest = i;
         }
       }
 
-      const offset = (row * columns + column) * 3;
+      const v = row * columns + column;
+      nearestIdx[v] = nearest;
+      const offset = v * 3;
       positions[offset] = x;
       positions[offset + 1] = height - GRASS_BELOW_TRACK_METERS;
       positions[offset + 2] = z;
@@ -162,7 +181,72 @@ function computeTerrain(track: TrackData): TerrainGeometry {
   // therefore worst at a polygon corner.
   applyRibbonClearance(track, positions, columns, rows, originX, originZ, cellMeters);
 
-  return { positions, indices, columns, rows, originX, originZ, cellMeters };
+  return {
+    positions,
+    indices,
+    columns,
+    rows,
+    originX,
+    originZ,
+    cellMeters,
+    colors: paintSurfaceColors(track, positions, columns, rows, nearestIdx, cx, cz),
+  };
+}
+
+/**
+ * Per-vertex runoff colors: grass green everywhere except where the nearest
+ * centerline point carries a gravel zone on the vertex's own side, within
+ * the kerb + gravel band - those vertices go tan, so the physics gravel
+ * traps (see surfaces.ts) read as gravel instead of grass. Vertices under
+ * the ribbon itself are colored by the same rule; the ribbon hides them.
+ *
+ * Deliberately coarse like everything else about this field: at 12.5m
+ * cells a trap edge lands within half a cell of the physics edge, which
+ * reads fine at speed and can never float above or clip through the
+ * ground the way a separate flat gravel ribbon would on slopes.
+ */
+function paintSurfaceColors(
+  track: TrackData,
+  positions: Float32Array,
+  columns: number,
+  rows: number,
+  nearestIdx: Uint32Array,
+  cx: Float32Array,
+  cz: Float32Array
+): Float32Array {
+  const count = track.centerline.length;
+  const zones = surfaceZones(track);
+  const [gr, gg, gb] = hexToLinearRgb(GRASS_COLOR);
+  const [tr, tg, tb] = hexToLinearRgb(GRAVEL_COLOR);
+  const reach = KERB_WIDTH_METERS + GRAVEL_WIDTH_METERS;
+  const colors = new Float32Array(columns * rows * 3);
+  for (let v = 0; v < columns * rows; v++) {
+    const i = nearestIdx[v];
+    const [px, , pz] = track.centerline[(i - 1 + count) % count];
+    const [nx, , nz] = track.centerline[(i + 1) % count];
+    const tangentX = nx - px;
+    const tangentZ = nz - pz;
+    const tangentLen = Math.hypot(tangentX, tangentZ) || 1;
+    const rightX = -tangentZ / tangentLen;
+    const rightZ = tangentX / tangentLen;
+    const lateralX = positions[v * 3] - cx[i];
+    const lateralZ = positions[v * 3 + 2] - cz[i];
+    const signed = lateralX * rightX + lateralZ * rightZ;
+    const gravel =
+      (signed > 0 ? zones[i].gravelRight : zones[i].gravelLeft) &&
+      Math.abs(signed) <= track.width[i] / 2 + reach;
+    const o = v * 3;
+    if (gravel) {
+      colors[o] = tr;
+      colors[o + 1] = tg;
+      colors[o + 2] = tb;
+    } else {
+      colors[o] = gr;
+      colors[o + 1] = gg;
+      colors[o + 2] = gb;
+    }
+  }
+  return colors;
 }
 
 interface PlanCorner {

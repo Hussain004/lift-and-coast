@@ -15,16 +15,30 @@ import { KERB_WIDTH_METERS, kerbHeightMeters, surfaceZones } from "./surfaces";
 // global plane height.
 export const GRASS_BELOW_TRACK_METERS = 0.01;
 
-// Rendered colors of the two ground surfaces, centralized so their contrast
+// Rendered colors of the ground surfaces, centralized so their contrast
 // is pinned in one place and regression-tested (see tests/mesh.test.ts).
-// The ribbon used to be #3a3a3a on #2b2b2b grass, a 1.25:1 luminance ratio
-// that this scene's lighting renders as a single undifferentiated dark
-// plain - the "random missing track areas" report, since anywhere the
-// ribbon met grass (including the genuine terrain-cover patches, since
-// fixed in terrain.ts) the road edge was invisible. Both stay neutral dark
-// grays for the art style; only their separation changed.
+// The ribbon used to sit on near-black gray grass (#202020) at a 1.66:1
+// luminance ratio; the grass is now a real (dark) green, so separation is
+// hue as well as luminance - gray asphalt reads against green runoff the
+// way real circuits do. Gravel traps (see terrain.ts) get their own tan.
 export const RIBBON_COLOR = "#525252";
-export const GRASS_COLOR = "#202020";
+export const GRASS_COLOR = "#2E4A24";
+/** Sun-baked gravel trap tan (see terrain vertex colors in terrain.ts). */
+export const GRAVEL_COLOR = "#9A8B60";
+
+/**
+ * sRGB hex to linear working-space triple, for vertex colors fed straight
+ * to the GPU (which skips the automatic conversion a material `color` gets
+ * - writing raw sRGB values would render roughly twice as bright as the
+ * same hex on a material).
+ */
+export function hexToLinearRgb(hex: string): [number, number, number] {
+  const channel = (at: number): number => {
+    const s = parseInt(hex.slice(at, at + 2), 16) / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return [channel(1), channel(3), channel(5)];
+}
 
 export interface RibbonGeometry {
   /** [x, y, z, x, y, z, ...] vertex positions. */

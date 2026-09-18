@@ -4,7 +4,8 @@ import {
   TERRAIN_OUTER_MARGIN_METERS,
   buildTerrainGeometry,
 } from "../lib/tracks/terrain";
-import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "../lib/tracks/mesh";
+import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS, GRAVEL_COLOR, GRASS_COLOR, hexToLinearRgb } from "../lib/tracks/mesh";
+import { surfaceZones } from "../lib/tracks/surfaces";
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
@@ -143,6 +144,92 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
 
 describe("buildTerrainGeometry (real circuits)", () => {
   for (const entry of TRACKS) {
+    it(`${entry.id} paints grass everywhere and gravel at the traps`, () => {
+      const track = getTrack(entry.id);
+      const terrain = buildTerrainGeometry(track);
+      const verts = terrain.columns * terrain.rows;
+      expect(terrain.colors.length).toBe(terrain.positions.length);
+      const [gr, gg, gb] = hexToLinearRgb(GRASS_COLOR);
+      const [tr, tg, tb] = hexToLinearRgb(GRAVEL_COLOR);
+      const match = (v: number, r: number, g: number, b: number) =>
+        Math.abs(terrain.colors[v * 3] - r) < 1e-6 &&
+        Math.abs(terrain.colors[v * 3 + 1] - g) < 1e-6 &&
+        Math.abs(terrain.colors[v * 3 + 2] - b) < 1e-6;
+      let grass = 0;
+      let gravel = 0;
+      for (let v = 0; v < verts; v++) {
+        const c0 = terrain.colors[v * 3];
+        const c1 = terrain.colors[v * 3 + 1];
+        const c2 = terrain.colors[v * 3 + 2];
+        expect(c0).toBeGreaterThanOrEqual(0);
+        expect(c0).toBeLessThanOrEqual(1);
+        expect(c1).toBeGreaterThanOrEqual(0);
+        expect(c1).toBeLessThanOrEqual(1);
+        expect(c2).toBeGreaterThanOrEqual(0);
+        expect(c2).toBeLessThanOrEqual(1);
+        if (match(v, tr, tg, tb)) gravel++;
+        else if (match(v, gr, gg, gb)) grass++;
+        else throw new Error(`${entry.id}: vertex ${v} has an unpainted color`);
+      }
+      // Runoff is overwhelmingly grass; every track with gravel zones (all
+      // five) paints a visible share of traps.
+      expect(grass).toBeGreaterThan(gravel);
+      const zones = surfaceZones(track);
+      const hasGravel = zones.some((z) => z.gravelLeft || z.gravelRight);
+      if (hasGravel) expect(gravel).toBeGreaterThan(100);
+
+      // Spot-check the geography, not just the counts: mid-run on a long
+      // gravel trap, a terrain vertex within one cell of the trap's middle
+      // must actually be tan. Only runs far longer than a cell qualify, so
+      // boundary falloff cannot flake this.
+      const n = track.centerline.length;
+      let checked = 0;
+      for (const side of [-1, 1] as const) {
+        const key = side < 0 ? "gravelLeft" : "gravelRight";
+        let start = -1;
+        for (let i = 0; i <= n; i++) {
+          const on = i < n && zones[i][key];
+          if (on && start < 0) start = i;
+          if (!on && start >= 0) {
+            if (i - start >= 30) {
+              const mid = (start + Math.floor((i - start) / 2)) % n;
+              const [x, , z] = track.centerline[mid];
+              const [px, , pz] = track.centerline[(mid - 1 + n) % n];
+              const [nx, , nz] = track.centerline[(mid + 1) % n];
+              const tx = nx - px;
+              const tz = nz - pz;
+              const len = Math.hypot(tx, tz) || 1;
+              const halfW = track.width[mid] / 2;
+              const sx = x + (-tz / len) * (halfW + 8) * side;
+              const sz = z + (tx / len) * (halfW + 8) * side;
+              let nearest = -1;
+              let nearestSq = Infinity;
+              for (let v = 0; v < verts; v++) {
+                const dx = terrain.positions[v * 3] - sx;
+                const dz = terrain.positions[v * 3 + 2] - sz;
+                const d2 = dx * dx + dz * dz;
+                if (d2 < nearestSq) {
+                  nearestSq = d2;
+                  nearest = v;
+                }
+              }
+              expect(
+                Math.sqrt(nearestSq),
+                `${entry.id}: no terrain vertex near trap midpoint`
+              ).toBeLessThan(12);
+              expect(
+                match(nearest, tr, tg, tb),
+                `${entry.id}: trap midpoint paints grass`
+              ).toBe(true);
+              checked++;
+            }
+            start = -1;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(0);
+    });
+
     it(`${entry.id} follows the circuit's elevation`, () => {
       const terrain = buildTerrainGeometry(getTrack(entry.id));
       let min = Infinity;
