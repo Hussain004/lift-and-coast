@@ -15,7 +15,7 @@ and no authored kerbs yet): Silverstone, Monza, Spa-Francorchamps,
 Suzuka and Monaco. Driven by a Rapier raycast-vehicle
 chassis with seven-speed sequential manual gears plus an auto-gear assist
 (plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
-input (plan section 5), chase/cockpit cameras, and rewind. Built on top of
+input (plan section 5), chase/cockpit/T-cam/TV-broadcast/orbit cameras, and rewind. Built on top of
 the vertical slice:
 
 - Energy harvesting + one-shot Push-to-Pass boost (Hold Shift)

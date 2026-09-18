@@ -11,14 +11,36 @@ import {
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 
-export type CameraMode = "chase" | "cockpit" | "t-cam" | "tv";
+export type CameraMode = "chase" | "cockpit" | "t-cam" | "tv" | "orbit";
+/** Every mode except the free orbit, which sits outside the C cycle. */
+export type DrivingCameraMode = Exclude<CameraMode, "orbit">;
 
 /** C-key cycle order (plan section 9: chase, cockpit, TV T-cam, broadcast). */
-export function nextCameraMode(mode: CameraMode): CameraMode {
+export function nextCameraMode(mode: DrivingCameraMode): DrivingCameraMode {
   if (mode === "chase") return "cockpit";
   if (mode === "cockpit") return "t-cam";
   if (mode === "t-cam") return "tv";
   return "chase";
+}
+
+/**
+ * V-key orbit toggle (plan section 9 replay cam): dropping into orbit
+ * remembers the driving mode so V always returns where you came from.
+ */
+export function toggleOrbitCamera(
+  current: CameraMode,
+  lastDriving: DrivingCameraMode
+): { mode: CameraMode; lastDriving: DrivingCameraMode } {
+  if (current === "orbit") return { mode: lastDriving, lastDriving };
+  return { mode: "orbit", lastDriving: current };
+}
+
+/** C-key: advance the driving cycle, resuming from the stored mode when orbiting. */
+export function cycleDrivingCamera(
+  current: CameraMode,
+  lastDriving: DrivingCameraMode
+): CameraMode {
+  return nextCameraMode(current === "orbit" ? lastDriving : current);
 }
 
 // Explicit selection (one key per compound) rather than a cycle - fitting
@@ -89,6 +111,7 @@ const SHIFT_UP_KEYS = ["KeyQ"];
 const SHIFT_DOWN_KEYS = ["KeyZ"];
 const AERO_MODE_TOGGLE_KEY = "KeyE";
 const CAMERA_MODE_TOGGLE_KEY = "KeyC";
+const ORBIT_TOGGLE_KEY = "KeyV";
 const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
 const ABS_TOGGLE_KEY = "KeyB";
 const RACING_LINE_TOGGLE_KEY = "KeyL";
@@ -129,6 +152,9 @@ export function useDriveInput(
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
   const cameraMode = externalCameraModeRef ?? internalCameraMode;
+  // Driving mode remembered across V-key orbit excursions, so V always
+  // returns where you came from and C resumes the cycle there.
+  const lastDrivingMode = useRef<DrivingCameraMode>("chase");
   const tireCompound = useRef<TireCompoundId>("medium");
   // Both default ON (plan section 5, depth feature 5: "off by default on
   // Pro" - Pro is a difficulty tier that doesn't exist yet, so on is the
@@ -158,7 +184,12 @@ export function useDriveInput(
           aeroMode.current === "high-downforce" ? "low-drag" : "high-downforce";
       }
       if (e.code === CAMERA_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
-        cameraMode.current = nextCameraMode(cameraMode.current);
+        cameraMode.current = cycleDrivingCamera(cameraMode.current, lastDrivingMode.current);
+      }
+      if (e.code === ORBIT_TOGGLE_KEY && !keys.current.has(e.code)) {
+        const next = toggleOrbitCamera(cameraMode.current, lastDrivingMode.current);
+        cameraMode.current = next.mode;
+        lastDrivingMode.current = next.lastDriving;
       }
       const selectedCompound = TIRE_COMPOUND_KEYS[e.code];
       if (selectedCompound && !keys.current.has(e.code)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -20,6 +20,12 @@ import type { CameraMode } from "@/lib/input/useDriveInput";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
+import {
+  anchorOrbit,
+  clampOrbit,
+  orbitPosition,
+  type OrbitState,
+} from "@/lib/race/orbitCam";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 
@@ -117,6 +123,7 @@ const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
 const TCAM_FOV = 70;
 const TV_FOV = 55;
+const ORBIT_FOV = 60;
 
 // Plan section 8 (Session Setup): time-of-day lighting presets. One table,
 // not scattered ternaries, so adding a preset is one row and every light in
@@ -191,9 +198,58 @@ function ChaseCamera({
   const forward = useRef(new THREE.Vector3());
   const worldPos = useRef(new THREE.Vector3());
   const worldQuat = useRef(new THREE.Quaternion());
+  // Free-orbit state (plan section 9 replay cam) plus the mode this frame
+  // ran, so entering orbit anchors once on the car's position instead of
+  // re-anchoring (and snapping) every frame.
+  const orbit = useRef<OrbitState | null>(null);
+  const prevMode = useRef<CameraMode>("chase");
   // Fixed trackside stands (see lib/race/broadcastCams.ts) - geometry per
   // track, computed once; the per-frame work is one nearest-ahead lookup.
   const cams = useMemo(() => buildBroadcastCams(track), [track]);
+  // Drag-rotate + wheel-zoom for orbit mode, straight onto the stored
+  // angles - the frame loop below only ever reads them, so input here can
+  // never inject smoothing or lag into any camera.
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const el = gl.domElement;
+    let dragging = false;
+    let lx = 0;
+    let ly = 0;
+    const down = (e: PointerEvent) => {
+      dragging = true;
+      lx = e.clientX;
+      ly = e.clientY;
+    };
+    const move = (e: PointerEvent) => {
+      if (!dragging || cameraMode.current !== "orbit" || !orbit.current) return;
+      const o = orbit.current;
+      o.yaw -= (e.clientX - lx) * 0.005;
+      o.pitch += (e.clientY - ly) * 0.005;
+      lx = e.clientX;
+      ly = e.clientY;
+      orbit.current = clampOrbit(o);
+    };
+    const up = () => {
+      dragging = false;
+    };
+    const zoom = (e: WheelEvent) => {
+      if (cameraMode.current !== "orbit" || !orbit.current) return;
+      e.preventDefault();
+      const o = orbit.current;
+      o.radius *= Math.exp(e.deltaY * 0.001);
+      orbit.current = clampOrbit(o);
+    };
+    el.addEventListener("pointerdown", down);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    el.addEventListener("wheel", zoom, { passive: false });
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      el.removeEventListener("wheel", zoom);
+    };
+  }, [gl, cameraMode]);
 
   useFrame((_, dt) => {
     const object = target.current;
@@ -294,6 +350,18 @@ function ChaseCamera({
       camera.position.set(cam.x, cam.y, cam.z);
       camera.lookAt(t.x, t.y + 0.8, t.z);
       setPerspectiveFov(camera, TV_FOV);
+    } else if (mode === "orbit") {
+      // Free orbit (see above): anchor once on entry, then circle the fixed
+      // point - the game (and the car) keeps running underneath, the camera
+      // just stops following. Position derives purely from the stored
+      // angles, so dragging can never inject smoothing.
+      if (prevMode.current !== "orbit" || !orbit.current) {
+        orbit.current = anchorOrbit(t.x, t.y, t.z, yaw);
+      }
+      const p = orbitPosition(orbit.current);
+      camera.position.set(p.x, p.y, p.z);
+      camera.lookAt(orbit.current.ax, orbit.current.ay, orbit.current.az);
+      setPerspectiveFov(camera, ORBIT_FOV);
     } else {
       offset.current.copy(CHASE_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
@@ -315,6 +383,7 @@ function ChaseCamera({
       camera.lookAt(lookAt.current);
       setPerspectiveFov(camera, CHASE_FOV);
     }
+    prevMode.current = mode;
   });
 
   return null;
