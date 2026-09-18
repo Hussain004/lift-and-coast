@@ -175,7 +175,30 @@ export const DEFAULT_ENGINE_FORCE = 1450;
 // Capping the boosted force here keeps boost safe in the meantime while
 // still giving it a real, felt kick over unboosted driving.
 export const BOOSTED_ENGINE_FORCE_CAP = 1750;
-export const DEFAULT_BRAKE_FORCE = 40;
+// Peak brake torque per wheel, shared evenly front/rear. Swept 10/15/20/25/40
+// against instant full brake from top speed (~62 m/s) on the flat plane, in
+// both aero modes, measuring peak decel, max pitch, and rear-both-airborne
+// steps (the player's "the back lifts up" report: with ABS on, braking from
+// high speed held the rear off the ground for 0.88s continuous at 0.19 rad;
+// ABS-off flipped outright at maxTilt 1.03):
+//   40: 3.1-4.6g, rear airborne up to 44% of braking (4.9s worst run in
+//       low-drag), flips - the old value, far past the lockup cliff.
+//   25: 2.1-2.6g, ZERO rear-airborne steps in high-downforce (instant and
+//       ramped, 40 and 62 m/s entries), tilt <= 0.13; low-drag keeps only
+//       scattered steps (worst 0.3s continuous) at tilt <= 0.15, 4x under
+//       the flip threshold.
+//   20: anomalous - worse than 25 at high speed (48 rear-airborne steps).
+//       Lockup dynamics near the threshold are non-monotonic, so this value
+//       sits where measured, not where interpolated.
+//   15 and below: clean but stops stretch toward 50m+ from 40 m/s.
+// Stops from 40 m/s take 39m at 25 vs 33m at 40 - still very strong
+// brakes, just no longer strong enough to pole-vault the car.
+// Front brake bias was tried as the textbook alternative (0.6-0.7 front):
+// it made things strictly worse (near-flips at 0.59 rad where 50/50 is
+// clean), because in this tire model the pitch torque follows front-axle
+// force - loading the axle that already carries the transferred weight
+// overloads it. Even split stays.
+export const DEFAULT_BRAKE_FORCE = 25;
 export const DEFAULT_STABILIZE_STRENGTH = 30;
 // Snap back to the start line past this distance off-track - see the usage
 // site (Car.tsx, and the harness below) for why.

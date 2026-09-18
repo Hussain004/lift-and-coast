@@ -63,3 +63,72 @@ describe("vehicle stability (headless)", () => {
     expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
   }, 20000);
 });
+
+describe("hard braking from top speed (rear-lift regression)", () => {
+  // Braking from ~60 m/s used to hold both rear wheels off the ground for
+  // up to a second (ABS-on ramp) or flip outright (instant ABS-off stab,
+  // maxTilt 1.03) - the "back lifts up" report. These pin the fix at twice
+  // the margin: tilt stays 2x under the flip threshold everywhere, and the
+  // high-downforce cases keep every wheel on the ground throughout.
+  // Low-drag keeps scattered airborne steps (measured worst 0.3s
+  // continuous) - its halved tire friction locks wheels sooner - so it
+  // asserts the bounded tilt plus a sub-second worst run instead of zero.
+  async function brakeFromVmax(
+    rampSeconds: number,
+    aeroMode: "high-downforce" | "low-drag"
+  ) {
+    const rearAirborne: boolean[] = [];
+    const result = await simulateDrive(
+      26,
+      (t) => {
+        if (t < 14) return { throttle: 1, brake: 0, steer: 0 };
+        const brake = rampSeconds <= 0 ? 1 : Math.min(1, (t - 14) / rampSeconds);
+        return { throttle: 0, brake, steer: 0 };
+      },
+      {
+        ...TUNING,
+        aeroMode,
+        onTelemetry: (s) => {
+          if (s.elapsedSeconds >= 14) {
+            rearAirborne.push(!s.wheels[2].isInContact && !s.wheels[3].isInContact);
+          }
+        },
+      }
+    );
+    let run = 0;
+    let worstRunSteps = 0;
+    for (const airborne of rearAirborne) {
+      if (airborne) {
+        run++;
+        worstRunSteps = Math.max(worstRunSteps, run);
+      } else {
+        run = 0;
+      }
+    }
+    return { result, rearAirborneSteps: rearAirborne.filter(Boolean).length, worstRunSeconds: worstRunSteps / 60 };
+  }
+
+  it("keeps all wheels down braking instantly from top speed", async () => {
+    const { result, rearAirborneSteps } = await brakeFromVmax(0, "high-downforce");
+    expect(result.maxTiltRad).toBeLessThan(0.3);
+    expect(rearAirborneSteps).toBe(0);
+  }, 120000);
+
+  it("keeps all wheels down braking with the gameplay ramp from top speed", async () => {
+    const { result, rearAirborneSteps } = await brakeFromVmax(0.5, "high-downforce");
+    expect(result.maxTiltRad).toBeLessThan(0.3);
+    expect(rearAirborneSteps).toBe(0);
+  }, 120000);
+
+  it("stays far from flipping braking instantly from top speed in low-drag mode", async () => {
+    const { result, worstRunSeconds } = await brakeFromVmax(0, "low-drag");
+    expect(result.maxTiltRad).toBeLessThan(0.3);
+    expect(worstRunSeconds).toBeLessThan(1);
+  }, 120000);
+
+  it("stays far from flipping braking with the gameplay ramp in low-drag mode", async () => {
+    const { result, worstRunSeconds } = await brakeFromVmax(0.5, "low-drag");
+    expect(result.maxTiltRad).toBeLessThan(0.3);
+    expect(worstRunSeconds).toBeLessThan(1);
+  }, 120000);
+});
