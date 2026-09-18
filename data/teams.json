@@ -1,63 +1,113 @@
 {
   "teams": [
     {
-      "id": "aurora",
-      "name": "Aurora Grand Prix",
-      "primaryColor": "#39ff88",
-      "secondaryColor": "#0e5c38",
+      "id": "alpine",
+      "name": "Alpine",
+      "primaryColor": "#2293d1",
+      "secondaryColor": "#ff87bc",
       "drivers": [
-        { "code": "VOS", "name": "Elian Voss", "number": 7 },
-        { "code": "KES", "name": "Mara Kessler", "number": 19 }
+        { "code": "GAS", "name": "Pierre Gasly", "number": 10 },
+        { "code": "COL", "name": "Franco Colapinto", "number": 43 }
       ]
     },
     {
-      "id": "cinder",
-      "name": "Cinder Racing",
-      "primaryColor": "#ff5a3c",
-      "secondaryColor": "#571b0f",
+      "id": "aston-martin",
+      "name": "Aston Martin",
+      "primaryColor": "#00695c",
+      "secondaryColor": "#08332e",
       "drivers": [
-        { "code": "VEN", "name": "Dario Venn", "number": 27 },
-        { "code": "OKA", "name": "June Okafor", "number": 33 }
+        { "code": "ALO", "name": "Fernando Alonso", "number": 14 },
+        { "code": "STR", "name": "Lance Stroll", "number": 18 }
       ]
     },
     {
-      "id": "cobalt",
-      "name": "Cobalt Motorsport",
-      "primaryColor": "#4aa8ff",
-      "secondaryColor": "#10314f",
+      "id": "audi",
+      "name": "Audi",
+      "primaryColor": "#c0c4c8",
+      "secondaryColor": "#a41623",
       "drivers": [
-        { "code": "LIN", "name": "Theo Lindqvist", "number": 12 },
-        { "code": "DUA", "name": "Ines Duarte", "number": 21 }
+        { "code": "HUL", "name": "Nico Hülkenberg", "number": 27 },
+        { "code": "BOR", "name": "Gabriel Bortoleto", "number": 5 }
       ]
     },
     {
-      "id": "solaris",
-      "name": "Solaris Racing",
-      "primaryColor": "#ffd23f",
-      "secondaryColor": "#54400d",
+      "id": "cadillac",
+      "name": "Cadillac",
+      "primaryColor": "#d7d9dc",
+      "secondaryColor": "#8c1d18",
       "drivers": [
-        { "code": "FAL", "name": "Niko Falk", "number": 77 },
-        { "code": "RAM", "name": "Priya Raman", "number": 91 }
+        { "code": "PER", "name": "Sergio Pérez", "number": 11 },
+        { "code": "BOT", "name": "Valtteri Bottas", "number": 77 }
       ]
     },
     {
-      "id": "onyx",
-      "name": "Onyx Grand Prix",
-      "primaryColor": "#b48cff",
-      "secondaryColor": "#3a2a5c",
+      "id": "ferrari",
+      "name": "Ferrari",
+      "primaryColor": "#ff2800",
+      "secondaryColor": "#701105",
       "drivers": [
-        { "code": "HOL", "name": "Casper Holt", "number": 69 },
-        { "code": "SOR", "name": "Aya Sorensen", "number": 99 }
+        { "code": "HAM", "name": "Lewis Hamilton", "number": 44 },
+        { "code": "LEC", "name": "Charles Leclerc", "number": 16 }
       ]
     },
     {
-      "id": "argent",
-      "name": "Argent Racing",
-      "primaryColor": "#cfd6dd",
-      "secondaryColor": "#3c4248",
+      "id": "haas",
+      "name": "Haas F1 Team",
+      "primaryColor": "#d9d9d9",
+      "secondaryColor": "#7a1e1e",
       "drivers": [
-        { "code": "AUB", "name": "Milo Aubert", "number": 24 },
-        { "code": "LIG", "name": "Noa Lindgren", "number": 94 }
+        { "code": "OCO", "name": "Esteban Ocon", "number": 31 },
+        { "code": "BEA", "name": "Oliver Bearman", "number": 87 }
+      ]
+    },
+    {
+      "id": "mclaren",
+      "name": "McLaren",
+      "primaryColor": "#ff8000",
+      "secondaryColor": "#7a3d00",
+      "drivers": [
+        { "code": "NOR", "name": "Lando Norris", "number": 1 },
+        { "code": "PIA", "name": "Oscar Piastri", "number": 81 }
+      ]
+    },
+    {
+      "id": "mercedes",
+      "name": "Mercedes",
+      "primaryColor": "#c8c9cb",
+      "secondaryColor": "#0e3b3a",
+      "drivers": [
+        { "code": "RUS", "name": "George Russell", "number": 63 },
+        { "code": "ANT", "name": "Kimi Antonelli", "number": 12 }
+      ]
+    },
+    {
+      "id": "racing-bulls",
+      "name": "Racing Bulls",
+      "primaryColor": "#e8e8e8",
+      "secondaryColor": "#6a6f75",
+      "drivers": [
+        { "code": "LAW", "name": "Liam Lawson", "number": 30 },
+        { "code": "LIN", "name": "Arvid Lindblad", "number": 41 }
+      ]
+    },
+    {
+      "id": "red-bull",
+      "name": "Red Bull Racing",
+      "primaryColor": "#3640a0",
+      "secondaryColor": "#cc1e4a",
+      "drivers": [
+        { "code": "VER", "name": "Max Verstappen", "number": 3 },
+        { "code": "HAD", "name": "Isack Hadjar", "number": 6 }
+      ]
+    },
+    {
+      "id": "williams",
+      "name": "Williams",
+      "primaryColor": "#1f6fe0",
+      "secondaryColor": "#0d2c5c",
+      "drivers": [
+        { "code": "SAI", "name": "Carlos Sainz", "number": 55 },
+        { "code": "ALB", "name": "Alexander Albon", "number": 23 }
       ]
     }
   ]

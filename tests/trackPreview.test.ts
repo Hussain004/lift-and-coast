@@ -2,11 +2,21 @@ import { describe, expect, it } from "vitest";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
 import {
+  MAP_MAX_ZOOM_W,
+  MAP_MIN_ZOOM_W,
+  WORLD_MAP_H,
+  WORLD_MAP_W,
   formatLapLength,
+  fullWorldView,
+  getLandPolygons,
   getOutline,
+  landPath,
+  mapViewBox,
   outlinePath,
+  panMapView,
   previewStats,
   projectPin,
+  zoomMapView,
 } from "../lib/tracks/preview";
 import outlinesData from "../data/tracks/outlines.json";
 
@@ -113,5 +123,45 @@ describe("preview helpers", () => {
       corners: "11",
       direction: "Clockwise",
     });
+  });
+});
+
+describe("world map view", () => {
+  it("ships real coastline geometry, not an empty panel", () => {
+    const polys = getLandPolygons();
+    expect(polys.length).toBeGreaterThan(50);
+    const d = landPath(polys);
+    expect(d.startsWith("M")).toBe(true);
+    expect(d.endsWith("Z")).toBe(true);
+    // All pins sit on land's own coordinate frame (degrees).
+    for (const meta of TRACKS) {
+      expect(meta.lon).toBeGreaterThanOrEqual(-180);
+      expect(meta.lon).toBeLessThanOrEqual(180);
+    }
+  });
+
+  it("zooms about the anchor and clamps to the zoom range", () => {
+    const full = fullWorldView();
+    expect(full).toEqual({ x: 0, y: 0, w: WORLD_MAP_W });
+    const zoomed = zoomMapView(full, 320, 160, 2);
+    expect(zoomed.w).toBeCloseTo(WORLD_MAP_W / 2);
+    // The anchor stays put.
+    expect(zoomed.x + zoomed.w / 2).toBeCloseTo(320);
+    // Factor 1000 bottoms out at the closest zoom, not zero/negative.
+    expect(zoomMapView(full, 0, 0, 1000).w).toBe(MAP_MIN_ZOOM_W);
+    expect(zoomMapView(full, 0, 0, 0.001).w).toBe(MAP_MAX_ZOOM_W);
+  });
+
+  it("pans within an overscroll-clamped world", () => {
+    const full = fullWorldView();
+    expect(panMapView(full, 10, 5)).toEqual({ x: 10, y: 5, w: WORLD_MAP_W });
+    // Far past the edge clamps instead of losing the planet.
+    const clamped = panMapView(full, -10000, 10000);
+    expect(clamped.x).toBeGreaterThanOrEqual(-clamped.w * 0.5);
+    expect(clamped.y).toBeLessThanOrEqual(WORLD_MAP_H - (clamped.w / WORLD_MAP_W) * WORLD_MAP_H * 0.5);
+  });
+
+  it("serializes to a well-formed viewBox", () => {
+    expect(mapViewBox(fullWorldView())).toBe(`0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}`);
   });
 });

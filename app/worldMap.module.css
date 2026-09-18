@@ -22,16 +22,18 @@
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid #222;
   border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
 }
 
-.graticule {
-  stroke: #222;
-  stroke-width: 1;
+.map:active {
+  cursor: grabbing;
 }
 
-.graticuleBright {
-  stroke: #2e2e2e;
-  stroke-width: 1;
+.land {
+  fill: #1c1c1c;
+  stroke: #333;
+  stroke-width: 0.75;
 }
 
 .pin {
@@ -70,6 +72,29 @@
   font-family: var(--font-geist-mono);
   font-size: 11px;
   letter-spacing: 1px;
+}
+
+.mapControls {
+  display: flex;
+  gap: 8px;
+}
+
+.mapButton {
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mapButton:hover {
+  border-color: #39ff88;
+  color: #39ff88;
 }
 
 .preview {

@@ -5,6 +5,7 @@
 // sidecar instead - a stride-sampled top-down outline plus the facts the
 // preview prints - and everything here works from that plus the registry.
 import outlinesData from "../../data/tracks/outlines.json";
+import worldData from "../../data/world.json";
 import { TRACKS, type TrackMeta } from "./registry";
 
 export interface TrackOutline {
@@ -32,6 +33,85 @@ export function projectPin(lat: number, lon: number, width: number, height: numb
     x: ((lon + 180) / 360) * width,
     y: ((90 - lat) / 180) * height,
   };
+}
+
+// Real coastline geometry for the menu world map: Natural Earth 110m land
+// (public domain), exterior rings only, Douglas-Peucker simplified and
+// rounded at vendor time (see data/world.json) - ~40KB for the whole
+// planet, a fraction of one track's built JSON.
+export const WORLD_MAP_W = 640;
+export const WORLD_MAP_H = 320;
+
+/** [lon, lat] rings in degrees. */
+export function getLandPolygons(): [number, number][][] {
+  return (worldData as { polygons: [number, number][][] }).polygons;
+}
+
+/** One SVG path for all land, in WORLD_MAP_W x WORLD_MAP_H units. */
+export function landPath(polygons: [number, number][][]): string {
+  return polygons
+    .map((ring) => {
+      const pts = ring.map(([lon, lat]) => {
+        const p = projectPin(lat, lon, WORLD_MAP_W, WORLD_MAP_H);
+        return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      });
+      return "M" + pts.join("L") + "Z";
+    })
+    .join("");
+}
+
+/**
+ * Zoom/pan viewBox state, in WORLD_MAP_* units with the map's 2:1 aspect
+ * locked (h always follows w) so geography never stretches. Pure functions
+ * so the clamping is unit-testable without a DOM.
+ */
+export interface MapView {
+  x: number;
+  y: number;
+  w: number;
+}
+
+export const MAP_MIN_ZOOM_W = WORLD_MAP_W / 12;
+export const MAP_MAX_ZOOM_W = WORLD_MAP_W;
+
+export function fullWorldView(): MapView {
+  return { x: 0, y: 0, w: WORLD_MAP_W };
+}
+
+function viewH(w: number): number {
+  return (w / WORLD_MAP_W) * WORLD_MAP_H;
+}
+
+/** Keeps up to half a viewport of overscroll past each edge. */
+export function clampMapView(view: MapView): MapView {
+  const w = Math.min(MAP_MAX_ZOOM_W, Math.max(MAP_MIN_ZOOM_W, view.w));
+  const h = viewH(w);
+  return {
+    w,
+    x: Math.min(WORLD_MAP_W - w * 0.5, Math.max(-w * 0.5, view.x)),
+    y: Math.min(WORLD_MAP_H - h * 0.5, Math.max(-h * 0.5, view.y)),
+  };
+}
+
+/** Zooms by factor about the anchor point (SVG units), preserving it. */
+export function zoomMapView(view: MapView, anchorX: number, anchorY: number, factor: number): MapView {
+  const w = Math.min(MAP_MAX_ZOOM_W, Math.max(MAP_MIN_ZOOM_W, view.w / factor));
+  const ratio = w / view.w;
+  return clampMapView({
+    w,
+    x: anchorX - (anchorX - view.x) * ratio,
+    y: anchorY - (anchorY - view.y) * ratio,
+  });
+}
+
+/** Pans by an SVG-units delta. */
+export function panMapView(view: MapView, dx: number, dy: number): MapView {
+  return clampMapView({ ...view, x: view.x + dx, y: view.y + dy });
+}
+
+/** viewBox attribute value for a view. */
+export function mapViewBox(view: MapView): string {
+  return `${view.x} ${view.y} ${view.w} ${viewH(view.w)}`;
 }
 
 /**

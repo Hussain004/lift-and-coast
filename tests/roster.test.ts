@@ -57,10 +57,10 @@ describe("roster data", () => {
 
 describe("parseTeamId / parseDriverCode", () => {
   it("passes known ids through and clamps unknown ones to the default", () => {
-    expect(parseTeamId("cobalt")).toBe("cobalt");
+    expect(parseTeamId("ferrari")).toBe("ferrari");
     expect(parseTeamId("not-a-team")).toBe(DEFAULT_TEAM_ID);
     expect(parseTeamId(null)).toBe(DEFAULT_TEAM_ID);
-    expect(parseDriverCode("OKA")).toBe("OKA");
+    expect(parseDriverCode("PIA")).toBe("PIA");
     expect(parseDriverCode("XXX")).toBe(DEFAULT_DRIVER_CODE);
     expect(parseDriverCode(null)).toBe(DEFAULT_DRIVER_CODE);
   });
@@ -68,24 +68,24 @@ describe("parseTeamId / parseDriverCode", () => {
 
 describe("resolveRosterSelection", () => {
   it("pairs the driver with their teammate-opponent on the same team", () => {
-    const { team, driver, teammate } = resolveRosterSelection("cinder", "VEN");
-    expect(team.id).toBe("cinder");
-    expect(driver.code).toBe("VEN");
-    expect(teammate.code).toBe("OKA");
+    const { team, driver, teammate } = resolveRosterSelection("red-bull", "VER");
+    expect(team.id).toBe("red-bull");
+    expect(driver.code).toBe("VER");
+    expect(teammate.code).toBe("HAD");
     expect(teammate.code).not.toBe(driver.code);
   });
 
   it("falls back to the team's first driver for a cross-team code", () => {
     // A stale saved pick from before a team switch must not mix teams -
     // the opponent is defined as the teammate.
-    const { team, driver, teammate } = resolveRosterSelection("cobalt", "VEN");
-    expect(team.id).toBe("cobalt");
-    expect(driver.code).toBe("LIN");
-    expect(teammate.code).toBe("DUA");
+    const { team, driver, teammate } = resolveRosterSelection("mercedes", "VER");
+    expect(team.id).toBe("mercedes");
+    expect(driver.code).toBe("RUS");
+    expect(teammate.code).toBe("ANT");
   });
 
   it("falls back to the default team for an unknown team", () => {
-    const { team } = resolveRosterSelection("not-a-team", "VEN");
+    const { team } = resolveRosterSelection("not-a-team", "VER");
     expect(team.id).toBe(DEFAULT_TEAM_ID);
   });
 });
@@ -93,11 +93,11 @@ describe("resolveRosterSelection", () => {
 describe("roster prefs", () => {
   it("round-trips the selection through storage", () => {
     const { storage, dump } = fakeStorage();
-    saveRosterPrefs({ teamId: "onyx", driverCode: "SOR" }, storage);
-    expect(loadRosterPrefs(storage)).toEqual({ teamId: "onyx", driverCode: "SOR" });
+    saveRosterPrefs({ teamId: "williams", driverCode: "SAI" }, storage);
+    expect(loadRosterPrefs(storage)).toEqual({ teamId: "williams", driverCode: "SAI" });
     expect(JSON.parse(dump()["lift-and-coast.roster.v1"])).toEqual({
-      teamId: "onyx",
-      driverCode: "SOR",
+      teamId: "williams",
+      driverCode: "SAI",
     });
   });
 
@@ -117,9 +117,9 @@ describe("roster prefs", () => {
     const { storage } = fakeStorage();
     storage.setItem(
       "lift-and-coast.roster.v1",
-      JSON.stringify({ teamId: "solaris", driverCode: "VEN" })
+      JSON.stringify({ teamId: "audi", driverCode: "VER" })
     );
-    expect(loadRosterPrefs(storage)).toEqual({ teamId: "solaris", driverCode: "FAL" });
+    expect(loadRosterPrefs(storage)).toEqual({ teamId: "audi", driverCode: "HUL" });
   });
 
   it("returns defaults when storage is unavailable", () => {
@@ -127,6 +127,6 @@ describe("roster prefs", () => {
       teamId: DEFAULT_TEAM_ID,
       driverCode: DEFAULT_DRIVER_CODE,
     });
-    expect(() => saveRosterPrefs({ teamId: "onyx", driverCode: "SOR" }, null)).not.toThrow();
+    expect(() => saveRosterPrefs({ teamId: "mclaren", driverCode: "PIA" }, null)).not.toThrow();
   });
 });

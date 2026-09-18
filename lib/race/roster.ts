@@ -1,5 +1,7 @@
 // Plan section 8 (Game Flow & Screens): Team Select and Driver Select - the
-// fictional roster (see data/teams.json) and the player's pick from it.
+// 2026-season roster (see data/teams.json: team and driver names, FIA codes
+// and race numbers; livery colors are trackside approximations, not factory
+// paint codes) and the player's pick from it.
 // Deliberately identity-only: teams carry livery colors and drivers carry
 // names/codes/numbers, but there are NO performance stats anywhere here.
 // The plan's "card stats feed AI personalities" is not implemented on

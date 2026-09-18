@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   loadSessionSetupPrefs,
   saveSessionSetupPrefs,
@@ -7,25 +8,33 @@ import {
 } from "@/lib/race/sessionSetup";
 import { TRACKS } from "@/lib/tracks/registry";
 import {
+  WORLD_MAP_H,
+  WORLD_MAP_W,
+  fullWorldView,
+  getLandPolygons,
   getOutline,
+  landPath,
+  mapViewBox,
   outlinePath,
+  panMapView,
   previewStats,
   projectPin,
+  zoomMapView,
+  type MapView,
 } from "@/lib/tracks/preview";
 import styles from "./worldMap.module.css";
 
-// Plan section 8 (World Map, Track Preview): the circuit picker as a map
-// plus a top-down outline of the picked track with its stats. The pins are
-// the session's track picker now (they replaced SessionSetup's button row),
-// so clicking one persists straight into the session prefs the Drive link
-// reads - the world map highlight and the Drive link stay in sync through
-// the shared session-setup change event, same as the roster panels.
-const MAP_W = 520;
-const MAP_H = 170;
+// Plan section 8 (World Map, Track Preview): the circuit picker as a real
+// zoomable world map plus a top-down outline of the picked track with its
+// stats. Coastlines are vendored Natural Earth 110m geometry (see
+// lib/tracks/preview.ts), drawn once as a single path - zoom and pan only
+// rewrite the SVG viewBox, never re-project. The pins are the session's
+// track picker (they replaced SessionSetup's button row), so clicking one
+// persists straight into the session prefs the Drive link reads.
+const MAP_BUTTON_ZOOM = 1.6;
 const PREVIEW_PX = 190;
-
-const MERIDIANS = [-120, -60, 0, 60, 120];
-const PARALLELS = [-60, -30, 0, 30, 60];
+// Drag distance in screen px past which a press is a pan, not a pin click.
+const DRAG_PICK_THRESHOLD_PX = 4;
 
 export function WorldMap() {
   const trackId = useSessionTrackId();
@@ -33,51 +42,92 @@ export function WorldMap() {
   const outline = getOutline(meta.id);
   const stats = previewStats(meta);
   const fitted = outlinePath(outline.points, PREVIEW_PX, 14);
+  const land = useMemo(() => landPath(getLandPolygons()), []);
+
+  const [view, setView] = useState<MapView>(() => fullWorldView());
+  const svgRef = useRef<SVGSVGElement>(null);
+  const panRef = useRef<{ startX: number; startY: number; view: MapView } | null>(null);
+  // A drag that starts on a pin still releases over it, which would click it
+  // - so a press that travels past the drag threshold disarms the click.
+  const suppressClickRef = useRef(false);
 
   const pick = (id: string) => {
     const { raceLaps } = loadSessionSetupPrefs();
     saveSessionSetupPrefs({ raceLaps, trackId: id });
   };
 
+  // Wheel-zoom about the cursor. Native listener (not React's onWheel) so
+  // preventDefault actually suppresses the page scroll.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      setView((v) => {
+        const anchorX = v.x + ((e.clientX - rect.left) / rect.width) * v.w;
+        const anchorY = v.y + ((e.clientY - rect.top) / rect.height) * (v.w / WORLD_MAP_W) * WORLD_MAP_H;
+        return zoomMapView(v, anchorX, anchorY, Math.exp(-e.deltaY * 0.0015));
+      });
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const toSvgDelta = (dxPx: number, dyPx: number) => {
+    const svg = svgRef.current;
+    const rect = svg?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return { dx: 0, dy: 0 };
+    const unit = view.w / rect.width;
+    return { dx: dxPx * unit, dy: dyPx * unit };
+  };
+
+  // Inverse pin scale: dots and labels stay a constant screen size at any
+  // zoom instead of swelling into dinner plates.
+  const k = view.w / WORLD_MAP_W;
+
   return (
     <div className={styles.setup}>
       <div className={styles.label}>WORLD MAP</div>
       <svg
-        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+        ref={svgRef}
+        viewBox={mapViewBox(view)}
         className={styles.map}
         role="radiogroup"
         aria-label="Circuit map"
+        onPointerDown={(e) => {
+          (e.target as SVGElement).setPointerCapture?.(e.pointerId);
+          suppressClickRef.current = false;
+          panRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            view,
+          };
+        }}
+        onPointerMove={(e) => {
+          const pan = panRef.current;
+          if (!pan) return;
+          if (
+            Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) >
+            DRAG_PICK_THRESHOLD_PX
+          ) {
+            suppressClickRef.current = true;
+          }
+          const { dx, dy } = toSvgDelta(pan.startX - e.clientX, pan.startY - e.clientY);
+          setView(panMapView(pan.view, dx, dy));
+        }}
+        onPointerUp={() => {
+          panRef.current = null;
+        }}
+        onPointerCancel={() => {
+          panRef.current = null;
+        }}
       >
-        {MERIDIANS.map((lon) => {
-          const x = ((lon + 180) / 360) * MAP_W;
-          return (
-            <line
-              key={lon}
-              x1={x}
-              y1={0}
-              x2={x}
-              y2={MAP_H}
-              className={lon === 0 ? styles.graticuleBright : styles.graticule}
-            />
-          );
-        })}
-        {PARALLELS.map((lat) => {
-          const y = ((90 - lat) / 180) * MAP_H;
-          return (
-            <line
-              key={lat}
-              x1={0}
-              y1={y}
-              x2={MAP_W}
-              y2={y}
-              className={lat === 0 ? styles.graticuleBright : styles.graticule}
-            />
-          );
-        })}
+        <path d={land} className={styles.land} />
         {TRACKS.map((t) => {
-          const { x, y } = projectPin(t.lat, t.lon, MAP_W, MAP_H);
+          const { x, y } = projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H);
           const active = t.id === meta.id;
-          const flip = x > MAP_W - 80;
+          const flip = x > WORLD_MAP_W - 90;
           return (
             <g
               key={t.id}
@@ -86,7 +136,14 @@ export function WorldMap() {
               aria-label={t.name}
               tabIndex={0}
               className={styles.pin}
-              onClick={() => pick(t.id)}
+              transform={`translate(${x},${y}) scale(${k})`}
+              onClick={() => {
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  return;
+                }
+                pick(t.id);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -95,19 +152,12 @@ export function WorldMap() {
               }}
             >
               <title>{t.name}</title>
-              {active && (
-                <circle cx={x} cy={y} r={10} className={styles.pinRing} />
-              )}
-              <circle
-                cx={x}
-                cy={y}
-                r={5}
-                className={active ? styles.pinActive : styles.pinDot}
-              />
+              {active && <circle r={10} className={styles.pinRing} />}
+              <circle r={5} className={active ? styles.pinActive : styles.pinDot} />
               {active && (
                 <text
-                  x={flip ? x - 12 : x + 12}
-                  y={y + 4}
+                  x={flip ? -12 : 12}
+                  y={4}
                   textAnchor={flip ? "end" : "start"}
                   className={styles.pinLabel}
                 >
@@ -118,6 +168,17 @@ export function WorldMap() {
           );
         })}
       </svg>
+      <div className={styles.mapControls}>
+        <button type="button" className={styles.mapButton} onClick={() => setView((v) => zoomMapView(v, v.x + v.w / 2, v.y + ((v.w / WORLD_MAP_W) * WORLD_MAP_H) / 2, MAP_BUTTON_ZOOM))} aria-label="Zoom in">
+          +
+        </button>
+        <button type="button" className={styles.mapButton} onClick={() => setView((v) => zoomMapView(v, v.x + v.w / 2, v.y + ((v.w / WORLD_MAP_W) * WORLD_MAP_H) / 2, 1 / MAP_BUTTON_ZOOM))} aria-label="Zoom out">
+          −
+        </button>
+        <button type="button" className={styles.mapButton} onClick={() => setView(fullWorldView())}>
+          RESET
+        </button>
+      </div>
       <div className={styles.preview}>
         <svg
           width={PREVIEW_PX}
