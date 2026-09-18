@@ -52,8 +52,8 @@ export function WorldMap() {
   const suppressClickRef = useRef(false);
 
   const pick = (id: string) => {
-    const { raceLaps } = loadSessionSetupPrefs();
-    saveSessionSetupPrefs({ raceLaps, trackId: id });
+    const { raceLaps, timeOfDay } = loadSessionSetupPrefs();
+    saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay });
   };
 
   // Wheel-zoom about the cursor. Native listener (not React's onWheel) so
