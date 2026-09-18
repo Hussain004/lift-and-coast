@@ -6,8 +6,8 @@
       "primaryColor": "#2293d1",
       "secondaryColor": "#ff87bc",
       "drivers": [
-        { "code": "GAS", "name": "Pierre Gasly", "number": 10 },
-        { "code": "COL", "name": "Franco Colapinto", "number": 43 }
+        { "code": "GAS", "name": "Pierre Gasly", "number": 10, "helmet": "#ffd23f", "visor": "#141414" },
+        { "code": "COL", "name": "Franco Colapinto", "number": 43, "helmet": "#7cc4ff", "visor": "#f2f2f2" }
       ]
     },
     {
@@ -16,28 +16,28 @@
       "primaryColor": "#00695c",
       "secondaryColor": "#08332e",
       "drivers": [
-        { "code": "ALO", "name": "Fernando Alonso", "number": 14 },
-        { "code": "STR", "name": "Lance Stroll", "number": 18 }
+        { "code": "ALO", "name": "Fernando Alonso", "number": 14, "helmet": "#e10600", "visor": "#ffd23f" },
+        { "code": "STR", "name": "Lance Stroll", "number": 18, "helmet": "#f2f2f2", "visor": "#00695c" }
       ]
     },
     {
       "id": "audi",
       "name": "Audi",
-      "primaryColor": "#c0c4c8",
-      "secondaryColor": "#a41623",
+      "primaryColor": "#7e1b24",
+      "secondaryColor": "#c0c4c8",
       "drivers": [
-        { "code": "HUL", "name": "Nico Hülkenberg", "number": 27 },
-        { "code": "BOR", "name": "Gabriel Bortoleto", "number": 5 }
+        { "code": "HUL", "name": "Nico Hülkenberg", "number": 27, "helmet": "#161616", "visor": "#ffd23f" },
+        { "code": "BOR", "name": "Gabriel Bortoleto", "number": 5, "helmet": "#00a651", "visor": "#ffd23f" }
       ]
     },
     {
       "id": "cadillac",
       "name": "Cadillac",
-      "primaryColor": "#d7d9dc",
-      "secondaryColor": "#8c1d18",
+      "primaryColor": "#8f959c",
+      "secondaryColor": "#232428",
       "drivers": [
-        { "code": "PER", "name": "Sergio Pérez", "number": 11 },
-        { "code": "BOT", "name": "Valtteri Bottas", "number": 77 }
+        { "code": "PER", "name": "Sergio Pérez", "number": 11, "helmet": "#006847", "visor": "#f2f2f2" },
+        { "code": "BOT", "name": "Valtteri Bottas", "number": 77, "helmet": "#7cc4ff", "visor": "#161616" }
       ]
     },
     {
@@ -46,8 +46,8 @@
       "primaryColor": "#ff2800",
       "secondaryColor": "#701105",
       "drivers": [
-        { "code": "HAM", "name": "Lewis Hamilton", "number": 44 },
-        { "code": "LEC", "name": "Charles Leclerc", "number": 16 }
+        { "code": "HAM", "name": "Lewis Hamilton", "number": 44, "helmet": "#ffd23f", "visor": "#161616" },
+        { "code": "LEC", "name": "Charles Leclerc", "number": 16, "helmet": "#ff2800", "visor": "#f2f2f2" }
       ]
     },
     {
@@ -56,8 +56,8 @@
       "primaryColor": "#d9d9d9",
       "secondaryColor": "#7a1e1e",
       "drivers": [
-        { "code": "OCO", "name": "Esteban Ocon", "number": 31 },
-        { "code": "BEA", "name": "Oliver Bearman", "number": 87 }
+        { "code": "OCO", "name": "Esteban Ocon", "number": 31, "helmet": "#2293d1", "visor": "#ff87bc" },
+        { "code": "BEA", "name": "Oliver Bearman", "number": 87, "helmet": "#f2f2f2", "visor": "#e10600" }
       ]
     },
     {
@@ -66,28 +66,28 @@
       "primaryColor": "#ff8000",
       "secondaryColor": "#7a3d00",
       "drivers": [
-        { "code": "NOR", "name": "Lando Norris", "number": 1 },
-        { "code": "PIA", "name": "Oscar Piastri", "number": 81 }
+        { "code": "NOR", "name": "Lando Norris", "number": 1, "helmet": "#ccff00", "visor": "#161616" },
+        { "code": "PIA", "name": "Oscar Piastri", "number": 81, "helmet": "#161616", "visor": "#ff8000" }
       ]
     },
     {
       "id": "mercedes",
       "name": "Mercedes",
-      "primaryColor": "#c8c9cb",
-      "secondaryColor": "#0e3b3a",
+      "primaryColor": "#00a19b",
+      "secondaryColor": "#c7c9cc",
       "drivers": [
-        { "code": "RUS", "name": "George Russell", "number": 63 },
-        { "code": "ANT", "name": "Kimi Antonelli", "number": 12 }
+        { "code": "RUS", "name": "George Russell", "number": 63, "helmet": "#161616", "visor": "#00a19b" },
+        { "code": "ANT", "name": "Kimi Antonelli", "number": 12, "helmet": "#00a19b", "visor": "#f2f2f2" }
       ]
     },
     {
       "id": "racing-bulls",
       "name": "Racing Bulls",
-      "primaryColor": "#e8e8e8",
-      "secondaryColor": "#6a6f75",
+      "primaryColor": "#6aa5e0",
+      "secondaryColor": "#16283d",
       "drivers": [
-        { "code": "LAW", "name": "Liam Lawson", "number": 30 },
-        { "code": "LIN", "name": "Arvid Lindblad", "number": 41 }
+        { "code": "LAW", "name": "Liam Lawson", "number": 30, "helmet": "#161616", "visor": "#c0c4c8" },
+        { "code": "LIN", "name": "Arvid Lindblad", "number": 41, "helmet": "#1f6fe0", "visor": "#ffd23f" }
       ]
     },
     {
@@ -96,8 +96,8 @@
       "primaryColor": "#3640a0",
       "secondaryColor": "#cc1e4a",
       "drivers": [
-        { "code": "VER", "name": "Max Verstappen", "number": 3 },
-        { "code": "HAD", "name": "Isack Hadjar", "number": 6 }
+        { "code": "VER", "name": "Max Verstappen", "number": 3, "helmet": "#ff6a00", "visor": "#3640a0" },
+        { "code": "HAD", "name": "Isack Hadjar", "number": 6, "helmet": "#3640a0", "visor": "#f2f2f2" }
       ]
     },
     {
@@ -106,8 +106,8 @@
       "primaryColor": "#1f6fe0",
       "secondaryColor": "#0d2c5c",
       "drivers": [
-        { "code": "SAI", "name": "Carlos Sainz", "number": 55 },
-        { "code": "ALB", "name": "Alexander Albon", "number": 23 }
+        { "code": "SAI", "name": "Carlos Sainz", "number": 55, "helmet": "#161616", "visor": "#e10600" },
+        { "code": "ALB", "name": "Alexander Albon", "number": 23, "helmet": "#1f6fe0", "visor": "#f2f2f2" }
       ]
     }
   ]

@@ -3,10 +3,10 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  border: 1px solid #333;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
   padding: 18px 24px 22px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.032);
   width: min(360px, 100%);
 }
 
@@ -19,7 +19,7 @@
 }
 
 .label {
-  color: #999;
+  color: #9aa0ab;
   font-size: 12px;
   letter-spacing: 2px;
 }
@@ -33,9 +33,9 @@
 
 .preset {
   background: none;
-  border: 1px solid #333;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 4px;
-  color: #888;
+  color: #9aa0ab;
   font-family: var(--font-geist-mono);
   font-size: 11px;
   letter-spacing: 1px;
@@ -45,15 +45,15 @@
 }
 
 .preset:hover {
-  border-color: #39ff88;
-  color: #39ff88;
+  border-color: #e10600;
+  color: #e10600;
 }
 
 .presetActive {
-  background: rgba(57, 255, 136, 0.1);
-  border: 1px solid #39ff88;
+  background: rgba(225, 6, 0, 0.12);
+  border: 1px solid #e10600;
   border-radius: 4px;
-  color: #39ff88;
+  color: #e10600;
   font-family: var(--font-geist-mono);
   font-size: 11px;
   letter-spacing: 1px;
@@ -62,7 +62,7 @@
 }
 
 .readout {
-  color: #39ff88;
+  color: #e10600;
   font-size: 28px;
   font-weight: 700;
   line-height: 1;
@@ -70,7 +70,7 @@
 
 .slider {
   width: 100%;
-  accent-color: #39ff88;
+  accent-color: #e10600;
   cursor: pointer;
 }
 
@@ -78,28 +78,65 @@
   display: flex;
   justify-content: space-between;
   width: 100%;
-  color: #555;
+  color: #555b66;
   font-size: 11px;
 }
 
 .drive {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   margin-top: 6px;
-  padding: 14px 40px;
-  border: 2px solid #39ff88;
-  border-radius: 4px;
-  color: #39ff88;
-  font-family: var(--font-geist-mono);
+  padding: 14px 48px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f10600, #a80400);
+  color: #fff;
+  font-family: var(--font-geist-sans);
   font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 3px;
   text-decoration: none;
-  transition: background 0.15s, color 0.15s;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 6px 28px rgba(225, 6, 0, 0.35);
 }
 
 .drive:hover {
-  background: #39ff88;
-  color: #0a0a0a;
+  background: linear-gradient(180deg, #ff1a1a, #c00500);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 34px rgba(225, 6, 0, 0.5);
+}
+
+.drive::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  left: -60px;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-20deg);
+}
+
+.drive:hover::after {
+  animation: shine 0.7s ease;
+}
+
+@keyframes shine {
+  from {
+    left: -60px;
+  }
+  to {
+    left: 110%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drive:hover::after {
+    animation: none;
+  }
 }

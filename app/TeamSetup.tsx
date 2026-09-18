@@ -6,7 +6,27 @@ import {
   saveRosterPrefs,
   useRosterSelection,
 } from "@/lib/race/roster";
+import type { CSSProperties, MouseEvent } from "react";
 import styles from "./teamSetup.module.css";
+
+// Pointer-tracked card tilt: writes rotation straight into CSS vars so the
+// card follows the cursor with no React state churn.
+function tiltProps(color: string) {
+  return {
+    style: { "--team": color } as CSSProperties,
+    onMouseMove: (e: MouseEvent<HTMLButtonElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width - 0.5;
+      const py = (e.clientY - rect.top) / rect.height - 0.5;
+      e.currentTarget.style.setProperty("--ry", `${(px * 10).toFixed(2)}deg`);
+      e.currentTarget.style.setProperty("--rx", `${(-py * 10).toFixed(2)}deg`);
+    },
+    onMouseLeave: (e: MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.style.removeProperty("--rx");
+      e.currentTarget.style.removeProperty("--ry");
+    },
+  };
+}
 
 // Plan section 8 (Team Select, Driver Select): the roster half of the home
 // screen. Picking a team paints your car and picks your teammate-opponent
@@ -32,6 +52,7 @@ export function TeamSetup() {
               saveRosterPrefs({ teamId: entry.id, driverCode: entry.drivers[0].code })
             }
             className={teamId === entry.id ? styles.teamActive : styles.team}
+            {...tiltProps(entry.primaryColor)}
           >
             <span
               className={styles.swatch}
@@ -53,6 +74,13 @@ export function TeamSetup() {
             onClick={() => saveRosterPrefs({ teamId: team.id, driverCode: driver.code })}
             className={driverCode === driver.code ? styles.driverActive : styles.driver}
           >
+            <span
+              className={styles.helmet}
+              style={{
+                background: `linear-gradient(135deg, ${driver.helmet} 55%, ${driver.visor} 55%)`,
+              }}
+              aria-hidden="true"
+            />
             <span className={styles.number}>{driver.number}</span>
             <span className={styles.code}>{driver.code}</span>
             <span className={styles.name}>{driver.name}</span>

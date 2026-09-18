@@ -1,38 +1,166 @@
 .page {
+  --bg0: #05070c;
+  --bg1: #0b0e15;
+  --panel: rgba(255, 255, 255, 0.032);
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: #e10600;
+  --accent-soft: rgba(225, 6, 0, 0.12);
+  --text: #f4f4f6;
+  --muted: #9aa0ab;
+  --faint: #555b66;
+
   display: flex;
   min-height: 100vh;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 32px;
-  background: #0a0a0a;
-  color: #e8e8e8;
-  font-family: var(--font-geist-mono);
+  gap: 28px;
+  background:
+    radial-gradient(1200px 500px at 50% -8%, rgba(225, 6, 0, 0.09), transparent 60%),
+    radial-gradient(900px 500px at 85% 30%, rgba(58, 80, 180, 0.08), transparent 60%),
+    linear-gradient(var(--bg1), var(--bg0));
+  color: var(--text);
+  font-family: var(--font-geist-sans);
   text-align: center;
-  padding: 24px;
+  padding: 56px 24px 64px;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: rise 0.7s ease both;
+}
+
+.kicker {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--muted);
+}
+
+.kicker::before {
+  content: "";
+  display: inline-block;
+  width: 28px;
+  height: 2px;
+  background: var(--accent);
+  vertical-align: middle;
+  margin-right: 12px;
 }
 
 .title {
-  font-size: clamp(40px, 8vw, 88px);
-  font-weight: 700;
-  letter-spacing: 4px;
+  font-size: clamp(52px, 10vw, 116px);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 0.95;
   margin: 0;
+  background: linear-gradient(180deg, #ffffff 30%, #b9bec9 75%, #7d838f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .title span {
-  color: #39ff88;
+  color: var(--accent);
+  -webkit-text-fill-color: var(--accent);
 }
 
 .tagline {
-  font-size: 16px;
-  color: #999;
+  font-size: 17px;
+  font-style: italic;
+  color: var(--muted);
   margin: 0;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
+}
+
+.showroom {
+  width: min(880px, 100%);
+  height: clamp(320px, 44vw, 440px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(600px 220px at 50% 108%, rgba(225, 6, 0, 0.1), transparent 65%),
+    rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  animation: rise 0.7s 0.08s ease both;
+  cursor: grab;
+}
+
+.showroom:active {
+  cursor: grabbing;
+}
+
+.showroomFallback {
+  width: 100%;
+  height: 100%;
+}
+
+.ticker {
+  width: min(880px, 100%);
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  animation: rise 0.7s 0.14s ease both;
+}
+
+.tickerTrack {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: tick 28s linear infinite;
+}
+
+.tickerCopy {
+  display: inline-flex;
+}
+
+.tickerItem {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  padding: 0 28px;
+  position: relative;
+}
+
+.tickerItem::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+@keyframes tick {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tip {
   font-size: 12px;
-  color: #555;
+  color: var(--faint);
   max-width: 360px;
 }
 
@@ -52,9 +180,9 @@
 
 .saveTransferButton {
   background: none;
-  border: 1px solid #444;
-  border-radius: 4px;
-  color: #999;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--muted);
   font-family: var(--font-geist-mono);
   font-size: 12px;
   letter-spacing: 1px;
@@ -64,8 +192,8 @@
 }
 
 .saveTransferButton:hover {
-  border-color: #39ff88;
-  color: #39ff88;
+  border-color: var(--text);
+  color: var(--text);
 }
 
 .hiddenFileInput {
@@ -74,7 +202,7 @@
 
 .saveTransferMessage {
   font-size: 12px;
-  color: #39ff88;
+  color: var(--text);
   margin: 0;
 }
 
@@ -84,18 +212,24 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  max-width: 360px;
+  max-width: 420px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 24px 22px;
+  background: var(--panel);
 }
 
 .championshipHeading {
   font-size: 12px;
-  letter-spacing: 2px;
-  color: #39ff88;
+  letter-spacing: 3px;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
 }
 
 .championshipNote {
   font-size: 12px;
-  color: #999;
+  color: var(--muted);
   margin: 0;
   line-height: 1.5;
 }
@@ -110,17 +244,17 @@
 .championshipRow {
   display: flex;
   justify-content: space-between;
-  border: 1px solid #333;
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   padding: 6px 12px;
   font-size: 12px;
   letter-spacing: 1px;
-  color: #999;
+  color: var(--muted);
 }
 
 .championshipRowPlayer {
-  border-color: #39ff88;
-  color: #e8e8e8;
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .championshipLabel {
@@ -145,12 +279,12 @@
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #666;
+  color: var(--faint);
   padding: 2px 4px;
 }
 
 .championshipRoundDone {
-  color: #aaa;
+  color: var(--muted);
 }
 
 .championshipButtons {
@@ -162,9 +296,9 @@
 
 .championshipButton {
   background: none;
-  border: 1px solid #444;
-  border-radius: 4px;
-  color: #999;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--muted);
   font-family: var(--font-geist-mono);
   font-size: 12px;
   letter-spacing: 1px;
@@ -175,6 +309,18 @@
 }
 
 .championshipButton:hover {
-  border-color: #39ff88;
-  color: #39ff88;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tickerTrack {
+    animation: none;
+  }
+
+  .hero,
+  .showroom,
+  .ticker {
+    animation: none;
+  }
 }
