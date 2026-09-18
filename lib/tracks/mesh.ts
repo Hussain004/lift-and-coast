@@ -15,6 +15,17 @@ import { KERB_WIDTH_METERS, kerbHeightMeters, surfaceZones } from "./surfaces";
 // global plane height.
 export const GRASS_BELOW_TRACK_METERS = 0.01;
 
+// Rendered colors of the two ground surfaces, centralized so their contrast
+// is pinned in one place and regression-tested (see tests/mesh.test.ts).
+// The ribbon used to be #3a3a3a on #2b2b2b grass, a 1.25:1 luminance ratio
+// that this scene's lighting renders as a single undifferentiated dark
+// plain - the "random missing track areas" report, since anywhere the
+// ribbon met grass (including the genuine terrain-cover patches, since
+// fixed in terrain.ts) the road edge was invisible. Both stay neutral dark
+// grays for the art style; only their separation changed.
+export const RIBBON_COLOR = "#525252";
+export const GRASS_COLOR = "#202020";
+
 export interface RibbonGeometry {
   /** [x, y, z, x, y, z, ...] vertex positions. */
   positions: Float32Array;
@@ -203,4 +214,75 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
     colors: new Float32Array(colors),
     indices: new Uint32Array(indices),
   };
+}
+
+// Painted white edge lines, one continuous strip per side for the whole lap
+// (every real circuit outlines its asphalt this way). Visual only, like the
+// kerbs: never handed to Rapier. Four vertices per centerline point (outer
+// and inner edge of each side's strip), quads between consecutive points,
+// using the same index pattern as buildRibbonGeometry with the side's two
+// vertices in (left, right) order so every triangle faces up - the strips
+// sit strictly inside their ribbon quad, so they inherit its facing. Flat
+// at the ribbon's own y; the caller lifts the mesh (see Track.tsx) so it
+// neither z-fights the asphalt nor loses to the racing-line overlay where
+// that sweeps across an edge.
+export const EDGE_LINE_WIDTH_METERS = 0.3;
+
+export function buildEdgeLineGeometry(track: TrackData): RibbonGeometry {
+  const n = track.centerline.length;
+  const positions = new Float32Array(n * 4 * 3);
+
+  for (let i = 0; i < n; i++) {
+    const [x, y, z] = track.centerline[i];
+    const [px, , pz] = track.centerline[(i - 1 + n) % n];
+    const [nx, , nz] = track.centerline[(i + 1) % n];
+    const tangentX = nx - px;
+    const tangentZ = nz - pz;
+    const tangentLen = Math.hypot(tangentX, tangentZ) || 1;
+    const rightX = -tangentZ / tangentLen;
+    const rightZ = tangentX / tangentLen;
+
+    const outer = track.width[i] / 2;
+    const inner = outer - EDGE_LINE_WIDTH_METERS;
+    const base = i * 4 * 3;
+    // Left strip: outer then inner (outer is the "left", matching the
+    // ribbon's own left/right order and therefore its facing).
+    positions[base] = x - rightX * outer;
+    positions[base + 1] = y;
+    positions[base + 2] = z - rightZ * outer;
+    positions[base + 3] = x - rightX * inner;
+    positions[base + 4] = y;
+    positions[base + 5] = z - rightZ * inner;
+    // Right strip: inner then outer, so (first, second) again runs
+    // left-to-right and keeps the ribbon's facing.
+    positions[base + 6] = x + rightX * inner;
+    positions[base + 7] = y;
+    positions[base + 8] = z + rightZ * inner;
+    positions[base + 9] = x + rightX * outer;
+    positions[base + 10] = y;
+    positions[base + 11] = z + rightZ * outer;
+  }
+
+  const indices = new Uint32Array(n * 2 * 6);
+  for (let i = 0; i < n; i++) {
+    const a = i * 4;
+    const b = ((i + 1) % n) * 4;
+    const o = i * 12;
+    // Left strip quad (verts 0,1 here and at the next point).
+    indices[o] = a;
+    indices[o + 1] = a + 1;
+    indices[o + 2] = b;
+    indices[o + 3] = a + 1;
+    indices[o + 4] = b + 1;
+    indices[o + 5] = b;
+    // Right strip quad (verts 2,3 here and at the next point).
+    indices[o + 6] = a + 2;
+    indices[o + 7] = a + 3;
+    indices[o + 8] = b + 2;
+    indices[o + 9] = a + 3;
+    indices[o + 10] = b + 3;
+    indices[o + 11] = b + 2;
+  }
+
+  return { positions, indices };
 }

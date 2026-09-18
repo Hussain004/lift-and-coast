@@ -14,6 +14,7 @@ import { AICar } from "./AICar";
 import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
+import { GRASS_COLOR } from "@/lib/tracks/mesh";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
@@ -89,7 +90,7 @@ function Ground({ track }: { track: TrackData }) {
     <RigidBody type="fixed" colliders={false} friction={0.6}>
       <TrimeshCollider args={[positions, indices]} />
       <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial color="#2b2b2b" />
+        <meshStandardMaterial color={GRASS_COLOR} />
       </mesh>
     </RigidBody>
   );
@@ -303,8 +304,8 @@ export function Scene({
     >
       <color attach="background" args={["#87ceeb"]} />
       <fog attach="fog" args={["#87ceeb", 40, 220]} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[50, 80, 20]} intensity={1.2} castShadow />
+      <ambientLight intensity={0.45} />
+      <directionalLight position={[50, 80, 20]} intensity={1.5} castShadow />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground track={track} />
         <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />

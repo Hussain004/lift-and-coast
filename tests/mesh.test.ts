@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildKerbGeometry, buildRibbonGeometry } from "../lib/tracks/mesh";
+import {
+  buildEdgeLineGeometry,
+  buildKerbGeometry,
+  buildRibbonGeometry,
+  EDGE_LINE_WIDTH_METERS,
+  GRASS_COLOR,
+  RIBBON_COLOR,
+} from "../lib/tracks/mesh";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
 import type { TrackData } from "../lib/tracks/types";
@@ -58,6 +65,78 @@ describe("buildRibbonGeometry", () => {
       expect(idx).toBeLessThan(vertexCount);
     }
   });
+});
+
+describe("ground surface colors", () => {
+  it("keeps the asphalt visibly distinct from the grass", () => {
+    // Regression for the "random missing track areas" report: the ribbon
+    // rendered everywhere (proven by painting it red), but #3a3a3a asphalt
+    // on #2b2b2b grass is a 1.25:1 luminance ratio, which this scene's
+    // lighting renders as one undifferentiated dark plain - every ribbon
+    // edge invisible, and every genuine terrain-cover patch (since fixed in
+    // terrain.ts) reading as a hole rather than a shaded road. The floor
+    // below keeps margin under the current ~1.66:1 without prescribing the
+    // art direction.
+    const luminance = (hex: string): number => {
+      const linear = [1, 3, 5].map((at) => {
+        const channel = parseInt(hex.slice(at, at + 2), 16) / 255;
+        return channel <= 0.03928
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const ratio =
+      (luminance(RIBBON_COLOR) + 0.05) / (luminance(GRASS_COLOR) + 0.05);
+    expect(ratio).toBeGreaterThan(1.5);
+  });
+});
+
+describe("buildEdgeLineGeometry", () => {
+  for (const entry of TRACKS) {
+    it(`${entry.id} outlines both asphalt edges with up-facing strips`, () => {
+      // The readability half of the "random missing track areas" report:
+      // these painted lines are what defines the road where sunlit grass
+      // reaches ribbon brightness, so they must exist on both sides of
+      // every point, face the camera, and stay on the asphalt.
+      const track = getTrack(entry.id);
+      const n = track.centerline.length;
+      const { positions, indices } = buildEdgeLineGeometry(track);
+      expect(positions.length).toBe(n * 4 * 3);
+      expect(indices.length).toBe(n * 2 * 6);
+      for (let t = 0; t < indices.length; t++) {
+        expect(indices[t]).toBeGreaterThanOrEqual(0);
+        expect(indices[t]).toBeLessThan(n * 4);
+      }
+      for (let t = 0; t < indices.length; t += 3) {
+        const ax = positions[indices[t] * 3];
+        const az = positions[indices[t] * 3 + 2];
+        const bx = positions[indices[t + 1] * 3];
+        const bz = positions[indices[t + 1] * 3 + 2];
+        const cx = positions[indices[t + 2] * 3];
+        const cz = positions[indices[t + 2] * 3 + 2];
+        expect((bz - az) * (cx - ax) - (bx - ax) * (cz - az)).toBeGreaterThan(0);
+      }
+      for (let i = 0; i < n; i++) {
+        const [x, y, z] = track.centerline[i];
+        const halfWidth = track.width[i] / 2;
+        for (let k = 0; k < 4; k++) {
+          const vx = positions[(i * 4 + k) * 3];
+          const vy = positions[(i * 4 + k) * 3 + 1];
+          const vz = positions[(i * 4 + k) * 3 + 2];
+          // On the asphalt (at most the ribbon edge) and flat at its height
+          // - the caller applies the lift, as with the racing line ribbon.
+          // The 1e-4 slack is float32 storage rounding of ~1000m
+          // coordinates, not geometric tolerance (a tenth of a millimetre).
+          expect(Math.hypot(vx - x, vz - z)).toBeLessThanOrEqual(halfWidth + 1e-4);
+          expect(vy).toBeCloseTo(y, 5);
+          expect(Math.hypot(vx - x, vz - z)).toBeGreaterThanOrEqual(
+            halfWidth - EDGE_LINE_WIDTH_METERS - 1e-4
+          );
+        }
+      }
+    });
+  }
 });
 
 describe("buildKerbGeometry", () => {

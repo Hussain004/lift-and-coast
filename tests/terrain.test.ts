@@ -4,7 +4,7 @@ import {
   TERRAIN_OUTER_MARGIN_METERS,
   buildTerrainGeometry,
 } from "../lib/tracks/terrain";
-import { GRASS_BELOW_TRACK_METERS } from "../lib/tracks/mesh";
+import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "../lib/tracks/mesh";
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
@@ -52,8 +52,11 @@ function terrainHeightAt(terrain: TerrainGeometry, x: number, z: number): number
     const l1 = ((q[2] - s[2]) * (x - s[0]) + (s[0] - q[0]) * (z - s[2])) / denominator;
     const l2 = ((s[2] - p[2]) * (x - s[0]) + (p[0] - s[0]) * (z - s[2])) / denominator;
     const l3 = 1 - l1 - l2;
-    // A hair of slack: edge samples can land exactly on a shared edge.
-    if (l1 >= -1e-9 && l2 >= -1e-9 && l3 >= -1e-9) {
+    // Slack covers float32 storage rounding of the stored vertices (about
+    // 1e-4m at Monza/Spa's ~1200m coordinates), not just exact-edge samples:
+    // both candidate triangles share the edge, so either interpolation agrees
+    // there and the slack cannot misattribute a height.
+    if (l1 >= -1e-4 && l2 >= -1e-4 && l3 >= -1e-4) {
       return l1 * p[1] + l2 * q[1] + l3 * s[1];
     }
   }
@@ -123,6 +126,21 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   monaco: 20,
 };
 
+// How far the field may dip under the ribbon at an edge sample. The
+// clearance pass the test above pins down pushes overlapping terrain until
+// it clears the asphalt, and at Monaco the lap's arms genuinely differ in
+// height inside one 12.5m cell (the climb, the hairpin fold) - that
+// difference has to go somewhere, and below the ribbon, as a grass bank
+// beside the track the module doc already expects there, is the side that
+// hides no asphalt.
+const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
+  silverstone: 0.5,
+  monza: 0.5,
+  spa: 0.5,
+  suzuka: 0.5,
+  monaco: 0.75,
+};
+
 describe("buildTerrainGeometry (real circuits)", () => {
   for (const entry of TRACKS) {
     it(`${entry.id} follows the circuit's elevation`, () => {
@@ -134,6 +152,41 @@ describe("buildTerrainGeometry (real circuits)", () => {
         max = Math.max(max, terrain.positions[i]);
       }
       expect(max - min).toBeGreaterThan(MIN_TERRAIN_RELIEF[entry.id]);
+    });
+
+    it(`${entry.id} keeps terrain below the whole asphalt surface`, () => {
+      const track = getTrack(entry.id);
+      const terrain = buildTerrainGeometry(track);
+      const ribbon = buildRibbonGeometry(track);
+      let worst = -Infinity;
+      let hidden = 0;
+      let samples = 0;
+      let downward = 0;
+      for (let t = 0; t < ribbon.indices.length; t += 3) {
+        const vertices = Array.from(ribbon.indices.slice(t, t + 3), (i) =>
+          Array.from(ribbon.positions.slice(i * 3, i * 3 + 3))
+        );
+        const [a, b, c] = vertices;
+        const normalY = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+        if (normalY < 0) downward++;
+        // Independent barycentric samples across each road triangle, including
+        // both edges and interior (the old edge-only 0.5m tolerance hid this).
+        for (let u = 0; u <= 8; u++) {
+          for (let v = 0; v <= 8 - u; v++) {
+            const p = a.map((value, axis) =>
+              value + (b[axis] - value) * u / 8 + (c[axis] - value) * v / 8
+            );
+            const ground = terrainHeightAt(terrain, p[0], p[2]);
+            expect(ground).not.toBeNull();
+            const difference = ground! - p[1];
+            worst = Math.max(worst, difference);
+            if (difference >= 0) hidden++;
+            samples++;
+          }
+        }
+      }
+      console.info(`${entry.id}: terrain intrusion ${worst.toFixed(4)}m, ${hidden}/${samples} covered samples, ${downward} downward road triangles`);
+      expect(worst).toBeLessThanOrEqual(-GRASS_BELOW_TRACK_METERS + 0.0001);
     });
 
     it(`${entry.id} meets the ribbon at its edges, from below`, () => {
@@ -152,6 +205,7 @@ describe("buildTerrainGeometry (real circuits)", () => {
       let worstAbove = -Infinity;
       let worstAboveIndex = 0;
       let worstBelow = Infinity;
+      let worstBelowIndex = 0;
       let total = 0;
       let samples = 0;
       for (let i = 0; i < n; i++) {
@@ -174,7 +228,10 @@ describe("buildTerrainGeometry (real circuits)", () => {
             worstAbove = deviation;
             worstAboveIndex = i;
           }
-          if (deviation < worstBelow) worstBelow = deviation;
+          if (deviation < worstBelow) {
+            worstBelow = deviation;
+            worstBelowIndex = i;
+          }
         }
       }
       expect(samples).toBe(n * 2);
@@ -182,7 +239,9 @@ describe("buildTerrainGeometry (real circuits)", () => {
         worstAbove,
         `terrain pokes ${worstAbove.toFixed(2)}m above the ribbon at centerline index ${worstAboveIndex}`
       ).toBeLessThan(0.5);
-      expect(worstBelow).toBeGreaterThan(-0.5);
+      expect(worstBelow, `terrain dips ${worstBelow.toFixed(2)}m under the ribbon at centerline index ${worstBelowIndex}`).toBeGreaterThan(
+        -MAX_TERRAIN_DIP_METERS[entry.id]
+      );
       expect(total / samples).toBeLessThan(0.1);
     });
   }

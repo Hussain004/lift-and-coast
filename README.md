@@ -26,7 +26,9 @@ the vertical slice:
 - Kerbs + surface zones: red/white kerb strips at the apex of every derived
   corner (per-corner severity: sausage/aggressive/low), gravel runoff beyond
   them, and grass with a distance-from-edge grip falloff - all classified per
-  wheel, sampled from real per-point zones (plan section 4 points 6-7)
+  wheel, sampled from real per-point zones (plan section 4 points 6-7).
+  Painted white edge lines outline both sides of the asphalt for the full
+  lap, so the road edge reads against sunlit grass as well as shade
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback

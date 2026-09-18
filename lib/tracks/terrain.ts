@@ -1,5 +1,5 @@
 import type { TrackData } from "./types";
-import { GRASS_BELOW_TRACK_METERS } from "./mesh";
+import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS } from "./mesh";
 import { worldEdgeResetMeters } from "./trackLimits";
 
 /**
@@ -23,7 +23,11 @@ import { worldEdgeResetMeters } from "./trackLimits";
  * switch would be a several-metre step through whichever arm lost - a wall
  * inside the lower straight, or a hole under the upper one. With a 2D
  * neighbourhood both arms report the same hill, the switch is worth
- * centimetres, and the nearest point is the whole rule.
+ * centimetres, and the nearest point is almost the whole rule: one
+ * post-pass below (applyRibbonClearance) additionally pushes down the
+ * vertices of any terrain triangle that would otherwise sit above the
+ * ribbon it spans, because sampling per vertex cannot see that the
+ * renderer interpolates across whole triangles.
  *
  * The one thing a nearest-point field cannot do is bank gently. Where two
  * parts of a lap come close *and* sit at genuinely different heights - the
@@ -147,5 +151,178 @@ function computeTerrain(track: TrackData): TerrainGeometry {
     }
   }
 
+  // The nearest-point rule sets each vertex, but the renderer and the
+  // collider both interpolate across whole 12.5m triangles: where the
+  // asphalt climbs or drops inside one cell, a triangle spanning it can sit
+  // above the ribbon it covers and hide that stretch of road (measured worst
+  // ~0.4m, most often on Suzuka). So push down every terrain vertex just
+  // enough that no terrain triangle rises above the ribbon anywhere the two
+  // overlap - evaluated over the exact overlap polygon, not just at shared
+  // vertices, since the difference of two planar triangles is linear and
+  // therefore worst at a polygon corner.
+  applyRibbonClearance(track, positions, columns, rows, originX, originZ, cellMeters);
+
   return { positions, indices, columns, rows, originX, originZ, cellMeters };
+}
+
+interface PlanCorner {
+  x: number;
+  z: number;
+  y: number;
+}
+
+type PlanTriangle = [PlanCorner, PlanCorner, PlanCorner];
+
+function planArea(a: PlanCorner, b: PlanCorner, c: PlanCorner): number {
+  return (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
+}
+
+/** Barycentric weights of (x, z) in t, or null when t is degenerate in plan. */
+function planBarycentric(t: PlanTriangle, x: number, z: number): [number, number, number] | null {
+  const [a, b, c] = t;
+  const area = planArea(a, b, c);
+  if (Math.abs(area) < 1e-12) return null;
+  const p: PlanCorner = { x, z, y: 0 };
+  const l1 = planArea(p, b, c) / area;
+  const l2 = planArea(p, c, a) / area;
+  return [l1, l2, 1 - l1 - l2];
+}
+
+function planHeight(t: PlanTriangle, weights: [number, number, number]): number {
+  return weights[0] * t[0].y + weights[1] * t[1].y + weights[2] * t[2].y;
+}
+
+/** Intersection of segments p1-p2 and p3-p4 in plan, or null when apart. */
+function planSegmentIntersection(
+  p1: PlanCorner,
+  p2: PlanCorner,
+  p3: PlanCorner,
+  p4: PlanCorner
+): { x: number; z: number } | null {
+  const dx1 = p2.x - p1.x;
+  const dz1 = p2.z - p1.z;
+  const dx2 = p4.x - p3.x;
+  const dz2 = p4.z - p3.z;
+  const denom = dx1 * dz2 - dz1 * dx2;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = ((p3.x - p1.x) * dz2 - (p3.z - p1.z) * dx2) / denom;
+  const u = ((p3.x - p1.x) * dz1 - (p3.z - p1.z) * dx1) / denom;
+  if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) return null;
+  return { x: p1.x + t * dx1, z: p1.z + t * dz1 };
+}
+
+/**
+ * Largest amount by which terrain triangle t rises above ribbon triangle r
+ * anywhere the two overlap in plan (-Infinity when they do not overlap).
+ * Both are planar, so their difference is linear over the convex overlap
+ * polygon and worst at one of its corners: a t corner inside r, an r corner
+ * inside t, or an edge crossing.
+ */
+function ribbonOverlapExcess(t: PlanTriangle, r: PlanTriangle): number {
+  let excess = -Infinity;
+  const consider = (x: number, z: number) => {
+    const bt = planBarycentric(t, x, z);
+    const br = planBarycentric(r, x, z);
+    if (!bt || !br) return;
+    if (bt.some((w) => w < -1e-7) || br.some((w) => w < -1e-7)) return;
+    const over = planHeight(t, bt) - planHeight(r, br);
+    if (over > excess) excess = over;
+  };
+  for (const c of t) consider(c.x, c.z);
+  for (const c of r) consider(c.x, c.z);
+  const tEdges: [PlanCorner, PlanCorner][] = [
+    [t[0], t[1]],
+    [t[1], t[2]],
+    [t[2], t[0]],
+  ];
+  const rEdges: [PlanCorner, PlanCorner][] = [
+    [r[0], r[1]],
+    [r[1], r[2]],
+    [r[2], r[0]],
+  ];
+  for (const [p1, p2] of tEdges) {
+    for (const [p3, p4] of rEdges) {
+      const hit = planSegmentIntersection(p1, p2, p3, p4);
+      if (hit) consider(hit.x, hit.z);
+    }
+  }
+  return excess;
+}
+
+function applyRibbonClearance(
+  track: TrackData,
+  positions: Float32Array,
+  columns: number,
+  rows: number,
+  originX: number,
+  originZ: number,
+  cellMeters: number
+): void {
+  const ribbon = buildRibbonGeometry(track);
+  const rp = ribbon.positions;
+  const ri = ribbon.indices;
+  const corner = (vertex: number): PlanCorner => ({
+    x: rp[vertex * 3],
+    z: rp[vertex * 3 + 2],
+    y: rp[vertex * 3 + 1],
+  });
+  // Per-vertex drops, combined with max (never summed): lowering every
+  // corner of an overlapping terrain triangle by its own required drop keeps
+  // that triangle clear, and a corner shared with a needier neighbour only
+  // drops further, never back above the ribbon.
+  const drops = new Float32Array(columns * rows);
+  // A hair past the nominal gap so float32 storage rounding cannot leave a
+  // sample exactly flush (the regression test allows 0.1mm either way).
+  const target = GRASS_BELOW_TRACK_METERS + 0.0005;
+
+  for (let r = 0; r < ri.length; r += 3) {
+    const tri: PlanTriangle = [corner(ri[r]), corner(ri[r + 1]), corner(ri[r + 2])];
+    if (Math.abs(planArea(tri[0], tri[1], tri[2])) < 1e-9) continue;
+    const minX = Math.min(tri[0].x, tri[1].x, tri[2].x);
+    const maxX = Math.max(tri[0].x, tri[1].x, tri[2].x);
+    const minZ = Math.min(tri[0].z, tri[1].z, tri[2].z);
+    const maxZ = Math.max(tri[0].z, tri[1].z, tri[2].z);
+    const c0 = Math.max(0, Math.floor((minX - originX) / cellMeters));
+    const c1 = Math.min(columns - 2, Math.floor((maxX - originX) / cellMeters));
+    const r0 = Math.max(0, Math.floor((minZ - originZ) / cellMeters));
+    const r1 = Math.min(rows - 2, Math.floor((maxZ - originZ) / cellMeters));
+    for (let row = r0; row <= r1; row++) {
+      for (let column = c0; column <= c1; column++) {
+        const a = row * columns + column;
+        const right = a + 1;
+        const down = a + columns;
+        const downRight = down + 1;
+        // Same two triangles the index buffer emits for this cell.
+        for (const cell of [
+          [a, down, downRight],
+          [a, downRight, right],
+        ]) {
+          const t: PlanTriangle = cell.map((v) => ({
+            x: positions[v * 3],
+            z: positions[v * 3 + 2],
+            y: positions[v * 3 + 1],
+          })) as PlanTriangle;
+          if (
+            Math.max(t[0].x, t[1].x, t[2].x) < minX ||
+            Math.min(t[0].x, t[1].x, t[2].x) > maxX ||
+            Math.max(t[0].z, t[1].z, t[2].z) < minZ ||
+            Math.min(t[0].z, t[1].z, t[2].z) > maxZ
+          ) {
+            continue;
+          }
+          const excess = ribbonOverlapExcess(t, tri);
+          if (excess === -Infinity) continue;
+          const need = excess + target;
+          if (need <= 0) continue;
+          for (const v of cell) {
+            if (need > drops[v]) drops[v] = need;
+          }
+        }
+      }
+    }
+  }
+
+  for (let v = 0; v < drops.length; v++) {
+    if (drops[v] > 0) positions[v * 3 + 1] -= drops[v];
+  }
 }

@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
-import { buildKerbGeometry, buildRibbonGeometry } from "@/lib/tracks/mesh";
+import { buildEdgeLineGeometry, buildKerbGeometry, buildRibbonGeometry, RIBBON_COLOR } from "@/lib/tracks/mesh";
 import {
   buildRacingLineRibbon,
   computeRacingLine,
@@ -17,6 +17,10 @@ import type { TrackData } from "@/lib/tracks/types";
 // (the racing line carries the centerline's own y, and so does the ribbon's
 // cross-section - see mesh.ts) so it doesn't z-fight with it.
 const RACING_LINE_HEIGHT_OFFSET = 0.05;
+// Same lift for the painted edge lines, one step lower: where the racing
+// line sweeps across an edge the throttle-map colors must win, and a 1cm
+// separation is plenty for the depth buffer this close to the camera.
+const EDGE_LINE_HEIGHT_OFFSET = 0.035;
 // Wide colored stripe (like an F1 game's throttle map), not a thin wire -
 // half this value each side of the line's own center. 1.3 (2.6m total)
 // looked too wide against this track's 13m width once actually driven -
@@ -128,7 +132,7 @@ export function Track({
   chassisRef?: React.RefObject<RapierRigidBody | null>;
   racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
-  const { positions, indices, geometry, kerbGeometry } = useMemo(() => {
+  const { positions, indices, geometry, kerbGeometry, edgeLineGeometry } = useMemo(() => {
     const { positions, indices } = buildRibbonGeometry(track);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -149,7 +153,18 @@ export function Track({
     kerbGeometry.setAttribute("color", new THREE.BufferAttribute(kerbColors, 3));
     kerbGeometry.setIndex(new THREE.BufferAttribute(kerbIndices, 1));
     kerbGeometry.computeVertexNormals();
-    return { positions, indices, geometry, kerbGeometry };
+    // Painted edge lines (see buildEdgeLineGeometry) - lifted just above
+    // the asphalt like the racing line overlay, but below it, so the
+    // throttle-map colors always win where the line sweeps across an edge.
+    const { positions: edgeLinePositions, indices: edgeLineIndices } =
+      buildEdgeLineGeometry(track);
+    for (let i = 1; i < edgeLinePositions.length; i += 3) {
+      edgeLinePositions[i] += EDGE_LINE_HEIGHT_OFFSET;
+    }
+    const edgeLineGeometry = new THREE.BufferGeometry();
+    edgeLineGeometry.setAttribute("position", new THREE.BufferAttribute(edgeLinePositions, 3));
+    edgeLineGeometry.setIndex(new THREE.BufferAttribute(edgeLineIndices, 1));
+    return { positions, indices, geometry, kerbGeometry, edgeLineGeometry };
   }, [track]);
 
   return (
@@ -157,11 +172,18 @@ export function Track({
       <RigidBody type="fixed" colliders={false} friction={1.3}>
         <TrimeshCollider args={[positions, indices]} />
         <mesh geometry={geometry} receiveShadow>
-          <meshStandardMaterial color="#3a3a3a" />
+          <meshStandardMaterial color={RIBBON_COLOR} />
         </mesh>
       </RigidBody>
       <mesh geometry={kerbGeometry}>
         <meshStandardMaterial vertexColors />
+      </mesh>
+      <mesh geometry={edgeLineGeometry}>
+        {/* basic (unlit) white, like the racing line overlay below: an edge
+            line must read against any grass brightness or shade, and lighting
+            it would let a sun-facing slope wash it out exactly when the
+            asphalt/grass boundary is hardest to see. */}
+        <meshBasicMaterial color="white" />
       </mesh>
       <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
     </>
