@@ -21,15 +21,30 @@ export default function Home() {
         </h1>
         <p className={styles.tagline}>Save the juice. Send the apex.</p>
       </header>
-      <div className={styles.garage}>
-        <ShowroomLoader />
-        <TeamSetup />
+      <div className={styles.section}>
+        <p className={styles.eyebrow}>
+          <b>01</b> GARAGE
+        </p>
+        <div className={styles.garage}>
+          <ShowroomLoader />
+          <TeamSetup />
+        </div>
       </div>
-      <div className={styles.planner}>
-        <WorldMap />
-        <SessionSetup />
+      <div className={styles.section}>
+        <p className={styles.eyebrow}>
+          <b>02</b> CIRCUIT
+        </p>
+        <div className={styles.planner}>
+          <WorldMap />
+          <SessionSetup />
+        </div>
       </div>
-      <Championship />
+      <div className={styles.section}>
+        <p className={styles.eyebrow}>
+          <b>03</b> SEASON
+        </p>
+        <Championship />
+      </div>
       <p className={styles.tip}>
         Lift &amp; coast: it&apos;s not slow, it&apos;s strategic.
       </p>

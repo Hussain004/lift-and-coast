@@ -46,6 +46,9 @@ export function WorldMap() {
 
   const [view, setView] = useState<MapView>(() => fullWorldView());
   const svgRef = useRef<SVGSVGElement>(null);
+  // Hovered (or keyboard-focused) pin for the name popover: the picked
+  // track already labels itself, so this only fires for the rest.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const panRef = useRef<{ startX: number; startY: number; view: MapView } | null>(null);
   // A drag that starts on a pin still releases over it, which would click it
   // - so a press that travels past the drag threshold disarms the click.
@@ -137,6 +140,10 @@ export function WorldMap() {
               tabIndex={0}
               className={styles.pin}
               transform={`translate(${x},${y}) scale(${k})`}
+              onMouseEnter={() => setHoveredId(t.id)}
+              onMouseLeave={() => setHoveredId((id) => (id === t.id ? null : id))}
+              onFocus={() => setHoveredId(t.id)}
+              onBlur={() => setHoveredId((id) => (id === t.id ? null : id))}
               onClick={() => {
                 if (suppressClickRef.current) {
                   suppressClickRef.current = false;
@@ -154,12 +161,12 @@ export function WorldMap() {
               <title>{t.name}</title>
               {active && <circle r={10} className={styles.pinRing} />}
               <circle r={5} className={active ? styles.pinActive : styles.pinDot} />
-              {active && (
+              {(active || hoveredId === t.id) && (
                 <text
                   x={flip ? -12 : 12}
                   y={4}
                   textAnchor={flip ? "end" : "start"}
-                  className={styles.pinLabel}
+                  className={active ? styles.pinLabel : styles.pinHover}
                 >
                   {t.shortName}
                 </text>

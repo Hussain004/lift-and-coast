@@ -2,26 +2,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
-  padding: 18px 24px 22px;
-  background: rgba(255, 255, 255, 0.032);
+  gap: 12px;
+  border: 1px solid rgba(246, 243, 236, 0.1);
+  border-radius: 18px;
+  padding: 20px 24px 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.35);
   width: min(560px, 100%);
 }
 
 .label {
-  color: #9aa0ab;
-  font-size: 12px;
-  letter-spacing: 2px;
+  color: #d3ab63;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 4px;
 }
 
 .map {
   width: 100%;
   height: auto;
-  background: rgba(255, 255, 255, 0.032);
-  border: 1px solid #222;
-  border-radius: 4px;
+  background: radial-gradient(120% 100% at 50% 0%, #101319 0%, #08090d 70%);
+  border: 1px solid rgba(246, 243, 236, 0.08);
+  border-radius: 10px;
   cursor: grab;
   touch-action: none;
 }
@@ -31,8 +34,8 @@
 }
 
 .land {
-  fill: #1c1c1c;
-  stroke: #333;
+  fill: #1e222b;
+  stroke: #343945;
   stroke-width: 0.75;
 }
 
@@ -74,6 +77,20 @@
   letter-spacing: 1px;
 }
 
+/* Hover name pop: warm-white text on a dark halo so it reads over land,
+   sea and neighbouring pins at any zoom. */
+.pinHover {
+  fill: #f6f3ec;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  paint-order: stroke;
+  stroke: rgba(5, 6, 10, 0.9);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
 .mapControls {
   display: flex;
   gap: 8px;
@@ -81,8 +98,8 @@
 
 .mapButton {
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 4px;
+  border: 1px solid rgba(246, 243, 236, 0.12);
+  border-radius: 6px;
   color: #9aa0ab;
   font-family: var(--font-geist-mono);
   font-size: 11px;
@@ -94,7 +111,7 @@
 
 .mapButton:hover {
   border-color: #e10600;
-  color: #e10600;
+  color: #f6f3ec;
 }
 
 .preview {
@@ -107,9 +124,9 @@
 }
 
 .outline {
-  border: 1px solid #222;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.032);
+  border: 1px solid rgba(246, 243, 236, 0.08);
+  border-radius: 10px;
+  background: radial-gradient(120% 100% at 50% 0%, #101319 0%, #08090d 70%);
 }
 
 .stats {
@@ -122,10 +139,13 @@
 }
 
 .trackName {
-  color: #e10600;
-  font-size: 14px;
-  letter-spacing: 2px;
-  line-height: 1.5;
+  color: #f6f3ec;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
   overflow-wrap: break-word;
 }
 

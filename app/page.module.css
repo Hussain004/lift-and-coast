@@ -1,34 +1,36 @@
 .page {
-  --bg0: #05070c;
-  --bg1: #0b0e15;
+  --bg0: #05060a;
+  --bg1: #0b0d13;
   --panel: rgba(255, 255, 255, 0.032);
-  --line: rgba(255, 255, 255, 0.09);
+  --line: rgba(246, 243, 236, 0.1);
   --accent: #e10600;
   --accent-soft: rgba(225, 6, 0, 0.12);
-  --text: #f4f4f6;
-  --muted: #9aa0ab;
-  --faint: #555b66;
+  --gold: #d3ab63;
+  --text: #f6f3ec;
+  --muted: #a7adb8;
+  --faint: #5b616c;
 
   display: flex;
   min-height: 100vh;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
+  gap: 34px;
   background:
-    radial-gradient(1200px 500px at 50% -8%, rgba(225, 6, 0, 0.09), transparent 60%),
-    radial-gradient(900px 500px at 85% 30%, rgba(58, 80, 180, 0.08), transparent 60%),
+    radial-gradient(1100px 480px at 50% -10%, rgba(225, 6, 0, 0.13), transparent 60%),
+    radial-gradient(900px 520px at 88% 28%, rgba(88, 101, 200, 0.1), transparent 60%),
+    radial-gradient(760px 520px at 8% 62%, rgba(211, 171, 99, 0.06), transparent 60%),
     linear-gradient(var(--bg1), var(--bg0));
   color: var(--text);
   font-family: var(--font-geist-sans);
   text-align: center;
-  padding: 56px 24px 64px;
+  padding: 72px 24px 72px;
 }
 
 .hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   animation: rise 0.7s ease both;
 }
 
@@ -36,31 +38,39 @@
   margin: 0;
   font-family: var(--font-geist-mono);
   font-size: 12px;
-  letter-spacing: 4px;
-  color: var(--muted);
+  letter-spacing: 5px;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.kicker::before {
+.kicker::before,
+.kicker::after {
   content: "";
   display: inline-block;
-  width: 28px;
-  height: 2px;
-  background: var(--accent);
-  vertical-align: middle;
-  margin-right: 12px;
+  width: 44px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold));
+}
+
+.kicker::after {
+  background: linear-gradient(90deg, var(--gold), transparent);
 }
 
 .title {
-  font-size: clamp(52px, 10vw, 116px);
+  font-family: var(--font-display);
+  font-size: clamp(60px, 12vw, 148px);
   font-style: italic;
-  font-weight: 800;
-  letter-spacing: -1px;
-  line-height: 0.95;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 0.9;
   margin: 0;
-  background: linear-gradient(180deg, #ffffff 30%, #b9bec9 75%, #7d838f 100%);
+  background: linear-gradient(180deg, #fffdf6 20%, #cfd3db 68%, #868c98 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-wrap: balance;
 }
 
 .title span {
@@ -69,11 +79,46 @@
 }
 
 .tagline {
-  font-size: 17px;
+  font-family: var(--font-display);
+  font-size: clamp(17px, 2.4vw, 22px);
   font-style: italic;
+  font-weight: 600;
   color: var(--muted);
   margin: 0;
   letter-spacing: 0.5px;
+}
+
+/* Numbered section eyebrows: 01 garage, 02 circuit, 03 season. */
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: min(1180px, 100%);
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 5px;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eyebrow::before,
+.eyebrow::after {
+  content: "";
+  width: 56px;
+  height: 1px;
+  background: var(--line);
+}
+
+.eyebrow b {
+  color: var(--gold);
+  font-weight: 400;
 }
 
 .showroom {
@@ -81,10 +126,11 @@
   height: 100%;
   min-height: 480px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 20px;
   background:
-    radial-gradient(600px 220px at 50% 108%, rgba(225, 6, 0, 0.1), transparent 65%),
-    rgba(255, 255, 255, 0.02);
+    radial-gradient(600px 220px at 50% 108%, rgba(225, 6, 0, 0.14), transparent 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   animation: rise 0.7s 0.08s ease both;
   cursor: grab;
@@ -136,14 +182,24 @@
   }
 }
 
-/* Ambient backdrop: three slow-drifting color fields behind everything.
-   Fixed so it never affects layout; content floats above it. */
+/* Panel backdrops: a faint carbon grid over the page glow, fixed so it
+   never affects layout; content floats above it. */
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+}
+
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 72px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 72px);
+  mask-image: radial-gradient(900px 620px at 50% 0%, black 30%, transparent 75%);
 }
 
 .page > *:not(.backdrop) {
@@ -205,9 +261,11 @@
 }
 
 .tip {
+  font-family: var(--font-geist-mono);
   font-size: 12px;
+  letter-spacing: 1px;
   color: var(--faint);
-  max-width: 360px;
+  max-width: 420px;
 }
 
 .saveTransfer {
@@ -258,16 +316,20 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 20px 24px 22px;
-  background: var(--panel);
+  border-radius: 18px;
+  padding: 24px 26px 26px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
 .championshipHeading {
-  font-size: 12px;
-  letter-spacing: 3px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 2px;
   color: var(--text);
   border-left: 3px solid var(--accent);
   padding-left: 10px;
