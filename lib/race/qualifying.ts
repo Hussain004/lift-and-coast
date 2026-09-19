@@ -5,24 +5,44 @@
  * the staggered race start. QualifyingTimes/polePosition below are the
  * older informational overlay (first completed laps, shown during races);
  * the session machine is the authority wherever a grid is set.
+ *
+ * Full field: the player (index "player") plus one slot per rival in
+ * roster order (see resolveFieldRoster) - bests nobody set read null and
+ * sort behind every real time.
  */
 export interface QualifyingTimes {
   player: number | null;
-  ai: number | null;
+  opponents: (number | null)[];
 }
 
-export function createQualifyingTimes(): QualifyingTimes {
-  return { player: null, ai: null };
+export function createQualifyingTimes(opponents = 0): QualifyingTimes {
+  return { player: null, opponents: Array.from({ length: opponents }, () => null) };
 }
 
 /**
- * Who's on pole, or null until both sides have set a time. Player wins an
- * exact tie, matching computeRacePosition's own tie-break convention in
+ * Who's on pole, or null until the player and at least one rival both
+ * have a time. Returns "player" or the rival's index. Player wins an
+ * exact tie, matching computeRacePositions' own tie-break convention in
  * racePosition.ts.
  */
-export function polePosition(times: QualifyingTimes): "player" | "ai" | null {
-  if (times.player === null || times.ai === null) return null;
-  return times.player <= times.ai ? "player" : "ai";
+export function polePosition(times: QualifyingTimes): "player" | number | null {
+  if (times.player === null) return null;
+  let best: "player" | number = "player";
+  let bestTime = times.player;
+  for (let k = 0; k < times.opponents.length; k++) {
+    const t = times.opponents[k];
+    if (t === null) continue;
+    if (t < bestTime) {
+      bestTime = t;
+      best = k;
+    }
+  }
+  // Null only when no rival has a time yet (bestTime stayed the player's
+  // only if at least one rival time exists... no: best stays "player"
+  // with zero rival times too). Require a contest: pole is undecided
+  // until somebody else posts.
+  if (best === "player" && !times.opponents.some((t) => t !== null)) return null;
+  return best;
 }
 
 export type QualifyingFormat = "oneshot" | "timed";
@@ -30,12 +50,12 @@ export type QualifyingFormat = "oneshot" | "timed";
 /** Timed qualifying session length: 10 minutes of open track. */
 export const TIMED_QUALIFYING_SECONDS = 600;
 
-export type QualifyingSide = "player" | "ai";
+export type QualifyingSide = "player" | number;
 
 export interface QualifyingSession {
   format: QualifyingFormat;
   /** Best VALID lap per side; null means no clean lap yet. */
-  best: Record<QualifyingSide, number | null>;
+  best: { player: number | null; opponents: (number | null)[] };
   /** Seconds left (timed) - hits 0 exactly when the session ends. */
   timeLeftSeconds: number;
   /** Completed laps (oneshot) - the player's first crossing ends the session. */
@@ -43,14 +63,31 @@ export interface QualifyingSession {
   finished: boolean;
 }
 
-export function createQualifyingSession(format: QualifyingFormat): QualifyingSession {
+export function createQualifyingSession(format: QualifyingFormat, opponents = 0): QualifyingSession {
   return {
     format,
-    best: { player: null, ai: null },
+    best: { player: null, opponents: Array.from({ length: opponents }, () => null) },
     timeLeftSeconds: TIMED_QUALIFYING_SECONDS,
     lapsDone: 0,
     finished: false,
   };
+}
+
+function readBest(session: QualifyingSession, side: QualifyingSide): number | null {
+  return side === "player" ? session.best.player : (session.best.opponents[side] ?? null);
+}
+
+function writeBest(
+  best: QualifyingSession["best"],
+  side: QualifyingSide,
+  seconds: number
+): QualifyingSession["best"] {
+  if (side === "player") {
+    return { ...best, player: seconds };
+  }
+  const opponents = [...best.opponents];
+  opponents[side] = seconds;
+  return { ...best, opponents };
 }
 
 /**
@@ -58,8 +95,8 @@ export function createQualifyingSession(format: QualifyingFormat): QualifyingSes
  * wheels off) lap - it counts toward the oneshot lap total but can never
  * set a time, so blowing the one flyer leaves the driver with nothing,
  * same as the real rule. Only the player's laps advance a one-shot: the
- * session is their one flyer, ending when they complete it (the AI's best
- * at that moment counts if set) - the AI circulating extra laps must not
+ * session is their one flyer, ending when they complete it (rivals' bests
+ * at that moment count if set) - rivals circulating extra laps must not
  * end the player's session early.
  */
 export function recordQualiLap(
@@ -68,9 +105,12 @@ export function recordQualiLap(
   seconds: number | null
 ): QualifyingSession {
   if (session.finished) return session;
-  const best = { ...session.best };
-  if (seconds !== null && (best[side] === null || seconds < best[side])) {
-    best[side] = seconds;
+  let best = session.best;
+  if (seconds !== null) {
+    const prev = readBest(session, side);
+    if (prev === null || seconds < prev) {
+      best = writeBest(best, side, seconds);
+    }
   }
   const lapsDone =
     session.format === "oneshot" && side === "player" ? session.lapsDone + 1 : session.lapsDone;
@@ -90,19 +130,38 @@ export function tickQualifyingSession(session: QualifyingSession, dt: number): Q
 }
 
 /**
- * Session winner by best valid lap - null while neither side has a clean
- * lap. Exact ties go to the player (see polePosition). A side with no time
- * always loses to a side with one, so an invalidated one-shot means P2.
+ * Session winner by best valid lap - null while the player and every rival
+ * with a time... precisely: null while nobody has a clean lap. Exact ties
+ * go to the player (see polePosition). A side with no time always loses
+ * to a side with one, so an invalidated one-shot means P2-or-worse.
  */
 export function qualifyingWinner(session: QualifyingSession): QualifyingSide | null {
-  const { player, ai } = session.best;
-  if (player === null && ai === null) return null;
-  if (player === null) return "ai";
-  if (ai === null) return "player";
-  return player <= ai ? "player" : "ai";
+  let best: QualifyingSide | null = null;
+  let bestTime: number | null = null;
+  const consider = (side: QualifyingSide, time: number | null) => {
+    if (time === null) return;
+    if (bestTime === null || time < bestTime) {
+      bestTime = time;
+      best = side;
+    }
+  };
+  consider("player", session.best.player);
+  session.best.opponents.forEach((time, k) => consider(k, time));
+  return best;
 }
 
-/** The player's grid spot from a finished session - P2 with no time. */
-export function playerGridSpot(session: QualifyingSession): 1 | 2 {
-  return qualifyingWinner(session) === "ai" ? 2 : 1;
+/** The player's grid spot from a finished session (1-based). */
+export function playerGridSpot(session: QualifyingSession): number {
+  const winner = qualifyingWinner(session);
+  if (winner === null || winner === "player") return 1;
+  // Count every side strictly faster than the player's best (plus one for
+  // pole): rivals without a time sort behind, so with no player time the
+  // player starts behind every rival who set one.
+  const playerBest = session.best.player;
+  let spot = 1;
+  for (const time of session.best.opponents) {
+    if (time === null) continue;
+    if (playerBest === null || time < playerBest) spot += 1;
+  }
+  return spot;
 }

@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   DEFAULT_RACE_LAPS,
+  DEFAULT_RIVALS,
   MAX_RACE_LAPS,
+  MAX_RIVALS,
   MIN_RACE_LAPS,
+  MIN_RIVALS,
   buildRaceUrl,
   loadSessionSetupPrefs,
   saveSessionSetupPrefs,
@@ -46,6 +49,7 @@ const QUALI_FORMATS: { id: QualifyingFormat; label: string }[] = [
 export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
+  const [rivals, setRivals] = useState(initial.rivals);
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
   const { trackId, timeOfDay } = useSessionSetupPrefs();
@@ -53,8 +57,8 @@ export function SessionSetup() {
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
 
-  const persist = (laps: number, id: string, tod: TimeOfDay) => {
-    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod });
+  const persist = (laps: number, id: string, tod: TimeOfDay, rivalCount: number = rivals) => {
+    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, rivals: rivalCount });
   };
 
   return (
@@ -137,6 +141,36 @@ export function SessionSetup() {
           </div>
         </>
       )}
+      {sessionMode !== "practice" && (
+        <>
+          <div className={styles.sliderRow}>
+            <span className={styles.label}>RIVALS</span>
+            <span className={styles.readout} aria-live="polite">
+              {rivals}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={MIN_RIVALS}
+            max={MAX_RIVALS}
+            value={rivals}
+            onChange={(e) => {
+              const count = parseInt(e.target.value, 10);
+              const clamped = Number.isFinite(count)
+                ? Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, count))
+                : DEFAULT_RIVALS;
+              setRivals(clamped);
+              persist(raceLaps, trackId, timeOfDay, clamped);
+            }}
+            className={styles.slider}
+            aria-label="Rival count"
+          />
+          <div className={styles.scale}>
+            <span>{MIN_RIVALS} (duel)</span>
+            <span>{MAX_RIVALS} (full grid)</span>
+          </div>
+        </>
+      )}
       <Link
         href={buildRaceUrl({
           mode: sessionMode,
@@ -146,6 +180,7 @@ export function SessionSetup() {
           driver: parseDriverCode(driverCode),
           tod: timeOfDay,
           qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
+          rivals: sessionMode === "practice" ? undefined : rivals,
         })}
         className={styles.drive}
       >

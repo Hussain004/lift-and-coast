@@ -88,3 +88,54 @@ export function resolveRosterSelection(teamId: string, driverCode: string): Rost
   const teammate = team.drivers.find((d) => d.code !== driver.code) ?? team.drivers[0];
   return { team, driver, teammate };
 }
+
+export interface FieldRival {
+  code: string;
+  name: string;
+  number: number;
+  teamId: string;
+  /** Livery color for the car, tower chip and minimap dot. */
+  color: string;
+}
+
+export interface FieldRoster {
+  team: RosterTeam;
+  driver: RosterDriver;
+  /** Opponents in deterministic roster order, capped at the request. */
+  rivals: FieldRival[];
+}
+
+/**
+ * Plan section 7 (full field): the grid behind a (team, driver, rival
+ * count) pick. Every driver except the player's own is a candidate, in
+ * roster order (stable across visits, so ?rivals=5 always means the same
+ * five cars), capped at the request - with 22 drivers on the roster that
+ * fills up to a 20-car grid. Each rival runs its own team's primary
+ * livery, the way a real grid dresses per team rather than per player.
+ */
+export function resolveFieldRoster(
+  teamId: string,
+  driverCode: string,
+  rivalCount: number
+): FieldRoster {
+  const { team, driver } = resolveRosterSelection(teamId, driverCode);
+  const count = Number.isFinite(rivalCount)
+    ? Math.max(0, Math.floor(rivalCount))
+    : 0;
+  const rivals: FieldRival[] = [];
+  for (const candidateTeam of TEAMS) {
+    for (const candidate of candidateTeam.drivers) {
+      if (rivals.length >= count) break;
+      if (candidate.code === driver.code) continue;
+      rivals.push({
+        code: candidate.code,
+        name: candidate.name,
+        number: candidate.number,
+        teamId: candidateTeam.id,
+        color: candidateTeam.primaryColor,
+      });
+    }
+    if (rivals.length >= count) break;
+  }
+  return { team, driver, rivals };
+}

@@ -29,22 +29,23 @@ function frame(track: TrackData): {
 }
 
 /**
- * Spawn for one car. `playerSpot` is the PLAYER's spot (1|2) or null for
- * the old equal standing start; `isPlayer` picks which car this is for.
- * P1 keeps the exact historical spawn (center for the player, lateral
- * offset for the AI) so un-gridded sessions behave byte-identically; P2
- * sits GRID_BEHIND_METERS back on the same lateral.
+ * Spawn for a grid slot (0-based: slot 0 is pole). The field forms two
+ * columns with F1-style stagger - pole sits at the line on the centerline
+ * (the exact historical P1 spawn), every other car sits a row
+ * (GRID_BEHIND_METERS) back per pair, alternating sides, with the behind
+ * car's lap timer forgiving the run up to the line (see startsBehindLine
+ * in lapTimer.ts). Callers map an absent ?grid= to slot 0 for the player,
+ * so un-gridded sessions start staggered from pole: the old side-by-side
+ * P2 never got 3m behind the line, so its timer could never arm and its
+ * first crossing mis-recorded - every car behind the line now arms
+ * correctly by construction.
  */
-export function gridSpawn(
-  track: TrackData,
-  playerSpot: 1 | 2 | null,
-  isPlayer: boolean
-): GridSpawn {
+export function gridSlot(track: TrackData, slot: number): GridSpawn {
   const { forwardX, forwardZ, rightX, rightZ } = frame(track);
-  const lateral = isPlayer ? 0 : (track.width[0] / 2) * GRID_OFFSET_FRACTION_OF_HALF_WIDTH;
-  const isBehind =
-    playerSpot !== null && (playerSpot === 1) !== isPlayer;
-  const behind = isBehind ? GRID_BEHIND_METERS : 0;
+  const halfWidth = track.width[0] / 2;
+  const lateral =
+    slot === 0 ? 0 : (slot % 2 === 0 ? -1 : 1) * halfWidth * GRID_OFFSET_FRACTION_OF_HALF_WIDTH;
+  const behind = Math.ceil(slot / 2) * GRID_BEHIND_METERS;
   return {
     x: track.startPos.x + rightX * lateral - forwardX * behind,
     z: track.startPos.z + rightZ * lateral - forwardZ * behind,

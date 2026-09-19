@@ -58,16 +58,45 @@
   line-height: 1;
 }
 
-.towerRow {
+.towerRows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+/* Tower rows render from innerHTML (see renderTowerHtml), so these are
+   global classes, not module-scoped - F1 tower: position, code chip,
+   gap, with the player's own row edged in green. */
+:global(.tower-row) {
   display: flex;
   align-items: center;
   gap: 8px;
   color: #aaa;
   font-size: 12px;
   letter-spacing: 1px;
+  border-left: 2px solid transparent;
+  padding-left: 6px;
 }
 
-.codeChip {
+:global(.tower-row-you) {
+  border-left-color: #39ff88;
+  color: #fff;
+}
+
+:global(.tower-pos) {
+  min-width: 26px;
+  color: #fff;
+  font-weight: 700;
+}
+
+:global(.tower-gap) {
+  color: #aaa;
+  margin-left: auto;
+}
+
+:global(.code-chip) {
   color: #0a0a0a;
   font-weight: 700;
   font-size: 12px;

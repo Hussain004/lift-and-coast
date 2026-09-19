@@ -11,9 +11,9 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
-import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
+import { parseDriverCode, parseTeamId, resolveFieldRoster } from "@/lib/race/roster";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
@@ -52,13 +52,16 @@ function RaceContent() {
   // championship panel) - the race never reads the season itself, so grid
   // assignment stays synchronous with spawning.
   const playerGridSpot = parseGridSpot(searchParams.get("grid"));
+  const rivalCount = parseRivals(searchParams.get("rivals"));
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
   // Garage pick from the home screen (see lib/race/roster.ts): the player
-  // runs the team primary, the teammate-opponent the secondary.
-  const { team, driver, teammate } = resolveRosterSelection(
+  // runs their own team's primary, and every rival runs its own team's
+  // primary - a full grid dresses per team, like the real thing.
+  const { team, driver, rivals } = resolveFieldRoster(
     parseTeamId(searchParams.get("team")),
-    parseDriverCode(searchParams.get("driver"))
+    parseDriverCode(searchParams.get("driver")),
+    rivalCount
   );
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
   // Resolved per-render from the selected track - only changes on a URL
@@ -86,9 +89,13 @@ function RaceContent() {
   const rpmRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
-  const aiMinimapMarkerRef = useRef<SVGCircleElement>(null);
+  // One dot element per rival, written by aiIndex (see AICar.tsx) -
+  // callback refs into a shared array, so the count can change without
+  // hook-count violations.
+  const aiMarkerEls = useRef<(SVGCircleElement | null)[]>([]);
   const positionRef = useRef<HTMLDivElement>(null);
   const raceResultRef = useRef<HTMLDivElement>(null);
+  const towerRef = useRef<HTMLDivElement>(null);
   const countdownRef = useRef<HTMLDivElement>(null);
   const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
   const penaltyToastRef = useRef<HTMLDivElement>(null);
@@ -102,9 +109,11 @@ function RaceContent() {
   return (
     <div className={styles.wrap}>
       <Scene
+        key={`${track.id}-${rivals.length}-${sessionMode}`}
         track={track}
         playerBodyColor={team.primaryColor}
-        aiBodyColor={team.secondaryColor}
+        rivals={rivals}
+        playerCode={driver.code}
         speedRef={speedRef}
         lapRef={lapRef}
         deltaRef={deltaRef}
@@ -119,9 +128,10 @@ function RaceContent() {
         rpmRef={rpmRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
-        aiMinimapMarkerRef={aiMinimapMarkerRef}
+        aiMarkerEls={aiMarkerEls}
         positionRef={positionRef}
         raceResultRef={raceResultRef}
+        towerRef={towerRef}
         raceLaps={raceLaps}
         champRound={champRound}
         sessionMode={sessionMode}
@@ -134,7 +144,10 @@ function RaceContent() {
         timeOfDay={timeOfDay}
       />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
-      {/* Timing tower, broadcast style: live lap/position plus both cars. */}
+      {/* Timing tower, broadcast style: live lap/position plus the full
+          field below - Car.tsx rewrites the rows ~10Hz (see
+          renderTowerHtml), so this container starts with one static row
+          per car and never goes stale on first paint. */}
       <div className={styles.tower}>
         <div className={styles.towerEvent}>{trackName}</div>
         <div className={styles.lap} ref={lapRef}>
@@ -143,17 +156,23 @@ function RaceContent() {
         <div className={styles.position} ref={positionRef}>
           P1
         </div>
-        <div className={styles.towerRow}>
-          <span className={styles.codeChip} style={{ background: team.primaryColor }}>
-            {driver.code}
-          </span>
-          <span>YOU</span>
-        </div>
-        <div className={styles.towerRow}>
-          <span className={styles.codeChip} style={{ background: team.secondaryColor }}>
-            {teammate.code}
-          </span>
-          <span>RIVAL</span>
+        <div className={styles.towerRows} ref={towerRef}>
+          <div className="tower-row tower-row-you">
+            <span className="tower-pos">P1</span>
+            <span className="code-chip" style={{ background: team.primaryColor }}>
+              {driver.code}
+            </span>
+            <span className="tower-gap">LEADER</span>
+          </div>
+          {rivals.map((rival) => (
+            <div className="tower-row" key={rival.code}>
+              <span className="tower-pos">–</span>
+              <span className="code-chip" style={{ background: rival.color }}>
+                {rival.code}
+              </span>
+              <span className="tower-gap">…</span>
+            </div>
+          ))}
         </div>
         <div className={styles.sectors} ref={sectorsRef} />
         <div className={styles.delta} ref={deltaRef} />
@@ -197,12 +216,21 @@ function RaceContent() {
         <g ref={minimapGroupRef} transform={initialMinimapTransform}>
           <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
           <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
-          {/* AI opponent - a plain world-space dot inside the same rotating
-              group as the track path, so it inherits the egocentric
-              transform for free instead of needing its own rotation math
-              (unlike the player's own fixed, always-up-pointing marker
-              below). Matches the teammate-opponent's own chassis color. */}
-          <circle ref={aiMinimapMarkerRef} cx={track.startPos.x} cy={track.startPos.z} r={5} fill={team.secondaryColor} />
+          {/* One dot per rival, written by aiIndex (see AICar.tsx) - plain
+              world-space dots inside the same rotating group as the track
+              path, so they inherit the egocentric transform for free. */}
+          {rivals.map((rival, k) => (
+            <circle
+              key={rival.code}
+              ref={(el) => {
+                aiMarkerEls.current[k] = el;
+              }}
+              cx={track.startPos.x}
+              cy={track.startPos.z}
+              r={5}
+              fill={rival.color}
+            />
+          ))}
         </g>
         {/* Fixed at the box center, always pointing up - the world rotates
             around this marker instead of the marker rotating, so there's no

@@ -172,7 +172,9 @@ describe("championship weekend", () => {
     expect(season.rounds[0].qualiSpot).toBe(1);
     // Out-of-range and invalid spots are no-ops.
     expect(recordQualiResult(season, 99, 1)).toBe(season);
-    expect(recordQualiResult(season, 0, 3 as 1 | 2)).toBe(season);
+    expect(recordQualiResult(season, 0, 0)).toBe(season);
+    expect(recordQualiResult(season, 0, 21)).toBe(season);
+    expect(recordQualiResult(season, 0, 2.5)).toBe(season);
   });
 
   it("walks practice-optional qualifying-gated weekend stages", () => {
@@ -200,5 +202,23 @@ describe("championship weekend", () => {
     } as unknown as ChampionshipSeason;
     // Missing qualiSpot reads as unqualified, not as ready to race.
     expect(weekendStage(legacy, 0)).toBe("qualifying");
+  });
+});
+
+describe("full-field qualifying", () => {
+  it("records grid spots across the whole field", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    season = recordQualiResult(season, 0, 20);
+    expect(season.rounds[0].qualiSpot).toBe(20);
+    expect(weekendStage(season, 0)).toBe("race");
+  });
+
+  it("scores the best rival (P2 behind a win, P1 otherwise)", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    season = recordRoundResult(season, 0, 1);
+    season = recordRoundResult(season, 1, 5);
+    const standings = computeStandings(season);
+    expect(standings.playerPoints).toBe(25 + 10);
+    expect(standings.aiPoints).toBe(18 + 25);
   });
 });

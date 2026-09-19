@@ -8,6 +8,7 @@ import {
   loadRosterPrefs,
   parseDriverCode,
   parseTeamId,
+  resolveFieldRoster,
   resolveRosterSelection,
   saveRosterPrefs,
 } from "../lib/race/roster";
@@ -128,5 +129,44 @@ describe("roster prefs", () => {
       driverCode: DEFAULT_DRIVER_CODE,
     });
     expect(() => saveRosterPrefs({ teamId: "mclaren", driverCode: "PIA" }, null)).not.toThrow();
+  });
+});
+
+describe("resolveFieldRoster", () => {
+  it("excludes only the player's driver and keeps roster order", () => {
+    const { driver, rivals } = resolveFieldRoster("red-bull", "VER", 19);
+    expect(rivals.length).toBe(19);
+    expect(rivals.some((r) => r.code === driver.code)).toBe(false);
+    expect(rivals[0].code).toBe("GAS");
+    // The teammate stays in the field as a rival like everyone else.
+    expect(rivals.some((r) => r.code === "HAD")).toBe(true);
+  });
+
+  it("caps at the request and at the roster size", () => {
+    expect(resolveFieldRoster("ferrari", "HAM", 1).rivals.length).toBe(1);
+    expect(resolveFieldRoster("ferrari", "HAM", 0).rivals.length).toBe(0);
+    expect(resolveFieldRoster("ferrari", "HAM", 99).rivals.length).toBe(21);
+    expect(resolveFieldRoster("ferrari", "HAM", -3).rivals.length).toBe(0);
+  });
+
+  it("dresses every rival in its own team primary with unique codes", () => {
+    const { rivals } = resolveFieldRoster("mclaren", "NOR", 19);
+    const codes = new Set(rivals.map((r) => r.code));
+    expect(codes.size).toBe(rivals.length);
+    for (const rival of rivals) {
+      const team = TEAMS.find((t) => t.id === rival.teamId)!;
+      expect(team).toBeDefined();
+      expect(rival.color).toBe(team.primaryColor);
+      expect(rival.color).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("is stable: same pick, same field, and resolves unknown picks", () => {
+    const a = resolveFieldRoster("williams", "ALB", 7).rivals.map((r) => r.code);
+    const b = resolveFieldRoster("williams", "ALB", 7).rivals.map((r) => r.code);
+    expect(a).toEqual(b);
+    const fallback = resolveFieldRoster("not-a-team", "XXX", 3);
+    expect(fallback.rivals.length).toBe(3);
+    expect(fallback.driver.code).toBe(DEFAULT_DRIVER_CODE);
   });
 });

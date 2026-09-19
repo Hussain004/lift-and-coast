@@ -4,13 +4,15 @@
 // only (no storage, no React) so the points/standings bookkeeping is
 // unit-testable without a browser.
 //
-// Field size: this build races the player against the single verified AI
-// opponent, so a round is a two-car result. The points table is written out
-// as a full F1-style list anyway (positions 3+ just never occur yet) so
-// widening the field later is a data/AI change rather than a rewrite of the
-// scoring rules. `aiPoints` below assumes exactly one opponent - the car
-// that is not the player - which is the piece that changes with field size.
+// Field size: this build races the player against up to 19 verified AI
+// opponents (see resolveFieldRoster), so a round is a full-field result.
+// The points table below is the full F1-style list (25-18-15-...) and the
+// standings' "AI" row follows the best-finishing rival each round - the
+// car that actually contested the win - which is exactly what the old
+// single-opponent math computed, generalized: best rival is P2 when the
+// player wins, P1 otherwise.
 import { isKnownTrackId } from "../tracks/registry";
+import { MAX_FIELD_SIZE } from "./sessionSetup";
 
 /** Plan section 7: F1-style points (25-18-15-...). */
 export const CHAMPIONSHIP_POINTS: readonly number[] = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
@@ -29,7 +31,7 @@ export interface ChampionshipRound {
    * until qualified. The race is only offered once this is set - a
    * championship weekend runs practice (optional) -> qualifying -> race.
    */
-  qualiSpot: 1 | 2 | null;
+  qualiSpot: number | null;
 }
 
 export interface ChampionshipSeason {
@@ -93,10 +95,10 @@ export function recordRoundResult(
 export function recordQualiResult(
   season: ChampionshipSeason,
   roundIndex: number,
-  qualiSpot: 1 | 2
+  qualiSpot: number
 ): ChampionshipSeason {
   if (roundIndex < 0 || roundIndex >= season.rounds.length) return season;
-  if (qualiSpot !== 1 && qualiSpot !== 2) return season;
+  if (!Number.isInteger(qualiSpot) || qualiSpot < 1 || qualiSpot > MAX_FIELD_SIZE) return season;
   const rounds = season.rounds.map((round, i) =>
     i === roundIndex ? { ...round, qualiSpot } : round
   );
@@ -140,7 +142,9 @@ export function computeStandings(season: ChampionshipSeason): ChampionshipStandi
     if (round.playerPosition === null) continue;
     completed += 1;
     playerPoints += pointsForPosition(round.playerPosition);
-    // Single opponent: whoever isn't the player (see the field-size note above).
+    // Best-finishing rival: P2 when the player wins, P1 otherwise (every
+    // other grid slot is filled, so the rival contesting the win always
+    // holds one of those two spots).
     const aiPosition = round.playerPosition === 1 ? 2 : 1;
     aiPoints += pointsForPosition(aiPosition);
     if (round.playerPosition === 1) playerWins += 1;
@@ -203,8 +207,10 @@ export function isChampionshipSeason(value: unknown): value is ChampionshipSeaso
     if (
       qualiSpot !== undefined &&
       qualiSpot !== null &&
-      qualiSpot !== 1 &&
-      qualiSpot !== 2
+      (typeof qualiSpot !== "number" ||
+        !Number.isInteger(qualiSpot) ||
+        qualiSpot < 1 ||
+        qualiSpot > MAX_FIELD_SIZE)
     ) {
       return false;
     }

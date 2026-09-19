@@ -13,7 +13,7 @@ import {
   type ChampionshipSeason,
 } from "@/lib/race/championship";
 import { clearSeason, loadSeason, saveSeason } from "@/lib/persistence/championship";
-import { DEFAULT_RACE_LAPS, buildRaceUrl } from "@/lib/race/sessionSetup";
+import { DEFAULT_RACE_LAPS, MAX_RIVALS, buildRaceUrl } from "@/lib/race/sessionSetup";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
@@ -154,12 +154,15 @@ export function Championship() {
         {!complete && (() => {
           const round = season.rounds[next];
           const stage = weekendStage(season, next);
+          // Championship weekends run the full F1 field (see MAX_RIVALS) -
+          // one-off sessions pick their own count on the home panel.
           const base = {
             track: round.trackId,
             team: parseTeamId(teamId),
             driver: parseDriverCode(driverCode),
             tod: timeOfDay,
             champ: next,
+            rivals: MAX_RIVALS,
           };
           return (
             <>

@@ -402,19 +402,21 @@ export function Scene({
   rpmRef,
   minimapGroupRef,
   minimapMarkerRef,
-  aiMinimapMarkerRef,
+  aiMarkerEls,
   positionRef,
   raceResultRef,
+  towerRef,
   raceLaps,
   champRound,
   sessionMode = "race",
   qualiFormat = "timed",
   playerGridSpot = null,
+  playerCode = "YOU",
+  rivals = [],
   countdownRef,
   qualifyingDisplayRef,
   penaltyToastRef,
   playerBodyColor,
-  aiBodyColor,
   audioRef,
   timeOfDay = "day",
 }: {
@@ -422,9 +424,7 @@ export function Scene({
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - team primary for the player. */
   playerBodyColor: string;
-  /** Garage pick - team secondary for the teammate-opponent. */
-  aiBodyColor: string;
-  /** Shared with the race audio rig - both cars fill it in every frame. */
+  /** Shared with the race audio rig - every car fills it in every frame. */
   audioRef?: React.RefObject<AudioSnapshot>;
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
@@ -440,9 +440,15 @@ export function Scene({
   rpmRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
-  aiMinimapMarkerRef: React.RefObject<SVGCircleElement | null>;
+  /**
+   * One minimap dot element per rival (see page.tsx) - each AICar writes
+   * its own by aiIndex, so the count simply matches the rivals list.
+   */
+  aiMarkerEls?: React.RefObject<(SVGCircleElement | null)[]>;
   positionRef: React.RefObject<HTMLDivElement | null>;
   raceResultRef: React.RefObject<HTMLDivElement | null>;
+  /** F1 timing tower body (see page.tsx) - Car rewrites its rows ~10Hz. */
+  towerRef?: React.RefObject<HTMLDivElement | null>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /** Lighting preset - see page.tsx's ?tod= URL param. */
@@ -454,23 +460,32 @@ export function Scene({
   /** Qualifying format from ?qformat= (default timed). */
   qualiFormat?: QualifyingFormat;
   /**
-   * The player's grid spot from ?grid= (a qualifying result or the
-   * championship panel), or null for the old equal standing start.
-   * The AI takes the other spot.
+   * The player's grid spot from ?grid= (1-based; a qualifying result or
+   * the championship panel), or null for a staggered start from pole.
+   * Every other slot goes to the rivals in field order.
    */
-  playerGridSpot?: 1 | 2 | null;
+  playerGridSpot?: number | null;
+  /** The player's FIA code for the tower (see page.tsx's roster pick). */
+  playerCode?: string;
+  /**
+   * The rivals in field order (see resolveFieldRoster): code + livery per
+   * car for the tower, minimap and bodies, and the count sizes the race
+   * state, qualifying board and grid. Fixed per mount (page.tsx remounts
+   * Scene when it changes, so every useRef below stays correct).
+   */
+  rivals?: { code: string; color: string }[];
   countdownRef: React.RefObject<HTMLDivElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
-  const raceRef = useRef<RaceState>(createRaceState());
+  const raceRef = useRef<RaceState>(createRaceState(rivals.length));
   const raceStartRef = useRef(false);
   // Shared rewind flag (see Car.tsx's sharedRewindActiveRef): the player
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
   const sharedRewindActiveRef = useRef(false);
-  const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes());
+  const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes(rivals.length));
   const visualRef = useRef<THREE.Group>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
@@ -518,12 +533,15 @@ export function Scene({
           minimapMarkerRef={minimapMarkerRef}
           positionRef={positionRef}
           raceResultRef={raceResultRef}
+          towerRef={towerRef}
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
           sessionMode={sessionMode}
           qualiFormat={qualiFormat}
           playerGridSpot={playerGridSpot}
+          playerCode={playerCode}
+          rivals={rivals}
           raceStartRef={raceStartRef}
           sharedRewindActiveRef={sharedRewindActiveRef}
           qualifyingRef={qualifyingRef}
@@ -533,19 +551,28 @@ export function Scene({
           bodyColor={playerBodyColor}
           audioRef={audioRef}
         />
-        {sessionMode !== "practice" && (
-          <AICar
-            track={track}
-            raceRef={raceRef}
-            minimapMarkerRef={aiMinimapMarkerRef}
-            raceStartRef={raceStartRef}
-            sharedRewindActiveRef={sharedRewindActiveRef}
-            qualifyingRef={qualifyingRef}
-            playerGridSpot={playerGridSpot}
-            bodyColor={aiBodyColor}
-            audioRef={audioRef}
-          />
-        )}
+        {sessionMode !== "practice" &&
+          rivals.map((rival, k) => {
+            // Grid slots fill 1..N+1 around the player's own spot: the
+            // rivals take every other slot in field order.
+            const playerSlot = (playerGridSpot ?? 1) - 1;
+            const gridSlotIndex = k < playerSlot ? k : k + 1;
+            return (
+              <AICar
+                key={rival.code}
+                track={track}
+                raceRef={raceRef}
+                minimapMarkerEls={aiMarkerEls}
+                raceStartRef={raceStartRef}
+                sharedRewindActiveRef={sharedRewindActiveRef}
+                qualifyingRef={qualifyingRef}
+                gridSlotIndex={gridSlotIndex}
+                aiIndex={k}
+                bodyColor={rival.color}
+                audioRef={audioRef}
+              />
+            );
+          })}
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
       <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />

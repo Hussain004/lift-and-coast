@@ -50,7 +50,7 @@ import {
   REWIND_CAPACITY_SECONDS,
   snapshotOf,
 } from "@/lib/race/rewindBuffer";
-import { gridSpawn } from "@/lib/race/grid";
+import { gridSlot } from "@/lib/race/grid";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
@@ -58,41 +58,49 @@ import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { TrackData } from "@/lib/tracks/types";
 
 /**
- * A single AI opponent (plan section 6): follows the same ideal-line
- * approximation drawn for the player (lib/tracks/racingLine.ts) using
- * pure-pursuit steering and curvature-derived speed targets
- * (lib/ai/pathFollower.ts), running the identical vehicle rig as the
- * player's own car (Car.tsx) so it's bound by the same physics. No
- * racecraft, no opponent awareness, no difficulty tiers - groundwork for
- * a race weekend, not one.
+ * One AI opponent (plan section 6), instanced once per rival by Scene.tsx:
+ * follows the same ideal-line approximation drawn for the player
+ * (lib/tracks/racingLine.ts) using pure-pursuit steering and
+ * curvature-derived speed targets (lib/ai/pathFollower.ts), running the
+ * identical vehicle rig as the player's own car (Car.tsx) so it's bound
+ * by the same physics. No racecraft, no opponent awareness, no difficulty
+ * tiers - every rival drives the same pace on the same line, so a field
+ * holds formation like a train rather than racing each other; the player
+ * provides the overtaking.
  *
  * Deliberately owns its own chassis/visual/controller refs rather than
  * sharing anything with Scene.tsx's player refs - ChaseCamera follows
  * Scene.tsx's visualRef, and this car must never become that target.
  *
- * Does track its own lap count now (plan section 7's Quick Race), writing
- * into the shared raceRef so Car.tsx can compute a live P1/P2 without
- * either car needing a ref into the other's internals. Also writes its own
- * world position into minimapMarkerRef each frame so it shows up on the
- * player's minimap (a plain SVG circle, not the rotating egocentric
- * marker the player gets - see page.tsx). In qualifying sessions its best
- * valid lap feeds the shared qualifying times (see the validity latch
- * below) so the grid reflects clean laps only.
+ * Tracks its own lap count (plan section 7's Quick Race), writing into
+ * its slot of the shared raceRef so Car.tsx can rank the full field
+ * without either car needing a ref into the other's internals. Also
+ * writes its own world position into its minimap dot each frame (a plain
+ * SVG circle, not the rotating egocentric marker the player gets - see
+ * page.tsx). In qualifying sessions its best valid lap feeds the shared
+ * qualifying times (see the validity latch below) so the grid reflects
+ * clean laps only.
  */
 export function AICar({
   track,
   raceRef,
-  minimapMarkerRef,
+  minimapMarkerEls,
   raceStartRef,
   qualifyingRef,
-  playerGridSpot = null,
   sharedRewindActiveRef,
+  gridSlotIndex = 1,
+  aiIndex = 0,
   bodyColor = "#ff5a3c",
   audioRef,
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
-  minimapMarkerRef?: React.RefObject<SVGCircleElement | null>;
+  /**
+   * One minimap dot per rival, written by index (see aiIndex) - plain SVG
+   * circles inside the same rotating group as the track path (see
+   * page.tsx), so they inherit the egocentric transform for free.
+   */
+  minimapMarkerEls?: React.RefObject<(SVGCircleElement | null)[]>;
   /** Grid start (Scene.tsx) - throttle is locked out while false. */
   raceStartRef?: React.RefObject<boolean>;
   /**
@@ -106,11 +114,13 @@ export function AICar({
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   /**
-   * The PLAYER's grid spot (see Scene.tsx) - the AI takes the other one.
-   * Null keeps the old equal standing start.
+   * This car's grid slot (0-based, see gridSlot in grid.ts) and index
+   * among the rivals (see resolveFieldRoster) - the scene assigns slots
+   * from the qualifying order, or staggered-from-pole without one.
    */
-  playerGridSpot?: 1 | 2 | null;
-  /** Garage pick (see lib/race/roster.ts) - the teammate-opponent's secondary livery. */
+  gridSlotIndex?: number;
+  aiIndex?: number;
+  /** Garage pick (see lib/race/roster.ts) - this rival's own team livery. */
   bodyColor?: string;
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
    * car fills in the opponent half every render frame from live telemetry. */
@@ -133,7 +143,7 @@ export function AICar({
     createLapTimer({
       startPos: track.startPos,
       lineHalfWidth: LINE_HALF_WIDTH_METERS,
-      startsBehindLine: gridSpawn(track, playerGridSpot, false).startsBehindLine,
+      startsBehindLine: gridSlot(track, gridSlotIndex).startsBehindLine,
     })
   );
   // Validity latch for the shared qualifying times (mirrors the player's
@@ -154,14 +164,14 @@ export function AICar({
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
   const { spawnX, spawnZ, spawnQuat } = useMemo(() => {
-    const grid = gridSpawn(track, playerGridSpot, false);
+    const grid = gridSlot(track, gridSlotIndex);
     const yaw = track.startPos.headingRad;
     return {
       spawnX: grid.x,
       spawnZ: grid.z,
       spawnQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)),
     };
-  }, [track, playerGridSpot]);
+  }, [track, gridSlotIndex]);
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -237,7 +247,19 @@ export function AICar({
     if (raceStartRef?.current ?? true) {
       const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
       if (raceRef?.current) {
-        raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
+        const opponents = raceRef.current.opponents;
+        while (opponents.length <= aiIndex) {
+          opponents.push({ lapCount: 0, progressMeters: 0, speedMs: 0 });
+        }
+        const rotNow = body.rotation();
+        opponents[aiIndex] = {
+          lapCount: lap.lapCount,
+          progressMeters: limitStatus.progressMeters,
+          speedMs: computeSignedForwardSpeed(
+            body.linvel(),
+            yawFromQuaternion(rotNow.x, rotNow.y, rotNow.z, rotNow.w)
+          ),
+        };
       }
       // Playable Qualifying: the AI's best VALID lap, feeding the same
       // shared times the player writes (see Car.tsx) so the grid compares
@@ -251,9 +273,11 @@ export function AICar({
       }
       if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
         if (qualifyingRef?.current && !aiLapInvalidRef.current) {
-          const prev = qualifyingRef.current.ai;
+          const times = qualifyingRef.current.opponents;
+          while (times.length <= aiIndex) times.push(null);
+          const prev = times[aiIndex];
           if (prev === null || lap.lastLapSeconds < prev) {
-            qualifyingRef.current.ai = lap.lastLapSeconds;
+            times[aiIndex] = lap.lastLapSeconds;
           }
         }
         aiLapInvalidRef.current = false;
@@ -327,14 +351,17 @@ export function AICar({
     const controller = controllerRef.current;
     if (!controller) return;
     const pos = chassisRef.current?.translation();
-    if (minimapMarkerRef?.current && pos) {
-      minimapMarkerRef.current.setAttribute("cx", pos.x.toFixed(1));
-      minimapMarkerRef.current.setAttribute("cy", pos.z.toFixed(1));
+    const marker = minimapMarkerEls?.current?.[aiIndex];
+    if (marker && pos) {
+      marker.setAttribute("cx", pos.x.toFixed(1));
+      marker.setAttribute("cy", pos.z.toFixed(1));
     }
     // Opponent half of the race audio snapshot (see
     // app/race/RaceAudioRig.tsx) - same rpm policy as the player's own
-    // shift bar, so the two engines read as the same machinery.
-    if (audioRef && pos) {
+    // shift bar, so the two engines read as the same machinery. Only the
+    // first rival drives the voice: mixing nineteen engines would be mud,
+    // and positional panning needs exactly one source.
+    if (audioRef && pos && aiIndex === 0) {
       const c = lastControlsRef.current;
       // Same forward/right convention as Car.tsx's own snapshot.
       const forwardMs = c.lvx * -Math.sin(c.yaw) + c.lvz * -Math.cos(c.yaw);

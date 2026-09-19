@@ -11,48 +11,66 @@ import {
 } from "../lib/race/qualifying";
 
 describe("polePosition", () => {
-  it("is null until both sides have a time", () => {
+  it("is null until the player and a rival both have a time", () => {
     expect(polePosition(createQualifyingTimes())).toBeNull();
-    expect(polePosition({ player: 90, ai: null })).toBeNull();
-    expect(polePosition({ player: null, ai: 90 })).toBeNull();
+    expect(polePosition({ player: 90, opponents: [null] })).toBeNull();
+    expect(polePosition({ player: null, opponents: [90] })).toBeNull();
   });
 
   it("picks whichever side is faster once both are in", () => {
-    expect(polePosition({ player: 88, ai: 90 })).toBe("player");
-    expect(polePosition({ player: 92, ai: 90 })).toBe("ai");
+    expect(polePosition({ player: 88, opponents: [90] })).toBe("player");
+    expect(polePosition({ player: 92, opponents: [90] })).toBe(0);
   });
 
-  it("breaks an exact tie in favor of the player, matching computeRacePosition", () => {
-    expect(polePosition({ player: 90, ai: 90 })).toBe("player");
+  it("returns the fastest rival's index in a full field", () => {
+    expect(polePosition({ player: 95, opponents: [92, 90, 93] })).toBe(1);
+    expect(polePosition({ player: 89, opponents: [92, 90, 93] })).toBe("player");
+    // Rivals without a time never win.
+    expect(polePosition({ player: 95, opponents: [null, null] })).toBeNull();
+  });
+
+  it("breaks an exact tie in favor of the player, matching computeRacePositions", () => {
+    expect(polePosition({ player: 90, opponents: [90] })).toBe("player");
   });
 });
 
 describe("QualifyingSession", () => {
   it("starts unfinished with no times and a full clock", () => {
-    const timed = createQualifyingSession("timed");
+    const timed = createQualifyingSession("timed", 1);
     expect(timed.finished).toBe(false);
-    expect(timed.best).toEqual({ player: null, ai: null });
+    expect(timed.best).toEqual({ player: null, opponents: [null] });
     expect(timed.timeLeftSeconds).toBe(TIMED_QUALIFYING_SECONDS);
-    const oneshot = createQualifyingSession("oneshot");
+    const oneshot = createQualifyingSession("oneshot", 1);
     expect(oneshot.finished).toBe(false);
     expect(qualifyingWinner(oneshot)).toBeNull();
   });
 
   it("keeps the best valid lap per side and ignores invalid ones", () => {
-    let session = createQualifyingSession("timed");
+    let session = createQualifyingSession("timed", 1);
     session = recordQualiLap(session, "player", 95);
     session = recordQualiLap(session, "player", 92);
     session = recordQualiLap(session, "player", 94);
-    session = recordQualiLap(session, "ai", null);
+    session = recordQualiLap(session, 0, null);
     expect(session.best.player).toBe(92);
-    expect(session.best.ai).toBeNull();
+    expect(session.best.opponents).toEqual([null]);
     expect(qualifyingWinner(session)).toBe("player");
     expect(session.finished).toBe(false);
   });
 
-  it("ends a one-shot on the player's lap, not the AI's", () => {
-    let session = createQualifyingSession("oneshot");
-    session = recordQualiLap(session, "ai", 90);
+  it("tracks each rival separately", () => {
+    let session = createQualifyingSession("timed", 3);
+    session = recordQualiLap(session, 0, 95);
+    session = recordQualiLap(session, 2, 90);
+    session = recordQualiLap(session, 0, 93);
+    expect(session.best.opponents).toEqual([93, null, 90]);
+    expect(qualifyingWinner(session)).toBe(2);
+    // No player time yet: behind both timed rivals.
+    expect(playerGridSpot(session)).toBe(3);
+  });
+
+  it("ends a one-shot on the player's lap, not the rivals'", () => {
+    let session = createQualifyingSession("oneshot", 1);
+    session = recordQualiLap(session, 0, 90);
     expect(session.finished).toBe(false);
     session = recordQualiLap(session, "player", 88);
     expect(session.finished).toBe(true);
@@ -62,13 +80,14 @@ describe("QualifyingSession", () => {
     expect(same.best.player).toBe(88);
   });
 
-  it("an invalidated one-shot leaves the driver with no time (P2)", () => {
-    let session = createQualifyingSession("oneshot");
-    session = recordQualiLap(session, "ai", 90);
+  it("an invalidated one-shot leaves the driver with no time (last)", () => {
+    let session = createQualifyingSession("oneshot", 2);
+    session = recordQualiLap(session, 0, 90);
+    session = recordQualiLap(session, 1, 95);
     session = recordQualiLap(session, "player", null);
     expect(session.finished).toBe(true);
     expect(session.best.player).toBeNull();
-    expect(playerGridSpot(session)).toBe(2);
+    expect(playerGridSpot(session)).toBe(3);
   });
 
   it("counts the clock down and finishes a timed session at zero", () => {
@@ -90,12 +109,23 @@ describe("QualifyingSession", () => {
   });
 
   it("breaks exact ties for the player and defaults to P1 with no contest", () => {
-    let session = createQualifyingSession("timed");
+    let session = createQualifyingSession("timed", 1);
     session = recordQualiLap(session, "player", 90);
-    session = recordQualiLap(session, "ai", 90);
+    session = recordQualiLap(session, 0, 90);
     expect(qualifyingWinner(session)).toBe("player");
     expect(playerGridSpot(session)).toBe(1);
     const empty = createQualifyingSession("timed");
     expect(playerGridSpot(empty)).toBe(1);
+  });
+
+  it("spots the player mid-field in a full field", () => {
+    let session = createQualifyingSession("timed", 4);
+    session = recordQualiLap(session, 0, 88);
+    session = recordQualiLap(session, 1, 92);
+    session = recordQualiLap(session, 2, 90);
+    session = recordQualiLap(session, 3, null);
+    session = recordQualiLap(session, "player", 91);
+    // 88 and 90 beat 91; 92 and the no-time lose to it: P3.
+    expect(playerGridSpot(session)).toBe(3);
   });
 });

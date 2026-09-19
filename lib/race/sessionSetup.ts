@@ -35,11 +35,27 @@ export function parseQualifyingFormat(raw: string | null): QualifyingFormat {
   return "timed";
 }
 
-/** Grid spot for the player from ?grid=, or null (equal standing start). */
-export function parseGridSpot(raw: string | null): 1 | 2 | null {
-  if (raw === "1") return 1;
-  if (raw === "2") return 2;
-  return null;
+/** Grid spot for the player from ?grid=, or null (staggered from pole). */
+export function parseGridSpot(raw: string | null): number | null {
+  if (raw === null) return null;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_FIELD_SIZE ? n : null;
+}
+
+// Plan section 7 (full field): how many AI rivals share the track - the
+// player plus up to 19 rivals fills a 20-car F1 grid. Unknown/missing
+// values fall back to the classic duel so every existing link (which
+// predates the parameter) keeps working unchanged.
+export const MIN_RIVALS = 1;
+export const MAX_RIVALS = 19;
+export const DEFAULT_RIVALS = 1;
+/** Cars on track including the player - the F1 grid size. */
+export const MAX_FIELD_SIZE = MAX_RIVALS + 1;
+
+export function parseRivals(raw: string | null): number {
+  const n = raw === null ? NaN : parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DEFAULT_RIVALS;
+  return Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, n));
 }
 
 export interface RaceUrlParams {
@@ -50,8 +66,9 @@ export interface RaceUrlParams {
   driver?: string;
   tod?: TimeOfDay;
   champ?: number | null;
-  grid?: 1 | 2 | null;
+  grid?: number | null;
   qformat?: QualifyingFormat;
+  rivals?: number;
 }
 
 /**
@@ -64,7 +81,7 @@ export interface RaceUrlParams {
 export function retargetSessionUrl(
   search: string,
   mode: SessionMode,
-  grid: 1 | 2 | null
+  grid: number | null
 ): string {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   params.set("mode", mode);
@@ -91,6 +108,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.champ !== undefined && params.champ !== null) query.set("champ", String(params.champ));
   if (params.grid !== undefined && params.grid !== null) query.set("grid", String(params.grid));
   if (params.qformat !== undefined) query.set("qformat", params.qformat);
+  if (params.rivals !== undefined) query.set("rivals", String(params.rivals));
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }
@@ -124,11 +142,17 @@ export interface SessionSetupPrefs {
   raceLaps: number;
   trackId: string;
   timeOfDay: TimeOfDay;
+  rivals: number;
 }
 
 function clampLaps(n: unknown): number {
   if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_RACE_LAPS;
   return Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, Math.round(n)));
+}
+
+function clampRivals(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_RIVALS;
+  return Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, Math.round(n)));
 }
 
 function clampTrackId(raw: unknown): string {
@@ -156,16 +180,18 @@ export function loadSessionSetupPrefs(
     raceLaps: DEFAULT_RACE_LAPS,
     trackId: DEFAULT_TRACK_ID,
     timeOfDay: DEFAULT_TIME_OF_DAY,
+    rivals: DEFAULT_RIVALS,
   };
   if (!storage) return defaults;
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown };
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; rivals?: unknown };
     return {
       raceLaps: clampLaps(parsed.raceLaps),
       trackId: clampTrackId(parsed.trackId),
       timeOfDay: clampTimeOfDay(parsed.timeOfDay),
+      rivals: clampRivals(parsed.rivals),
     };
   } catch {
     return defaults;
@@ -184,6 +210,7 @@ export function saveSessionSetupPrefs(
         raceLaps: clampLaps(prefs.raceLaps),
         trackId: clampTrackId(prefs.trackId),
         timeOfDay: clampTimeOfDay(prefs.timeOfDay),
+        rivals: clampRivals(prefs.rivals),
       })
     );
   } catch {

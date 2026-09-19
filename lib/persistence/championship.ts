@@ -50,7 +50,7 @@ export async function clearSeason(): Promise<void> {
  */
 export async function recordChampionshipQuali(
   roundIndex: number,
-  qualiSpot: 1 | 2
+  qualiSpot: number
 ): Promise<ChampionshipSeason | null> {
   const season = await loadSeason();
   if (!season) return null;
