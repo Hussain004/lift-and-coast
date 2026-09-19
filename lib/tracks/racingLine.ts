@@ -1,4 +1,7 @@
 import { DEPLOY_BOOST_MULTIPLIER } from "../physics/energy";
+import { computeDownforceN } from "../physics/aero";
+import { CHASSIS_MASS } from "../physics/vehicle";
+import { peakFrictionMu } from "../physics/tireModel";
 import type { TrackData } from "./types";
 
 // Plan section 4 point 8 ("racing line... drives the AI and the optional
@@ -48,18 +51,33 @@ const SMOOTHING_PASSES = 4;
 // hairpin) - real corners sharp enough to matter for AI off-track behavior
 // can exceed that over this lookahead. It's replaced with an actual
 // curvature estimate (unambiguous turn angle via atan2, divided by the
-// real arc length between the lookahead points) and a textbook lateral-
-// grip speed cap, v <= sqrt(maxLateralAccel * radius) - the same standard
-// technique already used for the accel/decel passes below, just applied
-// laterally instead of longitudinally.
+// real arc length between the lookahead points) and a lateral-grip speed
+// cap derived from the tire/aero model itself (see maxLateralAccelMs2):
+// v <= sqrt(a_lat(v) * radius), solved by fixed-point iteration since the
+// cap depends on speed through downforce. A flat ~1.2g cap was tried first
+// and misfit both ends of the lap at once (see LATERAL_SAFETY_FACTOR).
 const SPEED_LOOKAHEAD_POINTS = 30;
 const MAX_SPEED_MS = 70;
-const MIN_CORNER_SPEED_MS = 18;
-// ~1.2g - a plausible cornering-grip approximation, slightly below
-// MAX_DECEL_MS2's ~1.4g braking figure (real tires generally grip a little
-// harder in a straight line than mid-corner). Not a physics sim in its own
-// right, same as MAX_DECEL_MS2/MAX_ACCEL_MS2 below.
-const MAX_LATERAL_ACCEL_MS2 = 12;
+const MIN_CORNER_SPEED_MS = 12;
+// Lateral grip cap, derived from the same physics the car drives on instead
+// of a separately-tuned constant: peak tire mu at the speed's own
+// aero-loaded normal force (see peakFrictionMu / computeDownforceN),
+// times a safety factor. The factor covers what the steady-state number
+// doesn't: combined slip (corners are entered under braking, exited under
+// power - the friction circle is shared), load transfer unloading the
+// inside tires, tire wear through a stint, and the AI's own tracking error
+// around the precomputed line. Checked 0.8 against the full 180s AI gate
+// on all five circuits (see tests/trackAIStability.test.ts) - the profile
+// this produces is one the pure-pursuit driver can actually hold.
+//
+// Why speed-dependent at all: a flat cap misfits both ends of the lap at
+// once. At 60+ m/s the car pulls ~2.5g+ on downforce the flat 1.2g cap
+// ignored, so fast sweepers demanded braking the car never needed (red
+// line where the corner goes flat). At 12-20 m/s there is little
+// downforce and the flat cap was, if anything, generous, so hairpins
+// targeted speeds the car couldn't hold and the AI ran wide. One curve
+// fixes both directions: ~16 m/s² slow, ~25+ fast.
+const LATERAL_SAFETY_FACTOR = 0.8;
 // Backward/forward passes enforce a physically-plausible speed profile: you
 // can't be doing 250 km/h one point and 65 km/h the next just because a
 // tight corner is there - braking (and accelerating) takes distance. Values
@@ -186,6 +204,18 @@ export function classifyZone(decelMs2: number): ThrottleZone {
 }
 
 /**
+ * Peak lateral acceleration the car can sustain at a given speed, from the
+ * tire model's own load-sensitive mu at that speed's aero load - see the
+ * LATERAL_SAFETY_FACTOR comment for what the factor covers.
+ */
+export function maxLateralAccelMs2(speedMs: number): number {
+  const downforceN = computeDownforceN(Math.max(0, speedMs));
+  const loadPerTireN = (CHASSIS_MASS * 9.81 + downforceN) / 4;
+  const mu = peakFrictionMu(loadPerTireN);
+  return LATERAL_SAFETY_FACTOR * mu * (9.81 + downforceN / CHASSIS_MASS);
+}
+
+/**
  * A racing-line approximation: one point per centerline index (same
  * indexing as track.centerline, so callers that already work with
  * centerline indices - e.g. sector gates - line up directly with this),
@@ -252,20 +282,49 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // from "runs a bit wide" to "tips over" elsewhere on the lap. The fix
   // belongs on the classification signal only (see displaySpeedMs below),
   // never on the speed the AI actually drives to.
+  //
+  // Curvature is measured as the MAXIMUM over six 10-point sub-windows
+  // spanning the same +-30-point reach, never the net turn over the whole
+  // reach. A net turn cancels through direction changes: esses, chicanes
+  // and the approach/exit of hairpins read near-zero over 60m and the old
+  // net measurement targeted full speed through them (measured: the AI
+  // sailing 100m+ off at Becketts, and 45 m/s targeted at Monaco's
+  // hairpin). Each 10m sub-window is long enough that centerline noise
+  // never binds (noise reads as radius 300m+, capped by MAX_SPEED_MS long
+  // before it matters) yet short enough to catch each direction change of
+  // an esses on its own.
+  const CURVATURE_SUB_WINDOWS = 6;
+  const CURVATURE_SUB_POINTS = 10;
   const curveOnlySpeed = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const behind = unitTangentAt(positions, (i - SPEED_LOOKAHEAD_POINTS + n) % n);
-    const ahead = unitTangentAt(positions, (i + SPEED_LOOKAHEAD_POINTS) % n);
-    const cross = behind.x * ahead.z - behind.z * ahead.x;
-    const dot = behind.x * ahead.x + behind.z * ahead.z;
-    const turnAngle = Math.abs(Math.atan2(cross, dot));
-    let arcLength = 0;
-    for (let k = 0; k < 2 * SPEED_LOOKAHEAD_POINTS; k++) {
-      arcLength += segmentLengths[(i - SPEED_LOOKAHEAD_POINTS + k + n) % n];
+    let curvature = 0;
+    for (let w = 0; w < CURVATURE_SUB_WINDOWS; w++) {
+      const a = (i - SPEED_LOOKAHEAD_POINTS + w * CURVATURE_SUB_POINTS + n) % n;
+      const b = (i - SPEED_LOOKAHEAD_POINTS + (w + 1) * CURVATURE_SUB_POINTS + n) % n;
+      const behind = unitTangentAt(positions, a);
+      const ahead = unitTangentAt(positions, b);
+      const cross = behind.x * ahead.z - behind.z * ahead.x;
+      const dot = behind.x * ahead.x + behind.z * ahead.z;
+      const turnAngle = Math.abs(Math.atan2(cross, dot));
+      let arcLength = 0;
+      for (let k = 0; k < CURVATURE_SUB_POINTS; k++) {
+        arcLength += segmentLengths[(a + k) % n];
+      }
+      if (arcLength > 1e-6) curvature = Math.max(curvature, turnAngle / arcLength);
     }
-    const curvature = arcLength > 1e-6 ? turnAngle / arcLength : 0;
-    const maxLateralSpeed = curvature > 1e-9 ? Math.sqrt(MAX_LATERAL_ACCEL_MS2 / curvature) : MAX_SPEED_MS;
-    curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, maxLateralSpeed));
+    // v = sqrt(a(v) * r) is implicit (the cap itself depends on speed via
+    // downforce), so iterate a few times from the old flat-cap answer - the
+    // map is a contraction (sqrt of an affine function), so this converges
+    // to the fixed point within a fraction of an m/s.
+    let capped = MAX_SPEED_MS;
+    if (curvature > 1e-9) {
+      const radius = 1 / curvature;
+      capped = Math.sqrt(12 / curvature);
+      for (let k = 0; k < 4; k++) {
+        capped = Math.sqrt(maxLateralAccelMs2(capped) * radius);
+      }
+    }
+    curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, capped));
   }
 
   const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, MAX_ACCEL_MS2, MAX_DECEL_MS2);
@@ -305,6 +364,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       0,
       (displaySpeedMs[i] ** 2 - displaySpeedMs[next] ** 2) / (2 * segmentLengths[i])
     );
+    const zone = classifyZone(decelNeeded);
     result[i] = {
       position: positions[i],
       targetSpeedMs: targetSpeedMs[i],
@@ -312,8 +372,16 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       // Epsilon guards against the two independent pass computations
       // disagreeing by float noise even where they're conceptually meant
       // to be identical (both decel-limited by the same backward pass).
-      boostEligible: boostedTargetSpeedMs[i] > targetSpeedMs[i] + 0.05,
-      zone: classifyZone(decelNeeded),
+      // Plus the displayed zone gate: the zone comes from the SMOOTHED
+      // display profile while eligibility compares raw profiles, so at a
+      // braking zone's smeared edge a point can read brake-hard while the
+      // raw comparison still favors boost (corner exit overlapping the
+      // next corner's anticipation). The braking point itself still
+      // survives boosting (shared backward pass), but telling the driver
+      // to deploy where the line burns red is wrong advice - never
+      // eligible under red.
+      boostEligible: boostedTargetSpeedMs[i] > targetSpeedMs[i] + 0.05 && zone !== "brake-hard",
+      zone,
       distanceToNextMeters: segmentLengths[i],
     };
   }

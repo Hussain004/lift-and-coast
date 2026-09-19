@@ -1,4 +1,5 @@
 import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
+import { MAX_DECEL_MS2 } from "../tracks/racingLine";
 
 // Plan section 6: "steer toward a lookahead point on the racing line;
 // throttle/brake targets derived from curvature ahead (brake *before* the
@@ -58,6 +59,19 @@ const LOOKAHEAD_SECONDS = 1.0;
 const LOOKAHEAD_MIN_METERS = 24;
 const LOOKAHEAD_MAX_METERS = 50;
 const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error reaches this.
+// Brake planning: how far ahead to scan the profile for its minimum. The
+// trigger below fires full brake only when the deceleration REQUIRED to
+// make that minimum exceeds MAX_DECEL_MS2 - i.e. the profile's own
+// backward pass (which plans at exactly that decel) already says the car
+// cannot get there in time, so waiting for the proportional law's error
+// to grow would arrive hotter still. Ordinary braking (required <= 14)
+// stays on the proportional law exactly as validated before; this only
+// adds an emergency net for genuine overspeed. The scan reaches 250m so a
+// 70 m/s approach to a hairpin is seen in time. (An earlier version fired
+// whenever required decel exceeded a fixed 10-12 instead: in Monaco's
+// corner-dense lap that meant nearly perpetual full braking and the AI
+// crawled - the gate is the profile's own assumption, not a second one.)
+const BRAKE_PLANNING_METERS = 250;
 const STEER_GAIN = 1.0;
 
 function nearestLineIndex(line: RacingLinePoint[], x: number, z: number): number {
@@ -191,10 +205,42 @@ export function computeAIControls(
   const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
 
   const nearestPoint = line[nearest];
-  const targetSpeed = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
-  const speedError = targetSpeed - carSpeedMs;
+  const baseTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
+  const speedError = baseTarget - carSpeedMs;
   const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
-  const brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
+  let brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
 
-  return { throttle, brake, steer, zone: nearestPoint.zone, boostEligible: nearestPoint.boostEligible };
+  // Brake planning: the proportional law above only reacts to the speed
+  // error AT the car, so at higher entry speeds it ramps in too gently and
+  // the car arrives at the corner still carrying too much speed (measured:
+  // off-track excursions ballooning past 100m on the faster profile). Scan
+  // the profile ahead and brake fully if ANY point ahead demands more
+  // decel than the profile's own backward pass ever plans (MAX_DECEL_MS2):
+  // by the telescoping construction of that pass, a car exactly on profile
+  // never sees required decel above 14 anywhere ahead, so this fires only
+  // on genuine overspeed and never second-guesses normal braking (an
+  // earlier version compared only against the scan's single minimum, which
+  // over-braked for far slow corners past nearer medium ones and the AI
+  // crawled). Scans the same profile the throttle law targets (boosted or
+  // not), so the two can never disagree about which speeds are coming.
+  // Skips distance zero (the car is here - the proportional law owns that
+  // comparison, and 0/0 is NaN which would poison the max).
+  const speed = Math.abs(carSpeedMs);
+  let maxRequiredDecel = -Infinity;
+  let scanned = 0;
+  for (let k = 0; k < n && scanned < BRAKE_PLANNING_METERS; k++) {
+    const i = (nearest + k) % n;
+    const point = line[i];
+    const candidate = useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs;
+    if (scanned > 1e-6) {
+      const required = (speed ** 2 - candidate ** 2) / (2 * scanned);
+      if (required > maxRequiredDecel) maxRequiredDecel = required;
+    }
+    scanned += point.distanceToNextMeters;
+  }
+  if (maxRequiredDecel > MAX_DECEL_MS2) {
+    brake = 1;
+  }
+
+  return { throttle: brake === 1 ? 0 : throttle, brake, steer, zone: nearestPoint.zone, boostEligible: nearestPoint.boostEligible };
 }

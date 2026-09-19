@@ -83,6 +83,24 @@ export interface TerrainGeometry {
   cellMeters: number;
 }
 
+/**
+ * Ground height at a plan position (nearest grid vertex), or null outside
+ * the field. For placing trackside dressing that must sit on the grass,
+ * not float above it or sink through it.
+ */
+export function sampleTerrainHeight(
+  terrain: TerrainGeometry,
+  x: number,
+  z: number
+): number | null {
+  const column = Math.round((x - terrain.originX) / terrain.cellMeters);
+  const row = Math.round((z - terrain.originZ) / terrain.cellMeters);
+  if (column < 0 || row < 0 || column >= terrain.columns || row >= terrain.rows) {
+    return null;
+  }
+  return terrain.positions[(row * terrain.columns + column) * 3 + 1];
+}
+
 const cache = new WeakMap<TrackData, TerrainGeometry>();
 
 /**

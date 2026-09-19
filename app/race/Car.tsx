@@ -256,10 +256,10 @@ export function Car({
   // Reset after every lap ends, tainting only the lap it happened in.
   const lapHadDiscontinuityRef = useRef(false);
   // Plan section 5, depth feature 7: a lap is invalidated once all four
-  // wheels have been off track at any point, not just momentarily flagged
-  // by the real-time HUD warning (which fires off the chassis center - see
-  // allWheelsOffTrack's own comment for why the two use different rules).
-  // Reset alongside lapHadDiscontinuityRef when the next lap starts.
+  // wheels have been off track at any point - and the real-time HUD
+  // warning above fires on that same all-four rule (see allWheelsOffTrack),
+  // never on the merely-wide chassis-center position. Reset alongside
+  // lapHadDiscontinuityRef when the next lap starts.
   const lapInvalidRef = useRef(false);
   // The lap clock's value (lap.currentLapSeconds) at the moment
   // lapInvalidRef first became true this lap - lets the rewind-resume
@@ -886,12 +886,14 @@ export function Car({
       renderSectors();
     }
 
-    // All-four-wheels-off check for lap invalidation (see allWheelsOffTrack)
-    // - separate from and stricter than the chassis-center-based warning
-    // below, so this only flags once the car has genuinely left the track,
-    // not while merely running wide with grip still on one side.
+    // The real track-limits rule (plan section 5, depth feature 7): the
+    // HUD warning fires on the same all-four-wheels-off rule that
+    // invalidates the lap (see allWheelsOffTrack) - a wheel still on the
+    // asphalt keeps the car legal, same as real regulations, so running
+    // wide with grip still on one side no longer flashes a warning.
     const wheelWorldPositions = wheelGroundPositions(body);
-    if (allWheelsOffTrack(track, wheelWorldPositions)) {
+    const allFourWheelsOff = allWheelsOffTrack(track, wheelWorldPositions);
+    if (allFourWheelsOff) {
       // Only record the timestamp on the first violation this lap - a
       // rewind must reach back to the START of the infraction to undo it,
       // not just its most recent moment.
@@ -948,7 +950,7 @@ export function Car({
     }
 
     if (trackLimitRef?.current) {
-      trackLimitRef.current.textContent = status.isOffTrack ? "TRACK LIMITS" : "";
+      trackLimitRef.current.textContent = allFourWheelsOff ? "TRACK LIMITS" : "";
     }
 
     if (
@@ -965,7 +967,7 @@ export function Car({
       minimapGroupRef.current.setAttribute("transform", computeMinimapTransform(t.x, t.z, yaw));
     }
     if (minimapMarkerRef?.current) {
-      minimapMarkerRef.current.setAttribute("fill", status.isOffTrack ? "#ff3b3b" : bodyColor);
+      minimapMarkerRef.current.setAttribute("fill", allFourWheelsOff ? "#ff3b3b" : bodyColor);
     }
   });
 

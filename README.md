@@ -34,6 +34,9 @@ the vertical slice:
   from the mapped pit lanes, fences, Monaco's tunnel roofs and Suzuka's
   ferris wheel - all placed from vendored OpenStreetMap footprints, visual
   only (plan section 4, circuit detail)
+- Trackside flora: seeded low-poly trees per circuit setting (cherry
+  blossom at Suzuka, poplars at Monza, spruce in the Ardennes, oaks at
+  Silverstone, cypress at Monaco), instanced, off the road and the gravel
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
@@ -44,7 +47,8 @@ the vertical slice:
   registered circuit, F1-style points (25-18-...), standings on the home
   screen; the active season lives in IndexedDB and travels in the save
   export/import bundle
-- Track-limit enforcement (warning -> penalty / lap invalidation), damage,
+- Track-limit enforcement on the real all-four-wheels-off rule (warning,
+  penalty and lap invalidation all agree), damage,
   minimap, sector times, delta timer, RPM/gear HUD
 - Synthesized race audio (Web Audio, zero samples): rpm-tracking engines
   for both cars with positional opponent panning, tire-screech on slides,

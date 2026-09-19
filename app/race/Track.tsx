@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
 import { buildEdgeLineGeometry, buildKerbGeometry, buildRibbonGeometry, RIBBON_COLOR } from "@/lib/tracks/mesh";
 import { buildStructureGeometry } from "@/lib/tracks/structures";
+import { buildFlora, type FloraBuild } from "@/lib/tracks/flora";
 import {
   buildRacingLineRibbon,
   computeRacingLine,
@@ -177,6 +178,7 @@ export function Track({
         </mesh>
       </RigidBody>
       <Structures track={track} />
+      <Flora track={track} />
       <mesh geometry={kerbGeometry}>
         <meshStandardMaterial vertexColors />
       </mesh>
@@ -232,5 +234,66 @@ function Structures({ track }: { track: TrackData }) {
         </mesh>
       )}
     </>
+  );
+}
+
+/**
+ * Trackside flora (plan section 4, circuit detail): seeded low-poly trees,
+ * one InstancedMesh per species - a few hundred trees for a couple of draw
+ * calls. Visual-only like the structures massing. frustumCulled is off:
+ * three would cull by the unit tree's own bounds at the origin, but the
+ * instances span the whole circuit.
+ */
+function Flora({ track }: { track: TrackData }) {
+  const builds = useMemo(() => buildFlora(track), [track]);
+  return (
+    <>
+      {builds.map(
+        (build, s) =>
+          build.instances.length > 0 && <FloraSpeciesMesh key={s} build={build} />
+      )}
+    </>
+  );
+}
+
+function FloraSpeciesMesh({ build }: { build: FloraBuild }) {
+  const ref = useRef<THREE.InstancedMesh | null>(null);
+  const { geometry, instances, colors } = build;
+  const count = instances.length;
+  const { matrices, tints } = useMemo(() => {
+    const dummy = new THREE.Object3D();
+    const matrices: THREE.Matrix4[] = new Array(count);
+    const tints: THREE.Color[] = new Array(count);
+    for (let i = 0; i < count; i++) {
+      const inst = instances[i];
+      dummy.position.set(inst.x, inst.y, inst.z);
+      dummy.rotation.set(0, inst.yaw, 0);
+      dummy.scale.setScalar(inst.scale);
+      dummy.updateMatrix();
+      matrices[i] = dummy.matrix.clone();
+      tints[i] = new THREE.Color(colors[i]);
+    }
+    return { matrices, tints };
+  }, [colors, count, instances]);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    for (let i = 0; i < count; i++) {
+      mesh.setMatrixAt(i, matrices[i]);
+      mesh.setColorAt(i, tints[i]);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [matrices, tints, count]);
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[geometry, undefined, count]}
+      frustumCulled={false}
+      castShadow
+      receiveShadow
+    >
+      <meshStandardMaterial vertexColors />
+    </instancedMesh>
   );
 }

@@ -107,9 +107,9 @@ export function computeSurfaceGripMultiplier(distanceFromEdgeMeters: number): nu
  * only invalidated when ALL FOUR wheels are off the track, not the chassis
  * center - a single wheel still touching keeps the lap legal, same as real
  * regulations, and avoids penalizing a car that's mostly still on track
- * through a wide corner exit. This is deliberately stricter (and separate
- * from) the HUD's real-time "TRACK LIMITS" warning, which fires off the
- * chassis center via `checkTrackLimits` above as an earlier, softer caution.
+ * through a wide corner exit. The HUD's real-time "TRACK LIMITS" warning
+ * fires on this same rule (see Car.tsx), so the warning and the penalty
+ * can never disagree about what's legal.
  */
 export function allWheelsOffTrack(
   track: TrackData,

@@ -27,11 +27,23 @@ import { getTrack } from "../lib/tracks/trackData";
  */
 const FLIP_THRESHOLD_RAD = 0.6;
 const SECONDS = 180;
-// ~33 m/s average floor - a stuck, spun or stopped car fails this by a wide
-// margin, while normal pace (observed 43-48 m/s average) clears it easily.
-const MIN_DISTANCE_TRAVELED_METERS = 6000;
-// Observed worst single off-track excursion is ~11m on the shipped
-// Silverstone baseline itself; this only catches a genuine runaway.
+// Distance floor: a stuck, spun or stopped car fails this by a wide margin,
+// while normal pace clears it easily. Per-track, because pace is set by the
+// downforce-aware speed profile (see racingLine.ts): Monaco's 3333m lap is
+// mostly slow corners where the honest target averages ~30 m/s, so no
+// controller can average the 33 m/s a single global floor demands there -
+// the floor below still requires MORE than one full Monaco lap (3500 >
+// 3333, observed ~4200) while the flowing circuits keep the ~33 m/s bar
+// (observed 6300-7400).
+const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
+  silverstone: 6000,
+  monza: 6000,
+  spa: 6000,
+  suzuka: 6000,
+  monaco: 3500,
+};
+// Observed worst single off-track excursion is ~6m (down from ~23m before
+// the downforce-aware profile); this only catches a genuine runaway.
 const MAX_OFF_TRACK_METERS = 30;
 
 describe("per-track AI stability", () => {
@@ -61,7 +73,7 @@ describe("per-track AI stability", () => {
 
         expect(result.maxTiltRad).toBeLessThan(FLIP_THRESHOLD_RAD);
         expect(result.distanceTraveledMeters).toBeGreaterThan(
-          MIN_DISTANCE_TRAVELED_METERS
+          MIN_DISTANCE_TRAVELED_METERS[id]
         );
         expect(result.maxOffTrackMeters).toBeLessThan(MAX_OFF_TRACK_METERS);
       },

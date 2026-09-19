@@ -36,6 +36,18 @@ const LOAD_SCALE_MIN = 0.6;
 const LOAD_SCALE_MAX = 1.5;
 
 /**
+ * Peak friction coefficient at a given normal load (compound grip 1.0 =
+ * fresh baseline) - the mu inside peakForceN above, exposed for the racing
+ * line's corner-speed cap (see lib/tracks/racingLine.ts), which needs the
+ * same load-sensitive grip the physics actually drives on rather than a
+ * separately-tuned constant that can drift from it.
+ */
+export function peakFrictionMu(normalLoadN: number): number {
+  if (normalLoadN <= 0) return BASE_MU;
+  return BASE_MU * (REFERENCE_LOAD_N / normalLoadN) ** LOAD_SENSITIVITY_EXPONENT;
+}
+
+/**
  * The same sub-linear load sensitivity as the tire force curve above,
  * expressed as a dimensionless multiplier around 1.0 at `referenceLoadN`
  * instead of a Newton force - for modulating a friction *parameter*
