@@ -141,7 +141,7 @@ describe("loadSessionSetupPrefs", () => {
     const { storage } = fakeStorage({
       "lift-and-coast.session-setup.v1": JSON.stringify({
         raceLaps: 5,
-        trackId: "nurburgring",
+        trackId: "atlantis",
       }),
     });
     expect(loadSessionSetupPrefs(storage).trackId).toBe(DEFAULT_TRACK_ID);

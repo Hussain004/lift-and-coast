@@ -43,6 +43,10 @@ const TRACKS: TrackSpec[] = [
   { id: "shanghai", rawFile: "cn-2004.geojson", padMeters: 250 },
   { id: "interlagos", rawFile: "br-1940.geojson", padMeters: 250 },
   { id: "yasmarina", rawFile: "ae-2009.geojson", padMeters: 250, splitGrid: 2 },
+  { id: "hockenheim", rawFile: "de-1932.geojson", padMeters: 250 },
+  { id: "sepang", rawFile: "my-1999.geojson", padMeters: 250 },
+  { id: "sochi", rawFile: "ru-2014.geojson", padMeters: 250, splitGrid: 2 },
+  { id: "nurburgring", rawFile: "de-1927.geojson", padMeters: 250 },
 ];
 
 const REQUEST_PAUSE_MS = 6000;

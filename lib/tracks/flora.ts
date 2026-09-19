@@ -388,6 +388,109 @@ const FLORA: Record<string, FloraConfig> = {
     lateralMaxM: 45,
     seed: 2009,
   },
+  hockenheim: {
+    // The Hardtwald forest the stadium section sits in: mostly pine with
+    // broadleaf mixed in, dense on the forest straights.
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: SPRUCE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: OAK_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 9],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 70,
+    lateralMinM: 8,
+    lateralMaxM: 60,
+    seed: 1932,
+  },
+  sepang: {
+    // Tropical oil-palm plantation grid around the circuit: tall trunks,
+    // small crowns, high density.
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.5, 2.5],
+        heightM: [7, 11],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: CHERRY_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3.5],
+        heightM: [5, 8],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 60,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 1999,
+  },
+  sochi: {
+    // Olympic Park landscaping: ornamental pines and parkland broadleaf,
+    // moderate density on flat ground.
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: DUNE_PINE,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.5, 2.5],
+        heightM: [6, 10],
+        weight: 1,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3],
+        heightM: [5, 8],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 50,
+    lateralMinM: 8,
+    lateralMaxM: 45,
+    seed: 2014,
+  },
+  nurburgring: {
+    // Eifel forest: dense spruce on the hillsides around the GP-Strecke.
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: SPRUCE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MAPLE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 70,
+    lateralMinM: 8,
+    lateralMaxM: 60,
+    seed: 1927,
+  },
 };
 
 export function getFloraConfig(trackId: string): FloraConfig | null {

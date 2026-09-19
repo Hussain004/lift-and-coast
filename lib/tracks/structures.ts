@@ -17,6 +17,10 @@ import mexico from "../../data/tracks/structures/mexico.json";
 import shanghai from "../../data/tracks/structures/shanghai.json";
 import interlagos from "../../data/tracks/structures/interlagos.json";
 import yasmarina from "../../data/tracks/structures/yasmarina.json";
+import hockenheim from "../../data/tracks/structures/hockenheim.json";
+import sepang from "../../data/tracks/structures/sepang.json";
+import sochi from "../../data/tracks/structures/sochi.json";
+import nurburgring from "../../data/tracks/structures/nurburgring.json";
 
 /**
  * Trackside structures (plan section 4, circuit detail): pit buildings,
@@ -79,6 +83,10 @@ const FILES: Record<string, StructuresFile> = {
   shanghai: shanghai as StructuresFile,
   interlagos: interlagos as StructuresFile,
   yasmarina: yasmarina as StructuresFile,
+  hockenheim: hockenheim as StructuresFile,
+  sepang: sepang as StructuresFile,
+  sochi: sochi as StructuresFile,
+  nurburgring: nurburgring as StructuresFile,
 };
 
 export function getStructures(trackId: string): VendoredStructure[] {

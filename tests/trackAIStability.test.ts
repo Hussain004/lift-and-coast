@@ -42,7 +42,9 @@ const SECONDS = 180;
 // ~40 (4500 over 4268m). Second scale-out batch, same method: Budapest
 // 4500, Melbourne 5000, Montreal 4500, Mexico 4500, Shanghai 5000,
 // Interlagos 5000 (1.16 laps, observed 6202), Yas Marina 4500 (observed
-// 5791).
+// 5791). Third batch, same method: Hockenheim 5000 (1.1 laps, observed
+// 5620), Sepang, Sochi and the Nürburgring 4500 each (observed
+// 5649/5642/5407).
 const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   silverstone: 6000,
   monza: 6000,
@@ -60,6 +62,10 @@ const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   shanghai: 5000,
   interlagos: 5000,
   yasmarina: 4500,
+  hockenheim: 5000,
+  sepang: 4500,
+  sochi: 4500,
+  nurburgring: 4500,
 };
 // Observed worst single off-track excursion is ~6m (down from ~23m before
 // the downforce-aware profile); this only catches a genuine runaway.

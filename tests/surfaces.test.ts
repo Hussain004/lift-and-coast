@@ -25,11 +25,15 @@ import type { TrackData } from "../lib/tracks/types";
 // Sausage kerbs stay exceptional everywhere - except Monaco, whose street
 // layout packs several genuinely tight (hairpin-grade) corners into a lap,
 // so it structurally earns more of them than any permanent circuit - and
-// Bahrain, COTA, Montreal, Mexico City and Shanghai, whose slow-corner
-// complexes (Bahrain T1/T4/T8/T10/T13/T14, COTA T1/T11/T12/T19/T20,
-// Montreal T1-2/T3-4/T6-7/T8-9/T10/T13-14, Mexico T4-5/T7/T10/T12-16
-// stadium, Shanghai T6/T8/T11/T14) push them past the flat cap (measured
-// 10.25%, 10.02%, 12.75%, 16.25% and 10.33%).
+// Bahrain, COTA, Montreal, Mexico City, Shanghai, Sepang, Sochi and the
+// Nürburgring, whose slow-corner complexes (Bahrain T1/T4/T8/T10/T13/T14,
+// COTA T1/T11/T12/T19/T20, Montreal T1-2/T3-4/T6-7/T8-9/T10/T13-14,
+// Mexico T4-5/T7/T10/T12-16 stadium, Shanghai T6/T8/T11/T14, Sepang T1-2/T4/
+// T9/T15, Sochi's 90-degree T1-T5 sequence, Nürburgring T1/mercedes-arena/
+// schumacher-S) push them past the flat cap (measured 10.25%, 10.02%,
+// 12.75%, 16.25%, 10.33%, 10.7%, 11.0% and 12.4%). Hockenheim's hairpin
+// earns 9.5%, inside the flat cap but kept explicit so a pipeline tweak
+// can't silently cross it.
 const SAUSAGE_SHARE_CAP: Record<string, number> = {
   monaco: 0.2,
   bahrain: 0.12,
@@ -37,6 +41,10 @@ const SAUSAGE_SHARE_CAP: Record<string, number> = {
   montreal: 0.15,
   mexico: 0.18,
   shanghai: 0.12,
+  hockenheim: 0.12,
+  sepang: 0.12,
+  sochi: 0.12,
+  nurburgring: 0.15,
 };
 
 /**

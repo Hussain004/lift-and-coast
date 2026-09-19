@@ -30,6 +30,10 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   shanghai: 5451,
   interlagos: 4309,
   yasmarina: 5281,
+  hockenheim: 4574,
+  sepang: 5543,
+  sochi: 5848,
+  nurburgring: 5148,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
@@ -55,6 +59,10 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = 
   shanghai: { min: 10.0, max: 18.0, mean: 13.0 },
   interlagos: { min: 8.5, max: 18.5, mean: 11.9 },
   yasmarina: { min: 9.5, max: 16.0, mean: 12.9 },
+  hockenheim: { min: 7.0, max: 19.0, mean: 12.6 },
+  sepang: { min: 13.0, max: 17.0, mean: 14.6 },
+  sochi: { min: 10.5, max: 21.0, mean: 12.6 },
+  nurburgring: { min: 7.0, max: 22.0, mean: 11.8 },
 };
 
 // Elevation as built from the vendored DEM samples (see
@@ -90,6 +98,10 @@ const ELEVATION_BANDS: Record<
   shanghai: { range: [3, 8], maxGrade: 0.03 },
   interlagos: { range: [32, 50], maxGrade: 0.12 },
   yasmarina: { range: [7, 14], maxGrade: 0.04 },
+  hockenheim: { range: [11, 19], maxGrade: 0.06 },
+  sepang: { range: [18, 30], maxGrade: 0.08 },
+  sochi: { range: [4, 8], maxGrade: 0.03 },
+  nurburgring: { range: [42, 60], maxGrade: 0.12 },
 };
 
 describe("parseTrackId", () => {
@@ -102,7 +114,7 @@ describe("parseTrackId", () => {
   it("falls back to the default for unknown and missing values", () => {
     expect(parseTrackId(null)).toBe(DEFAULT_TRACK_ID);
     expect(parseTrackId("")).toBe(DEFAULT_TRACK_ID);
-    expect(parseTrackId("nurburgring")).toBe(DEFAULT_TRACK_ID);
+    expect(parseTrackId("atlantis")).toBe(DEFAULT_TRACK_ID);
     expect(parseTrackId("SILVERSTONE")).toBe(DEFAULT_TRACK_ID); // case-sensitive on purpose
   });
 });

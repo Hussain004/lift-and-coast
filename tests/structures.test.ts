@@ -179,6 +179,7 @@ describe("defaultMassingHeightM", () => {
 const PITLANE_MAPPED: Record<string, boolean> = {
   melbourne: false,
   shanghai: false,
+  sochi: false,
 };
 
 describe("vendored structures", () => {

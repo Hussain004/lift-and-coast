@@ -55,6 +55,10 @@ const TRACKS: { id: string; rawFile: string }[] = [
   { id: "shanghai", rawFile: "cn-2004.geojson" },
   { id: "interlagos", rawFile: "br-1940.geojson" },
   { id: "yasmarina", rawFile: "ae-2009.geojson" },
+  { id: "hockenheim", rawFile: "de-1932.geojson" },
+  { id: "sepang", rawFile: "my-1999.geojson" },
+  { id: "sochi", rawFile: "ru-2014.geojson" },
+  { id: "nurburgring", rawFile: "de-1927.geojson" },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

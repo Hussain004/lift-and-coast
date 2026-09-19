@@ -136,6 +136,10 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   shanghai: 2,
   interlagos: 22,
   yasmarina: 5,
+  hockenheim: 10,
+  sepang: 18,
+  sochi: 3,
+  nurburgring: 40,
 };
 
 // How far the field may dip under the ribbon at an edge sample. The
@@ -162,6 +166,10 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   shanghai: 0.5,
   interlagos: 0.5,
   yasmarina: 0.5,
+  hockenheim: 0.5,
+  sepang: 0.5,
+  sochi: 0.5,
+  nurburgring: 0.5,
 };
 
 describe("buildTerrainGeometry (real circuits)", () => {

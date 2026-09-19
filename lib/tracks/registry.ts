@@ -36,6 +36,10 @@ export const TRACKS: TrackMeta[] = [
   { id: "shanghai", name: "Shanghai International Circuit", shortName: "Shanghai", corners: 16, lat: 31.3407, lon: 121.2214 },
   { id: "interlagos", name: "Autodromo Jose Carlos Pace", shortName: "Interlagos", corners: 15, lat: -23.7017, lon: -46.6973 },
   { id: "yasmarina", name: "Yas Marina Circuit", shortName: "Yas Marina", corners: 16, lat: 24.4709, lon: 54.6056 },
+  { id: "hockenheim", name: "Hockenheimring", shortName: "Hockenheim", corners: 13, lat: 49.3297, lon: 8.5743 },
+  { id: "sepang", name: "Sepang International Circuit", shortName: "Sepang", corners: 15, lat: 2.7609, lon: 101.7378 },
+  { id: "sochi", name: "Sochi Autodrom", shortName: "Sochi", corners: 18, lat: 43.4075, lon: 39.9587 },
+  { id: "nurburgring", name: "Nürburgring Grand Prix Circuit", shortName: "Nürburgring", corners: 15, lat: 50.3308, lon: 6.9421 },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;
