@@ -11,6 +11,7 @@ import {
   KERB_WIDTH_METERS,
   surfaceZones,
 } from "./surfaces";
+import { bankingAt, bankedHeight, stationOf } from "./banking";
 import { worldEdgeResetMeters } from "./trackLimits";
 
 /**
@@ -188,7 +189,16 @@ function computeTerrain(track: TrackData): TerrainGeometry {
     }
   }
 
-  // The nearest-point rule sets each vertex, but the renderer and the
+  // A banked corner's edges sit metres above/below the centerline plane
+  // (19 degrees over a ~5m half-width lifts the high edge ~1.6m), but the
+  // field above samples the centerline height everywhere - so off the high
+  // edge the ground falls away as a cliff, and off the low edge it stands
+  // as a wall. Real banked corners carry a graded runoff shoulder instead,
+  // so blend the field from each edge's own banked height back to the field
+  // height over the terrace past the asphalt (see applyBankedApron).
+  // The exact-overlap clearance below still runs afterwards, so the
+  // below-the-ribbon invariant holds everywhere regardless.
+  applyBankedApron(track, positions, nearestIdx, cx, cy, cz);  // The nearest-point rule sets each vertex, but the renderer and the
   // collider both interpolate across whole 12.5m triangles: where the
   // asphalt climbs or drops inside one cell, a triangle spanning it can sit
   // above the ribbon it covers and hide that stretch of road (measured worst
@@ -197,7 +207,15 @@ function computeTerrain(track: TrackData): TerrainGeometry {
   // overlap - evaluated over the exact overlap polygon, not just at shared
   // vertices, since the difference of two planar triangles is linear and
   // therefore worst at a polygon corner.
-  applyRibbonClearance(track, positions, columns, rows, originX, originZ, cellMeters);
+  applyRibbonClearance(
+    track,
+    positions,
+    columns,
+    rows,
+    originX,
+    originZ,
+    cellMeters
+  );
 
   return {
     positions,
@@ -275,10 +293,91 @@ interface PlanCorner {
 
 type PlanTriangle = [PlanCorner, PlanCorner, PlanCorner];
 
+/**
+ * Banked shoulders and under-road fill (see the call site in
+ * computeTerrain). Runs on the raw field, before the exact-overlap
+ * clearance. A banked corner's edges sit ~1.4m above/below the centerline
+ * plane; the field samples centerline height everywhere, so without this
+ * the ground would fall off the high edge as a cliff (a launch ramp the AI
+ * gate caught as a 0.89 rad roll), stand off the low edge as a wall burying
+ * the asphalt, and leave a hollow under the tilted ribbon itself. Per
+ * vertex, by lateral distance from the nearest centerline point:
+ * - under the asphalt: SET to the banked surface minus the gap (an
+ *   embankment hugging the ribbon from below - invisible, and exactly what
+ *   the edge test samples beside the road);
+ * - up to SHOULDER_WIDTH_METERS past the edge: the banking angle eased to
+ *   zero, so the ground leaves the edge on the ribbon's own plane and
+ *   arrives at the field flat (C1-continuous, no kink for a wheel).
+ * The clearance afterwards still shaves anything overlapping the ribbon to
+ * its own target, so the below-the-ribbon invariant cannot regress - and
+ * with every vertex near the track already ribbon-parallel that shave is
+ * millimetres (a 12.5m triangle cannot span tilt its vertices do not
+ * contain). Skipped entirely (per-vertex, on theta === 0) where the
+ * circuit is flat, which keeps every unbanked track's field bit-identical.
+ */
+const SHOULDER_WIDTH_METERS = 20;
+
+function applyBankedApron(
+  track: TrackData,
+  positions: Float32Array,
+  nearestIdx: Uint32Array,
+  cx: Float32Array,
+  cy: Float32Array,
+  cz: Float32Array
+): void {
+  const n = track.centerline.length;
+  // Right unit vector per centerline point (same convention as
+  // buildRibbonGeometry and checkTrackLimits).
+  const rx = new Float32Array(n);
+  const rz = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const bx = cx[(i - 1 + n) % n];
+    const bz = cz[(i - 1 + n) % n];
+    const ax = cx[(i + 1) % n];
+    const az = cz[(i + 1) % n];
+    const len = Math.hypot(ax - bx, az - bz) || 1;
+    rx[i] = -(az - bz) / len;
+    rz[i] = (ax - bx) / len;
+  }
+  const verts = nearestIdx.length;
+  for (let v = 0; v < verts; v++) {
+    const i = nearestIdx[v];
+    const station = stationOf(i, n, track.lengthMeters);
+    const theta = bankingAt(track.id, station, track.lengthMeters);
+    if (theta === 0) continue;
+    const vx = positions[v * 3];
+    const vz = positions[v * 3 + 2];
+    const lateral = (vx - cx[i]) * rx[i] + (vz - cz[i]) * rz[i];
+    const halfWidth = track.width[i] / 2;
+    if (Math.abs(lateral) <= halfWidth) {
+      // Under the asphalt: hug the banked surface from below. The field
+      // would leave a hollow under a tilted ribbon here (and the clearance
+      // max-combine would drag the whole neighbourhood down by it) - an
+      // embankment instead, invisible under the road, exactly where the
+      // edge test samples beside it.
+      positions[v * 3 + 1] =
+        bankedHeight(track.id, station, track.lengthMeters, cy[i], lateral) -
+        GRASS_BELOW_TRACK_METERS;
+      continue;
+    }
+    const beyond = Math.abs(lateral) - halfWidth;
+    if (beyond >= SHOULDER_WIDTH_METERS) continue;
+    // Effective banking angle: full at the edge, eased to flat across the
+    // shoulder. Heights follow bankedHeight with that angle, so the ground
+    // leaves the edge on the ribbon's own plane and arrives at the field
+    // flat - never climbing into the grass walls a tilted-plane extension
+    // would build a few metres out.
+    const t = beyond / SHOULDER_WIDTH_METERS;
+    const s = t * t * (3 - 2 * t);
+    const effTheta = theta * (1 - s);
+    positions[v * 3 + 1] =
+      cy[i] + Math.sin(effTheta) * lateral - GRASS_BELOW_TRACK_METERS;
+  }
+}
+
 function planArea(a: PlanCorner, b: PlanCorner, c: PlanCorner): number {
   return (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
 }
-
 /** Barycentric weights of (x, z) in t, or null when t is degenerate in plan. */
 function planBarycentric(t: PlanTriangle, x: number, z: number): [number, number, number] | null {
   const [a, b, c] = t;
@@ -379,6 +478,7 @@ function applyRibbonClearance(
 
   for (let r = 0; r < ri.length; r += 3) {
     const tri: PlanTriangle = [corner(ri[r]), corner(ri[r + 1]), corner(ri[r + 2])];
+    if (Math.abs(planArea(tri[0], tri[1], tri[2])) < 1e-9) continue;
     if (Math.abs(planArea(tri[0], tri[1], tri[2])) < 1e-9) continue;
     const minX = Math.min(tri[0].x, tri[1].x, tri[2].x);
     const maxX = Math.max(tri[0].x, tri[1].x, tri[2].x);

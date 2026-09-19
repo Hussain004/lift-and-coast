@@ -1,4 +1,5 @@
 import type { TrackData } from "./types";
+import { bankingAt, bankedHeight, stationOf } from "./banking";
 import { KERB_WIDTH_METERS, kerbHeightMeters, surfaceZones } from "./surfaces";
 
 // The track and the grass runoff around it are separate colliders that meet
@@ -49,12 +50,15 @@ export interface RibbonGeometry {
 
 /**
  * Builds a ribbon mesh along a closed centerline, offsetting each point
- * left/right by half its width. Each cross-section is horizontal (the
- * centerline's own y at that point) - the surface follows the lap's
- * elevation but has no camber or banking, which is what the track data
- * currently describes. That means the ribbon does carry a real slope along
- * the track, so callers must compute vertex normals from the geometry (see
- * Track.tsx) rather than assume a flat, up-facing surface.
+ * left/right by half its width. Each cross-section carries the circuit's
+ * banking (see lib/tracks/banking.ts - flat everywhere except Zandvoort's
+ * two banked corners) on top of the centerline's own y, so the surface
+ * follows both the lap's elevation and its cross-slope. The banking flows
+ * everywhere the ribbon goes - the physics collider, the terrain clearance
+ * (which is computed against this exact geometry), the kerbs and edge
+ * lines below - because they all build from this function or the same
+ * bankedHeight helper. Callers must still compute vertex normals from the
+ * geometry (see Track.tsx) rather than assume a flat, up-facing surface.
  */
 export function buildRibbonGeometry(track: TrackData): RibbonGeometry {
   const n = track.centerline.length;
@@ -74,13 +78,18 @@ export function buildRibbonGeometry(track: TrackData): RibbonGeometry {
     const halfWidth = track.width[i] / 2;
     const leftIdx = i * 2 * 3;
     const rightIdx = leftIdx + 3;
+    // Cross-slope (see lib/tracks/banking.ts): the left edge drops and the
+    // right edge rises by sin(theta)*halfWidth. Exactly centerline y where
+    // the circuit is unbanked, so flat tracks build bit-identically.
+    const theta = bankingAt(track.id, stationOf(i, n, track.lengthMeters), track.lengthMeters);
+    const slope = Math.sin(theta) * halfWidth;
 
     positions[leftIdx] = x - rightX * halfWidth;
-    positions[leftIdx + 1] = y;
+    positions[leftIdx + 1] = y - slope;
     positions[leftIdx + 2] = z - rightZ * halfWidth;
 
     positions[rightIdx] = x + rightX * halfWidth;
-    positions[rightIdx + 1] = y;
+    positions[rightIdx + 1] = y + slope;
     positions[rightIdx + 2] = z + rightZ * halfWidth;
   }
 
@@ -184,6 +193,12 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
     const j = (i + 1) % n;
     const p = track.centerline[i];
     const q = track.centerline[j];
+    // The strip sits on the banked surface (see buildRibbonGeometry): its
+    // inner edge at the asphalt's own banked height there, ramping up to
+    // the kerb height at the outer edge - otherwise a banked corner's
+    // ~1.5m of cross-slope would leave the kerbs floating or buried.
+    const stationI = stationOf(i, n, track.lengthMeters);
+    const stationJ = stationOf(j, n, track.lengthMeters);
     for (const side of ["left", "right"] as const) {
       const type = zones[i][side];
       // No quad where either end has no kerb, or where the type changes.
@@ -196,10 +211,10 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
       const outerI = innerI + KERB_WIDTH_METERS;
       const innerJ = track.width[j] / 2;
       const outerJ = innerJ + KERB_WIDTH_METERS;
-      const a = push(p[0] + sign * rightX[i] * innerI, p[1], p[2] + sign * rightZ[i] * innerI, stripe);
-      const b = push(p[0] + sign * rightX[i] * outerI, p[1] + height, p[2] + sign * rightZ[i] * outerI, stripe);
-      const c = push(q[0] + sign * rightX[j] * innerJ, q[1], q[2] + sign * rightZ[j] * innerJ, stripe);
-      const d = push(q[0] + sign * rightX[j] * outerJ, q[1] + height, q[2] + sign * rightZ[j] * outerJ, stripe);
+      const a = push(p[0] + sign * rightX[i] * innerI, bankedHeight(track.id, stationI, track.lengthMeters, p[1], sign * innerI), p[2] + sign * rightZ[i] * innerI, stripe);
+      const b = push(p[0] + sign * rightX[i] * outerI, bankedHeight(track.id, stationI, track.lengthMeters, p[1], sign * outerI) + height, p[2] + sign * rightZ[i] * outerI, stripe);
+      const c = push(q[0] + sign * rightX[j] * innerJ, bankedHeight(track.id, stationJ, track.lengthMeters, q[1], sign * innerJ), q[2] + sign * rightZ[j] * innerJ, stripe);
+      const d = push(q[0] + sign * rightX[j] * outerJ, bankedHeight(track.id, stationJ, track.lengthMeters, q[1], sign * outerJ) + height, q[2] + sign * rightZ[j] * outerJ, stripe);
       // Wind each triangle from its measured facing. Mirroring the quad
       // across the centerline flips its facing, so the left run needs the
       // opposite order from the right run - and at very tight inside
@@ -236,10 +251,10 @@ export function buildKerbGeometry(track: TrackData): KerbGeometry {
 // and inner edge of each side's strip), quads between consecutive points,
 // using the same index pattern as buildRibbonGeometry with the side's two
 // vertices in (left, right) order so every triangle faces up - the strips
-// sit strictly inside their ribbon quad, so they inherit its facing. Flat
-// at the ribbon's own y; the caller lifts the mesh (see Track.tsx) so it
-// neither z-fights the asphalt nor loses to the racing-line overlay where
-// that sweeps across an edge.
+// sit strictly inside their ribbon quad, so they inherit its facing. At
+// the banked surface's own height (see buildRibbonGeometry); the caller
+// lifts the mesh (see Track.tsx) so it neither z-fights the asphalt nor
+// loses to the racing-line overlay where that sweeps across an edge.
 export const EDGE_LINE_WIDTH_METERS = 0.3;
 
 export function buildEdgeLineGeometry(track: TrackData): RibbonGeometry {
@@ -259,21 +274,27 @@ export function buildEdgeLineGeometry(track: TrackData): RibbonGeometry {
     const outer = track.width[i] / 2;
     const inner = outer - EDGE_LINE_WIDTH_METERS;
     const base = i * 4 * 3;
+    // Painted on the banked surface like the kerbs above (see
+    // buildRibbonGeometry) - the caller still lifts the whole mesh, so the
+    // separation from the asphalt is unchanged.
+    const station = stationOf(i, n, track.lengthMeters);
+    const at = (lateral: number): number =>
+      bankedHeight(track.id, station, track.lengthMeters, y, lateral);
     // Left strip: outer then inner (outer is the "left", matching the
     // ribbon's own left/right order and therefore its facing).
     positions[base] = x - rightX * outer;
-    positions[base + 1] = y;
+    positions[base + 1] = at(-outer);
     positions[base + 2] = z - rightZ * outer;
     positions[base + 3] = x - rightX * inner;
-    positions[base + 4] = y;
+    positions[base + 4] = at(-inner);
     positions[base + 5] = z - rightZ * inner;
     // Right strip: inner then outer, so (first, second) again runs
     // left-to-right and keeps the ribbon's facing.
     positions[base + 6] = x + rightX * inner;
-    positions[base + 7] = y;
+    positions[base + 7] = at(inner);
     positions[base + 8] = z + rightZ * inner;
     positions[base + 9] = x + rightX * outer;
-    positions[base + 10] = y;
+    positions[base + 10] = at(outer);
     positions[base + 11] = z + rightZ * outer;
   }
 

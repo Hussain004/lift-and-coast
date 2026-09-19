@@ -9,6 +9,7 @@ import {
   RIBBON_COLOR,
   hexToLinearRgb,
 } from "../lib/tracks/mesh";
+import { bankedHeight, stationOf } from "../lib/tracks/banking";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
 import type { TrackData } from "../lib/tracks/types";
@@ -126,6 +127,16 @@ describe("buildEdgeLineGeometry", () => {
       for (let i = 0; i < n; i++) {
         const [x, y, z] = track.centerline[i];
         const halfWidth = track.width[i] / 2;
+        // Outer, inner, inner, outer laterals in vertex order (see the
+        // builder): each sits at the banked surface's own height there -
+        // flat at centerline y everywhere but the banked corners, where
+        // the cross-slope is the whole point.
+        const laterals = [
+          -halfWidth,
+          -(halfWidth - EDGE_LINE_WIDTH_METERS),
+          halfWidth - EDGE_LINE_WIDTH_METERS,
+          halfWidth,
+        ];
         for (let k = 0; k < 4; k++) {
           const vx = positions[(i * 4 + k) * 3];
           const vy = positions[(i * 4 + k) * 3 + 1];
@@ -135,7 +146,16 @@ describe("buildEdgeLineGeometry", () => {
           // The 1e-4 slack is float32 storage rounding of ~1000m
           // coordinates, not geometric tolerance (a tenth of a millimetre).
           expect(Math.hypot(vx - x, vz - z)).toBeLessThanOrEqual(halfWidth + 1e-4);
-          expect(vy).toBeCloseTo(y, 5);
+          expect(vy).toBeCloseTo(
+            bankedHeight(
+              track.id,
+              stationOf(i, n, track.lengthMeters),
+              track.lengthMeters,
+              y,
+              laterals[k]
+            ),
+            5
+          );
           expect(Math.hypot(vx - x, vz - z)).toBeGreaterThanOrEqual(
             halfWidth - EDGE_LINE_WIDTH_METERS - 1e-4
           );

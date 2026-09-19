@@ -5,6 +5,7 @@ import {
   buildTerrainGeometry,
 } from "../lib/tracks/terrain";
 import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS, GRAVEL_COLOR, GRASS_COLOR, hexToLinearRgb } from "../lib/tracks/mesh";
+import { bankedHeight, stationOf } from "../lib/tracks/banking";
 import { surfaceZones } from "../lib/tracks/surfaces";
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
 import { TRACKS } from "../lib/tracks/registry";
@@ -148,7 +149,16 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
 // height inside one 12.5m cell (the climb, the hairpin fold) - that
 // difference has to go somewhere, and below the ribbon, as a grass bank
 // beside the track the module doc already expects there, is the side that
-// hides no asphalt.
+// hides no asphalt. Zandvoort's banked T3 gets the same treatment one step
+// further: 19 degrees of cross-slope is a ~1.4m height difference across
+// the asphalt inside a single 12.5m cell, and no plane the cell's triangle
+// can take is both below the tilted ribbon and at the edge's height - the
+// boundary samples interpolate the embankment under the road with the
+// shoulder beside it and read low by up to ~1.8m at isolated grid-phase
+// spots. The road itself is verified clear (the test above samples every
+// ribbon triangle densely), the per-sample average below is unchanged, and
+// the AI gate drives the corner for real - so the allowance is per-track,
+// like Monaco's, not a loosened global.
 const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   silverstone: 0.5,
   monza: 0.5,
@@ -158,7 +168,7 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   spielberg: 0.5,
   bahrain: 0.5,
   cota: 0.5,
-  zandvoort: 0.5,
+  zandvoort: 2.0,
   budapest: 0.5,
   melbourne: 0.5,
   montreal: 0.5,
@@ -335,12 +345,17 @@ describe("buildTerrainGeometry (real circuits)", () => {
         const tangentZ = nz - pz;
         const length = Math.hypot(tangentX, tangentZ) || 1;
         const halfWidth = track.width[i] / 2;
+        // Against the banked surface's own height at each edge (see
+        // lib/tracks/banking.ts), not the centerline plane - identical on
+        // flat circuits, ~1.6m apart from it at full Zandvoort banking.
+        const station = stationOf(i, n, track.lengthMeters);
         for (const side of [-1, 1]) {
           const edgeX = x + (-tangentZ / length) * halfWidth * side;
           const edgeZ = z + (tangentX / length) * halfWidth * side;
+          const surfaceY = bankedHeight(track.id, station, track.lengthMeters, y, halfWidth * side);
           const ground = terrainHeightAt(terrain, edgeX, edgeZ);
           if (ground === null) continue;
-          const deviation = ground - y;
+          const deviation = ground - surfaceY;
           total += Math.abs(deviation);
           samples++;
           if (deviation > worstAbove) {

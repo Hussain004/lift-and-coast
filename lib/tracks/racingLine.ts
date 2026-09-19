@@ -2,6 +2,7 @@ import { DEPLOY_BOOST_MULTIPLIER } from "../physics/energy";
 import { computeDownforceN } from "../physics/aero";
 import { CHASSIS_MASS } from "../physics/vehicle";
 import { peakFrictionMu } from "../physics/tireModel";
+import { bankedHeight, stationOf } from "./banking";
 import type { TrackData } from "./types";
 
 // Plan section 4 point 8 ("racing line... drives the AI and the optional
@@ -257,7 +258,22 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   for (let i = 0; i < n; i++) {
     const [x, y, z] = centerline[i];
     const r = rightVectors[i];
-    positions[i] = [x + r.x * offsets[i], y, z + r.z * offsets[i]];
+    // Ride the banked surface (see lib/tracks/banking.ts), not the
+    // centerline plane - the overlay ribbon below is only 0.6m each side,
+    // but 19 degrees of cross-slope still buries its high edge ~0.2m
+    // without this. AI-side consumers only read x/z (see pathFollower's
+    // own destructure), so the y change is visual-only.
+    positions[i] = [
+      x + r.x * offsets[i],
+      bankedHeight(
+        track.id,
+        stationOf(i, n, track.lengthMeters),
+        track.lengthMeters,
+        y,
+        offsets[i]
+      ),
+      z + r.z * offsets[i],
+    ];
   }
 
   const segmentLengths = new Float64Array(n);
