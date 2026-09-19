@@ -1,9 +1,16 @@
+import type { RapierRigidBody } from "@react-three/rapier";
+
 export interface RewindSample {
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number; w: number };
   linvel: { x: number; y: number; z: number };
   angvel: { x: number; y: number; z: number };
 }
+
+/** Length of the rewindable past, shared by the player and the AI so both
+ * cars scrub the same timeline (see Scene.tsx's shared rewind flag) - one
+ * constant, not two that can drift apart. */
+export const REWIND_CAPACITY_SECONDS = 5;
 
 /**
  * Fixed-timestep ring buffer of recent physics states, for a "hold to
@@ -61,4 +68,28 @@ export function createRewindBuffer(capacitySeconds: number, timestep: number) {
   }
 
   return { push, sampleAt, resumeFrom, oldestAvailableSeconds, clear };
+}
+
+/** Reads a physics body's full dynamic state into a rewind sample. */
+export function snapshotOf(body: RapierRigidBody): RewindSample {
+  const p = body.translation();
+  const r = body.rotation();
+  const lv = body.linvel();
+  const av = body.angvel();
+  return {
+    position: { x: p.x, y: p.y, z: p.z },
+    rotation: { x: r.x, y: r.y, z: r.z, w: r.w },
+    linvel: { x: lv.x, y: lv.y, z: lv.z },
+    angvel: { x: av.x, y: av.y, z: av.z },
+  };
+}
+
+/** Writes a rewind sample back onto a body, optionally killing velocities
+ * (scrubbing holds the car still at each past pose; resuming restores the
+ * recorded motion so it drives away naturally). */
+export function applySnapshot(body: RapierRigidBody, sample: RewindSample, zeroVelocity: boolean) {
+  body.setTranslation(sample.position, true);
+  body.setRotation(sample.rotation, true);
+  body.setLinvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.linvel, true);
+  body.setAngvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.angvel, true);
 }

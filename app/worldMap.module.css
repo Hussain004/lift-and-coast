@@ -149,6 +149,66 @@
   overflow-wrap: break-word;
 }
 
+/* Circuit list: the pin map's list twin. Scrollable past a handful of
+   rows so 20 circuits don't stretch the page; rows are plain buttons so
+   keyboard/hover/focus all behave. */
+.trackList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(246, 243, 236, 0.08);
+  padding-top: 12px;
+}
+
+.trackRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #9aa0ab;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 7px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.trackRow:hover {
+  color: #f6f3ec;
+  background: rgba(246, 243, 236, 0.04);
+}
+
+.trackRowActive {
+  composes: trackRow;
+  border-color: #e10600;
+  color: #f6f3ec;
+  background: rgba(225, 6, 0, 0.08);
+}
+
+.trackRowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackRowMeta {
+  flex: none;
+  color: #5b616c;
+  font-size: 11px;
+}
+
+.trackRowActive .trackRowMeta {
+  color: #9aa0ab;
+}
+
 .statRow {
   display: flex;
   justify-content: space-between;

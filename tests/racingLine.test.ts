@@ -351,6 +351,28 @@ describe("updateLiveZoneColors", () => {
     expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR["brake-hard"]);
   });
 
+  it("stays green a few percent over target (tolerance, not exactness)", () => {
+    // 41.5 vs a 40 target is ordinary fast driving inside the profile's
+    // own safety margin, not a missed braking point - F1 games stay green
+    // there too.
+    const line = buildStraightLine(300, 40);
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 41.5, 150, ZONE_COLOR);
+    const idx = 10 * 6;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR.throttle);
+  });
+
+  it("doesn't paint the bumper red on a small excess (reaction floor)", () => {
+    // Before the reaction-distance floor, the point at the car's own
+    // position divided by 0.1m, so even 1 m/s over read as hundreds of
+    // m/s^2 and the stretch under the driver's nose was red all the time.
+    const line = buildStraightLine(300, 40);
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 41, 150, ZONE_COLOR);
+    const idx = 0;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR.throttle);
+  });
+
   it("leaves points beyond the lookahead distance untouched", () => {
     const line = buildStraightLine(300, 40);
     const colors = new Float32Array(line.length * 6).fill(0.5);

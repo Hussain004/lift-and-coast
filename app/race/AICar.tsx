@@ -44,6 +44,12 @@ import {
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import {
+  applySnapshot,
+  createRewindBuffer,
+  REWIND_CAPACITY_SECONDS,
+  snapshotOf,
+} from "@/lib/race/rewindBuffer";
 import { gridSpawn } from "@/lib/race/grid";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
@@ -80,6 +86,7 @@ export function AICar({
   raceStartRef,
   qualifyingRef,
   playerGridSpot = null,
+  sharedRewindActiveRef,
   bodyColor = "#ff5a3c",
   audioRef,
 }: {
@@ -88,6 +95,14 @@ export function AICar({
   minimapMarkerRef?: React.RefObject<SVGCircleElement | null>;
   /** Grid start (Scene.tsx) - throttle is locked out while false. */
   raceStartRef?: React.RefObject<boolean>;
+  /**
+   * Written by Car.tsx while the player holds the rewind key (see
+   * Scene.tsx) - this car scrubs its own past alongside the player's so
+   * a flashback rewinds the whole world. Each car keeps its own cursor
+   * in lockstep from the same flag (same timestep, same capacity), so no
+   * ordering between the two physics steps matters.
+   */
+  sharedRewindActiveRef?: React.RefObject<boolean>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   /**
@@ -122,10 +137,19 @@ export function AICar({
     })
   );
   // Validity latch for the shared qualifying times (mirrors the player's
-  // lapInvalidRef in Car.tsx, minus rewinds - the AI has no undo): any
-  // all-four-off moment taints the current lap, and the latch resets on
-  // every crossing so each lap is judged on its own driving.
+  // lapInvalidRef in Car.tsx): any all-four-off moment taints the current
+  // lap, and the latch resets on every crossing so each lap is judged on
+  // its own driving.
   const aiLapInvalidRef = useRef(false);
+  // When (on the lap clock) the current taint happened - lets a rewind
+  // that reaches back past the violation undo it, mirroring the player's
+  // lapInvalidAtSecondsRef in Car.tsx.
+  const aiLapInvalidAtSecondsRef = useRef<number | null>(null);
+  // Flashback state (see sharedRewindActiveRef): same scrub/resume/lap-
+  // rollback discipline as the player's own car in Car.tsx.
+  const aiBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
+  const aiCursorRef = useRef(0);
+  const aiWasRewindingRef = useRef(false);
 
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
@@ -169,7 +193,41 @@ export function AICar({
       body.setRotation({ x: spawnQuat.x, y: spawnQuat.y, z: spawnQuat.z, w: spawnQuat.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      // Same stale-buffer guard as the player's own reset in Car.tsx: a
+      // reset that lands mid-rewind must not resume back out to the
+      // pre-reset snapshot on release.
+      aiWasRewindingRef.current = false;
+      aiCursorRef.current = 0;
       return;
+    }
+
+    // Flashback (see sharedRewindActiveRef): scrub while the player holds
+    // R, resume on release - same discipline as Car.tsx, so both cars land
+    // back on the same scrubbed timeline.
+    if (sharedRewindActiveRef?.current ?? false) {
+      aiWasRewindingRef.current = true;
+      aiCursorRef.current = Math.min(
+        aiCursorRef.current + world.timestep,
+        aiBufferRef.current.oldestAvailableSeconds()
+      );
+      const sample = aiBufferRef.current.sampleAt(aiCursorRef.current);
+      if (sample) applySnapshot(body, sample, true);
+      return;
+    }
+
+    if (aiWasRewindingRef.current) {
+      const sample = aiBufferRef.current.resumeFrom(aiCursorRef.current);
+      if (sample) applySnapshot(body, sample, false);
+      // Roll the lap clock back by the scrubbed time (see Car.tsx), and
+      // clear a track-limits taint only if the rollback actually reaches
+      // the violation - same rule as the player's lapInvalidRef.
+      const rolledBackTo = lapTimerRef.current.rewindBy(aiCursorRef.current);
+      if (aiLapInvalidAtSecondsRef.current === null || rolledBackTo <= aiLapInvalidAtSecondsRef.current) {
+        aiLapInvalidRef.current = false;
+        aiLapInvalidAtSecondsRef.current = null;
+      }
+      aiCursorRef.current = 0;
+      aiWasRewindingRef.current = false;
     }
 
     // Grid start (Scene.tsx) - same reasoning as Car.tsx's identical guard:
@@ -186,6 +244,9 @@ export function AICar({
       // clean laps on both sides. Unconditional on mode - in a race the
       // overlay simply compares bests instead of first laps.
       if (allWheelsOffTrack(track, wheelGroundPositions(body))) {
+        if (!aiLapInvalidRef.current) {
+          aiLapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+        }
         aiLapInvalidRef.current = true;
       }
       if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
@@ -259,6 +320,7 @@ export function AICar({
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     applyDragImpulse(body, "high-downforce", world.timestep);
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
+    aiBufferRef.current.push(snapshotOf(body));
   });
 
   useFrame(() => {

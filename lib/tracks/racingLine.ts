@@ -425,11 +425,20 @@ function nearestPointIndex(line: RacingLinePoint[], x: number, z: number): numbe
   return nearestIdx;
 }
 
-// Floors the distance used in the decel-needed formula below so a point
-// right at (or a hair behind) the car's own position can't divide by zero
-// or near-zero - see updateLiveZoneColors's own comment for why the result
-// at that floor is still the physically sensible answer.
-const MIN_LIVE_COLOR_DISTANCE_METERS = 0.1;
+// Live-overlay shaping (see updateLiveZoneColors): two guards that keep
+// the colors F1-like instead of mathematically exact.
+// - Points closer than one reaction distance are evaluated AS IF at that
+//   distance. The v^2 formula divides by distance, so at the old 0.1m
+//   floor any excess at all - even 0.5 m/s over - read as hundreds of
+//   m/s^2 and the stretch right under the driver's nose was red nearly
+//   all the time. No human modulates on a sub-second horizon, so guidance
+//   inside it is noise, not information.
+// - Target speeds get a small tolerance before any escalation. The baked
+//   profile already carries its own safety factor, so a few percent over
+//   is normal fast driving, not a missed braking point - F1 games stay
+//   green there too, and only escalate when the excess is real.
+const LIVE_REACTION_DISTANCE_METERS = 10;
+const LIVE_SPEED_TOLERANCE_FRACTION = 0.05;
 
 /**
  * Recolors the racing line ribbon's vertex colors in place for a stretch
@@ -462,14 +471,17 @@ export function updateLiveZoneColors(
   let distance = 0;
   for (let k = 0; k < n; k++) {
     const i = (nearest + k) % n;
-    const d = Math.max(distance, MIN_LIVE_COLOR_DISTANCE_METERS);
+    const d = Math.max(distance, LIVE_REACTION_DISTANCE_METERS);
     // Same v^2 = v0^2 - 2*a*d formula used to build the static profile
     // above, just solved for `a` (decel needed) using the car's real
     // current speed and real distance instead of the line's own profile
     // speed - clamped at 0 so a point the car is already slower than
     // (e.g. still accelerating out of the previous corner) doesn't read as
-    // negative "decel".
-    const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - line[i].targetSpeedMs ** 2) / (2 * d));
+    // negative "decel". The target carries a small tolerance (see
+    // LIVE_SPEED_TOLERANCE_FRACTION): without it the v^2 nonlinearity
+    // turns a couple of m/s of ordinary overspeed into a red band.
+    const toleratedTarget = line[i].targetSpeedMs * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
+    const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
     const [r, g, b] = zoneColor[classifyZone(decelNeeded)];
     const idx = i * 6;
     colors[idx] = r;

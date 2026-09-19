@@ -466,6 +466,10 @@ export function Scene({
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState());
   const raceStartRef = useRef(false);
+  // Shared rewind flag (see Car.tsx's sharedRewindActiveRef): the player
+  // owns the R key, and every AI car scrubs its own past while it's held
+  // so a flashback rewinds the whole world, not just the player's car.
+  const sharedRewindActiveRef = useRef(false);
   const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes());
   const visualRef = useRef<THREE.Group>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
@@ -521,6 +525,7 @@ export function Scene({
           qualiFormat={qualiFormat}
           playerGridSpot={playerGridSpot}
           raceStartRef={raceStartRef}
+          sharedRewindActiveRef={sharedRewindActiveRef}
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}
           penaltyToastRef={penaltyToastRef}
@@ -534,6 +539,7 @@ export function Scene({
             raceRef={raceRef}
             minimapMarkerRef={aiMinimapMarkerRef}
             raceStartRef={raceStartRef}
+            sharedRewindActiveRef={sharedRewindActiveRef}
             qualifyingRef={qualifyingRef}
             playerGridSpot={playerGridSpot}
             bodyColor={aiBodyColor}

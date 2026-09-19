@@ -214,6 +214,31 @@ export function WorldMap() {
           </div>
         </div>
       </div>
+      {/* Circuit list: the same picker as the pins above, as a list - with
+          20 circuits a pin map alone is hunt-and-peck. Both read and write
+          the same session prefs (see pick), so they can never disagree. */}
+      <div className={styles.label}>CIRCUITS — {TRACKS.length}</div>
+      <div className={styles.trackList} role="listbox" aria-label="Circuit list">
+        {TRACKS.map((t) => {
+          const active = t.id === meta.id;
+          const rowStats = previewStats(t);
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onClick={() => pick(t.id)}
+              className={active ? styles.trackRowActive : styles.trackRow}
+            >
+              <span className={styles.trackRowName}>{t.shortName}</span>
+              <span className={styles.trackRowMeta}>
+                {rowStats.length} · {rowStats.corners} corners
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

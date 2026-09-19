@@ -53,7 +53,7 @@ import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { computeRacePosition, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
-import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
+import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
 import { pointsForPosition } from "@/lib/race/championship";
@@ -75,7 +75,6 @@ import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import { FLAP_OPEN_RAD, stepFlapAngle } from "@/lib/race/carBody";
 
-const REWIND_CAPACITY_SECONDS = 5;
 const SECTOR_COUNT = 3;
 // Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
 // AI opponent that exists today. Lap count comes from the home-screen
@@ -95,26 +94,6 @@ const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   green: "#39ff88",
   yellow: "#ffd23f",
 };
-
-function snapshotOf(body: RapierRigidBody): RewindSample {
-  const p = body.translation();
-  const r = body.rotation();
-  const lv = body.linvel();
-  const av = body.angvel();
-  return {
-    position: { x: p.x, y: p.y, z: p.z },
-    rotation: { x: r.x, y: r.y, z: r.z, w: r.w },
-    linvel: { x: lv.x, y: lv.y, z: lv.z },
-    angvel: { x: av.x, y: av.y, z: av.z },
-  };
-}
-
-function applySnapshot(body: RapierRigidBody, sample: RewindSample, zeroVelocity: boolean) {
-  body.setTranslation(sample.position, true);
-  body.setRotation(sample.rotation, true);
-  body.setLinvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.linvel, true);
-  body.setAngvel(zeroVelocity ? { x: 0, y: 0, z: 0 } : sample.angvel, true);
-}
 
 const CHASSIS_SIZE: [number, number, number] = [
   CHASSIS_HALF_EXTENTS[0] * 2,
@@ -150,6 +129,7 @@ export function Car({
   qualiFormat = "timed",
   playerGridSpot = null,
   raceStartRef,
+  sharedRewindActiveRef,
   qualifyingRef,
   qualifyingDisplayRef,
   penaltyToastRef,
@@ -222,6 +202,14 @@ export function Car({
    * countdown wiring.
    */
   raceStartRef?: React.RefObject<boolean>;
+  /**
+   * Owned by Scene.tsx, written here and read by AICar.tsx: true while the
+   * player holds the rewind key, so every car scrubs the same timeline.
+   * The player advances the shared cursor (see rewindCursorRef); each AI
+   * keeps its own cursor in lockstep from the same flag, so no ordering
+   * between the two physics steps matters.
+   */
+  sharedRewindActiveRef?: React.RefObject<boolean>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
@@ -504,6 +492,7 @@ export function Car({
     if (!controller || !body) return;
     const driveInput = update(world.timestep);
     isRewindingRef.current = driveInput.rewind;
+    if (sharedRewindActiveRef) sharedRewindActiveRef.current = driveInput.rewind;
 
     // Snap back to the start line if the car ends up this far off-track
     // (e.g. spun off pointing away from the circuit and held throttle
@@ -588,16 +577,21 @@ export function Car({
       wasRewindingRef.current = false;
     }
 
+    // Grid start: throttle and Push-to-Pass only, so the car can still
+    // brake/steer to hold its spot before the lights go out, but can't
+    // jump the start - or drain the battery deploying into a locked
+    // driveline (holding Shift through the countdown would otherwise
+    // arrive at turn 1 with an empty battery and no boost).
+    const raceStarted = raceStartRef?.current ?? true;
+    const gatedDriveInput = raceStarted
+      ? driveInput
+      : { ...driveInput, throttle: 0, deploy: false };
+
     const energyStatus = energySystemRef.current.update(
-      { brakeAmount: driveInput.brake, deployRequested: driveInput.deploy },
+      { brakeAmount: gatedDriveInput.brake, deployRequested: gatedDriveInput.deploy },
       world.timestep
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
-
-    // Grid start: throttle only, so the car can still brake/steer to hold
-    // its spot before the lights go out, but can't jump the start.
-    const raceStarted = raceStartRef?.current ?? true;
-    const gatedDriveInput = raceStarted ? driveInput : { ...driveInput, throttle: 0 };
 
     // Sync the gearbox's assist mode to the live toggle (useDriveInput
     // owns the G key, Car.tsx owns the gear state) before the drive model
