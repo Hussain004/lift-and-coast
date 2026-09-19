@@ -11,6 +11,7 @@ import {
 } from "./db";
 import {
   isChampionshipSeason,
+  recordQualiResult,
   recordRoundResult,
   type ChampionshipSeason,
 } from "../race/championship";
@@ -39,6 +40,24 @@ export async function clearSeason(): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   const db = await openDB();
   await idbDelete(db, CHAMPIONSHIP_STORE, CURRENT_SEASON_KEY);
+}
+
+/**
+ * Qualifying writer: loads the active season, records the player's grid
+ * spot for `roundIndex`, and saves. Same no-op discipline as
+ * recordChampionshipResult (no season, or out-of-range round, does
+ * nothing) since this also runs fire-and-forget from the race loop.
+ */
+export async function recordChampionshipQuali(
+  roundIndex: number,
+  qualiSpot: 1 | 2
+): Promise<ChampionshipSeason | null> {
+  const season = await loadSeason();
+  if (!season) return null;
+  const updated = recordQualiResult(season, roundIndex, qualiSpot);
+  if (updated === season) return season;
+  await saveSeason(updated);
+  return updated;
 }
 
 /**

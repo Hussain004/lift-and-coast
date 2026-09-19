@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRaceUrl,
   DEFAULT_RACE_LAPS,
   DEFAULT_TIME_OF_DAY,
   MAX_RACE_LAPS,
   MIN_RACE_LAPS,
   loadSessionSetupPrefs,
+  parseGridSpot,
+  parseQualifyingFormat,
   parseRaceLaps,
+  parseSessionMode,
   parseTimeOfDay,
   saveSessionSetupPrefs,
 } from "../lib/race/sessionSetup";
@@ -183,5 +187,47 @@ describe("saveSessionSetupPrefs", () => {
     expect(() =>
       saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day" }, null)
     ).not.toThrow();
+  });
+});
+describe("session mode params", () => {
+  it("parses known modes and falls back to race", () => {
+    expect(parseSessionMode("practice")).toBe("practice");
+    expect(parseSessionMode("qualifying")).toBe("qualifying");
+    expect(parseSessionMode("race")).toBe("race");
+    expect(parseSessionMode(null)).toBe("race");
+    expect(parseSessionMode("")).toBe("race");
+    expect(parseSessionMode("PRACTICE")).toBe("race");
+  });
+
+  it("parses qualifying formats with a timed default", () => {
+    expect(parseQualifyingFormat("oneshot")).toBe("oneshot");
+    expect(parseQualifyingFormat("timed")).toBe("timed");
+    expect(parseQualifyingFormat(null)).toBe("timed");
+    expect(parseQualifyingFormat("sprint")).toBe("timed");
+  });
+
+  it("parses grid spots strictly", () => {
+    expect(parseGridSpot("1")).toBe(1);
+    expect(parseGridSpot("2")).toBe(2);
+    expect(parseGridSpot(null)).toBeNull();
+    expect(parseGridSpot("3")).toBeNull();
+    expect(parseGridSpot("pole")).toBeNull();
+  });
+
+  it("builds full session URLs and omits defaults", () => {
+    expect(buildRaceUrl({})).toBe("/race");
+    const url = buildRaceUrl({
+      mode: "qualifying",
+      track: "monza",
+      team: "gas",
+      driver: "YOU",
+      tod: "sunset",
+      champ: 2,
+      grid: 2,
+      qformat: "oneshot",
+    });
+    expect(url).toBe(
+      "/race?mode=qualifying&track=monza&team=gas&driver=YOU&tod=sunset&champ=2&grid=2&qformat=oneshot"
+    );
   });
 });

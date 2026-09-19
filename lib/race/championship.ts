@@ -24,6 +24,12 @@ export interface ChampionshipRound {
   trackId: string;
   /** Player's finishing position; null until the round has been raced. */
   playerPosition: number | null;
+  /**
+   * Player's grid spot from this weekend's qualifying (1 = pole); null
+   * until qualified. The race is only offered once this is set - a
+   * championship weekend runs practice (optional) -> qualifying -> race.
+   */
+  qualiSpot: 1 | 2 | null;
 }
 
 export interface ChampionshipSeason {
@@ -39,7 +45,7 @@ export function createSeason(
   return {
     schemaVersion: 1,
     createdAt,
-    rounds: trackIds.map((trackId) => ({ trackId, playerPosition: null })),
+    rounds: trackIds.map((trackId) => ({ trackId, playerPosition: null, qualiSpot: null })),
   };
 }
 
@@ -76,6 +82,43 @@ export function recordRoundResult(
     i === roundIndex ? { ...round, playerPosition } : round
   );
   return { ...season, rounds };
+}
+
+/**
+ * Records a weekend's qualifying outcome (the player's grid spot). Same
+ * immutability and bounds discipline as recordRoundResult - and re-running
+ * qualifying simply overwrites, so a bad session can be re-driven before
+ * the race.
+ */
+export function recordQualiResult(
+  season: ChampionshipSeason,
+  roundIndex: number,
+  qualiSpot: 1 | 2
+): ChampionshipSeason {
+  if (roundIndex < 0 || roundIndex >= season.rounds.length) return season;
+  if (qualiSpot !== 1 && qualiSpot !== 2) return season;
+  const rounds = season.rounds.map((round, i) =>
+    i === roundIndex ? { ...round, qualiSpot } : round
+  );
+  return { ...season, rounds };
+}
+
+/**
+ * Where a championship weekend stands: practice is always available and
+ * never required, qualifying gates the race, and a raced round is done.
+ * Returns null for an out-of-range round (stale links degrade to nothing
+ * to show, not a crash).
+ */
+export function weekendStage(
+  season: ChampionshipSeason,
+  roundIndex: number
+): "qualifying" | "race" | "done" | null {
+  const round = season.rounds[roundIndex];
+  if (!round) return null;
+  if (round.playerPosition !== null) return "done";
+  // Loose check: seasons saved before qualiSpot existed carry undefined.
+  if (round.qualiSpot == null) return "qualifying";
+  return "race";
 }
 
 export interface ChampionshipStandings {
@@ -149,11 +192,22 @@ export function isChampionshipSeason(value: unknown): value is ChampionshipSeaso
   if (!Array.isArray(season.rounds)) return false;
   return season.rounds.every((round) => {
     if (typeof round !== "object" || round === null) return false;
-    const { trackId, playerPosition } = round as {
+    const { trackId, playerPosition, qualiSpot } = round as {
       trackId?: unknown;
       playerPosition?: unknown;
+      qualiSpot?: unknown;
     };
     if (typeof trackId !== "string" || !isKnownTrackId(trackId)) return false;
+    // qualiSpot is newer than some saved seasons - absent counts as
+    // unqualified (the weekend flow treats it as "qualifying next").
+    if (
+      qualiSpot !== undefined &&
+      qualiSpot !== null &&
+      qualiSpot !== 1 &&
+      qualiSpot !== 2
+    ) {
+      return false;
+    }
     return (
       playerPosition === null ||
       (typeof playerPosition === "number" &&

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import {
@@ -46,15 +46,16 @@ import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
-import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
+import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
+import { gridSpawn } from "@/lib/race/grid";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { computeRacePosition, type RaceState } from "@/lib/race/racePosition";
-import { polePosition, type QualifyingTimes } from "@/lib/race/qualifying";
+import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
-import { recordChampionshipResult } from "@/lib/persistence/championship";
+import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
 import { pointsForPosition } from "@/lib/race/championship";
 import {
   allWheelsOffTrack,
@@ -145,6 +146,9 @@ export function Car({
   raceRef,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
+  sessionMode = "race",
+  qualiFormat = "timed",
+  playerGridSpot = null,
   raceStartRef,
   qualifyingRef,
   qualifyingDisplayRef,
@@ -200,6 +204,17 @@ export function Car({
    * active season (see recordChampionshipResult).
    */
   champRound?: number | null;
+  /** Session kind from ?mode= (default race) - practice is solo free
+   * driving, qualifying sets a grid, race is wheel-to-wheel. */
+  sessionMode?: SessionMode;
+  /** Qualifying format from ?qformat= (default timed). */
+  qualiFormat?: QualifyingFormat;
+  /**
+   * The player's grid spot from ?grid=, or null for the old equal standing
+   * start. P2 spawns GRID_BEHIND_METERS back (see grid.ts) with the lap
+   * timer forgiving the run to the line.
+   */
+  playerGridSpot?: 1 | 2 | null;
   /**
    * Grid start (Scene.tsx's RaceStartCountdown) - throttle is locked out
    * while false. Undefined behaves as already-started (no countdown), so
@@ -220,6 +235,13 @@ export function Car({
   audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { startPos } = track;
+  // Grid spot for this car (see grid.ts) - P2 starts eight metres back
+  // with the timer forgiving the run to the line; null keeps the
+  // historical at-the-line spawn exactly.
+  const gridSpot = useMemo(
+    () => gridSpawn(track, playerGridSpot, true),
+    [track, playerGridSpot]
+  );
   const controllerRef = useRef<Rapier.DynamicRayCastVehicleController | null>(
     null
   );
@@ -236,10 +258,21 @@ export function Car({
   // below) so the HUD and drive model always agree with the assist state.
   const gearboxRef = useRef(createGearboxState(true));
   const lapTimerRef = useRef(
-    createLapTimer({ startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
+    createLapTimer({
+      startPos,
+      lineHalfWidth: LINE_HALF_WIDTH_METERS,
+      startsBehindLine: gridSpot.startsBehindLine,
+    })
   );
   const raceElapsedSecondsRef = useRef(0);
   const raceFinishedRef = useRef(false);
+  // Non-race sessions (plan section 8): the player's own qualifying
+  // machine (best valid lap per the session rules in qualifying.ts) and a
+  // latch so the end-of-session banner + persistence fire exactly once.
+  // Practice reuses raceFinishedRef (laps reached) rather than growing a
+  // third flag.
+  const qualiSessionRef = useRef(createQualifyingSession(qualiFormat));
+  const qualiFinishedRef = useRef(false);
   // Race clock timestamp (not lap-relative currentLapSeconds, which resets
   // every lap and could strand the toast if a penalty lands late in a lap)
   // to hide the penalty toast at.
@@ -496,7 +529,7 @@ export function Car({
       // Track-relative spawn height: startPos is the start/finish line's own
       // x/z, and the elevation build normalizes that point to y=0 (see
       // scripts/build-track.mts), so 1m above it is still right.
-      body.setTranslation({ x: startPos.x, y: 1, z: startPos.z }, true);
+      body.setTranslation({ x: gridSpot.x, y: 1, z: gridSpot.z }, true);
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -782,17 +815,13 @@ export function Car({
 
     const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
 
-    // Playable Qualifying (plan section 7): whoever's first completed lap
-    // is faster is "on pole". Deliberately unconditional on `eligible` -
-    // symmetric with AICar.tsx's own unconditional recording, since there's
-    // no second qualifying run here for a track-limit deletion to make
-    // meaningful; requiring a clean lap would just mean the overlay often
-    // never fires. Checked every frame (not just inside the
-    // crossedFinishLine block below) since the two cars' first laps
-    // usually finish on different frames - the comparison can only fire
-    // once BOTH sides are in, whichever car's crossing happens to be
-    // second. See lib/race/qualifying.ts for why this is an informational
-    // overlay on the existing race, not a real grid-setting session.
+    // Playable Qualifying (plan section 7): best valid lap per side,
+    // informing the overlay below in race mode and the grid in qualifying
+    // sessions. Valid means the lap's own `eligible` flag (clean +
+    // continuous, same standard as the delta/ghost reference) - symmetric
+    // with AICar.tsx's own best-valid recording. Checked every frame (not
+    // just inside the crossedFinishLine block below) since the two cars'
+    // laps usually finish on different frames.
     if (qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
       const pole = qualifyingRef?.current ? polePosition(qualifyingRef.current) : null;
       if (pole !== null && qualifyingRef?.current) {
@@ -806,8 +835,18 @@ export function Car({
     }
 
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
-      if (qualifyingRef?.current && qualifyingRef.current.player === null) {
-        qualifyingRef.current.player = lap.lastLapSeconds;
+      if (qualifyingRef?.current && eligible) {
+        const prev = qualifyingRef.current.player;
+        if (prev === null || lap.lastLapSeconds < prev) {
+          qualifyingRef.current.player = lap.lastLapSeconds;
+        }
+      }
+      if (sessionMode === "qualifying" && !qualiFinishedRef.current) {
+        qualiSessionRef.current = recordQualiLap(
+          qualiSessionRef.current,
+          "player",
+          eligible ? lap.lastLapSeconds : null
+        );
       }
       // ponytail: the race "ends" here as a HUD banner only - driving,
       // physics, and the AI keep going, and there's no in-race results/menu
@@ -818,7 +857,7 @@ export function Car({
       // (the finish order is settled the moment the player crosses, see
       // finalPosition below); a dedicated results screen would just show it
       // in place. Upgrade once session setup/results screens exist.
-      if (!raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
+      if (sessionMode === "race" && !raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
         raceFinishedRef.current = true;
         // raceElapsedSecondsRef stops advancing once raceFinishedRef flips
         // (see the guard above it), so the penalty toast's hide-at clock
@@ -843,6 +882,19 @@ export function Car({
           `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
           championshipSuffix +
           `  //  PRESS ENTER TO RESTART`;
+      }
+      if (sessionMode === "practice" && !raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
+        // Solo session: driving on after the count is fine, but the banner
+        // fires once with the session's best and a way back. Runs before
+        // the wasNewBest bookkeeping below, so fold this lap in by hand.
+        raceFinishedRef.current = true;
+        const candidates = [bestLapRef.current, eligible ? lap.lastLapSeconds : null].filter(
+          (v): v is number => v !== null
+        );
+        const sessionBest = candidates.length > 0 ? Math.min(...candidates) : null;
+        raceResultRef.current.innerHTML =
+          `PRACTICE COMPLETE - ${raceLaps} LAPS - BEST ${formatLapTime(sessionBest)}` +
+          `  //  <a href="${window.location.pathname}${window.location.search}">DRIVE AGAIN</a>  //  <a href="/">MENU</a>`;
       }
       const wasNewBest =
         eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
@@ -917,10 +969,56 @@ export function Car({
     }
 
     if (lapRef?.current) {
-      lapRef.current.textContent =
-        `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
-        `  BEST ${formatLapTime(bestLapRef.current)}` +
-        (lapInvalidRef.current ? "  INVALID" : "");
+      if (sessionMode === "qualifying" && qualiFormat === "timed") {
+        const remaining = qualiSessionRef.current.timeLeftSeconds;
+        const mm = Math.floor(remaining / 60);
+        const ss = Math.floor(remaining % 60)
+          .toString()
+          .padStart(2, "0");
+        lapRef.current.textContent =
+          `QUAL ${mm}:${ss}  BEST ${formatLapTime(bestLapRef.current)}` +
+          (lapInvalidRef.current ? "  INVALID" : "");
+      } else if (sessionMode === "qualifying") {
+        lapRef.current.textContent =
+          `QUAL SHOT  LAP ${lap.lapCount + 1}  BEST ${formatLapTime(bestLapRef.current)}` +
+          (lapInvalidRef.current ? "  INVALID" : "");
+      } else if (sessionMode === "practice") {
+        lapRef.current.textContent =
+          `PRAC ${Math.min(lap.lapCount + 1, raceLaps)}/${raceLaps}  BEST ${formatLapTime(bestLapRef.current)}` +
+          (lapInvalidRef.current ? "  INVALID" : "");
+      } else {
+        lapRef.current.textContent =
+          `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
+          `  BEST ${formatLapTime(bestLapRef.current)}` +
+          (lapInvalidRef.current ? "  INVALID" : "");
+      }
+    }
+
+    if (sessionMode === "qualifying" && !qualiFinishedRef.current) {
+      if (qualiFormat === "timed") {
+        qualiSessionRef.current = tickQualifyingSession(qualiSessionRef.current, dt);
+      }
+      if (qualiSessionRef.current.finished && raceResultRef?.current) {
+        qualiFinishedRef.current = true;
+        // The AI's best arrives through the shared times (see AICar.tsx) -
+        // whatever it has set when the player's session ends counts.
+        const mergedBest = {
+          player: qualiSessionRef.current.best.player,
+          ai: qualifyingRef?.current?.ai ?? null,
+        };
+        const spot = gridSpotFromSession({ ...qualiSessionRef.current, best: mergedBest });
+        if (champRound !== null) {
+          recordChampionshipQuali(champRound, spot).catch(() => {});
+        }
+        const raceHref = retargetSessionUrl(window.location.search, "race", spot);
+        const resultLine =
+          `QUALIFYING COMPLETE - YOU ${formatLapTime(mergedBest.player)}` +
+          `  RIVAL ${formatLapTime(mergedBest.ai)}  -  YOU START P${spot}`;
+        raceResultRef.current.innerHTML =
+          champRound !== null
+            ? `${resultLine}  //  <a href="${raceHref}">RACE ROUND ${champRound + 1}</a>  //  <a href="/">MENU</a>`
+            : `${resultLine}  //  <a href="${raceHref}">RACE FROM P${spot}</a>  //  <a href="/">MENU</a>`;
+      }
     }
 
     const delta = deltaTrackerRef.current.recordSample(status.progressMeters, lap.currentLapSeconds);
@@ -980,7 +1078,7 @@ export function Car({
       <RigidBody
         ref={chassisRef}
         colliders={false}
-        position={[startPos.x, 1, startPos.z]}
+        position={[gridSpot.x, 1, gridSpot.z]}
         rotation={[0, startPos.headingRad, 0]}
         linearDamping={LINEAR_DAMPING}
         angularDamping={ANGULAR_DAMPING}

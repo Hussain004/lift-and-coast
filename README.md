@@ -44,14 +44,18 @@ the vertical slice:
   instanced, off the road and the gravel
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
-  playable Qualifying, live race position, 5s rewind with lap-clock rollback
+  live race position, 5s rewind with lap-clock rollback
+- Session modes: solo Practice (any lap count), grid-setting Qualifying
+  (10-minute open session or one-shot flying lap, best valid lap counts),
+  and staggered-grid Races (pole at the line, P2 eight metres back)
 - Session setup on the home screen: garage (team/driver), world map with
   track previews, Quick Race lap-count slider (1-20) and time-of-day
   lighting (day/sunset/overcast) - all remembered via localStorage
-- Championship mode (plan sections 7-8): a season of one race at each
-  registered circuit, F1-style points (25-18-...), standings on the home
-  screen; the active season lives in IndexedDB and travels in the save
-  export/import bundle
+- Championship mode (plan sections 7-8): a season across every
+  registered circuit, each weekend running practice (optional) then
+  qualifying then the race, with F1-style points (25-18-...) and standings
+  on the home screen; the active season lives in IndexedDB and travels in
+  the save export/import bundle
 - Track-limit enforcement on the real all-four-wheels-off rule (warning,
   penalty and lap invalidation all agree), damage,
   minimap, sector times, delta timer, RPM/gear HUD
@@ -140,8 +144,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. Pick a circuit and the Quick Race lap count on
-the home screen (all remembered between sessions), then Drive and use WASD
+Open http://localhost:3000. Pick a circuit, a session (Practice,
+Qualifying or Race) and the lap count on the home screen (all remembered
+between sessions), then Drive and use WASD
 or the arrow keys. Hold R to rewind the last few seconds after spinning
 off. Hold Shift to deploy harvested energy for a power boost
 (Push-to-Pass). Press E to toggle Active Aero between high-downforce
@@ -153,9 +158,9 @@ up automatically for analog steering (left stick) and throttle/brake (stick
 or triggers), through the same input shaping and brake ramp as the
 keyboard.
 
-Start a Championship season on the home screen to race one round at every
-circuit for F1-style points; the standings there update as each round is
-scored, and the season is saved in IndexedDB alongside your best laps.
+Start a Championship season on the home screen to run a full weekend
+(practice, qualifying, race) at every circuit for F1-style points; the
+standings there update as each round is scored, and the season is saved in IndexedDB alongside your best laps.
 
 ## Testing
 

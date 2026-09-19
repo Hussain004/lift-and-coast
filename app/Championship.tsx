@@ -9,10 +9,11 @@ import {
   nextRoundIndex,
   pointsForPosition,
   seasonChampion,
+  weekendStage,
   type ChampionshipSeason,
 } from "@/lib/race/championship";
 import { clearSeason, loadSeason, saveSeason } from "@/lib/persistence/championship";
-import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
+import { DEFAULT_RACE_LAPS, buildRaceUrl } from "@/lib/race/sessionSetup";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
@@ -124,7 +125,8 @@ export function Championship() {
         </p>
       ) : (
         <p className={styles.championshipNote}>
-          {getTrackName(season.rounds[next].trackId)} — race {DEFAULT_RACE_LAPS} laps.
+          {getTrackName(season.rounds[next].trackId)} — practice, qualifying,
+          then race {DEFAULT_RACE_LAPS} laps.
         </p>
       )}
 
@@ -140,7 +142,7 @@ export function Championship() {
             <span>
               {round.playerPosition === null
                 ? i === next
-                  ? "next"
+                  ? (round.qualiSpot === null ? "next" : `Q${round.qualiSpot}`)
                   : "—"
                 : `P${round.playerPosition} · +${pointsForPosition(round.playerPosition)}`}
             </span>
@@ -149,14 +151,56 @@ export function Championship() {
       </ul>
 
       <div className={styles.championshipButtons}>
-        {!complete && (
-          <Link
-            className={styles.championshipButton}
-            href={`/race?champ=${next}&track=${season.rounds[next].trackId}&laps=${DEFAULT_RACE_LAPS}&team=${parseTeamId(teamId)}&driver=${parseDriverCode(driverCode)}&tod=${timeOfDay}`}
-          >
-            Race round {next + 1}
-          </Link>
-        )}
+        {!complete && (() => {
+          const round = season.rounds[next];
+          const stage = weekendStage(season, next);
+          const base = {
+            track: round.trackId,
+            team: parseTeamId(teamId),
+            driver: parseDriverCode(driverCode),
+            tod: timeOfDay,
+            champ: next,
+          };
+          return (
+            <>
+              <Link
+                className={styles.championshipButton}
+                href={buildRaceUrl({ ...base, mode: "practice", laps: DEFAULT_RACE_LAPS })}
+              >
+                Practice
+              </Link>
+              {(stage === "qualifying" || stage === "race") && (
+                <Link
+                  className={styles.championshipButton}
+                  href={buildRaceUrl({ ...base, mode: "qualifying", qformat: "timed" })}
+                >
+                  {round.qualiSpot === null ? "Qualifying" : `Re-qualify (Q${round.qualiSpot})`}
+                </Link>
+              )}
+              {(stage === "qualifying" || stage === "race") && (
+                <Link
+                  className={styles.championshipButton}
+                  href={buildRaceUrl({ ...base, mode: "qualifying", qformat: "oneshot" })}
+                >
+                  One-shot
+                </Link>
+              )}
+              {stage === "race" && round.qualiSpot !== null && (
+                <Link
+                  className={styles.championshipButton}
+                  href={buildRaceUrl({
+                    ...base,
+                    mode: "race",
+                    laps: DEFAULT_RACE_LAPS,
+                    grid: round.qualiSpot,
+                  })}
+                >
+                  Race from P{round.qualiSpot}
+                </Link>
+              )}
+            </>
+          );
+        })()}
         <button type="button" className={styles.championshipButton} onClick={resetSeason}>
           {complete ? "New season" : "Reset season"}
         </button>

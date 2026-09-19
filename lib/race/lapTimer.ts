@@ -5,6 +5,14 @@ export interface LapTimerConfig {
   startPos: { x: number; z: number; headingRad: number };
   /** Half-width of the finish line gate, in meters. */
   lineHalfWidth: number;
+  /**
+   * The car spawns behind the line (a staggered grid spot): the first
+   * crossing starts the clock instead of ending a lap, so the run up to
+   * the line doesn't record a bogus ~2s "lap" (and best-lap, ghost
+   * reference and qualifying comparisons stay clean). Exactly one crossing
+   * is forgiven; everything after behaves normally.
+   */
+  startsBehindLine?: boolean;
 }
 
 export interface LapTimerState {
@@ -39,6 +47,7 @@ export function createLapTimer(config: LapTimerConfig) {
 
   let prevSignedForward: number | null = null;
   let armed = false;
+  let skipFirstCrossing = config.startsBehindLine ?? false;
   let currentLapSeconds = 0;
   let lapCount = 0;
   let lastLapSeconds: number | null = null;
@@ -60,14 +69,21 @@ export function createLapTimer(config: LapTimerConfig) {
       signedForward >= 0 &&
       Math.abs(lateral) < config.lineHalfWidth
     ) {
-      crossedFinishLine = true;
-      armed = false;
-      lapCount += 1;
-      lastLapSeconds = currentLapSeconds;
-      if (bestLapSeconds === null || currentLapSeconds < bestLapSeconds) {
-        bestLapSeconds = currentLapSeconds;
+      if (skipFirstCrossing) {
+        // Grid-spot start: the clock starts here, nothing is recorded.
+        skipFirstCrossing = false;
+        armed = false;
+        currentLapSeconds = 0;
+      } else {
+        crossedFinishLine = true;
+        armed = false;
+        lapCount += 1;
+        lastLapSeconds = currentLapSeconds;
+        if (bestLapSeconds === null || currentLapSeconds < bestLapSeconds) {
+          bestLapSeconds = currentLapSeconds;
+        }
+        currentLapSeconds = 0;
       }
-      currentLapSeconds = 0;
     }
 
     currentLapSeconds += dt;

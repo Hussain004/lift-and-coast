@@ -6,9 +6,12 @@ import {
   DEFAULT_RACE_LAPS,
   MAX_RACE_LAPS,
   MIN_RACE_LAPS,
+  buildRaceUrl,
   loadSessionSetupPrefs,
   saveSessionSetupPrefs,
   useSessionSetupPrefs,
+  type QualifyingFormat,
+  type SessionMode,
   type TimeOfDay,
 } from "@/lib/race/sessionSetup";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
@@ -19,6 +22,17 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "day", label: "Day" },
   { id: "sunset", label: "Sunset" },
   { id: "overcast", label: "Overcast" },
+];
+
+const SESSION_MODES: { id: SessionMode; label: string }[] = [
+  { id: "practice", label: "Practice" },
+  { id: "qualifying", label: "Qualifying" },
+  { id: "race", label: "Race" },
+];
+
+const QUALI_FORMATS: { id: QualifyingFormat; label: string }[] = [
+  { id: "timed", label: "10 min" },
+  { id: "oneshot", label: "One-shot" },
 ];
 
 // Plan section 8 (Session Setup): the lap-count slider plus the Drive link.
@@ -32,6 +46,8 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
 export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
+  const [sessionMode, setSessionMode] = useState<SessionMode>("race");
+  const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
   const { trackId, timeOfDay } = useSessionSetupPrefs();
   // Live roster pick from the team/driver panel above - carried on the Drive
   // link so the race grid dresses both cars (see lib/race/roster.ts).
@@ -58,34 +74,79 @@ export function SessionSetup() {
           </button>
         ))}
       </div>
-      <div className={styles.sliderRow}>
-        <span className={styles.label}>QUICK RACE — LAPS</span>
-        <span className={styles.readout} aria-live="polite">
-          {raceLaps}
-        </span>
+      <div className={styles.label}>SESSION</div>
+      <div className={styles.presets} role="radiogroup" aria-label="Session mode">
+        {SESSION_MODES.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={sessionMode === option.id}
+            onClick={() => setSessionMode(option.id)}
+            className={sessionMode === option.id ? styles.presetActive : styles.preset}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
-      <input
-        type="range"
-        min={MIN_RACE_LAPS}
-        max={MAX_RACE_LAPS}
-        value={raceLaps}
-        onChange={(e) => {
-          const laps = parseInt(e.target.value, 10);
-          const clamped = Number.isFinite(laps)
-            ? Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, laps))
-            : DEFAULT_RACE_LAPS;
-          setRaceLaps(clamped);
-          persist(clamped, trackId, timeOfDay);
-        }}
-        className={styles.slider}
-        aria-label="Quick Race lap count"
-      />
-      <div className={styles.scale}>
-        <span>{MIN_RACE_LAPS}</span>
-        <span>{MAX_RACE_LAPS}</span>
-      </div>
+      {sessionMode === "qualifying" && (
+        <div className={styles.presets} role="radiogroup" aria-label="Qualifying format">
+          {QUALI_FORMATS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={qualiFormat === option.id}
+              onClick={() => setQualiFormat(option.id)}
+              className={qualiFormat === option.id ? styles.presetActive : styles.preset}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {sessionMode !== "qualifying" && (
+        <>
+          <div className={styles.sliderRow}>
+            <span className={styles.label}>
+              {sessionMode === "practice" ? "PRACTICE — LAPS" : "QUICK RACE — LAPS"}
+            </span>
+            <span className={styles.readout} aria-live="polite">
+              {raceLaps}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={MIN_RACE_LAPS}
+            max={MAX_RACE_LAPS}
+            value={raceLaps}
+            onChange={(e) => {
+              const laps = parseInt(e.target.value, 10);
+              const clamped = Number.isFinite(laps)
+                ? Math.min(MAX_RACE_LAPS, Math.max(MIN_RACE_LAPS, laps))
+                : DEFAULT_RACE_LAPS;
+              setRaceLaps(clamped);
+              persist(clamped, trackId, timeOfDay);
+            }}
+            className={styles.slider}
+            aria-label="Session lap count"
+          />
+          <div className={styles.scale}>
+            <span>{MIN_RACE_LAPS}</span>
+            <span>{MAX_RACE_LAPS}</span>
+          </div>
+        </>
+      )}
       <Link
-        href={`/race?laps=${raceLaps}&track=${parseTrackId(trackId)}&team=${parseTeamId(teamId)}&driver=${parseDriverCode(driverCode)}&tod=${timeOfDay}`}
+        href={buildRaceUrl({
+          mode: sessionMode,
+          track: parseTrackId(trackId),
+          laps: sessionMode === "qualifying" ? undefined : raceLaps,
+          team: parseTeamId(teamId),
+          driver: parseDriverCode(driverCode),
+          tod: timeOfDay,
+          qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
+        })}
         className={styles.drive}
       >
         Drive

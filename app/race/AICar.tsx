@@ -35,7 +35,7 @@ import {
 import { computeDownforceN } from "@/lib/physics/aero";
 import { createGearboxState, rpmForGear } from "@/lib/physics/gearbox";
 import { F1CarBody } from "./F1CarBody";
-import { checkTrackLimits, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
+import { checkTrackLimits, allWheelsOffTrack, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
 import {
   meanSurfaceDrag,
   sampleSurface,
@@ -44,20 +44,12 @@ import {
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import { computeAIControls } from "@/lib/ai/pathFollower";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import { gridSpawn } from "@/lib/race/grid";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
 import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { TrackData } from "@/lib/tracks/types";
-
-// Lateral offset from the player's own grid slot (Car.tsx spawns at
-// startPos directly) so the two cars don't spawn overlapping - a fraction
-const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
-// of the track's own half-width at the start line rather than a fixed
-// distance, so it scales across tracks of different widths and stays well
-// clear of computeSurfaceGripMultiplier's edge penalty (checked against
-// Silverstone: 13m width, so this lands about 2.3m off the centerline,
-// nowhere near the edge).
 
 /**
  * A single AI opponent (plan section 6): follows the same ideal-line
@@ -65,8 +57,8 @@ const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
  * pure-pursuit steering and curvature-derived speed targets
  * (lib/ai/pathFollower.ts), running the identical vehicle rig as the
  * player's own car (Car.tsx) so it's bound by the same physics. No
- * racecraft, no opponent awareness, no difficulty tiers, no lap timing for
- * itself yet - groundwork for a race weekend, not one.
+ * racecraft, no opponent awareness, no difficulty tiers - groundwork for
+ * a race weekend, not one.
  *
  * Deliberately owns its own chassis/visual/controller refs rather than
  * sharing anything with Scene.tsx's player refs - ChaseCamera follows
@@ -77,7 +69,9 @@ const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
  * either car needing a ref into the other's internals. Also writes its own
  * world position into minimapMarkerRef each frame so it shows up on the
  * player's minimap (a plain SVG circle, not the rotating egocentric
- * marker the player gets - see page.tsx).
+ * marker the player gets - see page.tsx). In qualifying sessions its best
+ * valid lap feeds the shared qualifying times (see the validity latch
+ * below) so the grid reflects clean laps only.
  */
 export function AICar({
   track,
@@ -85,6 +79,7 @@ export function AICar({
   minimapMarkerRef,
   raceStartRef,
   qualifyingRef,
+  playerGridSpot = null,
   bodyColor = "#ff5a3c",
   audioRef,
 }: {
@@ -95,6 +90,11 @@ export function AICar({
   raceStartRef?: React.RefObject<boolean>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
+  /**
+   * The PLAYER's grid spot (see Scene.tsx) - the AI takes the other one.
+   * Null keeps the old equal standing start.
+   */
+  playerGridSpot?: 1 | 2 | null;
   /** Garage pick (see lib/race/roster.ts) - the teammate-opponent's secondary livery. */
   bodyColor?: string;
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
@@ -115,27 +115,29 @@ export function AICar({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const lapTimerRef = useRef(
-    createLapTimer({ startPos: track.startPos, lineHalfWidth: LINE_HALF_WIDTH_METERS })
+    createLapTimer({
+      startPos: track.startPos,
+      lineHalfWidth: LINE_HALF_WIDTH_METERS,
+      startsBehindLine: gridSpawn(track, playerGridSpot, false).startsBehindLine,
+    })
   );
+  // Validity latch for the shared qualifying times (mirrors the player's
+  // lapInvalidRef in Car.tsx, minus rewinds - the AI has no undo): any
+  // all-four-off moment taints the current lap, and the latch resets on
+  // every crossing so each lap is judged on its own driving.
+  const aiLapInvalidRef = useRef(false);
 
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
   const { spawnX, spawnZ, spawnQuat } = useMemo(() => {
-    const halfWidth = track.width[0] / 2;
-    const offset = halfWidth * GRID_OFFSET_FRACTION_OF_HALF_WIDTH;
+    const grid = gridSpawn(track, playerGridSpot, false);
     const yaw = track.startPos.headingRad;
-    // Forward at yaw (see yawFromQuaternion), "right" perpendicular to it -
-    // same convention as mesh.ts/racingLine.ts's own right vectors.
-    const forwardX = -Math.sin(yaw);
-    const forwardZ = -Math.cos(yaw);
-    const rightX = -forwardZ;
-    const rightZ = forwardX;
     return {
-      spawnX: track.startPos.x + rightX * offset,
-      spawnZ: track.startPos.z + rightZ * offset,
+      spawnX: grid.x,
+      spawnZ: grid.z,
       spawnQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)),
     };
-  }, [track]);
+  }, [track, playerGridSpot]);
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -179,12 +181,21 @@ export function AICar({
       if (raceRef?.current) {
         raceRef.current.ai = { lapCount: lap.lapCount, progressMeters: limitStatus.progressMeters };
       }
-      // Playable Qualifying: the AI's own first completed lap, recorded
-      // once - no eligibility/invalidation concept for the AI (it doesn't
-      // rewind or run track-limit checks the way the player does), so any
-      // completed first lap counts.
-      if (qualifyingRef?.current && qualifyingRef.current.ai === null && lap.lastLapSeconds !== null) {
-        qualifyingRef.current.ai = lap.lastLapSeconds;
+      // Playable Qualifying: the AI's best VALID lap, feeding the same
+      // shared times the player writes (see Car.tsx) so the grid compares
+      // clean laps on both sides. Unconditional on mode - in a race the
+      // overlay simply compares bests instead of first laps.
+      if (allWheelsOffTrack(track, wheelGroundPositions(body))) {
+        aiLapInvalidRef.current = true;
+      }
+      if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+        if (qualifyingRef?.current && !aiLapInvalidRef.current) {
+          const prev = qualifyingRef.current.ai;
+          if (prev === null || lap.lastLapSeconds < prev) {
+            qualifyingRef.current.ai = lap.lastLapSeconds;
+          }
+        }
+        aiLapInvalidRef.current = false;
       }
     }
 

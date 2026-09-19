@@ -12,6 +12,89 @@ export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
 export const DEFAULT_RACE_LAPS = 3;
 
+// Plan section 8 (Game Modes): what kind of session a race-page visit is.
+// Practice is solo free driving, qualifying sets a grid (see qualifying.ts
+// for the formats), race is the wheel-to-wheel event against the AI -
+// including championship rounds, which are race sessions with ?champ=.
+// Unknown/missing values fall back to race so every existing link
+// (which predates the parameter) keeps working unchanged.
+export type SessionMode = "practice" | "qualifying" | "race";
+
+export function parseSessionMode(raw: string | null): SessionMode {
+  if (raw === "practice" || raw === "qualifying" || raw === "race") return raw;
+  return "race";
+}
+
+// Qualifying formats (see qualifying.ts): one flying lap after the timer
+// starts at the first line crossing, or a 10-minute open session where the
+// best valid lap counts. Unknown values fall back to the timed session.
+export type QualifyingFormat = "oneshot" | "timed";
+
+export function parseQualifyingFormat(raw: string | null): QualifyingFormat {
+  if (raw === "oneshot") return "oneshot";
+  return "timed";
+}
+
+/** Grid spot for the player from ?grid=, or null (equal standing start). */
+export function parseGridSpot(raw: string | null): 1 | 2 | null {
+  if (raw === "1") return 1;
+  if (raw === "2") return 2;
+  return null;
+}
+
+export interface RaceUrlParams {
+  mode?: SessionMode;
+  track?: string;
+  laps?: number;
+  team?: string;
+  driver?: string;
+  tod?: TimeOfDay;
+  champ?: number | null;
+  grid?: 1 | 2 | null;
+  qformat?: QualifyingFormat;
+}
+
+/**
+ * Rebuilds a race URL from an existing query string with a new mode/grid -
+ * how in-race banners link onward (qualifying -> race from this grid)
+ * without dropping the rest of the session (track, laps, roster, champ).
+ * Pure over the string so it's unit-testable; callers pass
+ * window.location.search.
+ */
+export function retargetSessionUrl(
+  search: string,
+  mode: SessionMode,
+  grid: 1 | 2 | null
+): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  params.set("mode", mode);
+  if (grid === null) params.delete("grid");
+  else params.set("grid", String(grid));
+  if (mode !== "qualifying") params.delete("qformat");
+  const suffix = params.toString();
+  return `/race${suffix ? `?${suffix}` : ""}`;
+}
+
+/**
+ * Builds race-page URLs in one place so the home screen, the championship
+ * panel and the in-race session banners (Car.tsx) can't drift apart -
+ * every link carries the full session description explicitly.
+ */
+export function buildRaceUrl(params: RaceUrlParams): string {
+  const query = new URLSearchParams();
+  if (params.mode !== undefined) query.set("mode", params.mode);
+  if (params.track !== undefined) query.set("track", params.track);
+  if (params.laps !== undefined) query.set("laps", String(params.laps));
+  if (params.team !== undefined) query.set("team", params.team);
+  if (params.driver !== undefined) query.set("driver", params.driver);
+  if (params.tod !== undefined) query.set("tod", params.tod);
+  if (params.champ !== undefined && params.champ !== null) query.set("champ", String(params.champ));
+  if (params.grid !== undefined && params.grid !== null) query.set("grid", String(params.grid));
+  if (params.qformat !== undefined) query.set("qformat", params.qformat);
+  const suffix = query.toString();
+  return `/race${suffix ? `?${suffix}` : ""}`;
+}
+
 // Plan section 8 (Session Setup): time-of-day lighting preset. Deliberately
 // no night: driving it fairly would need headlights and lit track
 // furniture, a whole feature - these three all read with the same lighting

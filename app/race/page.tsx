@@ -11,7 +11,7 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps, parseTimeOfDay } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveRosterSelection } from "@/lib/race/roster";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
@@ -46,6 +46,12 @@ function RaceContent() {
   const searchParams = useSearchParams();
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
   const champRound = parseChampRound(searchParams.get("champ"));
+  const sessionMode = parseSessionMode(searchParams.get("mode"));
+  const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
+  // Explicit grid only (?grid= from a qualifying result or the
+  // championship panel) - the race never reads the season itself, so grid
+  // assignment stays synchronous with spawning.
+  const playerGridSpot = parseGridSpot(searchParams.get("grid"));
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
   // Garage pick from the home screen (see lib/race/roster.ts): the player
@@ -118,6 +124,9 @@ function RaceContent() {
         raceResultRef={raceResultRef}
         raceLaps={raceLaps}
         champRound={champRound}
+        sessionMode={sessionMode}
+        qualiFormat={qualiFormat}
+        playerGridSpot={playerGridSpot}
         countdownRef={countdownRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}

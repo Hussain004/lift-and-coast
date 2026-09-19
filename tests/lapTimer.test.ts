@@ -146,3 +146,52 @@ describe("formatLapTime", () => {
     expect(formatLapTime(5.02)).toBe("0:05.020");
   });
 });
+
+describe("createLapTimer startsBehindLine", () => {
+  const forward = {
+    x: -Math.sin(track.startPos.headingRad),
+    z: -Math.cos(track.startPos.headingRad),
+  };
+  const at = (signedForward: number) => ({
+    x: track.startPos.x + forward.x * signedForward,
+    z: track.startPos.z + forward.z * signedForward,
+  });
+
+  it("does not record a lap for the run up to the line from a grid spot behind it", () => {
+    const timer = createLapTimer({
+      startPos: track.startPos,
+      lineHalfWidth: 6,
+      startsBehindLine: true,
+    });
+    timer.update(at(-9), 1 / 60);
+    const crossing = timer.update(at(1), 1 / 60);
+    expect(crossing.crossedFinishLine).toBe(false);
+    expect(crossing.lapCount).toBe(0);
+    expect(crossing.lastLapSeconds).toBeNull();
+    expect(crossing.bestLapSeconds).toBeNull();
+  });
+
+  it("times normally after the forgiven crossing", () => {
+    const timer = createLapTimer({
+      startPos: track.startPos,
+      lineHalfWidth: 6,
+      startsBehindLine: true,
+    });
+    timer.update(at(-9), 1 / 60);
+    timer.update(at(1), 1 / 60);
+    timer.update(at(50), 1 / 60);
+    timer.update(at(-10), 1 / 60);
+    const crossing = timer.update(at(1), 1 / 60);
+    expect(crossing.crossedFinishLine).toBe(true);
+    expect(crossing.lapCount).toBe(1);
+    expect(crossing.lastLapSeconds).toBeGreaterThan(0);
+  });
+
+  it("behaves exactly as before without the flag", () => {
+    const timer = createLapTimer({ startPos: track.startPos, lineHalfWidth: 6 });
+    timer.update(at(-9), 1 / 60);
+    const crossing = timer.update(at(1), 1 / 60);
+    expect(crossing.crossedFinishLine).toBe(true);
+    expect(crossing.lapCount).toBe(1);
+  });
+});

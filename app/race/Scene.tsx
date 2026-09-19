@@ -27,18 +27,15 @@ import {
 } from "@/lib/race/orbitCam";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
+import type { QualifyingFormat } from "@/lib/race/qualifying";
+import type { SessionMode } from "@/lib/race/sessionSetup";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
 // a synchronized launch instead of whoever's tab finished loading first.
-// Deliberately does NOT stagger the two cars' spawn positions along the
-// track to make this feel like a real grid: createLapTimer only arms once
-// a car is more than 3m BEHIND the start line (see lapTimer.ts), so a car
-// spawned meaningfully behind it would arm immediately and count its very
-// first crossing of the line as a completed lap. The current lateral-only
-// spawn offset (AICar.tsx) stays inside that deadzone, so this doesn't
-// touch it - a real staggered grid needs the lap timer taught about a
-// race-start grace period first.
+// The grid itself IS staggered (see grid.ts): pole at the line, P2 eight
+// metres behind, with the behind car's lap timer forgiving the run up to
+// the line (see startsBehindLine in lapTimer.ts).
 const COUNTDOWN_SECONDS = 3;
 const GO_DISPLAY_SECONDS = 0.75;
 
@@ -410,6 +407,9 @@ export function Scene({
   raceResultRef,
   raceLaps,
   champRound,
+  sessionMode = "race",
+  qualiFormat = "timed",
+  playerGridSpot = null,
   countdownRef,
   qualifyingDisplayRef,
   penaltyToastRef,
@@ -449,6 +449,16 @@ export function Scene({
   timeOfDay?: TimeOfDay;
   /** Championship round index from ?champ=, or null for a one-off race. */
   champRound?: number | null;
+  /** What kind of session this visit is - see ?mode= (default race). */
+  sessionMode?: SessionMode;
+  /** Qualifying format from ?qformat= (default timed). */
+  qualiFormat?: QualifyingFormat;
+  /**
+   * The player's grid spot from ?grid= (a qualifying result or the
+   * championship panel), or null for the old equal standing start.
+   * The AI takes the other spot.
+   */
+  playerGridSpot?: 1 | 2 | null;
   countdownRef: React.RefObject<HTMLDivElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
@@ -507,6 +517,9 @@ export function Scene({
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
+          sessionMode={sessionMode}
+          qualiFormat={qualiFormat}
+          playerGridSpot={playerGridSpot}
           raceStartRef={raceStartRef}
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}
@@ -515,15 +528,18 @@ export function Scene({
           bodyColor={playerBodyColor}
           audioRef={audioRef}
         />
-        <AICar
-          track={track}
-          raceRef={raceRef}
-          minimapMarkerRef={aiMinimapMarkerRef}
-          raceStartRef={raceStartRef}
-          qualifyingRef={qualifyingRef}
-          bodyColor={aiBodyColor}
-          audioRef={audioRef}
-        />
+        {sessionMode !== "practice" && (
+          <AICar
+            track={track}
+            raceRef={raceRef}
+            minimapMarkerRef={aiMinimapMarkerRef}
+            raceStartRef={raceStartRef}
+            qualifyingRef={qualifyingRef}
+            playerGridSpot={playerGridSpot}
+            bodyColor={aiBodyColor}
+            audioRef={audioRef}
+          />
+        )}
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
       <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />

@@ -8,10 +8,12 @@ import {
   nextRoundIndex,
   parseChampRound,
   pointsForPosition,
+  recordQualiResult,
   recordRoundResult,
   seasonChampion,
   totalRounds,
   type ChampionshipSeason,
+  weekendStage,
 } from "../lib/race/championship";
 
 const TRACK_IDS = ["silverstone", "monza", "spa", "suzuka"];
@@ -153,5 +155,50 @@ describe("isChampionshipSeason", () => {
     expect(
       isChampionshipSeason({ schemaVersion: 1, createdAt: "x", rounds: [{ trackId: "monza", playerPosition: 1 }] })
     ).toBe(true);
+  });
+});
+
+describe("championship weekend", () => {
+  it("starts every round unqualified and un-raced", () => {
+    const season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    expect(season.rounds.every((r) => r.qualiSpot === null)).toBe(true);
+  });
+
+  it("records quali spots and lets re-qualifying overwrite", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    season = recordQualiResult(season, 0, 2);
+    expect(season.rounds[0].qualiSpot).toBe(2);
+    season = recordQualiResult(season, 0, 1);
+    expect(season.rounds[0].qualiSpot).toBe(1);
+    // Out-of-range and invalid spots are no-ops.
+    expect(recordQualiResult(season, 99, 1)).toBe(season);
+    expect(recordQualiResult(season, 0, 3 as 1 | 2)).toBe(season);
+  });
+
+  it("walks practice-optional qualifying-gated weekend stages", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    expect(weekendStage(season, 0)).toBe("qualifying");
+    expect(weekendStage(season, 99)).toBeNull();
+    season = recordQualiResult(season, 0, 1);
+    expect(weekendStage(season, 0)).toBe("race");
+    season = recordRoundResult(season, 0, 1);
+    expect(weekendStage(season, 0)).toBe("done");
+  });
+
+  it("accepts seasons saved before qualiSpot existed", () => {
+    expect(
+      isChampionshipSeason({
+        schemaVersion: 1,
+        createdAt: "x",
+        rounds: [{ trackId: "monza", playerPosition: null }],
+      })
+    ).toBe(true);
+    const legacy = {
+      schemaVersion: 1,
+      createdAt: "x",
+      rounds: [{ trackId: "monza", playerPosition: null }],
+    } as unknown as ChampionshipSeason;
+    // Missing qualiSpot reads as unqualified, not as ready to race.
+    expect(weekendStage(legacy, 0)).toBe("qualifying");
   });
 });
