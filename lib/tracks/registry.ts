@@ -29,6 +29,13 @@ export const TRACKS: TrackMeta[] = [
   { id: "bahrain", name: "Bahrain International Circuit", shortName: "Bahrain", corners: 15, lat: 26.0315, lon: 50.5143 },
   { id: "cota", name: "Circuit of the Americas", shortName: "COTA", corners: 20, lat: 30.1347, lon: -97.6340 },
   { id: "zandvoort", name: "Circuit Zandvoort", shortName: "Zandvoort", corners: 14, lat: 52.3881, lon: 4.5459 },
+  { id: "budapest", name: "Hungaroring", shortName: "Budapest", corners: 14, lat: 47.5830, lon: 19.2495 },
+  { id: "melbourne", name: "Albert Park Circuit", shortName: "Melbourne", corners: 14, lat: -37.8460, lon: 144.9704 },
+  { id: "montreal", name: "Circuit Gilles-Villeneuve", shortName: "Montreal", corners: 14, lat: 45.5057, lon: -73.5259 },
+  { id: "mexico", name: "Autodromo Hermanos Rodriguez", shortName: "Mexico", corners: 17, lat: 19.4017, lon: -99.0900 },
+  { id: "shanghai", name: "Shanghai International Circuit", shortName: "Shanghai", corners: 16, lat: 31.3407, lon: 121.2214 },
+  { id: "interlagos", name: "Autodromo Jose Carlos Pace", shortName: "Interlagos", corners: 15, lat: -23.7017, lon: -46.6973 },
+  { id: "yasmarina", name: "Yas Marina Circuit", shortName: "Yas Marina", corners: 16, lat: 24.4709, lon: 54.6056 },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;

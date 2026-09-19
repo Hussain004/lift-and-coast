@@ -48,6 +48,13 @@ const TRACKS: { id: string; rawFile: string }[] = [
   { id: "bahrain", rawFile: "bh-2002.geojson" },
   { id: "cota", rawFile: "us-2012.geojson" },
   { id: "zandvoort", rawFile: "nl-1948.geojson" },
+  { id: "budapest", rawFile: "hu-1986.geojson" },
+  { id: "melbourne", rawFile: "au-1953.geojson" },
+  { id: "montreal", rawFile: "ca-1978.geojson" },
+  { id: "mexico", rawFile: "mx-1962.geojson" },
+  { id: "shanghai", rawFile: "cn-2004.geojson" },
+  { id: "interlagos", rawFile: "br-1940.geojson" },
+  { id: "yasmarina", rawFile: "ae-2009.geojson" },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

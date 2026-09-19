@@ -12,7 +12,8 @@ A set of real circuit layouts (corner geometry and start line from the
 f1-circuits dataset, real per-point track widths from the TUMFTM
 racetrack-database, real elevation from a vendored Copernicus DEM; no camber
 and no authored kerbs yet): Silverstone, Monza, Spa-Francorchamps,
-Suzuka, Monaco, Spielberg, Bahrain, COTA and Zandvoort. Driven by a Rapier raycast-vehicle
+Suzuka, Monaco, Spielberg, Bahrain, COTA, Zandvoort, Budapest, Melbourne,
+Montreal, Mexico, Shanghai, Interlagos and Yas Marina. Driven by a Rapier raycast-vehicle
 chassis with seven-speed sequential manual gears plus an auto-gear assist
 (plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
 input (plan section 5), chase/cockpit/T-cam/TV-broadcast/orbit cameras, and rewind. Built on top of
@@ -37,8 +38,10 @@ the vertical slice:
 - Trackside flora: seeded low-poly trees per circuit setting (cherry
   blossom at Suzuka, poplars at Monza, spruce in the Ardennes, oaks at
   Silverstone, cypress at Monaco, alpine spruce at Spielberg, desert scrub
-  in Bahrain, live oak at COTA, dune pine at Zandvoort), instanced, off
-  the road and the gravel
+  in Bahrain, live oak at COTA, dune pine at Zandvoort, puszta green at
+  Budapest, eucalyptus at Melbourne, maple at Montreal, juniper in Mexico,
+  leaf green at Shanghai, broadleaf at Interlagos, palms at Yas Marina),
+  instanced, off the road and the gravel
 - Ghost laps + personal bests persisted in IndexedDB (per circuit)
 - Quick Race vs one AI opponent (runs the same physics as the player),
   playable Qualifying, live race position, 5s rewind with lap-clock rollback
@@ -75,7 +78,8 @@ projecting the raw lon/lat polyline to a local meter plane, fitting a
 centripetal Catmull-Rom spline, and resampling at a fixed 2m arc-length
 interval. `scripts/build-track.mts` builds every circuit in its `TRACKS`
 list (Silverstone, Monza, Spa, Suzuka, Monaco, Spielberg, Bahrain, COTA,
-Zandvoort). Rebuild with:
+Zandvoort, Budapest, Melbourne, Montreal, Mexico, Shanghai, Interlagos,
+Yas Marina). Rebuild with:
 
 ```bash
 npm run build:track

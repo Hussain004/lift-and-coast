@@ -39,7 +39,10 @@ const SECONDS = 180;
 // lap), Bahrain's traction zones pace it at ~33 m/s (5300 over 5431m),
 // COTA has the slowest profile of the set at ~38 m/s target average (4000
 // still separates a stalled car several times over), Zandvoort's dunes at
-// ~40 (4500 over 4268m).
+// ~40 (4500 over 4268m). Second scale-out batch, same method: Budapest
+// 4500, Melbourne 5000, Montreal 4500, Mexico 4500, Shanghai 5000,
+// Interlagos 5000 (1.16 laps, observed 6202), Yas Marina 4500 (observed
+// 5791).
 const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   silverstone: 6000,
   monza: 6000,
@@ -50,6 +53,13 @@ const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   bahrain: 5300,
   cota: 4000,
   zandvoort: 4500,
+  budapest: 4500,
+  melbourne: 5000,
+  montreal: 4500,
+  mexico: 4500,
+  shanghai: 5000,
+  interlagos: 5000,
+  yasmarina: 4500,
 };
 // Observed worst single off-track excursion is ~6m (down from ~23m before
 // the downforce-aware profile); this only catches a genuine runaway.

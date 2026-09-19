@@ -23,6 +23,13 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   bahrain: 5412,
   cota: 5514,
   zandvoort: 4259,
+  budapest: 4381,
+  melbourne: 5278,
+  montreal: 4361,
+  mexico: 4304,
+  shanghai: 5451,
+  interlagos: 4309,
+  yasmarina: 5281,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
@@ -41,15 +48,23 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = 
   bahrain: { min: 10.0, max: 22.5, mean: 13.4 },
   cota: { min: 10.5, max: 28.0, mean: 13.9 },
   zandvoort: { min: 7.5, max: 16.5, mean: 10.5 },
+  budapest: { min: 7.0, max: 16.5, mean: 10.0 },
+  melbourne: { min: 7.5, max: 16.5, mean: 12.3 },
+  montreal: { min: 7.5, max: 15.0, mean: 9.7 },
+  mexico: { min: 9.0, max: 18.0, mean: 12.3 },
+  shanghai: { min: 10.0, max: 18.0, mean: 13.0 },
+  interlagos: { min: 8.5, max: 18.5, mean: 11.9 },
+  yasmarina: { min: 9.5, max: 16.0, mean: 12.9 },
 };
 
 // Elevation as built from the vendored DEM samples (see
 // scripts/fetch-elevation.mts and the averaging constants in
 // scripts/build-track.mts). `range` is the lap's total relief in meters - the
 // real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m, Spa 92m,
-// Spielberg 62m, Bahrain 16m, COTA 18m, Zandvoort 4m, and Monaco 32m
-// (hand-authored keyframes: the urban DEM inverts there, see
-// build-track.mts) - and `maxGrade` the steepest point. The grade ceiling is the important
+// Spielberg 62m, Bahrain 16m, COTA 18m, Zandvoort 4m, Budapest 32m,
+// Melbourne 6m, Montreal 9m, Mexico 4m, Shanghai 5m, Interlagos 40m,
+// Yas Marina 9m, and Monaco 32m (hand-authored keyframes: the urban DEM
+// inverts there, see build-track.mts) - and `maxGrade` the steepest point. The grade ceiling is the important
 // one: the raw DEM samples produce 50-84% grades and step 30m between
 // neighbouring 90m cells, so a regression in the averaging shows up here as a
 // spike rather than as a subtly wrong lap. The bands are the built values with
@@ -68,6 +83,13 @@ const ELEVATION_BANDS: Record<
   bahrain: { range: [12, 24], maxGrade: 0.06 },
   cota: { range: [14, 26], maxGrade: 0.07 },
   zandvoort: { range: [3, 8], maxGrade: 0.03 },
+  budapest: { range: [24, 40], maxGrade: 0.1 },
+  melbourne: { range: [4, 10], maxGrade: 0.03 },
+  montreal: { range: [6, 14], maxGrade: 0.06 },
+  mexico: { range: [3, 8], maxGrade: 0.03 },
+  shanghai: { range: [3, 8], maxGrade: 0.03 },
+  interlagos: { range: [32, 50], maxGrade: 0.12 },
+  yasmarina: { range: [7, 14], maxGrade: 0.04 },
 };
 
 describe("parseTrackId", () => {
@@ -103,7 +125,7 @@ describe("getTrackName / isKnownTrackId", () => {
 });
 
 describe("registry contents", () => {
-  it("has nine circuits with unique ids and short labels", () => {
+  it("has sixteen circuits with unique ids and short labels", () => {
     expect(TRACKS.length).toBeGreaterThanOrEqual(4);
     expect(new Set(TRACKS.map((t) => t.id)).size).toBe(TRACKS.length);
     for (const entry of TRACKS) {
@@ -123,6 +145,13 @@ describe("registry contents", () => {
     expect(ids).toContain("bahrain");
     expect(ids).toContain("cota");
     expect(ids).toContain("zandvoort");
+    expect(ids).toContain("budapest");
+    expect(ids).toContain("melbourne");
+    expect(ids).toContain("montreal");
+    expect(ids).toContain("mexico");
+    expect(ids).toContain("shanghai");
+    expect(ids).toContain("interlagos");
+    expect(ids).toContain("yasmarina");
   });
 });
 

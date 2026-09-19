@@ -57,6 +57,10 @@ const DESERT_SCRUB = ["#9A9A6B", "#8A8A5E", "#A8A878"];
 const TEXAS_OAK = ["#4E7C3C", "#557F35", "#436F34"];
 const JUNIPER_GREEN = ["#3A5A3A", "#425E38", "#334E33"];
 const DUNE_PINE = ["#3D5A3C", "#46653F", "#355236"];
+const PUSZTA_GREEN = ["#5A7C40", "#647F45", "#4F7038"];
+const EUCALYPT_GREEN = ["#6A8A5A", "#75946A", "#5D7F52"];
+const MAPLE_GREEN = ["#4E7D3A", "#578747", "#457033"];
+const PALM_GREEN = ["#4F7D3A", "#5A8A44", "#467033"];
 const TRUNK_BROWN = "#5A4632";
 
 const FLORA: Record<string, FloraConfig> = {
@@ -243,6 +247,146 @@ const FLORA: Record<string, FloraConfig> = {
     lateralMinM: 8,
     lateralMaxM: 45,
     seed: 1948,
+  },
+  budapest: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: PUSZTA_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3.5],
+        heightM: [5, 8],
+        weight: 2,
+      },
+      {
+        shape: "conifer",
+        canopyColors: CYPRESS_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.5, 2.5],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 55,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 1986,
+  },
+  melbourne: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: EUCALYPT_GREEN,
+        trunkColor: "#6E6A5E",
+        canopySizeM: [2.5, 4],
+        heightM: [7, 11],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 60,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 1996,
+  },
+  montreal: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: MAPLE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 60,
+    lateralMinM: 8,
+    lateralMaxM: 50,
+    seed: 1978,
+  },
+  mexico: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: JUNIPER_GREEN,
+        trunkColor: "#4E4234",
+        canopySizeM: [1.5, 2.5],
+        heightM: [3, 5],
+        weight: 2,
+      },
+      {
+        shape: "conifer",
+        canopyColors: CYPRESS_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [0.9, 1.4],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 45,
+    lateralMinM: 8,
+    lateralMaxM: 50,
+    seed: 1962,
+  },
+  shanghai: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: CHERRY_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3.5],
+        heightM: [5, 8],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 55,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 2004,
+  },
+  interlagos: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: TEXAS_OAK,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4.5],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 60,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 1940,
+  },
+  yasmarina: {
+    species: [
+      {
+        // Date-palm proportions (tall trunk, small crown) - fronds are
+        // beyond the low-poly vocabulary, but the silhouette reads.
+        // Young landscaping height: the broadleaf stack tops out around
+        // 5m at this canopy size regardless of the height band.
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#7A6A4E",
+        canopySizeM: [1.2, 2],
+        heightM: [5, 7],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1, 2],
+        heightM: [2.5, 4],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 40,
+    lateralMinM: 8,
+    lateralMaxM: 45,
+    seed: 2009,
   },
 };
 

@@ -749,6 +749,67 @@ const TRACKS: {
     autoStart: true,
   },
   {
+    rawPath: `${scriptDir}/../data/tracks/raw/hu-1986.geojson`,
+    id: "budapest",
+    name: "Hungaroring",
+    widthFile: "Budapest.csv",
+    elevationFile: "budapest.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/au-1953.geojson`,
+    id: "melbourne",
+    name: "Albert Park Circuit",
+    widthFile: "Melbourne.csv",
+    elevationFile: "melbourne.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/ca-1978.geojson`,
+    id: "montreal",
+    name: "Circuit Gilles-Villeneuve",
+    widthFile: "Montreal.csv",
+    elevationFile: "montreal.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/mx-1962.geojson`,
+    id: "mexico",
+    name: "Autodromo Hermanos Rodriguez",
+    widthFile: "MexicoCity.csv",
+    elevationFile: "mexico.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/cn-2004.geojson`,
+    id: "shanghai",
+    name: "Shanghai International Circuit",
+    widthFile: "Shanghai.csv",
+    elevationFile: "shanghai.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/br-1940.geojson`,
+    id: "interlagos",
+    name: "Autodromo Jose Carlos Pace",
+    widthFile: "SaoPaulo.csv",
+    elevationFile: "interlagos.json",
+    autoStart: true,
+  },
+  {
+    // TUMFTM's YasMarina.csv traces the PRE-2021 layout (5542m vs the
+    // current 5281m): the two reprofiled sectors (T5-T7, T11-T14) mismatch
+    // the raw loop there, so the transferred widths in those sectors are
+    // approximate. Yas widths are uniform enough (12-16m) that the error
+    // stays within a couple of metres - pinned by the width bands test.
+    rawPath: `${scriptDir}/../data/tracks/raw/ae-2009.geojson`,
+    id: "yasmarina",
+    name: "Yas Marina Circuit",
+    widthFile: "YasMarina.csv",
+    elevationFile: "yasmarina.json",
+    autoStart: true,
+  },
+  {
     rawPath: `${scriptDir}/../data/tracks/raw/mc-1929.geojson`,
     id: "monaco",
     name: "Circuit de Monaco",

@@ -26,7 +26,7 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const OUT_DIR = `${scriptDir}/../data/tracks/structures`;
 const RAW_DIR = `${scriptDir}/../data/tracks/raw`;
 
-const TRACKS: { id: string; rawFile: string; padMeters: number }[] = [
+const TRACKS: TrackSpec[] = [
   { id: "silverstone", rawFile: "gb-1948.geojson", padMeters: 250 },
   { id: "monza", rawFile: "it-1922.geojson", padMeters: 250 },
   { id: "spa", rawFile: "be-1925.geojson", padMeters: 250 },
@@ -36,9 +36,18 @@ const TRACKS: { id: string; rawFile: string; padMeters: number }[] = [
   { id: "bahrain", rawFile: "bh-2002.geojson", padMeters: 250 },
   { id: "cota", rawFile: "us-2012.geojson", padMeters: 250 },
   { id: "zandvoort", rawFile: "nl-1948.geojson", padMeters: 250 },
+  { id: "budapest", rawFile: "hu-1986.geojson", padMeters: 250 },
+  { id: "melbourne", rawFile: "au-1953.geojson", padMeters: 250, splitGrid: 2 },
+  { id: "montreal", rawFile: "ca-1978.geojson", padMeters: 250 },
+  { id: "mexico", rawFile: "mx-1962.geojson", padMeters: 250 },
+  { id: "shanghai", rawFile: "cn-2004.geojson", padMeters: 250 },
+  { id: "interlagos", rawFile: "br-1940.geojson", padMeters: 250 },
+  { id: "yasmarina", rawFile: "ae-2009.geojson", padMeters: 250, splitGrid: 2 },
 ];
 
 const REQUEST_PAUSE_MS = 6000;
+// Sanity cap per single API response (use splitGrid on the track when one
+// call exceeds it); the merged quadrant set may legitimately total more.
 const MAX_ELEMENTS_BEFORE_SPLIT = 30000;
 // Keep only what reads as trackside: grandstands, pits and nearby buildings
 // matter; farmhouses half a kilometre out and field fences do not. Caps are
@@ -319,6 +328,14 @@ export interface TrackSpec {
   id: string;
   rawFile: string;
   padMeters: number;
+  /**
+   * Split the bbox fetch into this many quadrants per side (merged by
+   * element id before filtering) when one call returns more than
+   * MAX_ELEMENTS_BEFORE_SPLIT - dense city bboxes like Melbourne's trip
+   * the guard otherwise. Rings must never be clipped by a bbox edge, so
+   * shrinking the pad is not an alternative.
+   */
+  splitGrid?: number;
 }
 
 /** Bbox + projection center for a track, shared by the fetch and the file. */
@@ -351,9 +368,6 @@ export function processTrackDoc(
   const { centerLon, centerLat } = bbox;
   const count = doc.elements.length;
   console.log(`  ${count} elements`);
-  if (count > MAX_ELEMENTS_BEFORE_SPLIT) {
-    throw new Error(`${track.id}: too many elements (${count}), split the bbox first`);
-  }
   const built = JSON.parse(
     readFileSync(`${scriptDir}/../data/tracks/${track.id}.json`, "utf8")
   );
@@ -396,8 +410,61 @@ async function main() {
       `${track.id}: bbox lon[${bbox.minLon.toFixed(4)},${bbox.maxLon.toFixed(4)}] ` +
         `lat[${bbox.minLat.toFixed(4)},${bbox.maxLat.toFixed(4)}]`
     );
-    const doc = await fetchBbox(bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat);
-    processTrackDoc(track, doc, bbox);
+    const grid = track.splitGrid ?? 1;
+    if (grid === 1) {
+      const doc = await fetchBbox(bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat);
+      if (doc.elements.length > MAX_ELEMENTS_BEFORE_SPLIT) {
+        throw new Error(
+          `${track.id}: too many elements (${doc.elements.length}), split the bbox first`
+        );
+      }
+      processTrackDoc(track, doc, bbox);
+    } else {
+      // Quadrant fetches merged by element id (nodes shared across
+      // quadrant borders appear in several responses). Quadrants overlap
+      // by 100m and, for ways, the longest node list wins - a ring
+      // clipped by a quadrant edge must never beat its complete copy
+      // from the overlapping neighbour.
+      const seen = new Map<string, { type: string } & Record<string, unknown>>();
+      const OVERLAP_DEG = 100 / 111320;
+      for (let gx = 0; gx < grid; gx++) {
+        for (let gz = 0; gz < grid; gz++) {
+          const qMinLon = Math.max(
+            bbox.minLon,
+            bbox.minLon + ((bbox.maxLon - bbox.minLon) * gx) / grid - OVERLAP_DEG
+          );
+          const qMaxLon = Math.min(
+            bbox.maxLon,
+            bbox.minLon + ((bbox.maxLon - bbox.minLon) * (gx + 1)) / grid + OVERLAP_DEG
+          );
+          const qMinLat = Math.max(
+            bbox.minLat,
+            bbox.minLat + ((bbox.maxLat - bbox.minLat) * gz) / grid - OVERLAP_DEG
+          );
+          const qMaxLat = Math.min(
+            bbox.maxLat,
+            bbox.minLat + ((bbox.maxLat - bbox.minLat) * (gz + 1)) / grid + OVERLAP_DEG
+          );
+          console.log(`  quadrant ${gx},${gz}`);
+          const part = await fetchBbox(qMinLon, qMinLat, qMaxLon, qMaxLat);
+          if (part.elements.length > MAX_ELEMENTS_BEFORE_SPLIT) {
+            throw new Error(
+              `${track.id}: quadrant ${gx},${gz} too big (${part.elements.length}), raise splitGrid`
+            );
+          }
+          for (const e of part.elements as ({ type: string } & Record<string, unknown>)[]) {
+            const key = `${e.type}/${String((e as unknown as { id: number }).id)}`;
+            const prev = seen.get(key);
+            const nodes = (e as unknown as { nodes?: unknown[] }).nodes?.length ?? 0;
+            const prevNodes =
+              (prev as unknown as { nodes?: unknown[] } | undefined)?.nodes?.length ?? 0;
+            if (!prev || nodes > prevNodes) seen.set(key, e);
+          }
+          await sleep(REQUEST_PAUSE_MS);
+        }
+      }
+      processTrackDoc(track, { elements: [...seen.values()] } as OsmDoc, bbox);
+    }
     await sleep(REQUEST_PAUSE_MS);
   }
 }

@@ -174,6 +174,13 @@ describe("defaultMassingHeightM", () => {
   });
 });
 
+// Circuits whose pit lane is genuinely absent upstream (see the comment
+// on the pit-lane assertion below). Everywhere else a lane must be mapped.
+const PITLANE_MAPPED: Record<string, boolean> = {
+  melbourne: false,
+  shanghai: false,
+};
+
 describe("vendored structures", () => {
   for (const entry of TRACKS) {
     it(`${entry.id} has mapped structures with sane rings`, () => {
@@ -193,8 +200,14 @@ describe("vendored structures", () => {
           ).toBeLessThan(1e-9);
         }
       }
-      // Every circuit has its pit lane mapped (pit walls derive from it).
-      expect(structs.some((s) => s.kind === "pitlane"), `${entry.id} has no pit lane`).toBe(true);
+      // Every circuit has its pit lane mapped (pit walls derive from it)
+      // - except Melbourne and Shanghai, whose lanes are genuinely absent
+      // upstream (verified: no raceway way near either pit straight, named
+      // or otherwise). The false entries below assert that absence, so a
+      // mapper adding the lane flips the test and the walls get built.
+      expect(structs.some((s) => s.kind === "pitlane"), `${entry.id} has no pit lane`).toBe(
+        PITLANE_MAPPED[entry.id] ?? true
+      );
     });
   }
 });
@@ -279,7 +292,13 @@ describe("buildStructureGeometry (real circuits)", () => {
         .filter((s) => s.kind === "building")
         .map((s) => ({ ring: s.ring, centerLon, centerLat, name: s.name }));
       const runs = pitWallRuns(track, lanes, buildings);
-      expect(runs.length).toBeGreaterThan(0);
+      if (PITLANE_MAPPED[entry.id] ?? true) {
+        expect(runs.length).toBeGreaterThan(0);
+      } else {
+        // No mapped lane and no P-named proxy buildings: no walls, by
+        // construction rather than by accident.
+        expect(runs).toEqual([]);
+      }
       for (const run of runs) {
         expect(run.side === 1 || run.side === -1).toBe(true);
         expect(run.toStation - run.fromStation).toBeGreaterThanOrEqual(100);
