@@ -386,6 +386,64 @@ function averageElevations(ours: Point[], source: ElevationSource): number[] {
   });
 }
 
+/**
+ * Locates the real start/finish line on a raw loop via the TUMFTM
+ * centerline: TUMFTM laps start at s=0 on the line, so the rigid-aligned
+ * first CSV row sits on the raw loop where the line is. Returns RAW arc
+ * meters (the unit startAtMeters takes), resolved through the nearest raw
+ * vertex to the spline position, so the cut lands exactly on a vertex.
+ * Same fit the width transfer uses (order-independent), so the station is
+ * consistent with the aligned widths by construction.
+ */
+export function locateTumftmStart(rawPath: string, widthPath: string): number {
+  const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
+  const rawCoords: [number, number][] = raw.features[0].geometry.coordinates;
+  const lons = rawCoords.map((c) => c[0]);
+  const lats = rawCoords.map((c) => c[1]);
+  const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+  const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const projected = lonLatToMeters(rawCoords, centerLon, centerLat);
+  const controlPoints = dedupeClose(projected, MIN_POINT_SEPARATION_METERS);
+  const fine = catmullRomClosed(controlPoints, 20);
+  const resampled = resampleByArcLength(fine, RESAMPLE_SPACING_METERS);
+  const source = loadWidthSource(widthPath);
+  const { transform, rms } = fitRigidTo(resampled, source.points);
+  const s0 = applyRigid(source.points[0], transform);
+  let bestIdx = 0;
+  let best = Infinity;
+  for (let i = 0; i < resampled.length; i++) {
+    const d = (resampled[i].x - s0.x) ** 2 + (resampled[i].z - s0.z) ** 2;
+    if (d < best) {
+      best = d;
+      bestIdx = i;
+    }
+  }
+  // Back to the nearest raw vertex: startAtMeters cuts there.
+  let bestRaw = 0;
+  let bestRawD = Infinity;
+  for (let i = 0; i < projected.length; i++) {
+    const d =
+      (projected[i].x - resampled[bestIdx].x) ** 2 +
+      (projected[i].z - resampled[bestIdx].z) ** 2;
+    if (d < bestRawD) {
+      bestRawD = d;
+      bestRaw = i;
+    }
+  }
+  const meanLat = rawCoords.reduce((s, c) => s + c[1], 0) / rawCoords.length;
+  const mLon = 111320 * Math.cos((meanLat * Math.PI) / 180);
+  const segLen = (a: [number, number], b: [number, number]) =>
+    Math.hypot((b[0] - a[0]) * mLon, (b[1] - a[1]) * 111320);
+  let arc = 0;
+  for (let i = 0; i < bestRaw; i++) {
+    arc += segLen(rawCoords[i], rawCoords[(i + 1) % rawCoords.length]);
+  }
+  console.log(
+    `  tumftm s=0 lands ~${arc.toFixed(0)}m along the raw loop (fit rms ${rms.toFixed(2)}m)`
+  );
+  return arc;
+}
+
 function buildTrack(
   rawPath: string,
   id: string,
@@ -623,6 +681,12 @@ const TRACKS: {
   manualElevation?: [number, number][];
   manualElevationBlendRadiusMeters?: number;
   startAtMeters?: number;
+  // Derive the start line from the TUMFTM centerline (its laps start at
+  // s=0 on the line) instead of hand-placing it. Only for tracks whose
+  // raw index 0 is not already on the start straight - the shipped five
+  // keep their explicit values (or natural zero), so their built bytes
+  // never move for a pipeline change.
+  autoStart?: boolean;
 }[] = [
   {
     rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
@@ -651,6 +715,38 @@ const TRACKS: {
     name: "Suzuka International Racing Course",
     widthFile: "Suzuka.csv",
     elevationFile: "suzuka.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/at-1969.geojson`,
+    id: "spielberg",
+    name: "Red Bull Ring",
+    widthFile: "Spielberg.csv",
+    elevationFile: "spielberg.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/bh-2002.geojson`,
+    id: "bahrain",
+    name: "Bahrain International Circuit",
+    widthFile: "Sakhir.csv",
+    elevationFile: "bahrain.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/us-2012.geojson`,
+    id: "cota",
+    name: "Circuit of the Americas",
+    widthFile: "Austin.csv",
+    elevationFile: "cota.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/nl-1948.geojson`,
+    id: "zandvoort",
+    name: "Circuit Zandvoort",
+    widthFile: "Zandvoort.csv",
+    elevationFile: "zandvoort.json",
+    autoStart: true,
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/mc-1929.geojson`,
@@ -732,7 +828,7 @@ const outlines: {
   direction: "clockwise" | "counterclockwise";
   points: [number, number][];
 }[] = [];
-for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters } of TRACKS) {
+for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters, autoStart } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
   const widthPath = widthFile
@@ -741,7 +837,9 @@ for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualEl
   const elevationPath = elevationFile
     ? `${scriptDir}/../data/tracks/raw/elevation/${elevationFile}`
     : undefined;
-  const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters);
+  const resolvedStart =
+    startAtMeters ?? (autoStart && widthPath ? locateTumftmStart(rawPath, widthPath) : undefined);
+  const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, resolvedStart);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)

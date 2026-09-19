@@ -6,6 +6,10 @@ import monza from "../../data/tracks/structures/monza.json";
 import spa from "../../data/tracks/structures/spa.json";
 import suzuka from "../../data/tracks/structures/suzuka.json";
 import monaco from "../../data/tracks/structures/monaco.json";
+import spielberg from "../../data/tracks/structures/spielberg.json";
+import bahrain from "../../data/tracks/structures/bahrain.json";
+import cota from "../../data/tracks/structures/cota.json";
+import zandvoort from "../../data/tracks/structures/zandvoort.json";
 
 /**
  * Trackside structures (plan section 4, circuit detail): pit buildings,
@@ -57,6 +61,10 @@ const FILES: Record<string, StructuresFile> = {
   spa: spa as StructuresFile,
   suzuka: suzuka as StructuresFile,
   monaco: monaco as StructuresFile,
+  spielberg: spielberg as StructuresFile,
+  bahrain: bahrain as StructuresFile,
+  cota: cota as StructuresFile,
+  zandvoort: zandvoort as StructuresFile,
 };
 
 export function getStructures(trackId: string): VendoredStructure[] {

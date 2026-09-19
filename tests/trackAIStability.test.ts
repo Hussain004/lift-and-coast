@@ -34,13 +34,22 @@ const SECONDS = 180;
 // controller can average the 33 m/s a single global floor demands there -
 // the floor below still requires MORE than one full Monaco lap (3500 >
 // 3333, observed ~4200) while the flowing circuits keep the ~33 m/s bar
-// (observed 6300-7400).
+// (observed 6300-7400). Same logic for the scale-out circuits, measured
+// with the same harness: Spielberg is short and fast (5000 over a 4311m
+// lap), Bahrain's traction zones pace it at ~33 m/s (5300 over 5431m),
+// COTA has the slowest profile of the set at ~38 m/s target average (4000
+// still separates a stalled car several times over), Zandvoort's dunes at
+// ~40 (4500 over 4268m).
 const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   silverstone: 6000,
   monza: 6000,
   spa: 6000,
   suzuka: 6000,
   monaco: 3500,
+  spielberg: 5000,
+  bahrain: 5300,
+  cota: 4000,
+  zandvoort: 4500,
 };
 // Observed worst single off-track excursion is ~6m (down from ~23m before
 // the downforce-aware profile); this only catches a genuine runaway.

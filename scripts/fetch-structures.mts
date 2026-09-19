@@ -32,6 +32,10 @@ const TRACKS: { id: string; rawFile: string; padMeters: number }[] = [
   { id: "spa", rawFile: "be-1925.geojson", padMeters: 250 },
   { id: "suzuka", rawFile: "jp-1962.geojson", padMeters: 250 },
   { id: "monaco", rawFile: "mc-1929.geojson", padMeters: 250 },
+  { id: "spielberg", rawFile: "at-1969.geojson", padMeters: 250 },
+  { id: "bahrain", rawFile: "bh-2002.geojson", padMeters: 250 },
+  { id: "cota", rawFile: "us-2012.geojson", padMeters: 250 },
+  { id: "zandvoort", rawFile: "nl-1948.geojson", padMeters: 250 },
 ];
 
 const REQUEST_PAUSE_MS = 6000;
@@ -176,11 +180,19 @@ function classify(tags: Record<string, string>): VendoredStructure["kind"] | nul
   if (tags["tourism"] === "attraction" || tags["attraction"]) return "attraction";
   if (tags["building"]) return "building";
   // Pit lanes are mapped as raceway asphalt like the circuit itself - kept
-  // by name only, and only when offset from the ribbon (the distance filter
-  // in main() drops the circuit's own segments). Used for pit walls.
+  // by lane-specific name only ("pit", "Boxenstraße", "Pitstraat", "voie
+  // des stands"). A bare "paddock" is NOT enough: paddock service roads
+  // ("Paddock Layout") wear raceway tags too but are not the lane, and the
+  // distance/share filter in main() cannot tell them apart afterwards.
+  // Whether the lane hugs the track or stands off is decided there, by
+  // offset share on the resampled polyline - not here by name.
   if (tags["highway"] === "raceway" || tags["raceway"] === "pit_lane") {
+    // sport=karting excludes kart-track pit lanes (Spa's sits 60m+ from the
+    // F1 ribbon and the old share rule kept it) - only lanes of the mapped
+    // circuit itself qualify.
+    if (tags["sport"] === "karting") return null;
     const name = `${tags["name"] ?? ""} ${tags["name:en"] ?? ""}`;
-    if (/pit|paddock|voie des stands/i.test(name)) return "pitlane";
+    if (/pit|boxen|pitstraat|voie des stands/i.test(name)) return "pitlane";
   }
   return null;
 }
@@ -252,26 +264,39 @@ function ringDistanceM(
 }
 
 /**
- * Share of a ring's sampled points farther than threshM from the ribbon.
- * Pit lanes merge into the track at entry/exit, so a minimum-distance test
- * drops them; a majority-offset test keeps the lane while still dropping
- * the circuit's own mapped segments (offset ~0 everywhere).
+ * Longest contiguous stretch of a ring sitting off the ribbon but near it
+ * (4-40m), measured on the 10m-resampled polyline. Pit lanes merge into the
+ * track at entry/exit, so a minimum-distance test drops them - but the lane
+ * body runs hundreds of metres in the near-offset band, while the
+ * circuit's own mapped segments sit at ~0 everywhere and distant roads sit
+ * past 40m. A share/fraction test can't separate a hugging lane (long
+ * merges dilute it: Zandvoort 0.36, Bahrain 0.23) from a circuit segment;
+ * a contiguous 150m+ run in the band can.
  */
-function ringOffsetShare(
+function longestRunInBandM(
   ring: [number, number][],
   centerLon: number,
   centerLat: number,
-  line: [number, number, number][],
-  threshM: number
+  line: [number, number, number][]
 ): number {
   const kx = 111320 * Math.cos((centerLat * Math.PI) / 180);
   const px = (lon: number) => (lon - centerLon) * kx;
   const pz = (lat: number) => -(lat - centerLat) * 111320;
-  let beyond = 0;
-  let total = 0;
-  for (let r = 0; r < ring.length; r++) {
-    const qx = px(ring[r][0]);
-    const qz = pz(ring[r][1]);
+  const local = ring.map(([lon, lat]): [number, number] => [px(lon), pz(lat)]);
+  const dense: [number, number][] = [];
+  for (let i = 0; i + 1 < local.length; i++) {
+    const [ax, az] = local[i];
+    const [bx, bz] = local[i + 1];
+    const seg = Math.hypot(bx - ax, bz - az);
+    const steps = Math.max(1, Math.round(seg / 10));
+    for (let k = 0; k < steps; k++) {
+      dense.push([ax + ((bx - ax) * k) / steps, az + ((bz - az) * k) / steps]);
+    }
+  }
+  if (local.length > 0) dense.push(local[local.length - 1]);
+  let longest = 0;
+  let run = 0;
+  for (const [qx, qz] of dense) {
     let best = Infinity;
     for (let i = 0; i < line.length; i += 2) {
       const dx = line[i][0] - qx;
@@ -279,63 +304,104 @@ function ringOffsetShare(
       const d2 = dx * dx + dz * dz;
       if (d2 < best) best = d2;
     }
-    total++;
-    if (best > threshM * threshM) beyond++;
+    const dist = Math.sqrt(best);
+    if (dist >= 4 && dist <= 40) {
+      run += 10;
+      longest = Math.max(longest, run);
+    } else {
+      run = 0;
+    }
   }
-  return total > 0 ? beyond / total : 0;
+  return longest;
+}
+
+export interface TrackSpec {
+  id: string;
+  rawFile: string;
+  padMeters: number;
+}
+
+/** Bbox + projection center for a track, shared by the fetch and the file. */
+export function trackBbox(track: TrackSpec): {
+  centerLon: number;
+  centerLat: number;
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+} {
+  const { centerLon, centerLat, extentX, extentZ } = rawBounds(track.rawFile);
+  const kx = 111320 * Math.cos((centerLat * Math.PI) / 180);
+  const dLon = (extentX + track.padMeters) / kx;
+  const dLat = (extentZ + track.padMeters) / 111320;
+  return { centerLon, centerLat, minLon: centerLon - dLon, minLat: centerLat - dLat, maxLon: centerLon + dLon, maxLat: centerLat + dLat };
+}
+
+/**
+ * Filter a fetched bbox doc down to the vendored structures file. Exported
+ * so a response saved to disk by other means (curl, when the runtime's
+ * own fetch can't reach the API) converts through the identical logic -
+ * see the doc comment on filterAndConvert for the format.
+ */
+export function processTrackDoc(
+  track: TrackSpec,
+  doc: OsmDoc,
+  bbox: { centerLon: number; centerLat: number }
+): void {
+  const { centerLon, centerLat } = bbox;
+  const count = doc.elements.length;
+  console.log(`  ${count} elements`);
+  if (count > MAX_ELEMENTS_BEFORE_SPLIT) {
+    throw new Error(`${track.id}: too many elements (${count}), split the bbox first`);
+  }
+  const built = JSON.parse(
+    readFileSync(`${scriptDir}/../data/tracks/${track.id}.json`, "utf8")
+  );
+  const line = built.centerline as [number, number, number][];
+  const all = filterAndConvert(doc);
+  // Drop everything that cannot read as trackside from the circuit.
+  // Pit lanes additionally require a minimum offset: the circuit's own
+  // asphalt is mapped the same way, and only the offset lane is wanted.
+  const structures = all.filter((s) => {
+    const cap = KEEP_DISTANCE_M[s.kind] ?? 150;
+    const d = ringDistanceM(s.ring, centerLon, centerLat, line);
+    if (s.kind === "pitlane") {
+      const runM = longestRunInBandM(s.ring, centerLon, centerLat, line);
+      console.log(`  pitlane "${s.name ?? "?"}": longest near-offset run ${runM.toFixed(0)}m`);
+      if (runM < 150) return false;
+    }
+    if (d > cap) {
+      if (s.name) console.log(`  drop ${s.kind} "${s.name}" (${d.toFixed(0)}m out)`);
+      return false;
+    }
+    return true;
+  });
+  const byKind = new Map<string, number>();
+  for (const s of structures) byKind.set(s.kind, (byKind.get(s.kind) ?? 0) + 1);
+  console.log(
+    `  kept ${structures.length}: ` +
+      [...byKind.entries()].map(([k, v]) => `${k}=${v}`).join(" ")
+  );
+  writeFileSync(
+    `${OUT_DIR}/${track.id}.json`,
+    JSON.stringify({ centerLon, centerLat, structures }, null, 2) + "\n"
+  );
 }
 
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   for (const track of TRACKS) {
-    const { centerLon, centerLat, extentX, extentZ } = rawBounds(track.rawFile);
-    const kx = 111320 * Math.cos((centerLat * Math.PI) / 180);
-    const dLon = (extentX + track.padMeters) / kx;
-    const dLat = (extentZ + track.padMeters) / 111320;
+    const bbox = trackBbox(track);
     console.log(
-      `${track.id}: bbox lon[${(centerLon - dLon).toFixed(4)},${(centerLon + dLon).toFixed(4)}] ` +
-        `lat[${(centerLat - dLat).toFixed(4)},${(centerLat + dLat).toFixed(4)}]`
+      `${track.id}: bbox lon[${bbox.minLon.toFixed(4)},${bbox.maxLon.toFixed(4)}] ` +
+        `lat[${bbox.minLat.toFixed(4)},${bbox.maxLat.toFixed(4)}]`
     );
-    const doc = await fetchBbox(centerLon - dLon, centerLat - dLat, centerLon + dLon, centerLat + dLat);
-    const count = doc.elements.length;
-    console.log(`  ${count} elements`);
-    if (count > MAX_ELEMENTS_BEFORE_SPLIT) {
-      throw new Error(`${track.id}: too many elements (${count}), split the bbox first`);
-    }
-    const built = JSON.parse(
-      readFileSync(`${scriptDir}/../data/tracks/${track.id}.json`, "utf8")
-    );
-    const line = built.centerline as [number, number, number][];
-    const all = filterAndConvert(doc);
-    // Drop everything that cannot read as trackside from the circuit.
-    // Pit lanes additionally require a minimum offset: the circuit's own
-    // asphalt is mapped the same way, and only the offset lane is wanted.
-    const structures = all.filter((s) => {
-      const cap = KEEP_DISTANCE_M[s.kind] ?? 150;
-      const d = ringDistanceM(s.ring, centerLon, centerLat, line);
-      if (s.kind === "pitlane") {
-        const share = ringOffsetShare(s.ring, centerLon, centerLat, line, 10);
-        console.log(`  pitlane "${s.name ?? "?"}": offset share ${share.toFixed(2)}`);
-        if (share < 0.4) return false;
-      }
-      if (d > cap) {
-        if (s.name) console.log(`  drop ${s.kind} "${s.name}" (${d.toFixed(0)}m out)`);
-        return false;
-      }
-      return true;
-    });
-    const byKind = new Map<string, number>();
-    for (const s of structures) byKind.set(s.kind, (byKind.get(s.kind) ?? 0) + 1);
-    console.log(
-      `  kept ${structures.length}: ` +
-        [...byKind.entries()].map(([k, v]) => `${k}=${v}`).join(" ")
-    );
-    writeFileSync(
-      `${OUT_DIR}/${track.id}.json`,
-      JSON.stringify({ centerLon, centerLat, structures }, null, 2) + "\n"
-    );
+    const doc = await fetchBbox(bbox.minLon, bbox.minLat, bbox.maxLon, bbox.maxLat);
+    processTrackDoc(track, doc, bbox);
     await sleep(REQUEST_PAUSE_MS);
   }
 }
 
-await main();
+if (process.argv[1]?.endsWith("fetch-structures.mts")) {
+  await main();
+}

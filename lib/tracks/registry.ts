@@ -25,6 +25,10 @@ export const TRACKS: TrackMeta[] = [
   { id: "spa", name: "Circuit de Spa-Francorchamps", shortName: "Spa", corners: 19, lat: 50.4347, lon: 5.9686 },
   { id: "suzuka", name: "Suzuka International Racing Course", shortName: "Suzuka", corners: 18, lat: 34.8446, lon: 136.5328 },
   { id: "monaco", name: "Circuit de Monaco", shortName: "Monaco", corners: 19, lat: 43.7372, lon: 7.4253 },
+  { id: "spielberg", name: "Red Bull Ring", shortName: "Spielberg", corners: 10, lat: 47.2228, lon: 14.7624 },
+  { id: "bahrain", name: "Bahrain International Circuit", shortName: "Bahrain", corners: 15, lat: 26.0315, lon: 50.5143 },
+  { id: "cota", name: "Circuit of the Americas", shortName: "COTA", corners: 20, lat: 30.1347, lon: -97.6340 },
+  { id: "zandvoort", name: "Circuit Zandvoort", shortName: "Zandvoort", corners: 14, lat: 52.3881, lon: 4.5459 },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;

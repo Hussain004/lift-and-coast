@@ -125,6 +125,10 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   spa: 50,
   suzuka: 20,
   monaco: 20,
+  spielberg: 40,
+  bahrain: 5,
+  cota: 10,
+  zandvoort: 2,
 };
 
 // How far the field may dip under the ribbon at an edge sample. The
@@ -140,6 +144,10 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   spa: 0.5,
   suzuka: 0.5,
   monaco: 0.75,
+  spielberg: 0.5,
+  bahrain: 0.5,
+  cota: 0.5,
+  zandvoort: 0.5,
 };
 
 describe("buildTerrainGeometry (real circuits)", () => {

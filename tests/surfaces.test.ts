@@ -24,9 +24,14 @@ import type { TrackData } from "../lib/tracks/types";
 
 // Sausage kerbs stay exceptional everywhere - except Monaco, whose street
 // layout packs several genuinely tight (hairpin-grade) corners into a lap,
-// so it structurally earns more of them than any permanent circuit.
+// so it structurally earns more of them than any permanent circuit - and
+// Bahrain and COTA, whose slow-corner complexes (Bahrain T1/T4/T8/T10/T13/
+// T14, COTA T1/T11/T12/T19/T20) push them a hair past the flat cap
+// (measured 10.25% and 10.02%).
 const SAUSAGE_SHARE_CAP: Record<string, number> = {
   monaco: 0.2,
+  bahrain: 0.12,
+  cota: 0.12,
 };
 
 /**

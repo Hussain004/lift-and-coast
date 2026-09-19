@@ -53,6 +53,10 @@ const CHERRY_PINK = ["#E7A6C4", "#D98BB0", "#F0BCD4", "#C97B9E"];
 const CHERRY_LEAF = ["#5A8C46", "#4E7D3D"];
 const CYPRESS_GREEN = ["#2E4A2F", "#354F33", "#283F29"];
 const MONACO_LEAF = ["#5C8A44", "#527A3C", "#679551"];
+const DESERT_SCRUB = ["#9A9A6B", "#8A8A5E", "#A8A878"];
+const TEXAS_OAK = ["#4E7C3C", "#557F35", "#436F34"];
+const JUNIPER_GREEN = ["#3A5A3A", "#425E38", "#334E33"];
+const DUNE_PINE = ["#3D5A3C", "#46653F", "#355236"];
 const TRUNK_BROWN = "#5A4632";
 
 const FLORA: Record<string, FloraConfig> = {
@@ -151,6 +155,94 @@ const FLORA: Record<string, FloraConfig> = {
     lateralMinM: 8,
     lateralMaxM: 40,
     seed: 1929,
+  },
+  spielberg: {
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: SPRUCE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: OAK_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 9],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 65,
+    lateralMinM: 8,
+    lateralMaxM: 60,
+    seed: 1969,
+  },
+  bahrain: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1, 2],
+        heightM: [2.5, 4],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 22,
+    lateralMinM: 10,
+    lateralMaxM: 60,
+    seed: 2004,
+  },
+  cota: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: TEXAS_OAK,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4.5],
+        heightM: [5, 8],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: JUNIPER_GREEN,
+        trunkColor: "#4E4234",
+        canopySizeM: [1.5, 2.5],
+        heightM: [3, 5],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 55,
+    lateralMinM: 8,
+    lateralMaxM: 55,
+    seed: 2012,
+  },
+  zandvoort: {
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: DUNE_PINE,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.5, 2.5],
+        heightM: [6, 10],
+        weight: 1,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.5, 2.5],
+        heightM: [3, 5],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 50,
+    lateralMinM: 8,
+    lateralMaxM: 45,
+    seed: 1948,
   },
 };
 

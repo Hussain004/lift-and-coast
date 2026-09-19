@@ -19,6 +19,10 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   spa: 7004,
   suzuka: 5807,
   monaco: 3337,
+  spielberg: 4318,
+  bahrain: 5412,
+  cota: 5514,
+  zandvoort: 4259,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
@@ -33,13 +37,18 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = 
   spa: { min: 7.0, max: 17.5, mean: 9.8 },
   suzuka: { min: 7.0, max: 16.5, mean: 9.8 },
   monaco: { min: 6.5, max: 12.5, mean: 9.9 },
+  spielberg: { min: 9.5, max: 14.5, mean: 11.0 },
+  bahrain: { min: 10.0, max: 22.5, mean: 13.4 },
+  cota: { min: 10.5, max: 28.0, mean: 13.9 },
+  zandvoort: { min: 7.5, max: 16.5, mean: 10.5 },
 };
 
 // Elevation as built from the vendored DEM samples (see
 // scripts/fetch-elevation.mts and the averaging constants in
 // scripts/build-track.mts). `range` is the lap's total relief in meters - the
-// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m, Spa 92m
-// and Monaco 32m (hand-authored keyframes: the urban DEM inverts there, see
+// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m, Spa 92m,
+// Spielberg 62m, Bahrain 16m, COTA 18m, Zandvoort 4m, and Monaco 32m
+// (hand-authored keyframes: the urban DEM inverts there, see
 // build-track.mts) - and `maxGrade` the steepest point. The grade ceiling is the important
 // one: the raw DEM samples produce 50-84% grades and step 30m between
 // neighbouring 90m cells, so a regression in the averaging shows up here as a
@@ -55,6 +64,10 @@ const ELEVATION_BANDS: Record<
   spa: { range: [80, 120], maxGrade: 0.16 },
   suzuka: { range: [36, 56], maxGrade: 0.1 },
   monaco: { range: [28, 42], maxGrade: 0.12 },
+  spielberg: { range: [50, 75], maxGrade: 0.15 },
+  bahrain: { range: [12, 24], maxGrade: 0.06 },
+  cota: { range: [14, 26], maxGrade: 0.07 },
+  zandvoort: { range: [3, 8], maxGrade: 0.03 },
 };
 
 describe("parseTrackId", () => {
@@ -90,7 +103,7 @@ describe("getTrackName / isKnownTrackId", () => {
 });
 
 describe("registry contents", () => {
-  it("has five circuits with unique ids and short labels", () => {
+  it("has nine circuits with unique ids and short labels", () => {
     expect(TRACKS.length).toBeGreaterThanOrEqual(4);
     expect(new Set(TRACKS.map((t) => t.id)).size).toBe(TRACKS.length);
     for (const entry of TRACKS) {
@@ -106,6 +119,10 @@ describe("registry contents", () => {
     expect(ids).toContain("spa");
     expect(ids).toContain("suzuka");
     expect(ids).toContain("monaco");
+    expect(ids).toContain("spielberg");
+    expect(ids).toContain("bahrain");
+    expect(ids).toContain("cota");
+    expect(ids).toContain("zandvoort");
   });
 });
 

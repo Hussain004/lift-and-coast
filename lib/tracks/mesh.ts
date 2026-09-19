@@ -278,24 +278,40 @@ export function buildEdgeLineGeometry(track: TrackData): RibbonGeometry {
   }
 
   const indices = new Uint32Array(n * 2 * 6);
+  // Wind each triangle from its measured facing (same fold problem and
+  // fix as the kerbs above: at tight inside corners consecutive edge
+  // points nearly coincide and a fixed order comes out facing down).
+  // Positions layout untouched.
+  const normalY = (i0: number, i1: number, i2: number): number => {
+    const ax = positions[i0 * 3];
+    const az = positions[i0 * 3 + 2];
+    const bx = positions[i1 * 3];
+    const bz = positions[i1 * 3 + 2];
+    const cx = positions[i2 * 3];
+    const cz = positions[i2 * 3 + 2];
+    return (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+  };
+  const tri = (o: number, a: number, b: number, c: number): void => {
+    if (normalY(a, b, c) > 0) {
+      indices[o] = a;
+      indices[o + 1] = b;
+      indices[o + 2] = c;
+    } else {
+      indices[o] = a;
+      indices[o + 1] = c;
+      indices[o + 2] = b;
+    }
+  };
   for (let i = 0; i < n; i++) {
     const a = i * 4;
     const b = ((i + 1) % n) * 4;
     const o = i * 12;
     // Left strip quad (verts 0,1 here and at the next point).
-    indices[o] = a;
-    indices[o + 1] = a + 1;
-    indices[o + 2] = b;
-    indices[o + 3] = a + 1;
-    indices[o + 4] = b + 1;
-    indices[o + 5] = b;
+    tri(o, a, a + 1, b);
+    tri(o + 3, a + 1, b + 1, b);
     // Right strip quad (verts 2,3 here and at the next point).
-    indices[o + 6] = a + 2;
-    indices[o + 7] = a + 3;
-    indices[o + 8] = b + 2;
-    indices[o + 9] = a + 3;
-    indices[o + 10] = b + 3;
-    indices[o + 11] = b + 2;
+    tri(o + 6, a + 2, a + 3, b + 2);
+    tri(o + 9, a + 3, b + 3, b + 2);
   }
 
   return { positions, indices };

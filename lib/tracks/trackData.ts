@@ -9,6 +9,10 @@ import monza from "../../data/tracks/monza.json";
 import spa from "../../data/tracks/spa.json";
 import suzuka from "../../data/tracks/suzuka.json";
 import monaco from "../../data/tracks/monaco.json";
+import spielberg from "../../data/tracks/spielberg.json";
+import bahrain from "../../data/tracks/bahrain.json";
+import cota from "../../data/tracks/cota.json";
+import zandvoort from "../../data/tracks/zandvoort.json";
 
 const TRACK_DATA: Record<string, TrackData> = {
   silverstone: silverstone as TrackData,
@@ -16,6 +20,10 @@ const TRACK_DATA: Record<string, TrackData> = {
   spa: spa as TrackData,
   suzuka: suzuka as TrackData,
   monaco: monaco as TrackData,
+  spielberg: spielberg as TrackData,
+  bahrain: bahrain as TrackData,
+  cota: cota as TrackData,
+  zandvoort: zandvoort as TrackData,
 };
 
 export function getTrack(id: string): TrackData {
