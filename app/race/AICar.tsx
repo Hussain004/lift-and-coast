@@ -44,6 +44,7 @@ import {
 import { computeRacingLine } from "@/lib/tracks/racingLine";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
 import { cornerAheadMeters, computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
+import { createEnergySystem } from "@/lib/physics/energy";
 import {
   difficultyAggressionShift,
   difficultyMistakeScale,
@@ -58,6 +59,7 @@ import {
   composeRacePace,
   mergeOffsetFactor,
   obstacleLateral,
+  shouldDeployBoost,
   unwrapGap,
   type RaceObstacle,
   type RaceRival,
@@ -274,6 +276,15 @@ export function AICar({
   // Progress continuity (see progressTracker.ts): rank and racecraft
   // read tracked progress, never the flicker-prone scan, at the seam.
   const progressTrackerRef = useRef(createProgressTracker());
+  // Push-to-Pass battery + strategy state (see lib/ai/racecraft.ts's
+  // shouldDeployBoost): the same harvest-under-braking / deploy-on-
+  // straights system the player's Car.tsx runs, same constraints per the
+  // plan's 2026 rules. boostEligible rides one tick behind (same pattern
+  // as zoneRef above) - one tick of lag at 60Hz is nothing next to a
+  // multi-second deploy.
+  const energyRef = useRef(createEnergySystem());
+  const batteryRef = useRef(1);
+  const boostEligibleRef = useRef(false);
   const aiCursorRef = useRef(0);
   const aiWasRewindingRef = useRef(false);
   // Personality (see driverCode/difficulty/sessionSeedRef): traits are a
@@ -470,6 +481,10 @@ export function AICar({
     const netInput = netInputRef?.current ?? null;
     const netFresh = netInput !== null && Date.now() - netInput.atMs < 500;
     let controls: { throttle: number; brake: number; steer: number };
+    // Push-to-Pass multiplier (1 = not deploying). Only the AI branch ever
+    // sets it: a guest-driven car has no battery wiring over the wire, so
+    // it keeps the legacy flat 1.
+    let boostMultiplier = 1;
     if (netFresh && netInput) {
       controls = { throttle: netInput.throttle, brake: netInput.brake, steer: netInput.steer };
     } else {
@@ -618,17 +633,41 @@ export function AICar({
         : 0;
       const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * world.timestep;
       offsetRef.current += Math.min(maxStep, Math.max(-maxStep, offsetTarget - offsetRef.current));
+      // Push-to-Pass strategy (see shouldDeployBoost): deploy on
+      // boost-eligible straights per the driver's aggression, dump
+      // what's left on a lunge; never during a mistake lift (draining
+      // into a lift buys nothing). The deploy flag switches the speed
+      // targets to the precomputed boosted profile on the same tick the
+      // extra engine force arrives (see pathFollower's useBoostedSpeed
+      // contract), so boost and target speed can never disagree about
+      // what this car is doing - the reverted first AI-energy attempt
+      // gated boost on the zone alone and its targets disagreed.
+      const willDeploy =
+        mistakeTimeLeftRef.current <= 0 &&
+        shouldDeployBoost({
+          boostEligible: boostEligibleRef.current,
+          batteryFraction: batteryRef.current,
+          aggression,
+          attemptingLunge: decision.attempt,
+        });
       const aiControls = computeAIControls(
         racingLine,
         pos.x,
         pos.z,
         yaw,
         speedMs,
-        false,
+        willDeploy,
         paceMult,
         offsetRef.current
       );
       zoneRef.current = aiControls.zone;
+      boostEligibleRef.current = aiControls.boostEligible;
+      const energyStatus = energyRef.current.update(
+        { brakeAmount: aiControls.brake, deployRequested: willDeploy },
+        world.timestep
+      );
+      batteryRef.current = energyStatus.batteryFraction;
+      boostMultiplier = energyStatus.engineForceMultiplier;
       controls = aiControls;
     }
 
@@ -645,7 +684,7 @@ export function AICar({
       controller,
       gatedControls,
       DEFAULT_ENGINE_FORCE,
-      1,
+      boostMultiplier,
       DEFAULT_BRAKE_FORCE,
       speedMs,
       true,

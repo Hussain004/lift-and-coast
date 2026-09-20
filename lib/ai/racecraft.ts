@@ -68,13 +68,15 @@ export interface OvertakeDecision {
  * in the grandstands. Returns a zero decision otherwise, so callers apply
  * it unconditionally.
  *
- * Two gates start a move: range (which grows with aggression) and closing
- * speed. But once started, the move latches (see alreadyAttempting): a
- * committed car alongside no longer needs to prove it is still closing -
- * without the latch the follow discipline (which quite rightly kills
- * closing speed on approach) would strangle every attempt the same tick
- * it starts, and the field would sit in formation forever exactly as
- * before racecraft existed. The latch drops the moment the car is clear
+ * Two gates start a move: range (which grows with aggression, from 12m
+ * out to 28m - early enough that the tow and the pace spread have a
+ * straight's worth of road to finish what they start) and closing speed.
+ * But once started, the move latches (see alreadyAttempting): a committed
+ * car alongside no longer needs to prove it is still closing - without
+ * the latch the follow discipline (which quite rightly kills closing
+ * speed on approach) would strangle every attempt the same tick it
+ * starts, and the field would sit in formation forever exactly as before
+ * racecraft existed. The latch drops the moment the car is clear
  * (gap < -3), out of road, or out of the throttle zone.
  */
 export function decideOvertake(args: {
@@ -95,30 +97,63 @@ export function decideOvertake(args: {
   // against moving cars only.
   if (!args.throttleZone) return none;
   if (args.gapMeters < (args.alreadyAttempting ? -3 : 0)) return none;
-  if (args.speedMs < 40) return none;
-  if (args.gapMeters > 10 + aggression * 12) return none;
+  // 25 m/s, not 40: slow circuits and slow corners must see races too.
+  // Monaco averages ~30 m/s - the old floor meant zero lunges there, all
+  // race long, while the squeeze book handled only parked cars.
+  if (args.speedMs < 25) return none;
+  if (args.gapMeters > 12 + aggression * 16) return none;
   if (!args.alreadyAttempting && args.closingSpeedMs < 0.2) return none;
   // Moves may finish into the braking zone (like real overtakes): the
   // latch drops and the offset washes the moment the zone flips, so the
   // car rejoins the line while braking, not mid-corner. Risk-takers start
   // from further back.
   const risk = Math.min(1, Math.max(0, args.risk));
-  if (args.cornerAheadMeters < 70 - risk * 30) return none;
+  if (args.cornerAheadMeters < 60 - risk * 30) return none;
   return {
     attempt: true,
     // Properly off-line: a meter of overlap reads as a lunge from the
     // grandstand, two-plus reads as a move even on the minimap.
-    offsetMeters: args.overtakeSide * (1.8 + aggression * 0.8),
-    paceBonus: 0.015 + aggression * 0.015,
+    offsetMeters: args.overtakeSide * (2.0 + aggression * 0.8),
+    paceBonus: 0.02 + aggression * 0.02,
     urgent: false,
   };
 }
 
 /**
+ * Push-to-Pass strategy (see lib/physics/energy.ts - the AI runs the same
+ * harvest/deploy battery as the player, same constraints, per the plan's
+ * 2026 rules). Pure over decision inputs so the live car (AICar.tsx) and
+ * the headless field test run the identical policy.
+ *
+ * A latched lunge dumps whatever is left: the pass is now, not later.
+ * Otherwise deployment is an aggression dial - a dive-bomber spends the
+ * lap's harvest on every eligible straight, a metronome banks it for the
+ * one move that matters. boostEligible (see racingLine.ts) keeps deploy
+ * off braking zones: corners are where extra TARGET speed slides, while
+ * extra ENGINE force on a straight just works - and the caller switches
+ * the speed targets to the precomputed boosted profile on the same ticks
+ * (pathFollower's useBoostedSpeed contract), so boost and targets can
+ * never disagree about what the car is doing.
+ */
+export function shouldDeployBoost(args: {
+  boostEligible: boolean;
+  batteryFraction: number;
+  aggression: number;
+  attemptingLunge: boolean;
+}): boolean {
+  if (!args.boostEligible) return false;
+  const aggression = Math.min(1, Math.max(0, args.aggression));
+  if (args.attemptingLunge) return args.batteryFraction > 0.05;
+  return args.batteryFraction > 1 - aggression * 0.55;
+}
+
+/**
  * Slipstream: tucked behind another car on a fast straight, the follower
- * punches a smaller hole in the air. Sized to actually close a gap over
- * one straight (a couple of percent is the whole ballgame at 70 m/s),
- * capped, straights only - a pace lever, never a steering one.
+ * punches a smaller hole in the air. The tow reaches out to 35m and is
+ * worth 5% - sized so a caught-up car gets a REAL run: closing ~3 m/s at
+ * 70 m/s is the difference between arriving at the lunge range with a
+ * move to make and parking in the leader's gearbox. Capped, straights
+ * only - a pace lever, never a steering one.
  */
 export function slipstreamBonus(args: {
   gapMeters: number;
@@ -126,18 +161,33 @@ export function slipstreamBonus(args: {
   throttleZone: boolean;
 }): number {
   if (!args.throttleZone) return 0;
-  if (args.speedMs < 45) return 0;
-  if (args.gapMeters < 0 || args.gapMeters > 20) return 0;
-  return 0.035;
+  if (args.speedMs < 35) return 0;
+  if (args.gapMeters < 0 || args.gapMeters > 35) return 0;
+  return 0.05;
 }
 
 /**
- * Follow behavior: never wear the leader's gearbox. An adaptive cruise
- * that allows closing gently from distance but matches the leader's speed
- * when tucked in - in corners AND on straights, because a pace spread
- * guarantees fast cars arrive at the back of slow ones on the start
- * straight too, not just in braking zones (a Lap-1 pile-up is how this
- * was found). Aggressive drivers sit closer and accept more closing.
+ * Follow behavior: manage the gap without welding to the leader's
+ * gearbox. An adaptive cruise that allows closing gently from distance
+ * and checks up hard only at nose-to-tail range - in corners AND on
+ * straights, because a pace spread guarantees fast cars arrive at the
+ * back of slow ones on the start straight too, not just in braking zones
+ * (a Lap-1 pile-up is how this was found). Aggressive drivers sit closer
+ * and accept more closing.
+ *
+ * The >= 3m band deliberately keeps a floor of headroom relative to the
+ * leader instead of matching them: the old law converged followers onto
+ * the leader's exact speed the moment they got close, which killed every
+ * lunge's closing speed at birth and (with pace spreads this size) held
+ * the whole field in a train. This version still caps closure - arrival
+ * speed drops from +8 m/s at the window edge to +2 m/s at 3m, so nobody
+ * punts anyone - but never fully cancels it: a genuinely faster car keeps
+ * creeping into lunge range, and decideOvertake (which latches on commit)
+ * takes over from there. Below 3m it still backs ALL the way out behind a
+ * stopped car (a queue that arrives at speed is a pile-up, not a wait)
+ * and hard-checks behind a moving one, because inside a car length the
+ * contact solver, not racecraft, is the next line of defense (see the
+ * Suzuka 20-car NaN notes).
  */
 export function followPaceScale(args: {
   gapMeters: number;
@@ -165,11 +215,15 @@ export function followPaceScale(args: {
     if (stopped) return Math.min(1, Math.max(0, (args.gapMeters - 2) * 0.4 / own));
     return Math.min(1, Math.max(0.3, (Math.max(0, args.leaderSpeedMs) - 2) / own));
   }
-  // Allowed closing shrinks with the gap: from ~8 m/s at the edge of the
-  // window down to matching speeds bumper-to-bumper - and to a full stop
-  // behind a stopped car, for the same pile-up reason as above.
+  // Allowed closing shrinks as the gap closes - from ~8 m/s at the edge
+  // of the window down to +2 m/s bumper-to-bumper (the safety rail that
+  // stops followers punting leaders) - and the mid-window headroom scales
+  // UP with aggression: a dive-bomber uses the tow to actually arrive,
+  // a metronome checks up earlier. Below 3m the +2 m/s rail applies to
+  // everyone.
   const allowedSpeed =
-    Math.max(0, args.leaderSpeedMs) + Math.max(0, args.gapMeters - 2) * (stopped ? 0.4 : 0.8);
+    Math.max(0, args.leaderSpeedMs) +
+    Math.max(2, args.gapMeters - 2) * (stopped ? 0.4 : 0.7 + aggression * 0.5);
   const floor = stopped ? 0 : 0.55;
   return Math.min(1, Math.max(floor, allowedSpeed / own));
 }
@@ -177,7 +231,11 @@ export function followPaceScale(args: {
 /**
  * Yielding: a cautious leader with a rival fully alongside gives room with
  * a small lift instead of chopping across - again a pace lever, not a
- * steering one. Returns 1 (no yield) for assertive defenders.
+ * steering one. Returns 1 (no yield) for assertive defenders; a defender
+ * with a faster rival closing from behind also lifts a whisper at the
+ * edge of range - defending costs everyone time, and a train of
+ * metronomes that never yields is how formation driving reads from
+ * outside.
  */
 export function yieldPaceScale(args: {
   gapToFollowerMeters: number;
@@ -186,7 +244,7 @@ export function yieldPaceScale(args: {
   const aggression = Math.min(1, Math.max(0, args.aggression));
   if (aggression > 0.35) return 1;
   if (args.gapToFollowerMeters < -3 || args.gapToFollowerMeters > 3) return 1;
-  return 0.98;
+  return 0.96;
 }
 
 /**

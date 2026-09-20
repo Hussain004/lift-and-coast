@@ -3,6 +3,7 @@ import {
   composeRacePace,
   mergeOffsetFactor,
   obstacleLateral,
+  shouldDeployBoost,
   squeezeDecision,
   decideOvertake,
   followPaceScale,
@@ -50,15 +51,18 @@ describe("decideOvertake", () => {
 
   it("refuses corners, slow speed, no closure, and far gaps", () => {
     expect(decideOvertake({ ...base, throttleZone: false }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, speedMs: 30 }).attempt).toBe(false);
+    expect(decideOvertake({ ...base, speedMs: 20 }).attempt).toBe(false);
     expect(decideOvertake({ ...base, closingSpeedMs: 0 }).attempt).toBe(false);
     expect(decideOvertake({ ...base, gapMeters: 40 }).attempt).toBe(false);
     expect(decideOvertake({ ...base, gapMeters: -5 }).attempt).toBe(false);
+    // ...but 25 m/s is enough: slow circuits (Monaco averages ~30) and
+    // slow-corner exits must see moves too, or they never race at all.
+    expect(decideOvertake({ ...base, speedMs: 30 }).attempt).toBe(true);
   });
 
   it("lets risk-takers lunge with less road, not the cautious", () => {
-    expect(decideOvertake({ ...base, cornerAheadMeters: 60, risk: 0.9 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, cornerAheadMeters: 60, risk: 0 }).attempt).toBe(false);
+    expect(decideOvertake({ ...base, cornerAheadMeters: 50, risk: 0.9 }).attempt).toBe(true);
+    expect(decideOvertake({ ...base, cornerAheadMeters: 50, risk: 0 }).attempt).toBe(false);
   });
 
   it("fires on a whisper of closing and latches past the gate", () => {
@@ -94,10 +98,39 @@ describe("decideOvertake", () => {
 
 describe("slipstreamBonus", () => {
   it("pays only tucked behind on fast straights", () => {
-    expect(slipstreamBonus({ gapMeters: 10, speedMs: 70, throttleZone: true })).toBe(0.035);
+    expect(slipstreamBonus({ gapMeters: 10, speedMs: 70, throttleZone: true })).toBe(0.05);
     expect(slipstreamBonus({ gapMeters: 10, speedMs: 70, throttleZone: false })).toBe(0);
-    expect(slipstreamBonus({ gapMeters: 30, speedMs: 70, throttleZone: true })).toBe(0);
+    expect(slipstreamBonus({ gapMeters: 45, speedMs: 70, throttleZone: true })).toBe(0);
     expect(slipstreamBonus({ gapMeters: -5, speedMs: 70, throttleZone: true })).toBe(0);
+    // The tow reaches out far and low: mid-speeds and 30m gaps still get
+    // the run that delivers a car into lunge range.
+    expect(slipstreamBonus({ gapMeters: 30, speedMs: 40, throttleZone: true })).toBe(0.05);
+    expect(slipstreamBonus({ gapMeters: 30, speedMs: 30, throttleZone: true })).toBe(0);
+  });
+
+  describe("shouldDeployBoost", () => {
+    it("only deploys where boost can actually carry speed", () => {
+      const base = { boostEligible: true, batteryFraction: 1, aggression: 0.9, attemptingLunge: false };
+      expect(shouldDeployBoost(base)).toBe(true);
+      expect(shouldDeployBoost({ ...base, boostEligible: false })).toBe(false);
+    });
+
+    it("dumps the battery on a lunge, banks it while cautious", () => {
+      const base = { boostEligible: true, batteryFraction: 0.2, aggression: 0.2, attemptingLunge: false };
+      // Cautious metronome: saves the harvest for the one move that matters.
+      expect(shouldDeployBoost(base)).toBe(false);
+      // ...but hand it a live pass and everything goes in.
+      expect(shouldDeployBoost({ ...base, attemptingLunge: true })).toBe(true);
+      expect(shouldDeployBoost({ ...base, attemptingLunge: true, batteryFraction: 0.04 })).toBe(false);
+    });
+
+    it("spends freely as aggression rises", () => {
+      const mid = { boostEligible: true, batteryFraction: 0.6, aggression: 0.5, attemptingLunge: false };
+      const diver = { ...mid, aggression: 0.9 };
+      // Mid-aggression deploys above ~0.725 charge, a dive-bomber above ~0.5.
+      expect(shouldDeployBoost(mid)).toBe(false);
+      expect(shouldDeployBoost(diver)).toBe(true);
+    });
   });
 });
 
@@ -176,7 +209,7 @@ describe("composeRacePace", () => {
     expect(passing.decision.attempt).toBe(true);
     expect(queued.decision.attempt).toBe(false);
     // Latched: slipstream + lunge bonus, zero follow drag.
-    expect(passing.paceMult).toBeCloseTo(1 + 0.035 + 0.015 + 0.6 * 0.015, 6);
+    expect(passing.paceMult).toBeCloseTo(1 + 0.05 + 0.02 + 0.6 * 0.02, 6);
     // Queued: same slipstream, minus the follow trim.
     expect(queued.paceMult).toBeLessThan(1.035);
     expect(queued.paceMult).toBeLessThan(passing.paceMult);

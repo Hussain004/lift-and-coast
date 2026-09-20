@@ -36,21 +36,24 @@ import {
   wheelSurfaceGrips,
 } from "../lib/tracks/surfaces";
 import { computeRacingLine } from "../lib/tracks/racingLine";
+import { createEnergySystem } from "../lib/physics/energy";
 import {
   cornerAheadMeters,
   computeAIControls,
   nearestLineIndex,
 } from "../lib/ai/pathFollower";
 import {
+  difficultyAggressionShift,
   difficultyPaceScale,
   tireCurveMultiplier,
   traitsForDriver,
+  type AIDifficulty,
 } from "../lib/ai/personalities";
 import {
   composeRacePace,
   mergeOffsetFactor,
   obstacleLateral,
-  trackGapMeters,
+  shouldDeployBoost,
   unwrapGap,
   type RaceObstacle,
 } from "../lib/ai/racecraft";
@@ -77,6 +80,11 @@ interface FieldCar {
   attemptTicks: number;
   maxOffset: number;
   zone: "throttle" | "lift" | "brake-medium" | "brake-hard";
+  // Push-to-Pass state, mirroring AICar's refs (see shouldDeployBoost) so
+  // the headless field runs the identical battery strategy the game runs.
+  energy: ReturnType<typeof createEnergySystem>;
+  battery: number;
+  boostEligible: boolean;
   maxTilt: number;
   traveled: number;
   prevX: number;
@@ -96,6 +104,7 @@ interface FieldResult {
   attemptTicks: number;
   maxOffset: number;
   firewallResets: number;
+  finalBattery: number;
 }
 
 export async function simulateField(
@@ -109,7 +118,10 @@ export async function simulateField(
   slotScale = 1,
   /** Driver codes that never drive (parked obstacles, e.g. a crashed car
    * on the line): the field must pick through, not deadlock behind. */
-  parked: readonly string[] = []
+  parked: readonly string[] = [],
+  /** Difficulty tier for the whole field. Defaults to Pro - the exact
+   * reference pace - so every existing caller keeps today's behavior. */
+  difficulty: AIDifficulty = "pro"
 ): Promise<FieldResult[]> {
     await RAPIER.init();
     const track = (trackOverride ?? silverstone) as TrackData;
@@ -177,6 +189,9 @@ export async function simulateField(
         attemptTicks: 0,
         maxOffset: 0,
         zone: "throttle" as const,
+        energy: createEnergySystem(),
+        battery: 1,
+        boostEligible: false,
         maxTilt: 0,
         traveled: 0,
         prevX: grid.x,
@@ -258,7 +273,12 @@ export async function simulateField(
         const traits = traitsForDriver(car.code);
         const raceProgress = Math.min(1, Math.max(0, car.lapCount / 3));
         let paceMult =
-          traits.pace * difficultyPaceScale("pro") * tireCurveMultiplier(traits.latePace, raceProgress);
+          traits.pace *
+          difficultyPaceScale(difficulty) *
+          tireCurveMultiplier(traits.latePace, raceProgress);
+        // Same clamp as AICar's live aggression: tier + difficulty shift,
+        // bounded to [0, 1].
+        const aggression = Math.min(1, Math.max(0, traits.aggression + difficultyAggressionShift(difficulty)));
         const rivals = cars
           .filter((other) => other !== car)
           .map((other) => ({
@@ -321,7 +341,7 @@ export async function simulateField(
           obstacles,
           throttleZone,
           cornerAheadMeters: cornerAhead,
-          aggression: traits.aggression,
+          aggression,
           risk: traits.risk,
           overtakeSide: traits.overtakeSide,
           basePace: paceMult,
@@ -357,6 +377,20 @@ export async function simulateField(
         car.maxOffset = Math.max(car.maxOffset, Math.abs(car.offset));
         const held = i * timestep < holdSeconds;
         const parkedCar = parked.includes(car.code);
+        // Push-to-Pass, the identical policy AICar runs (see
+        // shouldDeployBoost): deploy on boost-eligible straights per the
+        // driver's aggression, dump what's left on a lunge. The deploy
+        // flag switches the speed targets to the boosted profile on the
+        // same tick (computeAIControls's useBoostedSpeed contract).
+        const deploying =
+          !parkedCar &&
+          !held &&
+          shouldDeployBoost({
+            boostEligible: car.boostEligible,
+            batteryFraction: car.battery,
+            aggression,
+            attemptingLunge: decision.attempt,
+          });
         const controls = parkedCar
           // Full brake: digs in so the queue can't shove it (a shoved
           // obstacle reads as moving and defeats the slow filter).
@@ -369,16 +403,26 @@ export async function simulateField(
           p.z,
           yaw,
           car.speedMs,
-          false,
+          deploying,
           paceMult,
           car.offset
         );
         car.zone = controls.zone;
+        car.boostEligible = controls.boostEligible;
+        let boostMultiplier = 1;
+        if (!parkedCar && !held) {
+          const energyStatus = car.energy.update(
+            { brakeAmount: controls.brake, deployRequested: deploying },
+            timestep
+          );
+          car.battery = energyStatus.batteryFraction;
+          boostMultiplier = energyStatus.engineForceMultiplier;
+        }
         applyCarControls(
           car.controller,
           controls,
           DEFAULT_ENGINE_FORCE,
-          1,
+          boostMultiplier,
           DEFAULT_BRAKE_FORCE,
           car.controller.currentVehicleSpeed(),
           true,
@@ -446,6 +490,7 @@ export async function simulateField(
       attemptTicks: car.attemptTicks,
       maxOffset: car.maxOffset,
       firewallResets,
+      finalBattery: car.battery,
     }));
 }
 
@@ -496,6 +541,27 @@ describe("AI field race", () => {
       // proof that the field races.
       expect(car.traveled).toBeGreaterThan(5200);
     }
+  }, 240000);
+
+  it("an Ace field is measurably faster than a Pro field and stays upright", async () => {
+    // The point of the difficulty dial: Ace must not just feel harder, it
+    // must BE faster - +5% tier pace, braver lunges and heavier
+    // Push-to-Pass deployment on the same grid, same track, same length.
+    // Both runs must also stay upright: faster corners are where the
+    // controller slides first, so this doubles as the Ace stability gate.
+    const codes = ["VER", "HAM", "ALO", "HUL", "STR", "COL"];
+    const pro = await simulateField(codes, 60);
+    const ace = await simulateField(codes, 60, 0, undefined, 1, [], "ace");
+    for (const car of [...pro, ...ace]) {
+      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(car.traveled).toBeGreaterThan(1500);
+    }
+    const mean = (rs: FieldResult[]): number =>
+      rs.reduce((sum, r) => sum + r.traveled, 0) / rs.length;
+    expect(mean(ace)).toBeGreaterThan(mean(pro) * 1.02);
+    // The batteries must actually cycle - a strategy that never deploys
+    // would leave every car pinned at full charge for the whole run.
+    expect(Math.min(...ace.map((car) => car.finalBattery))).toBeLessThan(0.9);
   }, 240000);
 
   it("a five-car pack start survives the opening lap without piling up", async () => {    // Adjacent grid slots, mixed traits: the Lap-1 concertina that once

@@ -4,8 +4,9 @@
 // here, derived deterministically from the driver's FIA code, so the same
 // code always drives the same way on every visit and both sides of a net
 // room agree without a round-trip. Deterministic does not mean uniform:
-// the field spreads ~3.5% on raw pace, overtakes, makes mistakes, and runs
-// different tire curves - a train that holds formation all race is gone.
+// the field spreads ~4% on raw pace (tiers plus per-driver jitter),
+// overtakes, makes mistakes, and runs different tire curves - a train that
+// holds formation all race is gone.
 //
 // Stability discipline (non-negotiable, see lib/ai/pathFollower.ts): every
 // trait acts through PACE levers only - target-speed scaling, throttle
@@ -26,24 +27,27 @@ export function parseDifficulty(raw: string | null): AIDifficulty {
   return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
 }
 
-/** Global pace multiplier applied to every AI target speed. Ace is sized
- * to run with a strong player: validated headless for stability (see the
- * pace probe in the racecraft work) because cornering above the profile
- * is the first thing that slides. */
+/** Global pace multiplier applied to every AI target speed. Ace rides ~5%
+ * over the reference profile - sized to run with a strong player who also
+ * deploys Push-to-Pass (the AI deploys too, see lib/ai/racecraft.ts's
+ * shouldDeployBoost), with the pathFollower clamp bounding the worst-case
+ * cornering overspeed. Pro stays the exact reference pace. */
 export function difficultyPaceScale(difficulty: AIDifficulty): number {
   switch (difficulty) {
     case "rookie":
-      return 0.96;
+      return 0.95;
     case "club":
       return 0.985;
     case "pro":
       return 1.0;
     case "ace":
-      return 1.03;
+      return 1.05;
   }
 }
 
-/** Global aggression shift applied to every AI driver. */
+/** Global aggression shift applied to every AI driver. Ace shifts the whole
+ * field into lunge range earlier, sits closer in the tow, and deploys
+ * Push-to-Pass more freely (aggression feeds shouldDeployBoost). */
 export function difficultyAggressionShift(difficulty: AIDifficulty): number {
   switch (difficulty) {
     case "rookie":
@@ -53,7 +57,7 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
     case "pro":
       return 0;
     case "ace":
-      return 0.18;
+      return 0.25;
   }
 }
 
@@ -117,17 +121,17 @@ export const DRIVER_TIERS: Record<string, 1 | 2 | 3 | 4> = {
 };
 
 const TIER_PACE: Record<1 | 2 | 3 | 4, number> = {
-  1: 0.012,
-  2: 0.004,
-  3: -0.004,
-  4: -0.012,
+  1: 0.014,
+  2: 0.005,
+  3: -0.005,
+  4: -0.014,
 };
 
 const TIER_AGGRESSION: Record<1 | 2 | 3 | 4, [number, number]> = {
-  1: [0.7, 1.0],
-  2: [0.5, 0.75],
-  3: [0.3, 0.55],
-  4: [0.15, 0.4],
+  1: [0.75, 1.0],
+  2: [0.55, 0.8],
+  3: [0.35, 0.6],
+  4: [0.18, 0.42],
 };
 
 /** FNV-1a over the code string: stable across visits, platforms, sessions. */
@@ -147,7 +151,7 @@ export function traitsForDriver(code: string): DriverTraits {
   const tier = DRIVER_TIERS[code] ?? 3;
   const [aggrLo, aggrHi] = TIER_AGGRESSION[tier];
   return {
-    pace: 1 + TIER_PACE[tier] + (unit(0) - 0.5) * 0.006,
+    pace: 1 + TIER_PACE[tier] + (unit(0) - 0.5) * 0.01,
     aggression: aggrLo + unit(10) * (aggrHi - aggrLo),
     risk: unit(20) * unit(5),
     latePace: unit(15) * 2 - 1,

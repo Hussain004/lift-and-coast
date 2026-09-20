@@ -270,7 +270,13 @@ export function computeAIControls(
   const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
 
   const nearestPoint = line[nearest];
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.06, Math.max(0.9, paceScale)) : 1;
+  // Pace headroom bound: personality/tire/racecraft multipliers stack to
+  // ~1.07 at Ace (elite trait x 1.05 tier x late-race tire curve). The cap
+  // bounds CORNERING overspeed above the profile - the first thing that
+  // slides - while straight-line overspeed is simply drag-limited. Ace
+  // field sims (see tests/aiFieldRace.test.ts) gate the stability of the
+  // raised ceiling.
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.08, Math.max(0.9, paceScale)) : 1;
   const baseTarget =
     (useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs) * clampedPace;
   const speedError = baseTarget - carSpeedMs;
