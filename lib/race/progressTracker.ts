@@ -24,10 +24,12 @@ export function createProgressTracker(): ProgressTracker {
   return { index: null };
 }
 
-function distSqTo(track: TrackData, i: number, x: number, z: number): number {
+function distSqTo(track: TrackData, i: number, x: number, z: number, y?: number): number {
   const n = track.centerline.length;
   const p = track.centerline[((i % n) + n) % n];
-  return (p[0] - x) ** 2 + (p[2] - z) ** 2;
+  // Height-aware like checkTrackLimits (see its y param): 3D distance
+  // keeps each crossover deck on its own layer.
+  return (p[0] - x) ** 2 + (p[2] - z) ** 2 + (y !== undefined ? (p[1] - y) ** 2 : 0);
 }
 
 /**
@@ -40,14 +42,15 @@ export function trackProgress(
   track: TrackData,
   x: number,
   z: number,
-  tracker: ProgressTracker
+  tracker: ProgressTracker,
+  y?: number
 ): { progressMeters: number; nearestIndex: number; teleported: boolean } {
   const n = track.centerline.length;
   if (tracker.index === null) {
     let best = 0;
     let bestSq = Infinity;
     for (let i = 0; i < n; i++) {
-      const d = distSqTo(track, i, x, z);
+      const d = distSqTo(track, i, x, z, y);
       if (d < bestSq) {
         bestSq = d;
         best = i;
@@ -57,10 +60,10 @@ export function trackProgress(
     return { progressMeters: (best / n) * track.lengthMeters, nearestIndex: best, teleported: true };
   }
   let best = tracker.index;
-  let bestSq = distSqTo(track, best, x, z);
+  let bestSq = distSqTo(track, best, x, z, y);
   for (let k = 1; k <= SEARCH_WINDOW_POINTS; k++) {
     for (const i of [tracker.index - k, tracker.index + k]) {
-      const d = distSqTo(track, i, x, z);
+      const d = distSqTo(track, i, x, z, y);
       if (d < bestSq) {
         bestSq = d;
         best = ((i % n) + n) % n;

@@ -40,12 +40,14 @@ function frame(track: TrackData): {
 /**
  * Ground elevation (centerline y) under a world position - for spawns and
  * resets, which must sit relative to the surface, never at a flat height.
+ * Height-aware like checkTrackLimits (see its y param): under the
+ * crossover the two decks disagree, and the caller passes its own height.
  */
-export function groundElevationAt(track: TrackData, x: number, z: number): number {
+export function groundElevationAt(track: TrackData, x: number, z: number, y?: number): number {
   let best = 0;
   let bestSq = Infinity;
   for (const [cx, cy, cz] of track.centerline) {
-    const distSq = (cx - x) ** 2 + (cz - z) ** 2;
+    const distSq = (cx - x) ** 2 + (cz - z) ** 2 + (y !== undefined ? (cy - y) ** 2 : 0);
     if (distSq < bestSq) {
       bestSq = distSq;
       best = cy;

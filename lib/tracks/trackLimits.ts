@@ -35,13 +35,20 @@ export interface TrackLimitStatus {
  * rendered frame this is a few hundred thousand simple ops/sec - trivial
  * for a single car. Revisit with a spatial index if many AI cars need this
  * simultaneously (plan section 6).
+ *
+ * Pass y (chassis height) wherever the caller has it: the figure-8
+ * crossover decks sit 6m apart in height at the same plan position, and
+ * a 2D search snaps cars between decks (progress jumps half a lap,
+ * wrong-side kerbs). With y, the search is 3D and each deck finds its
+ * own layer; elsewhere the heights agree to centimetres so results are
+ * unchanged. Callers without a height (tests, reset backstops) keep 2D.
  */
-export function checkTrackLimits(track: TrackData, x: number, z: number): TrackLimitStatus {
+export function checkTrackLimits(track: TrackData, x: number, z: number, y?: number): TrackLimitStatus {
   let nearestIdx = 0;
   let nearestDistSq = Infinity;
   for (let i = 0; i < track.centerline.length; i++) {
-    const [cx, , cz] = track.centerline[i];
-    const distSq = (cx - x) ** 2 + (cz - z) ** 2;
+    const [cx, cy, cz] = track.centerline[i];
+    const distSq = (cx - x) ** 2 + (cz - z) ** 2 + (y !== undefined ? (cy - y) ** 2 : 0);
     if (distSq < nearestDistSq) {
       nearestDistSq = distSq;
       nearestIdx = i;

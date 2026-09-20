@@ -562,7 +562,7 @@ export function Car({
     const pos = body.translation();
     // Reused below for the surface grip penalty too, instead of a second
     // brute-force nearest-centerline-point scan for the same position.
-    const limitStatus = checkTrackLimits(track, pos.x, pos.z);
+    const limitStatus = checkTrackLimits(track, pos.x, pos.z, pos.y);
     // The finiteness guard is load-bearing: a dense pack can grind the
     // contact solver into NaN (seen as a frozen frame plus dead WASM on
     // 20-car Suzuka starts), and NaN spreads car-to-car within ticks - so
@@ -878,13 +878,13 @@ export function Car({
 
     const t = body.translation();
     const bodyRot = body.rotation();
-    const status = checkTrackLimits(track, t.x, t.z);
+    const status = checkTrackLimits(track, t.x, t.z, t.y);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
     // Ranked progress comes from the continuity tracker, not the raw
     // scan: at the start/finish seam the scan flickers between ~0 and
     // ~trackLength for a car sitting on the line, slingshotting it
     // between P1 and P20. Edge/lateral/surfaces below keep the scan.
-    const tracked = trackProgress(track, t.x, t.z, progressTrackerRef.current);
+    const tracked = trackProgress(track, t.x, t.z, progressTrackerRef.current, t.y);
 
     if (!raceFinishedRef.current) {
       raceElapsedSecondsRef.current += dt;

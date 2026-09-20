@@ -335,12 +335,12 @@ export function AICar({
     if (!controller || !body) return;
 
     const pos = body.translation();
-    const limitStatus = checkTrackLimits(track, pos.x, pos.z);
+    const limitStatus = checkTrackLimits(track, pos.x, pos.z, pos.y);
     // Ranked/decision progress comes from the continuity tracker (see
     // progressTracker.ts), never the raw scan: at the start/finish seam
     // the scan flickers between ~0 and ~trackLength, hiding cars on the
     // line from followers (full-speed rams) and slingshotting the tower.
-    const trackedProgress = trackProgress(track, pos.x, pos.z, progressTrackerRef.current).progressMeters;
+    const trackedProgress = trackProgress(track, pos.x, pos.z, progressTrackerRef.current, pos.y).progressMeters;
     // Same safety backstop as the player's car (Car.tsx) - without it, a
     // path-follower bug or a bad launch could leave the AI stuck off-course
     // or run it past the finite ground field's edge for the rest of the

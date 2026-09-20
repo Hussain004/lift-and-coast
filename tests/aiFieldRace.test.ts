@@ -224,7 +224,7 @@ export async function simulateField(
       // lap section runs before the controls in the same tick).
       for (const car of cars) {
         const p = car.chassis.translation();
-        const status = checkTrackLimits(track, p.x, p.z);
+        const status = checkTrackLimits(track, p.x, p.z, p.y);
         const lap = car.lapTimer.update({ x: p.x, z: p.z }, timestep);
         car.lapCount = lap.lapCount;
         car.progressMeters = status.progressMeters;
@@ -538,5 +538,21 @@ describe("AI field race", () => {
       expect(car.traveled).toBeGreaterThan(500);
     }
     expect(results[0].firewallResets).toBe(0);
+  }, 240000);
+});
+
+describe("crossover decks", () => {
+  it("holds progress continuity over and under Suzuka's bridge", async () => {
+    // Two cars circulating 150s cross both decks several times each. A
+    // 2D nearest-point lookup snaps cars between decks (half a lap of
+    // phantom progress); height-aware lookups keep every sample on its
+    // own deck, and nobody ends up reset.
+    const results = await simulateField(["VER", "HAM"], 150, 3, suzuka as TrackData);
+    expect(results[0].firewallResets).toBe(0);
+    expect(results[1].firewallResets).toBe(0);
+    for (const car of results) {
+      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(car.traveled).toBeGreaterThan(4000);
+    }
   }, 240000);
 });

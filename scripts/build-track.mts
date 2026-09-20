@@ -476,6 +476,19 @@ function buildTrack(
   // and direction; only the lap line, grid and station-indexed tables move.
   // The DEM averaging and TUMFTM alignment are index-agnostic, unaffected.
   startAtMeters?: number,
+  // Overpasses ([stationMeters, liftMeters, halfWidthMeters]) for
+  // self-crossing circuits: the DEM + 2D averaging pipeline above
+  // deliberately flattens crossings (it cannot resolve a bridge), so the
+  // upper deck is lifted here with a raised-cosine bump AFTER all
+  // elevation shaping (stations are index*spacing, as everywhere else).
+  // The two arms then disagree by the lift height wherever they touch in
+  // plan, which is exactly right for the ribbon (bridge over road) - the
+  // grass terrain between them forms a steep bank inside one or two of
+  // its coarse cells instead (see lib/tracks/terrain.ts: a deliberate
+  // cheap-grid trade, same as hillside hairpins). Runtime nearest-point
+  // lookups MUST be height-aware wherever both decks are in play (see
+  // checkTrackLimits), or cars snap between decks.
+  overpasses?: [number, number, number][],
 ): TrackJson {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const feature = raw.features[0];
@@ -599,6 +612,24 @@ function buildTrack(
     p.z,
   ]);
 
+  if (overpasses) {
+    // Applied to the resampled stations (index*spacing), exactly the
+    // convention keyframes and the runtime share.
+    const total = resampled.length * RESAMPLE_SPACING_METERS;
+    for (const [station, lift, halfWidth] of overpasses) {
+      for (let i = 0; i < resampled.length; i++) {
+        let d = Math.abs(i * RESAMPLE_SPACING_METERS - station);
+        d = Math.min(d, total - d);
+        if (d >= halfWidth) continue;
+        const u = Math.cos((d / halfWidth) * (Math.PI / 2));
+        centerline[i][1] += lift * u * u;
+      }
+    }
+    console.log(
+      `  overpasses: ${overpasses.length} deck lift(s) applied`
+    );
+  }
+
   let width: number[];
   if (widthPath) {
     const source = loadWidthSource(widthPath);
@@ -681,6 +712,7 @@ const TRACKS: {
   manualElevation?: [number, number][];
   manualElevationBlendRadiusMeters?: number;
   startAtMeters?: number;
+  overpasses?: [number, number, number][];
   // Derive the start line from the TUMFTM centerline (its laps start at
   // s=0 on the line) instead of hand-placing it. Only for tracks whose
   // raw index 0 is not already on the start straight - the shipped five
@@ -715,6 +747,11 @@ const TRACKS: {
     name: "Suzuka International Racing Course",
     widthFile: "Suzuka.csv",
     elevationFile: "suzuka.json",
+    // Figure-8 crossover: the Hairpin-to-Spoon arm (station ~2328m) flies
+    // over the 130R-to-chicane arm. The DEM pipeline flattens the crossing
+    // to one height, so the deck is lifted +6m here (real bridge
+    // clearance), ramping over +/-150m either side.
+    overpasses: [[2328, 6, 150]],
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/at-1969.geojson`,
@@ -921,7 +958,7 @@ const outlines: {
   direction: "clockwise" | "counterclockwise";
   points: [number, number][];
 }[] = [];
-for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters, autoStart } of TRACKS) {
+for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters, autoStart, overpasses } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
   const widthPath = widthFile
@@ -932,7 +969,7 @@ for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualEl
     : undefined;
   const resolvedStart =
     startAtMeters ?? (autoStart && widthPath ? locateTumftmStart(rawPath, widthPath) : undefined);
-  const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, resolvedStart);
+  const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, resolvedStart, overpasses);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,
     JSON.stringify(track)
