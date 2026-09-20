@@ -9,6 +9,7 @@ import {
   MIN_RACE_LAPS,
   MIN_RIVALS,
   loadSessionSetupPrefs,
+  parseDifficulty,
   parseGridSpot,
   parseQualifyingFormat,
   parseRaceLaps,
@@ -18,6 +19,7 @@ import {
   saveSessionSetupPrefs,
 } from "../lib/race/sessionSetup";
 import { DEFAULT_TRACK_ID } from "../lib/tracks/registry";
+import { DEFAULT_DIFFICULTY } from "../lib/ai/personalities";
 
 describe("parseRaceLaps", () => {
   it("returns the default for no param", () => {
@@ -76,6 +78,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       rivals: DEFAULT_RIVALS,
+      difficulty: DEFAULT_DIFFICULTY,
     });
   });
 
@@ -85,6 +88,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       rivals: DEFAULT_RIVALS,
+      difficulty: DEFAULT_DIFFICULTY,
     });
   });
 
@@ -101,6 +105,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: "spa",
       timeOfDay: "day",
       rivals: DEFAULT_RIVALS,
+      difficulty: DEFAULT_DIFFICULTY,
     });
   });
 
@@ -137,6 +142,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       rivals: DEFAULT_RIVALS,
+      difficulty: DEFAULT_DIFFICULTY,
     });
 
     const wrongShape = fakeStorage({
@@ -159,42 +165,43 @@ describe("loadSessionSetupPrefs", () => {
 describe("saveSessionSetupPrefs", () => {
   it("persists the clamped values", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5 }, storage);
+    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5, difficulty: "ace" }, storage);
     expect(loadSessionSetupPrefs(storage)).toEqual({
       raceLaps: 9,
       trackId: "monza",
       timeOfDay: "overcast",
       rivals: 5,
+      difficulty: "ace",
     });
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5 })
+      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5, difficulty: "ace" })
     );
   });
 
   it("clamps and rounds before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka", timeOfDay: "day", rivals: 1 }, storage);
+    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka", timeOfDay: "day", rivals: 1, difficulty: "pro" }, storage);
     expect(loadSessionSetupPrefs(storage).raceLaps).toBe(5);
-    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day", rivals: 99 }, storage);
+    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day", rivals: 99, difficulty: "club" }, storage);
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", rivals: MAX_RIVALS })
+      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", rivals: MAX_RIVALS, difficulty: "club" })
     );
   });
 
   it("clamps an unknown track id to the default before saving", () => {
     const { storage, dump } = fakeStorage();
     saveSessionSetupPrefs(
-      { raceLaps: 3, trackId: "not-a-registered-track", timeOfDay: "day", rivals: 2 },
+      { raceLaps: 3, trackId: "not-a-registered-track", timeOfDay: "day", rivals: 2, difficulty: "rookie" },
       storage
     );
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", rivals: 2 })
+      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", rivals: 2, difficulty: "rookie" })
     );
   });
 
   it("does nothing when storage is unavailable", () => {
     expect(() =>
-      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day", rivals: 1 }, null)
+      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day", rivals: 1, difficulty: "pro" }, null)
     ).not.toThrow();
   });
 });
@@ -268,5 +275,19 @@ describe("rivals prefs", () => {
       "lift-and-coast.session-setup.v1": JSON.stringify({ raceLaps: 3, trackId: "spa", rivals: 99 }),
     });
     expect(loadSessionSetupPrefs(over.storage).rivals).toBe(MAX_RIVALS);
+  });
+});
+
+describe("parseDifficulty", () => {
+  it("accepts the four tiers and falls back to Pro", () => {
+    expect(parseDifficulty("rookie")).toBe("rookie");
+    expect(parseDifficulty("club")).toBe("club");
+    expect(parseDifficulty("ace")).toBe("ace");
+    expect(parseDifficulty(null)).toBe("pro");
+    expect(parseDifficulty("legend")).toBe("pro");
+  });
+
+  it("round-trips through buildRaceUrl", () => {
+    expect(buildRaceUrl({ difficulty: "ace" })).toContain("diff=ace");
   });
 });

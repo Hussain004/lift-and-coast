@@ -3,11 +3,17 @@ import { MAX_DECEL_MS2 } from "../tracks/racingLine";
 
 // Plan section 6: "steer toward a lookahead point on the racing line;
 // throttle/brake targets derived from curvature ahead (brake *before* the
-// corner...)". This is the first, single-car version - no racecraft, no
-// opponent awareness, no difficulty tiers (all explicitly later work in the
-// same plan section). It reuses the exact same physics model as the
-// player's own car (see AICar.tsx) - this is just the "brain" plugged in
-// instead of keyboard input.
+// corner...)". This is the shared steering/speed brain with two additive,
+// default-inert personality inputs - paceScale (driver skill, difficulty,
+// tires, mistakes, slipstream) and lateralOffsetMeters (overtake offset,
+// ramped by the caller). Both default to the reference behavior, so the
+// validated controller below is exactly what shipped before personalities:
+// the per-driver differences live in the INPUTS (see lib/ai/personalities
+// and lib/ai/racecraft), never in retuned gains - anything that perturbs
+// this control law proved chaotically sensitive (see the lookahead and
+// boost comments below), and this file keeps that discipline. It reuses
+// the exact same physics model as the player's own car (see AICar.tsx) -
+// this is just the "brain" plugged in instead of keyboard input.
 //
 // The target speed at each point is precomputed by racingLine.ts itself
 // (a physically-plausible profile shared with the line's own on-track
@@ -74,8 +80,12 @@ const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error rea
 const BRAKE_PLANNING_METERS = 250;
 const STEER_GAIN = 1.0;
 
-function nearestLineIndex(line: RacingLinePoint[], x: number, z: number): number {
-  let nearestIdx = 0;
+/**
+ * Nearest line index for an (x, z) position - exported for the racecraft
+ * book (see AICar.tsx), which anchors its corner-ahead scan to the same
+ * point the steering pursues from.
+ */
+export function nearestLineIndex(line: RacingLinePoint[], x: number, z: number): number {  let nearestIdx = 0;
   let nearestDistSq = Infinity;
   for (let i = 0; i < line.length; i++) {
     const [lx, , lz] = line[i].position;
@@ -92,8 +102,7 @@ export interface AIControls {
   throttle: number;
   brake: number;
   steer: number;
-  /** The nearest line point's own zone (for HUD/diagnostics). */
-  zone: ThrottleZone;
+  /** The nearest line point's own zone (for HUD/diagnostics). */  zone: ThrottleZone;
   /**
    * The nearest line point's own boostEligible flag (see racingLine.ts) -
    * whether deploying Push-to-Pass right now would actually let the car
@@ -150,6 +159,31 @@ export interface AIControls {
 }
 
 /**
+ * Distance ahead to the first point demanding real braking: the first
+ * profile target more than 12 m/s below current speed, walking up to 400m
+ * (a full straight, so an open road reads as room). The racecraft book
+ * uses it to refuse lunges that can't finish before the braking zone.
+ * Reads the pace-scaled profile, matching what the car chases.
+ */
+export function cornerAheadMeters(
+  line: RacingLinePoint[],
+  fromIndex: number,
+  speedMs: number,
+  paceScale = 1
+): number {
+  const n = line.length;
+  if (n === 0) return 400;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.06, Math.max(0.9, paceScale)) : 1;
+  let ahead = 0;
+  for (let k = 0; k < n && ahead < 400; k++) {
+    const point = line[(fromIndex + k) % n];
+    if (ahead > 1e-6 && point.targetSpeedMs * clampedPace < speedMs - 12) return ahead;
+    ahead += point.distanceToNextMeters;
+  }
+  return ahead;
+}
+
+/**
  * Pure-pursuit-style path following: steers toward a speed-scaled lookahead
  * point on the given racing line, and targets that line's own precomputed speed
  * at the car's current position - which already anticipates corners ahead
@@ -172,7 +206,22 @@ export function computeAIControls(
   carZ: number,
   carYaw: number,
   carSpeedMs: number,
-  useBoostedSpeed = false
+  useBoostedSpeed = false,
+  /**
+   * Personality/racecraft inputs (plan section 6 depth: AI field). Both
+   * default to inert, so every existing caller, test and the headless
+   * harness runs exactly the reference behavior:
+   * - paceScale multiplies the profile speed targets (driver skill,
+   *   difficulty, tire curve, mistakes, slipstream). The brake-planning
+   *   scan reads the same scaled profile the throttle law targets, so the
+   *   two can never disagree about which speeds are coming.
+   * - lateralOffsetMeters shifts the lookahead target sideways from the
+   *   line (overtaking offset, ramped in/out by the caller). Bounded and
+   *   straights-only by the caller's racecraft book, never by this
+   *   function: it just pursues the shifted point with the same gains.
+   */
+  paceScale = 1,
+  lateralOffsetMeters = 0
 ): AIControls {
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ);
@@ -192,8 +241,24 @@ export function computeAIControls(
   }
 
   const [lookX, , lookZ] = line[lookaheadIndex].position;
-  const dx = lookX - carX;
-  const dz = lookZ - carZ;
+  // Overtake offset (see the paceScale/lateralOffsetMeters contract above):
+  // shift the pursuit point sideways from the line direction at the
+  // lookahead index, so the car runs parallel to the line rather than
+  // chasing a rotated point. Zero by default (reference behavior).
+  let aimX = lookX;
+  let aimZ = lookZ;
+  if (lateralOffsetMeters !== 0) {
+    const [nextX, , nextZ] = line[(lookaheadIndex + 1) % n].position;
+    const dirX = nextX - lookX;
+    const dirZ = nextZ - lookZ;
+    const len = Math.hypot(dirX, dirZ);
+    if (len > 1e-6) {
+      aimX = lookX + (-dirZ / len) * lateralOffsetMeters;
+      aimZ = lookZ + (dirX / len) * lateralOffsetMeters;
+    }
+  }
+  const dx = aimX - carX;
+  const dz = aimZ - carZ;
   // Solving forward = (-sin(yaw), -cos(yaw)) for yaw given a desired
   // forward direction (dx, dz) - same convention as yawFromQuaternion.
   const targetYaw = Math.atan2(-dx, -dz);
@@ -205,7 +270,9 @@ export function computeAIControls(
   const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
 
   const nearestPoint = line[nearest];
-  const baseTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.06, Math.max(0.9, paceScale)) : 1;
+  const baseTarget =
+    (useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs) * clampedPace;
   const speedError = baseTarget - carSpeedMs;
   const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
   let brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
@@ -231,7 +298,8 @@ export function computeAIControls(
   for (let k = 0; k < n && scanned < BRAKE_PLANNING_METERS; k++) {
     const i = (nearest + k) % n;
     const point = line[i];
-    const candidate = useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs;
+    const candidate =
+      (useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs) * clampedPace;
     if (scanned > 1e-6) {
       const required = (speed ** 2 - candidate ** 2) / (2 * scanned);
       if (required > maxRequiredDecel) maxRequiredDecel = required;

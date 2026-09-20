@@ -33,6 +33,7 @@ import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
+import type { AIDifficulty } from "@/lib/ai/personalities";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -440,6 +441,9 @@ export function Scene({
   playerGridSpot = null,
   playerCode = "YOU",
   rivals = [],
+  /** Meeting AI difficulty (see lib/ai/personalities.ts) - host-owned in
+   * net rooms, since the host simulates the whole field. */
+  difficulty = "pro" as AIDifficulty,
   netRole = null,
   netHumanSlots = [],
   countdownGoAtMs = 0,
@@ -505,6 +509,10 @@ export function Scene({
    */
   rivals?: { code: string; color: string }[];
   /**
+   * Meeting AI difficulty (see lib/ai/personalities.ts).
+   */
+  difficulty?: AIDifficulty;
+  /**
    * Plan section 16: net-room role. Null is a solo session (every car
    * simulated locally). Host simulates the player, all AI and every
    * guest's car (from their inputs); guests simulate only themselves and
@@ -522,6 +530,15 @@ export function Scene({
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
   const raceStartRef = useRef(false);
+  // Per-race mistake seed (see AICar's sessionSeedRef): a ref stamped in
+  // an effect (never in render - the clock is impure), read live by each
+  // car every tick, so no mount re-render is needed. Traits stay
+  // deterministic per driver regardless; only the mistakes reshuffle race
+  // to race.
+  const sessionSeedRef = useRef(0);
+  useEffect(() => {
+    sessionSeedRef.current = (Math.random() * 2 ** 31) | 0;
+  }, []);
   // Net-room shared state (plan section 16) - created always, used only
   // with netRole set, so solo sessions pay nothing but four empty refs:
   // per-slot poses (every simulated car reports here for broadcast),
@@ -644,6 +661,10 @@ export function Scene({
                 qualifyingRef={qualifyingRef}
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
+                driverCode={rival.code}
+                difficulty={difficulty}
+                sessionSeedRef={sessionSeedRef}
+                raceLaps={raceLaps}
                 netInputRef={
                   netRole === "host" && netHumanSlots.includes(gridSlotIndex)
                     ? netInputRefs[k]

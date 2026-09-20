@@ -11,7 +11,7 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
 import { netRoom } from "@/lib/net/peer";
@@ -49,6 +49,11 @@ function RaceContent() {
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
   const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
   const rivalCount = parseRivals(searchParams.get("rivals"));
+  // AI field character (see lib/ai/personalities.ts): the meeting
+  // difficulty tier travels on ?diff=, defaulting to Pro (today's
+  // reference pace) so every existing link drives exactly as before. In
+  // net rooms the host simulates, so the host's tier sets the field.
+  const difficulty = parseDifficulty(searchParams.get("diff"));
   // Plan section 16 (online multiplayer): a live room turns this visit
   // into a net session (?room= + ?role= + ?slot=, all set by the lobby's
   // START navigation). The room lives in a module singleton that survives
@@ -159,7 +164,7 @@ function RaceContent() {
   return (
     <div className={styles.wrap}>
       <Scene
-        key={`${track.id}-${rivals.length}-${sessionMode}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
+        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
         rivals={rivals}
@@ -190,6 +195,7 @@ function RaceContent() {
         countdownGoAtMs={countdownGoAtMs}
         qualiFormat={qualiFormat}
         playerGridSpot={playerGridSpot}
+        difficulty={difficulty}
         countdownRef={countdownRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}

@@ -3,14 +3,11 @@
 // and race numbers; livery colors are trackside approximations, not factory
 // paint codes) and the player's pick from it.
 // Deliberately identity-only: teams carry livery colors and drivers carry
-// names/codes/numbers, but there are NO performance stats anywhere here.
-// The plan's "card stats feed AI personalities" is not implemented on
-// purpose - anything that perturbs the shared AI controller proved
-// chaotically sensitive (see the lookahead and boost comments in
-// lib/ai/pathFollower.ts), and AI difficulty tiers are blocked for the same
-// reason (see app/SessionSetup.tsx). A stat with no effect would be dead
-// config, so the roster carries none: picking a team paints your car and
-// picks your teammate-opponent, nothing more.
+// names/codes/numbers, but no performance stats - driver character lives
+// in lib/ai/personalities.ts, derived from the code (pace, aggression,
+// risk, tire curve), so this module never needs to change when the field's
+// driving changes. Picking a team paints your car and picks your
+// teammate-opponent, nothing more.
 //
 // Two-car field (see lib/race/championship.ts): the AI opponent is always
 // the player's teammate - the other driver on the same team - so the team

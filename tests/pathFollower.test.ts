@@ -109,3 +109,31 @@ describe("computeAIControls speed control", () => {
     expect(computeAIControls(notEligible, 0, 0, 0, 20).boostEligible).toBe(false);
   });
 });
+
+describe("personality inputs (paceScale, lateralOffsetMeters)", () => {
+  it("defaults to the reference behavior", () => {
+    const line = buildStraightLine(200);
+    expect(computeAIControls(line, 0, 0, 0, 20)).toEqual(
+      computeAIControls(line, 0, 0, 0, 20, false, 1, 0)
+    );
+  });
+
+  it("scales throttle with pace and steers off-line with offset", () => {
+    const line = buildStraightLine(200, 70);
+    const slow = computeAIControls(line, 0, 0, 0, 60, false, 0.95, 0);
+    const fast = computeAIControls(line, 0, 0, 0, 60, false, 1.03, 0);
+    expect(fast.throttle).toBeGreaterThan(slow.throttle);
+    const centered = computeAIControls(line, 0, 0, 0, 60, false, 1, 0);
+    const offset = computeAIControls(line, 0, 0, 0, 60, false, 1, 1.5);
+    expect(Math.abs(centered.steer)).toBeLessThan(1e-9);
+    expect(offset.steer).not.toBe(0);
+  });
+
+  it("clamps garbage pace instead of chasing it", () => {
+    const line = buildStraightLine(200, 70);
+    const sane = computeAIControls(line, 0, 0, 0, 60, false, 1, 0);
+    const wild = computeAIControls(line, 0, 0, 0, 60, false, 99, 0);
+    expect(wild.throttle).toBeLessThanOrEqual(1);
+    expect(wild.throttle).toBeGreaterThanOrEqual(sane.throttle);
+  });
+});

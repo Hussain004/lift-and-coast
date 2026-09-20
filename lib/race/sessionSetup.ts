@@ -7,6 +7,10 @@
 // so long it's never realistically finished.
 import { useEffect, useState } from "react";
 import { DEFAULT_TRACK_ID, isKnownTrackId } from "../tracks/registry";
+import {
+  DEFAULT_DIFFICULTY,
+  type AIDifficulty,
+} from "../ai/personalities";
 
 export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
@@ -58,6 +62,13 @@ export function parseRivals(raw: string | null): number {
   return Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, n));
 }
 
+// AI difficulty (see lib/ai/personalities.ts): unknown/missing values fall
+// back to Pro so every existing link keeps today's reference pace.
+export function parseDifficulty(raw: string | null): AIDifficulty {
+  if (raw === "rookie" || raw === "club" || raw === "ace") return raw;
+  return DEFAULT_DIFFICULTY;
+}
+
 export interface RaceUrlParams {
   mode?: SessionMode;
   track?: string;
@@ -69,6 +80,7 @@ export interface RaceUrlParams {
   grid?: number | null;
   qformat?: QualifyingFormat;
   rivals?: number;
+  difficulty?: AIDifficulty;
 }
 
 /**
@@ -109,6 +121,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.grid !== undefined && params.grid !== null) query.set("grid", String(params.grid));
   if (params.qformat !== undefined) query.set("qformat", params.qformat);
   if (params.rivals !== undefined) query.set("rivals", String(params.rivals));
+  if (params.difficulty !== undefined) query.set("diff", params.difficulty);
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }
@@ -143,6 +156,7 @@ export interface SessionSetupPrefs {
   trackId: string;
   timeOfDay: TimeOfDay;
   rivals: number;
+  difficulty: AIDifficulty;
 }
 
 function clampLaps(n: unknown): number {
@@ -163,6 +177,10 @@ function clampTimeOfDay(raw: unknown): TimeOfDay {
   return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
 }
 
+function clampDifficulty(raw: unknown): AIDifficulty {
+  return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
+}
+
 function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
   if (typeof window === "undefined") return null;
   try {
@@ -181,17 +199,19 @@ export function loadSessionSetupPrefs(
     trackId: DEFAULT_TRACK_ID,
     timeOfDay: DEFAULT_TIME_OF_DAY,
     rivals: DEFAULT_RIVALS,
+    difficulty: DEFAULT_DIFFICULTY,
   };
   if (!storage) return defaults;
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; rivals?: unknown };
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; rivals?: unknown; difficulty?: unknown };
     return {
       raceLaps: clampLaps(parsed.raceLaps),
       trackId: clampTrackId(parsed.trackId),
       timeOfDay: clampTimeOfDay(parsed.timeOfDay),
       rivals: clampRivals(parsed.rivals),
+      difficulty: clampDifficulty(parsed.difficulty),
     };
   } catch {
     return defaults;
@@ -211,6 +231,7 @@ export function saveSessionSetupPrefs(
         trackId: clampTrackId(prefs.trackId),
         timeOfDay: clampTimeOfDay(prefs.timeOfDay),
         rivals: clampRivals(prefs.rivals),
+        difficulty: clampDifficulty(prefs.difficulty),
       })
     );
   } catch {

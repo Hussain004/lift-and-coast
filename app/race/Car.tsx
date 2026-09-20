@@ -97,12 +97,6 @@ const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   yellow: "#ffd23f",
 };
 
-const CHASSIS_SIZE: [number, number, number] = [
-  CHASSIS_HALF_EXTENTS[0] * 2,
-  CHASSIS_HALF_EXTENTS[1] * 2,
-  CHASSIS_HALF_EXTENTS[2] * 2,
-];
-
 export function Car({
   chassisRef,
   visualRef,
@@ -334,7 +328,12 @@ export function Car({
     new Array(SECTOR_COUNT).fill(null)
   );
   const ghostRecorderRef = useRef(createGhostRecorder());
-  const ghostMeshRef = useRef<THREE.Mesh>(null);
+  // Ghost replay (see F1CarBody's ghost prop): the reference lap driven
+  // back as a translucent silhouette of the real car, posed every frame
+  // from the recorder - wheels parked, since a replay needs no steering.
+  const ghostGroupRef = useRef<THREE.Group>(null);
+  const ghostSteerRefs = useRef<(THREE.Group | null)[]>([]);
+  const ghostSpinRefs = useRef<(THREE.Group | null)[]>([]);
   // Distance driven (odometer-style, direction-independent) since the
   // current compound was fitted - see computeCompoundGripMultiplier in
   // tireModel.ts. Not lap-scoped: real tire wear accumulates across a
@@ -1135,19 +1134,19 @@ export function Car({
       position: { x: t.x, y: t.y, z: t.z },
       rotation: { x: bodyRot.x, y: bodyRot.y, z: bodyRot.z, w: bodyRot.w },
     });
-    if (ghostMeshRef.current) {
+    if (ghostGroupRef.current) {
       const ghostPose = ghostRecorderRef.current.poseAt(lap.currentLapSeconds);
       if (ghostPose) {
-        ghostMeshRef.current.visible = true;
-        ghostMeshRef.current.position.set(ghostPose.position.x, ghostPose.position.y, ghostPose.position.z);
-        ghostMeshRef.current.quaternion.set(
+        ghostGroupRef.current.visible = true;
+        ghostGroupRef.current.position.set(ghostPose.position.x, ghostPose.position.y, ghostPose.position.z);
+        ghostGroupRef.current.quaternion.set(
           ghostPose.rotation.x,
           ghostPose.rotation.y,
           ghostPose.rotation.z,
           ghostPose.rotation.w
         );
       } else {
-        ghostMeshRef.current.visible = false;
+        ghostGroupRef.current.visible = false;
       }
     }
 
@@ -1175,10 +1174,9 @@ export function Car({
 
   return (
     <>
-      <mesh ref={ghostMeshRef} visible={false}>
-        <boxGeometry args={CHASSIS_SIZE} />
-        <meshStandardMaterial color={bodyColor} transparent opacity={0.3} depthWrite={false} />
-      </mesh>
+      <group ref={ghostGroupRef} visible={false}>
+        <F1CarBody bodyColor={bodyColor} steerRefs={ghostSteerRefs} spinRefs={ghostSpinRefs} ghost />
+      </group>
       <RigidBody
         ref={chassisRef}
         colliders={false}

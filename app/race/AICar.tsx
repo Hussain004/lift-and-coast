@@ -42,7 +42,25 @@ import {
   wheelSurfaceGrips,
 } from "@/lib/tracks/surfaces";
 import { computeRacingLine } from "@/lib/tracks/racingLine";
-import { computeAIControls } from "@/lib/ai/pathFollower";
+import type { ThrottleZone } from "@/lib/tracks/racingLine";
+import { cornerAheadMeters, computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
+import {
+  difficultyAggressionShift,
+  difficultyPaceScale,
+  hashDriverCode,
+  mulberry32,
+  tireCurveMultiplier,
+  traitsForDriver,
+  type AIDifficulty,
+} from "@/lib/ai/personalities";
+import {
+  decideOvertake,
+  followPaceScale,
+  slipstreamBonus,
+  trackGapMeters,
+  yieldPaceScale,
+  type ProgressLike,
+} from "@/lib/ai/racecraft";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import {
   applySnapshot,
@@ -59,15 +77,22 @@ import type { CarPose } from "@/lib/net/snapshots";
 import type { TrackData } from "@/lib/tracks/types";
 
 /**
- * One AI opponent (plan section 6), instanced once per rival by Scene.tsx:
- * follows the same ideal-line approximation drawn for the player
- * (lib/tracks/racingLine.ts) using pure-pursuit steering and
+ * One AI opponent (plan section 6 depth: AI field), instanced once per
+ * rival by Scene.tsx: follows the same ideal-line approximation drawn for
+ * the player (lib/tracks/racingLine.ts) using pure-pursuit steering and
  * curvature-derived speed targets (lib/ai/pathFollower.ts), running the
  * identical vehicle rig as the player's own car (Car.tsx) so it's bound
- * by the same physics. No racecraft, no opponent awareness, no difficulty
- * tiers - every rival drives the same pace on the same line, so a field
- * holds formation like a train rather than racing each other; the player
- * provides the overtaking.
+ * by the same physics.
+ *
+ * Every rival drives its own deterministic personality (see
+ * lib/ai/personalities.ts: pace spread, aggression, risk, tire curve) on
+ * the meeting's difficulty tier, and races the cars around it (see
+ * lib/ai/racecraft.ts: slipstream, follow lifts, straight-line overtakes
+ * with a bounded offset, yielding) - the field spreads, shuffles and
+ * passes instead of holding formation. All of it acts through pace levers
+ * and one straights-only lateral offset: the steering/lookahead control
+ * law itself is identical for every car (see pathFollower.ts on why that
+ * law is never retuned per driver).
  *
  * Deliberately owns its own chassis/visual/controller refs rather than
  * sharing anything with Scene.tsx's player refs - ChaseCamera follows
@@ -82,6 +107,32 @@ import type { TrackData } from "@/lib/tracks/types";
  * qualifying times (see the validity latch below) so the grid reflects
  * clean laps only.
  */
+/**
+ * Seeded per-race RNG for one car (see sessionSeedRef): recreated when the
+ * seed key changes (mount stamps the random seed just after first render),
+ * which also clears any armed mistake - reseeds only ever happen before
+ * the start lights, never mid-race.
+ */
+function sessionRng(
+  sessionSeed: number,
+  driverCode: string,
+  refs: {
+    rng: React.RefObject<(() => number) | null>;
+    seed: React.RefObject<number>;
+    armed: React.RefObject<boolean>;
+    timeLeft: React.RefObject<number>;
+  }
+): () => number {
+  const key = (sessionSeed ^ hashDriverCode(driverCode)) >>> 0;
+  if (refs.rng.current === null || refs.seed.current !== key) {
+    refs.rng.current = mulberry32(key);
+    refs.seed.current = key;
+    refs.armed.current = false;
+    refs.timeLeft.current = 0;
+  }
+  return refs.rng.current;
+}
+
 export function AICar({
   track,
   raceRef,
@@ -91,6 +142,18 @@ export function AICar({
   sharedRewindActiveRef,
   gridSlotIndex = 1,
   aiIndex = 0,
+  /** This rival's FIA code - selects its deterministic personality (pace,
+   * aggression, risk, tire curve, passing side; see personalities.ts). */
+  driverCode = "YOU",
+  /** Meeting difficulty tier (see personalities.ts) - scales AI pace and
+   * aggression only; the player's car is untouched. */
+  difficulty = "pro" as AIDifficulty,
+  /** Per-race random seed (see Scene.tsx) - mistake scheduling only; the
+   * traits themselves are session-stable so the same code always has the
+   * same character. */
+  sessionSeedRef,
+  /** Total race laps (see Scene.tsx) - the tire curve's clock. */
+  raceLaps = 3,
   netInputRef,
   carPosesRef,
   bodyColor = "#ff5a3c",
@@ -123,6 +186,25 @@ export function AICar({
    */
   gridSlotIndex?: number;
   aiIndex?: number;
+  /**
+   * This rival's FIA code - selects its deterministic personality (pace,
+   * aggression, risk, tire curve, passing side; see personalities.ts).
+   */
+  driverCode?: string;
+  /**
+   * Meeting difficulty tier (see personalities.ts) - scales AI pace and
+   * aggression only; the player's car is untouched.
+   */
+  difficulty?: AIDifficulty;
+  /**
+   * Per-race random seed (see Scene.tsx's sessionSeedRef) - mistake
+   * scheduling only; the traits themselves are session-stable so the same
+   * code always has the same character. Read live every tick through the
+   * ref, so dealing the seed needs no re-render.
+   */
+  sessionSeedRef?: React.RefObject<number>;
+  /** Total race laps (see Scene.tsx) - the tire curve's clock. */
+  raceLaps?: number;
   /**
    * Remote-human driving (plan section 16): when present, this car is a
    * guest's car simulated on the host - inputs come over the net instead
@@ -179,6 +261,23 @@ export function AICar({
   const aiBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
   const aiCursorRef = useRef(0);
   const aiWasRewindingRef = useRef(false);
+  // Personality (see driverCode/difficulty/sessionSeedRef): traits are a
+  // function of the driver code, so plain consts - no refs read during
+  // render. Props are mount-stable (Scene remounts on track/rivals/
+  // difficulty change), so these never go stale.
+  const traits = traitsForDriver(driverCode);
+  const aggression = Math.min(1, Math.max(0, traits.aggression + difficultyAggressionShift(difficulty)));
+  // Racecraft state (see lib/ai/racecraft.ts): the lateral offset ramps
+  // toward its target so a lunge starts as a drift, never a swerve; the
+  // zone is last tick's (one tick of lag at 60Hz is nothing next to a
+  // multi-second overtake); mistakes arm per lap from the seeded RNG.
+  const offsetRef = useRef(0);
+  const zoneRef = useRef<ThrottleZone>("throttle");
+  const rngRef = useRef<(() => number) | null>(null);
+  const rngSeedRef = useRef(-1);
+  const mistakeArmedRef = useRef(false);
+  const mistakeAtMetersRef = useRef(0);
+  const mistakeTimeLeftRef = useRef(0);
 
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
@@ -300,6 +399,17 @@ export function AICar({
           }
         }
         aiLapInvalidRef.current = false;
+        // Mistake scheduling (see personalities.ts): one seeded draw per
+        // lap decides whether this driver has a moment this time round,
+        // and where. Risky drivers err most laps, metronomes almost never.
+        const rng = sessionRng(sessionSeedRef?.current ?? 0, driverCode, {
+          rng: rngRef,
+          seed: rngSeedRef,
+          armed: mistakeArmedRef,
+          timeLeft: mistakeTimeLeftRef,
+        });
+        mistakeArmedRef.current = rng() < 0.06 + traits.risk * 0.3;
+        mistakeAtMetersRef.current = rng() * track.lengthMeters;
       }
     }
 
@@ -311,15 +421,117 @@ export function AICar({
     // path follower's target-speed logic and applyCarControls' steer-scale/
     // traction-control gating.
     const speedMs = computeSignedForwardSpeed(body.linvel(), yaw);
-    // Remote-human driving (see netInputRef): fresh guest input wins;
-    // stale or absent input falls back to the path follower, so this car
-    // is always a real AI opponent even with no guest attached.
+    // Remote-human driving (see netInputRef): fresh guest input wins, and
+    // the human drives - no personality, no racecraft. Stale or absent
+    // input falls back to the path follower below, so this car is always
+    // a real AI opponent even with no guest attached.
     const netInput = netInputRef?.current ?? null;
     const netFresh = netInput !== null && Date.now() - netInput.atMs < 500;
-    const controls =
-      netFresh && netInput
-        ? { throttle: netInput.throttle, brake: netInput.brake, steer: netInput.steer }
-        : computeAIControls(racingLine, pos.x, pos.z, yaw, speedMs);
+    let controls: { throttle: number; brake: number; steer: number };
+    if (netFresh && netInput) {
+      controls = { throttle: netInput.throttle, brake: netInput.brake, steer: netInput.steer };
+    } else {
+      // Personality pace (see personalities.ts): driver skill times the
+      // meeting tier times the tire curve, so the field spreads over a
+      // race and early flyers can fade while late specialists come alive.
+      const myEntry = raceRef?.current?.opponents[aiIndex];
+      const myLap = myEntry?.lapCount ?? 0;
+      const raceProgress = Math.min(1, Math.max(0, myLap / Math.max(1, raceLaps)));
+      let paceMult =
+        traits.pace * difficultyPaceScale(difficulty) * tireCurveMultiplier(traits.latePace, raceProgress);
+      // Mistake envelope: an armed moment triggers when the car reaches
+      // the scheduled point, then reads as a lift for under a second -
+      // pace only, the steering never wavers.
+      if (mistakeArmedRef.current && limitStatus.progressMeters >= mistakeAtMetersRef.current) {
+        mistakeArmedRef.current = false;
+        const rng = sessionRng(sessionSeedRef?.current ?? 0, driverCode, {
+          rng: rngRef,
+          seed: rngSeedRef,
+          armed: mistakeArmedRef,
+          timeLeft: mistakeTimeLeftRef,
+        });
+        mistakeTimeLeftRef.current = 0.35 + rng() * 0.5;
+      }
+      if (mistakeTimeLeftRef.current > 0) {
+        mistakeTimeLeftRef.current = Math.max(0, mistakeTimeLeftRef.current - world.timestep);
+        paceMult *= 1 - (0.22 + traits.risk * 0.2);
+      }
+      // The field around this car (see racecraft.ts): the player plus
+      // every other rival, as track gaps from live progress.
+      const others: ProgressLike[] = [];
+      const race = raceRef?.current;
+      if (race) {
+        others.push(race.player);
+        for (let k = 0; k < race.opponents.length; k++) {
+          if (k !== aiIndex) others.push(race.opponents[k]);
+        }
+      }
+      const own: ProgressLike = {
+        lapCount: myLap,
+        progressMeters: limitStatus.progressMeters,
+        speedMs,
+      };
+      let nearestAheadGap = Infinity;
+      let nearestAheadSpeed = 0;
+      let nearestBehindGap = -Infinity;
+      for (const other of others) {
+        const gap = trackGapMeters(own, other, track.lengthMeters);
+        if (gap >= 0 && gap < nearestAheadGap) {
+          nearestAheadGap = gap;
+          nearestAheadSpeed = other.speedMs ?? 0;
+        }
+        if (gap < 0 && gap > nearestBehindGap) nearestBehindGap = gap;
+      }
+      const throttleZone = zoneRef.current === "throttle";
+      // Corner room for a lunge, anchored to the same line point the
+      // steering pursues from (see cornerAheadMeters).
+      const anchor = nearestLineIndex(racingLine, pos.x, pos.z);
+      const cornerAhead = cornerAheadMeters(racingLine, anchor, Math.abs(speedMs), paceMult);
+      const decision = decideOvertake({
+        gapMeters: nearestAheadGap,
+        closingSpeedMs: speedMs - nearestAheadSpeed,
+        speedMs,
+        leaderSpeedMs: nearestAheadSpeed,
+        throttleZone,
+        cornerAheadMeters: cornerAhead,
+        aggression,
+        risk: traits.risk,
+        overtakeSide: traits.overtakeSide,
+      });
+      paceMult *=
+        1 +
+        slipstreamBonus({ gapMeters: nearestAheadGap, speedMs, throttleZone }) +
+        decision.paceBonus;
+      paceMult *= followPaceScale({
+        gapMeters: nearestAheadGap,
+        throttleZone,
+        aggression,
+        leaderSpeedMs: nearestAheadSpeed,
+        ownSpeedMs: speedMs,
+      });
+      paceMult *= yieldPaceScale({ gapToFollowerMeters: nearestBehindGap, aggression });
+      // The lunge offset ramps toward its target so a move starts as a
+      // drift across, never a swerve - and washes out the same way when
+      // the attempt ends (corner, lift, or the pass sticks). Squeezes past
+      // stopped cars ramp twice as fast (see urgent): at crawl speed there
+      // is no swerve risk, and the slow ramp would still be unfolding at
+      // contact.
+      const offsetTarget = decision.attempt ? decision.offsetMeters : 0;
+      const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * world.timestep;
+      offsetRef.current += Math.min(maxStep, Math.max(-maxStep, offsetTarget - offsetRef.current));
+      const aiControls = computeAIControls(
+        racingLine,
+        pos.x,
+        pos.z,
+        yaw,
+        speedMs,
+        false,
+        paceMult,
+        offsetRef.current
+      );
+      zoneRef.current = aiControls.zone;
+      controls = aiControls;
+    }
 
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
     const raceStarted = raceStartRef?.current ?? true;

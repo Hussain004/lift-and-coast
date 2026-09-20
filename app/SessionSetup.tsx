@@ -17,6 +17,10 @@ import {
   type SessionMode,
   type TimeOfDay,
 } from "@/lib/race/sessionSetup";
+import {
+  DIFFICULTY_OPTIONS,
+  type AIDifficulty,
+} from "@/lib/ai/personalities";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { parseTrackId } from "@/lib/tracks/registry";
 import styles from "./sessionSetup.module.css";
@@ -43,13 +47,15 @@ const QUALI_FORMATS: { id: QualifyingFormat; label: string }[] = [
 // map pins above (app/WorldMap.tsx), and this panel reads the same shared
 // trackId through the session-setup change event - one picker, two readers.
 // Persists the last picks (plan section 10) so the next session opens the
-// way the previous one left it. Difficulty is deliberately absent: AI
-// difficulty tiers are blocked by the chaotic-sensitivity findings (see
-// pathFollower.ts), and the assists are in-race toggles by design.
+// way the previous one left it. Difficulty tiers scale the AI field's pace
+// and aggression only (see lib/ai/personalities.ts) - the player's car is
+// untouched, and Pro is the pre-tier reference pace, so old links (which
+// carry no ?diff=) drive exactly as before.
 export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
   const [rivals, setRivals] = useState(initial.rivals);
+  const [difficulty, setDifficulty] = useState<AIDifficulty>(initial.difficulty);
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
   const { trackId, timeOfDay } = useSessionSetupPrefs();
@@ -57,8 +63,14 @@ export function SessionSetup() {
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
 
-  const persist = (laps: number, id: string, tod: TimeOfDay, rivalCount: number = rivals) => {
-    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, rivals: rivalCount });
+  const persist = (
+    laps: number,
+    id: string,
+    tod: TimeOfDay,
+    rivalCount: number = rivals,
+    diff: AIDifficulty = difficulty
+  ) => {
+    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, rivals: rivalCount, difficulty: diff });
   };
 
   return (
@@ -169,6 +181,27 @@ export function SessionSetup() {
             <span>{MIN_RIVALS} (duel)</span>
             <span>{MAX_RIVALS} (full grid)</span>
           </div>
+          <div className={styles.sliderRow}>
+            <span className={styles.label}>AI LEVEL</span>
+          </div>
+          <div className={styles.presets} role="radiogroup" aria-label="AI difficulty">
+            {DIFFICULTY_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={difficulty === option.id}
+                title={option.blurb}
+                onClick={() => {
+                  setDifficulty(option.id);
+                  persist(raceLaps, trackId, timeOfDay, rivals, option.id);
+                }}
+                className={difficulty === option.id ? styles.presetActive : styles.preset}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </>
       )}
       <Link
@@ -181,6 +214,7 @@ export function SessionSetup() {
           tod: timeOfDay,
           qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
           rivals: sessionMode === "practice" ? undefined : rivals,
+          difficulty: sessionMode === "practice" ? undefined : difficulty,
         })}
         className={styles.drive}
       >

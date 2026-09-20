@@ -40,6 +40,9 @@ export function F1CarBody({
   steerRefs,
   spinRefs,
   flapRef,
+  /** Ghost replay (see Car.tsx): translucent silhouette of the real car,
+   * no shadows, wheels parked - a replay pose, not a driven chassis. */
+  ghost = false,
 }: {
   bodyColor: string;
   steerRefs: React.RefObject<(THREE.Group | null)[]>;
@@ -47,6 +50,7 @@ export function F1CarBody({
   /** Animated by the owner (see Car.tsx): rotates the rear-wing flap open
    * in low-drag mode. Absent, the flap sits shut - the AI never deploys. */
   flapRef?: React.RefObject<THREE.Group | null>;
+  ghost?: boolean;
 }) {
   const body = useMemo(
     () =>
@@ -67,10 +71,15 @@ export function F1CarBody({
         <mesh
           key={`panel-${i}`}
           position={panel.position}
-          castShadow
+          castShadow={!ghost}
         >
           <boxGeometry args={panel.size} />
-          <meshStandardMaterial color={colorFor(panel.color)} />
+          <meshStandardMaterial
+            color={colorFor(panel.color)}
+            transparent={ghost}
+            opacity={ghost ? 0.35 : 1}
+            depthWrite={!ghost}
+          />
         </mesh>
       ))}
       {flap && (
@@ -78,29 +87,49 @@ export function F1CarBody({
           ref={flapRef}
           position={[flap.position[0], flap.position[1], flap.position[2] - flap.size[2] / 2]}
         >
-          <mesh position={[0, 0, flap.size[2] / 2]} castShadow>
+          <mesh position={[0, 0, flap.size[2] / 2]} castShadow={!ghost}>
             <boxGeometry args={flap.size} />
-            <meshStandardMaterial color={colorFor(flap.color)} />
+            <meshStandardMaterial
+              color={colorFor(flap.color)}
+              transparent={ghost}
+              opacity={ghost ? 0.35 : 1}
+              depthWrite={!ghost}
+            />
           </mesh>
         </group>
       )}
-      <mesh position={body.helmet.position} castShadow>
+      <mesh position={body.helmet.position} castShadow={!ghost}>
         <sphereGeometry args={[body.helmet.radius, 16, 12]} />
-        <meshStandardMaterial color={colorFor("helmet")} />
+        <meshStandardMaterial
+          color={colorFor("helmet")}
+          transparent={ghost}
+          opacity={ghost ? 0.35 : 1}
+          depthWrite={!ghost}
+        />
       </mesh>
-      <mesh position={body.halo.position} rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <mesh position={body.halo.position} rotation={[Math.PI / 2, 0, 0]} castShadow={!ghost}>
         <torusGeometry args={[body.halo.radius, body.halo.tube, 8, 24]} />
-        <meshStandardMaterial color={colorFor("carbon")} />
+        <meshStandardMaterial
+          color={colorFor("carbon")}
+          transparent={ghost}
+          opacity={ghost ? 0.35 : 1}
+          depthWrite={!ghost}
+        />
       </mesh>
       {CAR_WHEELS.map((wheel, i) => (
         <group key={`wheel-${i}`} position={wheel.position}>
           <group ref={(el) => { steerRefs.current[i] = el; }}>
             <group ref={(el) => { spinRefs.current[i] = el; }}>
-              <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+              <mesh rotation={[0, 0, Math.PI / 2]} castShadow={!ghost}>
                 <cylinderGeometry args={[wheel.radius, wheel.radius, TIRE_WIDTH_METERS, TIRE_SEGMENTS]} />
-                <meshStandardMaterial color={colorFor("tire")} />
+                <meshStandardMaterial
+                  color={colorFor("tire")}
+                  transparent={ghost}
+                  opacity={ghost ? 0.35 : 1}
+                  depthWrite={!ghost}
+                />
               </mesh>
-              <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+              <mesh rotation={[0, 0, Math.PI / 2]} castShadow={!ghost}>
                 <cylinderGeometry
                   args={[
                     wheel.radius * RIM_RADIUS_FRACTION,
@@ -109,7 +138,12 @@ export function F1CarBody({
                     RIM_SEGMENTS,
                   ]}
                 />
-                <meshStandardMaterial color={colorFor("rim")} />
+                <meshStandardMaterial
+                  color={colorFor("rim")}
+                  transparent={ghost}
+                  opacity={ghost ? 0.35 : 1}
+                  depthWrite={!ghost}
+                />
               </mesh>
             </group>
           </group>
