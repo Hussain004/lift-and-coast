@@ -1,17 +1,21 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* The game is a night race: dark regardless of OS scheme so the page
+     never flashes white before hydration. */
+  --background: #040509;
+  --foreground: #f4f1e8;
 }
 
 html {
   height: 100%;
+  scroll-behavior: smooth;
+  color-scheme: dark;
+  scrollbar-color: #262b36 #0a0c12;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 html,
@@ -26,7 +30,7 @@ body {
   flex-direction: column;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -42,8 +46,27 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+::selection {
+  background: #e10600;
+  color: #ffffff;
 }
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0c12;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262b36;
+  border-radius: 8px;
+  border: 2px solid #0a0c12;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e10600;
+}
+

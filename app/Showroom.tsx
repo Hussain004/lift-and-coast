@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { ContactShadows, Sparkles } from "@react-three/drei";
 import { CAR_WHEELS, CHASSIS_HALF_EXTENTS } from "@/lib/physics/vehicle";
 import { computeF1BodyPanels, type BodyPanelColor } from "@/lib/race/carBody";
 import { computeDriverFigure, type FigureColor } from "@/lib/race/driverFigure";
@@ -54,12 +55,25 @@ function figureColor(
   }
 }
 
-function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver }) {
+function Turntable({
+  team,
+  driver,
+  reduced,
+}: {
+  team: RosterTeam;
+  driver: RosterDriver;
+  reduced: boolean;
+}) {
   const group = useRef<THREE.Group>(null);
-  // Seconds until auto-rotate resumes after a hand spin.
-  const cooldown = useRef(0);
+  // Accumulated spin so a hand drag can hand off momentum: the drag writes
+  // rot + a velocity, and the release lets it decay before auto-rotate
+  // resumes after a couple of seconds.
+  const rot = useRef(-0.55);
+  const vel = useRef(0);
   const dragging = useRef(false);
   const lx = useRef(0);
+  const lastInput = useRef(RESUME_DELAY_S);
+  const float = useRef(0);
 
   const body = useMemo(
     () =>
@@ -76,9 +90,24 @@ function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver })
   useFrame((_, dt) => {
     const g = group.current;
     if (!g) return;
-    cooldown.current = Math.max(0, cooldown.current - Math.min(dt, 0.05));
-    if (cooldown.current <= 0) {
-      g.rotation.y += AUTO_SPEED_RAD_S * Math.min(dt, 0.05);
+    const d = Math.min(dt, 0.05);
+    if (!dragging.current) {
+      if (Math.abs(vel.current) > 0.0002) {
+        rot.current += vel.current;
+        vel.current *= 0.93;
+        lastInput.current = 0;
+      } else {
+        lastInput.current += d;
+        if (lastInput.current >= RESUME_DELAY_S && !reduced) {
+          rot.current += AUTO_SPEED_RAD_S * d;
+        }
+      }
+    }
+    g.rotation.y = rot.current;
+    // Gentle bob so the car reads as alive, not as a screenshot.
+    if (!reduced) {
+      float.current += d;
+      g.position.y = Math.sin(float.current * 0.9) * 0.05;
     }
   });
 
@@ -86,14 +115,15 @@ function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver })
   // pattern as the orbit camera (see app/race/Scene.tsx).
   useEffect(() => {
     const move = (e: PointerEvent) => {
-      if (!dragging.current || !group.current) return;
-      group.current.rotation.y += (e.clientX - lx.current) * 0.008;
+      if (!dragging.current) return;
+      const dx = e.clientX - lx.current;
       lx.current = e.clientX;
-      cooldown.current = RESUME_DELAY_S;
+      rot.current += dx * 0.008;
+      vel.current = dx * 0.008;
+      lastInput.current = 0;
     };
     const up = () => {
       dragging.current = false;
-      cooldown.current = RESUME_DELAY_S;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -109,7 +139,8 @@ function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver })
       onPointerDown={(e) => {
         dragging.current = true;
         lx.current = e.clientX;
-        cooldown.current = RESUME_DELAY_S;
+        vel.current = 0;
+        lastInput.current = RESUME_DELAY_S;
       }}
     >
       {/* Car, shut flap parked. */}
@@ -161,7 +192,8 @@ function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver })
           <meshStandardMaterial color={figureColor("helmet", team, driver)} roughness={0.35} metalness={0.15} />
         </mesh>
       </group>
-      {/* Plinth disc with a team-color ring. */}
+      {/* Plinth disc with a team-color ring + faint outer rim, plus a
+          team-colored underglow pooling beneath the car. */}
       <mesh position={[0, -0.69, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[4.4, 48]} />
         <meshStandardMaterial color="#101216" roughness={0.65} metalness={0} />
@@ -170,31 +202,118 @@ function Turntable({ team, driver }: { team: RosterTeam; driver: RosterDriver })
         <ringGeometry args={[3.5, 3.58, 64]} />
         <meshBasicMaterial color={team.primaryColor} />
       </mesh>
+      <mesh position={[0, -0.684, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[4.25, 4.31, 64]} />
+        <meshBasicMaterial color="#f4f1e8" transparent opacity={0.14} />
+      </mesh>
+      <pointLight
+        position={[0, -0.35, 0]}
+        color={team.primaryColor}
+        intensity={22}
+        distance={5.5}
+        decay={1.8}
+      />
     </group>
   );
 }
 
-export function Showroom({ team, driver }: { team: RosterTeam; driver: RosterDriver }) {
+/** Pointer parallax: the studio camera leans toward the cursor for a
+ * physical, "under glass" feel without taking control from the user. */
+function CameraRig() {
+  const { camera, pointer } = useThree();
+  const target = useRef(new THREE.Vector3());
+  useFrame(() => {
+    target.current.set(4.6 + pointer.x * 0.7, 2.1 + pointer.y * 0.4, 6.4);
+    camera.position.lerp(target.current, 0.045);
+    camera.lookAt(0, 0.15, 0);
+  });
+  return null;
+}
+
+export function Showroom({
+  team,
+  driver,
+  visible = true,
+  reduced = false,
+}: {
+  team: RosterTeam;
+  driver: RosterDriver;
+  /** Frame loop gate - false pauses all rendering (offscreen saving). */
+  visible?: boolean;
+  reduced?: boolean;
+}) {
   return (
     <Canvas
+      frameloop={visible ? "always" : "never"}
       dpr={[1, 1.5]}
       camera={{ position: [4.6, 2.1, 6.4], fov: 38 }}
       gl={{ antialias: true, alpha: true }}
       style={{ touchAction: "pan-y" }}
       onCreated={({ camera }) => camera.lookAt(0, 0.15, 0)}
     >
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 8, 4]} intensity={1.4} color="#ffffff" />
-      <directionalLight position={[-6, 3, -5]} intensity={0.55} color="#7aa2ff" />
-      <Turntable team={team} driver={driver} />
+      {/* Three-point rig: warm key, cool rim, gold kicker from behind. */}
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[5, 8, 4]} intensity={1.5} color="#fff1dd" />
+      <directionalLight position={[-6, 3, -5]} intensity={0.8} color="#7aa2ff" />
+      <directionalLight position={[0, 5, -8]} intensity={0.5} color="#d3ab63" />
+      <ContactShadows
+        position={[0, -0.688, 0]}
+        scale={13}
+        blur={2.4}
+        far={2.2}
+        opacity={0.55}
+        resolution={256}
+        color="#000000"
+      />
+      <Sparkles
+        count={40}
+        scale={[10, 3.4, 10]}
+        position={[0, 0.9, 0]}
+        size={2}
+        speed={0.22}
+        opacity={0.4}
+        color="#d3ab63"
+      />
+      <CameraRig />
+      <Turntable team={team} driver={driver} reduced={reduced} />
     </Canvas>
   );
 }
 
 /** Home-page hero: resolves the live garage pick and stages it. Imported
- * with ssr:false (see app/page.tsx) so three.js never touches prerender. */
+ * with ssr:false (see app/ShowroomLoader.tsx) so three.js never touches
+ * prerender, and wrapped so the loop pauses when scrolled away. */
 export function ShowroomPanel() {
   const { teamId, driverCode } = useRosterSelection();
   const { team, driver } = resolveRosterSelection(teamId, driverCode);
-  return <Showroom team={team} driver={driver} />;
+  const [visible, setVisible] = useState(true);
+  const [reduced, setReduced] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onMq = () => setReduced(mq.matches);
+    mq.addEventListener("change", onMq);
+    let io: IntersectionObserver | null = null;
+    if ("IntersectionObserver" in window) {
+      io = new IntersectionObserver(
+        (entries) => setVisible(entries[0]?.isIntersecting ?? true),
+        { threshold: 0.02 }
+      );
+      io.observe(el);
+    }
+    return () => {
+      mq.removeEventListener("change", onMq);
+      io?.disconnect();
+    };
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "absolute", inset: 0 }}>
+      <Showroom team={team} driver={driver} visible={visible} reduced={reduced} />
+    </div>
+  );
 }
