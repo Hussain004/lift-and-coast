@@ -69,3 +69,28 @@ describe("lobbyReducer", () => {
     expect(kept.settings.track).toBe("spa");
   });
 });
+
+describe("full rooms", () => {
+  it("seats host + 7 guests with slots 0..7, refusing the 8th guest", () => {
+    let state = initialLobbyState(true, SETTINGS);
+    state = lobbyReducer(state, { type: "opened", selfId: "h", code: "ABC123" });
+    state = setHostDriver(state, driver("HOST"));
+    expect(MAX_NET_HUMANS).toBe(8);
+    for (let k = 0; k < 7; k++) {
+      state = lobbyReducer(state, { type: "member-joined", peerId: `g${k}`, driver: driver(`D${k}`) });
+      expect(state.notice).toBeNull();
+    }
+    expect(state.members.length).toBe(8);
+    expect(lobbySlots(state)).toEqual({
+      h: 0, g0: 1, g1: 2, g2: 3, g3: 4, g4: 5, g5: 6, g6: 7,
+    });
+    const full = lobbyReducer(state, { type: "member-joined", peerId: "late", driver: driver("LATE") });
+    expect(full.members.length).toBe(8);
+    expect(full.notice).toBe("Room is full.");
+    // A leaver frees exactly their slot: join order after them is unchanged.
+    const freed = lobbyReducer(full, { type: "member-left", peerId: "g2" });
+    const rejoined = lobbyReducer(freed, { type: "member-joined", peerId: "new", driver: driver("NEW") });
+    expect(rejoined.members.length).toBe(8);
+    expect(lobbySlots(rejoined)["new"]).toBe(7);
+  });
+});

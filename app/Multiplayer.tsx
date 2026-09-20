@@ -13,6 +13,7 @@ import {
 import {
   PROTOCOL_VERSION,
   isRoomCode,
+  roomPeerId,
   type NetDriverInfo,
   type NetSettings,
 } from "@/lib/net/protocol";
@@ -92,6 +93,9 @@ export function Multiplayer() {
         <Suspense fallback={null}>
           <JoinFromLink />
         </Suspense>
+        <Suspense fallback={null}>
+          <RejoinLast />
+        </Suspense>
         <CreateRoom teamId={teamId} driverCode={driverCode} />
         <JoinByCode teamId={teamId} driverCode={driverCode} />
         {room.status === "closed" && room.notice && (
@@ -143,11 +147,49 @@ export function Multiplayer() {
       ) : (
         <GuestLobby room={room} routerPush={(url: string) => router.push(url)} />
       )}
-      <button type="button" className={styles.championshipButton} onClick={() => netRoom.leave()}>
+      <button
+        type="button"
+        className={styles.championshipButton}
+        onClick={() => {
+          forgetRoom();
+          netRoom.leave(room.role === "host" ? "Leader left the room." : "Rider left.");
+        }}
+      >
         Leave room
       </button>
     </div>
   );
+}
+
+/** Tab-scoped memory of the last joined room: a refresh mid-lobby loses
+ * the PeerJS connection (new peer id), so the home panel offers one-click
+ * rejoin instead of making the guest retype the code. Cleared on any
+ * deliberate leave/kick - only an accidental unload keeps it. */
+const LAST_ROOM_KEY = "lift-coast-last-room";
+
+function rememberRoom(code: string): void {
+  try {
+    sessionStorage.setItem(LAST_ROOM_KEY, code);
+  } catch {
+    /* private mode etc: rejoin just won't be offered */
+  }
+}
+
+function lastRoom(): string | null {
+  try {
+    const code = sessionStorage.getItem(LAST_ROOM_KEY);
+    return code !== null && isRoomCode(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetRoom(): void {
+  try {
+    sessionStorage.removeItem(LAST_ROOM_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Picks up ?room=CODE shared links: pre-fills joining, one click to enter. */
@@ -167,10 +209,40 @@ function JoinFromLink() {
         setJoining(true);
         netRoom
           .joinRoom(code, myDriver(teamId, driverCode))
+          .then(() => rememberRoom(code))
           .catch(() => setJoining(false));
       }}
     >
       {joining ? "Joining…" : `Join room ${code}`}
+    </button>
+  );
+}
+
+/** One-click return after an accidental refresh mid-lobby (see LAST_ROOM_KEY). */
+function RejoinLast() {
+  const { teamId, driverCode } = useRosterSelection();
+  const [joining, setJoining] = useState(false);
+  const [code] = useState(lastRoom);
+  if (code === null) return null;
+  if (netRoom.getState().status !== "idle" && netRoom.getState().status !== "closed") return null;
+  return (
+    <button
+      type="button"
+      className={styles.championshipButton}
+      disabled={joining}
+      onClick={() => {
+        setJoining(true);
+        netRoom
+          .joinRoom(code, myDriver(teamId, driverCode))
+          .then(() => rememberRoom(code))
+          .catch(() => {
+            // Dead code (room long gone): stop offering it.
+            forgetRoom();
+            setJoining(false);
+          });
+      }}
+    >
+      {joining ? "Joining…" : `Rejoin room ${code}`}
     </button>
   );
 }
@@ -217,6 +289,7 @@ function JoinByCode({ teamId, driverCode }: { teamId: string; driverCode: string
           setJoining(true);
           netRoom
             .joinRoom(clean, myDriver(teamId, driverCode))
+            .then(() => rememberRoom(clean))
             .catch(() => setJoining(false));
         }}
       >
@@ -391,7 +464,8 @@ function GuestLobby({
     teamDriverRef.current = { teamId, driverCode };
   });
   // Roster/settings mirror into the shared room (survives navigation to
-  // the race page); start navigates with our own slot; bye tears down.
+  // the race page); start navigates with our own slot; bye or a dead
+  // socket tears down with the reason kept on screen (see shutdown).
   useEffect(() => {
     const off = netRoom.onMessage((_, msg) => {
       if (msg.type === "roster") {
@@ -405,11 +479,22 @@ function GuestLobby({
         netRoom.markRacing();
         routerPush(raceUrl(msg.settings, room.code ?? "", "guest", mySlot, tid, dc, msg.atMs));
       } else if (msg.type === "bye") {
-        netRoom.setNotice(msg.reason);
-        netRoom.leave();
+        forgetRoom();
+        netRoom.shutdown(msg.reason);
       }
     });
-    return off;
+    // Host closed the tab (no clean bye): the socket dying is the signal.
+    const offClose = netRoom.onPeerClose((peerId) => {
+      const state = netRoom.getState();
+      if (state.status !== "lobby" || state.role !== "guest") return;
+      if (state.code === null || peerId !== roomPeerId(state.code)) return;
+      forgetRoom();
+      netRoom.shutdown("Leader left the room.");
+    });
+    return () => {
+      off();
+      offClose();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!room.settings) return null;

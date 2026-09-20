@@ -7,8 +7,10 @@
 
 import type { NetDriverInfo, NetSettings } from "./protocol";
 
-/** Turn A cap: host + 1 guest. Raised once the sync core is proven. */
-export const MAX_NET_HUMANS = 2;
+/** Full-room cap: host + 7 guests. Grids stay within the 20-car field
+ * (AI fills the rest), so no other layer needs a cap check - START clamps
+ * rivals to at least members-1 (see Multiplayer.tsx). */
+export const MAX_NET_HUMANS = 8;
 
 export interface LobbyMember {
   /** PeerJS peer id (stable per browser session). */

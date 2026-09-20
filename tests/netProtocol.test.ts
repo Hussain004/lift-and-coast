@@ -100,3 +100,18 @@ describe("slotForPeer", () => {
     expect(slotForPeer(["a", "b"], "z")).toBe(-1);
   });
 });
+
+describe("leave handshake", () => {
+  it("round-trips bye and error reasons, rejecting non-strings", () => {
+    expect(parseNetMessage({ type: "bye", reason: "Leader left the room." })).toEqual({
+      type: "bye",
+      reason: "Leader left the room.",
+    });
+    expect(parseNetMessage({ type: "error", reason: "Room is full." })).toEqual({
+      type: "error",
+      reason: "Room is full.",
+    });
+    expect(parseNetMessage({ type: "bye", reason: 42 })).toBeNull();
+    expect(parseNetMessage({ type: "bye" })).toBeNull();
+  });
+});

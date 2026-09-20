@@ -312,7 +312,12 @@ class NetRoom {
     return memberCount >= MAX_NET_HUMANS;
   }
 
-  leave(reason = "Host left."): void {
+  /**
+   * Voluntary leave: say bye first (so guests see why), then tear down to
+   * idle. For the kicked/host-left path use shutdown() instead - it keeps
+   * the reason on screen instead of wiping it.
+   */
+  leave(reason = "Leader left the room."): void {
     try {
       this.broadcast({ type: "bye", reason });
     } catch {
@@ -339,6 +344,37 @@ class NetRoom {
       members: [],
       settings: null,
       notice: null,
+    });
+  }
+
+  /**
+   * Kicked / host-left teardown: same teardown as leave() but no bye
+   * broadcast (the other side is already gone) and the reason survives on
+   * the idle panel (status "closed") instead of being wiped - otherwise a
+   * kicked guest lands back on create/join with no idea why.
+   */
+  shutdown(notice: string): void {
+    try {
+      for (const conn of this.conns.values()) conn.close();
+    } catch {
+      /* ignore */
+    }
+    this.conns.clear();
+    try {
+      this.peer?.destroy();
+    } catch {
+      /* ignore */
+    }
+    this.peer = null;
+    this.lastSettings = null;
+    this.setState({
+      status: "closed",
+      role: null,
+      code: null,
+      selfId: null,
+      members: [],
+      settings: null,
+      notice,
     });
   }
 }

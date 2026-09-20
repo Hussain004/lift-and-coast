@@ -101,6 +101,23 @@ export function NetHost({
     []
   );
 
+  // Guest dropped mid-race (tab closed, network lost): clear their inputs
+  // at once so the path-follower fallback (see AICar's netInputRef) takes
+  // the car immediately instead of after the staleness window. Slots stay
+  // frozen - the car keeps racing as AI to the flag.
+  useEffect(
+    () =>
+      netRoom.onPeerClose((peerId) => {
+        const slot = memberPeerIds.current.indexOf(peerId);
+        if (slot <= 0) return;
+        for (let k = 0; k < aiSlots.length; k++) {
+          if (aiSlots[k] === slot) netInputRefs[k].current = null;
+        }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   useEffect(() => {
     const id = setInterval(() => {
       const race = raceRef.current;
@@ -206,6 +223,30 @@ export function NetClient({
   slotToOpponent: Record<number, number>;
 }) {
   const seqRef = useRef(0);
+  // Host's peer id at mount (members are host-first join order): the only
+  // close that ends the race for us. A dead host means no more snapshots,
+  // so the remotes freeze and the guest drives on solo under a banner.
+  const hostIdRef = useRef<string | null>(netRoom.memberPeerIds()[0] ?? null);
+  // Last host snapshot arrival: an abrupt host kill (tab closed, no clean
+  // bye) often takes many seconds to surface as a socket close, so silence
+  // itself is the signal. 5s tolerates background-tab timer throttling on
+  // the host while still calling the race within a corner or two.
+  const lastSnapshotRef = useRef<number>(0);
+  const hostLostRef = useRef(false);
+
+  // Mount stamp for the watchdog (effects, not render, may read the clock).
+  useEffect(() => {
+    lastSnapshotRef.current = Date.now();
+  }, []);
+
+  function declareHostLost(): void {
+    if (hostLostRef.current) return;
+    hostLostRef.current = true;
+    if (raceResultRef?.current && raceResultRef.current.textContent === "") {
+      raceResultRef.current.textContent = "HOST LEFT THE ROOM — DRIVING ON SOLO";
+    }
+    netRoom.leave();
+  }
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -227,9 +268,30 @@ export function NetClient({
 
   useEffect(
     () =>
+      netRoom.onPeerClose((peerId) => {
+        if (peerId !== hostIdRef.current) return;
+        if (netRoom.getState().status !== "racing") return;
+        declareHostLost();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (netRoom.getState().status !== "racing") return;
+      if (hostIdRef.current === null) return;
+      if (Date.now() - lastSnapshotRef.current > 5000) declareHostLost();
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(
+    () =>
       netRoom.onMessage((_, msg) => {
         if (msg.type === "snapshot") {
           const now = Date.now();
+          lastSnapshotRef.current = now;
           for (const car of msg.cars) {
             const buffers = remoteBuffersRef.current;
             if (!buffers) continue;
