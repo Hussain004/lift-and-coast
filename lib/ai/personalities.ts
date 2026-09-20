@@ -26,17 +26,20 @@ export function parseDifficulty(raw: string | null): AIDifficulty {
   return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
 }
 
-/** Global pace multiplier applied to every AI target speed. */
+/** Global pace multiplier applied to every AI target speed. Ace is sized
+ * to run with a strong player: validated headless for stability (see the
+ * pace probe in the racecraft work) because cornering above the profile
+ * is the first thing that slides. */
 export function difficultyPaceScale(difficulty: AIDifficulty): number {
   switch (difficulty) {
     case "rookie":
-      return 0.972;
+      return 0.96;
     case "club":
-      return 0.988;
+      return 0.985;
     case "pro":
       return 1.0;
     case "ace":
-      return 1.014;
+      return 1.03;
   }
 }
 
@@ -54,8 +57,22 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
   }
 }
 
+/** Mistake-rate multiplier: rookies bin it, aces almost never do. */
+export function difficultyMistakeScale(difficulty: AIDifficulty): number {
+  switch (difficulty) {
+    case "rookie":
+      return 1.6;
+    case "club":
+      return 1.2;
+    case "pro":
+      return 1.0;
+    case "ace":
+      return 0.5;
+  }
+}
+
 export interface DriverTraits {
-  /** Target-speed multiplier, roughly 0.985..1.02 across the field. */
+  /** Target-speed multiplier: tier base plus individual jitter. */
   pace: number;
   /** 0 (cautious) .. 1 (dive-bomber): overtake willingness, follow gap. */
   aggression: number;
@@ -66,6 +83,52 @@ export interface DriverTraits {
   /** Preferred passing side: 1 = left, -1 = right. */
   overtakeSide: 1 | -1;
 }
+
+/**
+ * Performance tiers (1 = elite). The top five are the proven race
+ * winners; the rest sort by recent form into works/points/backmarker
+ * bands. Tiers set the base pace and aggression - the hash jitter below
+ * keeps teammates and rivals distinguishable inside a band, so no two
+ * drivers are identical.
+ */
+export const DRIVER_TIERS: Record<string, 1 | 2 | 3 | 4> = {
+  VER: 1,
+  LEC: 1,
+  HAM: 1,
+  ANT: 1,
+  NOR: 1,
+  PIA: 2,
+  RUS: 2,
+  ALO: 2,
+  SAI: 2,
+  GAS: 2,
+  OCO: 2,
+  HUL: 3,
+  ALB: 3,
+  LAW: 3,
+  BOT: 3,
+  PER: 3,
+  HAD: 3,
+  STR: 4,
+  COL: 4,
+  BOR: 4,
+  BEA: 4,
+  LIN: 4,
+};
+
+const TIER_PACE: Record<1 | 2 | 3 | 4, number> = {
+  1: 0.012,
+  2: 0.004,
+  3: -0.004,
+  4: -0.012,
+};
+
+const TIER_AGGRESSION: Record<1 | 2 | 3 | 4, [number, number]> = {
+  1: [0.7, 1.0],
+  2: [0.5, 0.75],
+  3: [0.3, 0.55],
+  4: [0.15, 0.4],
+};
 
 /** FNV-1a over the code string: stable across visits, platforms, sessions. */
 export function hashDriverCode(code: string): number {
@@ -81,13 +144,11 @@ export function hashDriverCode(code: string): number {
 export function traitsForDriver(code: string): DriverTraits {
   const h = hashDriverCode(code);
   const unit = (shift: number): number => ((h >>> shift) % 1000) / 1000;
+  const tier = DRIVER_TIERS[code] ?? 3;
+  const [aggrLo, aggrHi] = TIER_AGGRESSION[tier];
   return {
-    // 3.5% across the field: adjacent cars differ ~0.2%/lap (tenths, not
-    // seconds), but the fastest visibly marches and backmarkers become
-    // traffic - a 2% spread proved too fine to produce a pass inside a
-    // 3-lap sprint (see the live tower logs that sized this).
-    pace: 0.985 + unit(0) * 0.035,
-    aggression: 0.15 + unit(10) * 0.7,
+    pace: 1 + TIER_PACE[tier] + (unit(0) - 0.5) * 0.006,
+    aggression: aggrLo + unit(10) * (aggrHi - aggrLo),
     risk: unit(20) * unit(5),
     latePace: unit(15) * 2 - 1,
     overtakeSide: ((h >>> 28) & 1) === 0 ? 1 : -1,

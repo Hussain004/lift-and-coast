@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   DEFAULT_RACE_LAPS,
@@ -62,6 +63,25 @@ export function SessionSetup() {
   // Live roster pick from the team/driver panel above - carried on the Drive
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
+  const router = useRouter();
+
+  function driveUrl(seed: number | undefined) {
+    return buildRaceUrl({
+      mode: sessionMode,
+      track: parseTrackId(trackId),
+      laps: sessionMode === "qualifying" ? undefined : raceLaps,
+      team: parseTeamId(teamId),
+      driver: parseDriverCode(driverCode),
+      tod: timeOfDay,
+      qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
+      rivals: sessionMode === "practice" ? undefined : rivals,
+      difficulty: sessionMode === "practice" ? undefined : difficulty,
+      // A fresh grid every Drive click (see ?seed=): plain clicks deal
+      // via router so each visit shuffles; modified clicks / new tabs
+      // follow the seedless href and keep the legacy pole start.
+      seed: sessionMode === "race" ? seed : undefined,
+    });
+  }
 
   const persist = (
     laps: number,
@@ -205,17 +225,15 @@ export function SessionSetup() {
         </>
       )}
       <Link
-        href={buildRaceUrl({
-          mode: sessionMode,
-          track: parseTrackId(trackId),
-          laps: sessionMode === "qualifying" ? undefined : raceLaps,
-          team: parseTeamId(teamId),
-          driver: parseDriverCode(driverCode),
-          tod: timeOfDay,
-          qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
-          rivals: sessionMode === "practice" ? undefined : rivals,
-          difficulty: sessionMode === "practice" ? undefined : difficulty,
-        })}
+        href={driveUrl(undefined)}
+        onClick={(e) => {
+          // Plain left click only: deal a fresh grid, SPA-navigated. Let
+          // modified clicks and middle-buttons take the plain href (they
+          // open the legacy pole-start grid, never a broken one).
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          router.push(driveUrl((Math.random() * 2 ** 31) | 0));
+        }}
         className={styles.drive}
       >
         Drive

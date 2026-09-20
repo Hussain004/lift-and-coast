@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DIFFICULTY,
+  DRIVER_TIERS,
+  difficultyMistakeScale,
   DIFFICULTY_OPTIONS,
   difficultyAggressionShift,
   difficultyPaceScale,
@@ -27,6 +29,14 @@ describe("difficulty scales", () => {
     const scales = (["rookie", "club", "pro", "ace"] as const).map(difficultyPaceScale);
     expect(scales).toEqual([...scales].sort((a, b) => a - b));
     expect(difficultyPaceScale("pro")).toBe(1);
+    expect(difficultyPaceScale("ace")).toBeGreaterThan(1.02);
+    expect(difficultyPaceScale("rookie")).toBeLessThan(0.97);
+  });
+
+  it("scales mistakes down with tier", () => {
+    expect(difficultyMistakeScale("rookie")).toBeGreaterThan(difficultyMistakeScale("club"));
+    expect(difficultyMistakeScale("club")).toBeGreaterThan(difficultyMistakeScale("pro"));
+    expect(difficultyMistakeScale("pro")).toBeGreaterThan(difficultyMistakeScale("ace"));
   });
 
   it("keeps aggression shifts small and ordered", () => {
@@ -42,7 +52,7 @@ describe("traitsForDriver", () => {
     const paces = codes.map((c) => traitsForDriver(c).pace);
     expect(new Set(paces).size).toBeGreaterThan(1);
     for (const pace of paces) {
-      expect(pace).toBeGreaterThanOrEqual(0.985);
+      expect(pace).toBeGreaterThanOrEqual(0.98);
       expect(pace).toBeLessThanOrEqual(1.02);
     }
     const aggro = codes.map((c) => traitsForDriver(c).aggression);
@@ -61,6 +71,37 @@ describe("traitsForDriver", () => {
     const seen = new Set(codes.map((c) => JSON.stringify(traitsForDriver(c))));
     // 22 drivers must not collapse onto a handful of identical characters.
     expect(seen.size).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe("DRIVER_TIERS", () => {
+  it("covers the full 22-driver roster in four bands", () => {
+    const codes = [
+      "GAS", "COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM", "LEC",
+      "OCO", "BEA", "NOR", "PIA", "RUS", "ANT", "LAW", "LIN", "VER", "HAD",
+      "SAI", "ALB",
+    ];
+    expect(codes.every((c) => DRIVER_TIERS[c] !== undefined)).toBe(true);
+    for (const named of ["VER", "LEC", "HAM", "ANT", "NOR"]) {
+      expect(DRIVER_TIERS[named]).toBe(1);
+    }
+  });
+
+  it("orders tier pace and aggression top to bottom", () => {
+    const paceOf = (code: string): number => traitsForDriver(code).pace;
+    const tierAvg = (tier: 1 | 2 | 3 | 4): number => {
+      const members = Object.entries(DRIVER_TIERS).filter(([, t]) => t === tier).map(([c]) => c);
+      return members.reduce((sum, c) => sum + paceOf(c), 0) / members.length;
+    };
+    expect(tierAvg(1)).toBeGreaterThan(tierAvg(2));
+    expect(tierAvg(2)).toBeGreaterThan(tierAvg(3));
+    expect(tierAvg(3)).toBeGreaterThan(tierAvg(4));
+    const aggroOf = (code: string): number => traitsForDriver(code).aggression;
+    const aggroAvg = (tier: 1 | 2 | 3 | 4): number => {
+      const members = Object.entries(DRIVER_TIERS).filter(([, t]) => t === tier).map(([c]) => c);
+      return members.reduce((sum, c) => sum + aggroOf(c), 0) / members.length;
+    };
+    expect(aggroAvg(1)).toBeGreaterThan(aggroAvg(4));
   });
 });
 

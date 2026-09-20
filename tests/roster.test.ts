@@ -10,6 +10,7 @@ import {
   parseTeamId,
   resolveFieldRoster,
   resolveNetGridRoster,
+  shuffledGridOrder,
   resolveRosterSelection,
   saveRosterPrefs,
 } from "../lib/race/roster";
@@ -189,5 +190,25 @@ describe("resolveNetGridRoster", () => {
     const a = resolveNetGridRoster(["HAM", "LEC"], 5);
     const b = resolveNetGridRoster(["HAM", "LEC"], 5);
     expect(a).toEqual(b);
+  });
+});
+
+describe("shuffledGridOrder", () => {
+  it("reproduces the same grid per seed and varies across seeds", () => {
+    expect(shuffledGridOrder(20, 42)).toEqual(shuffledGridOrder(20, 42));
+    expect(shuffledGridOrder(20, 42)).not.toEqual(shuffledGridOrder(20, 43));
+  });
+
+  it("is a full permutation covering every slot", () => {
+    const order = shuffledGridOrder(20, 7);
+    expect(order.length).toBe(20);
+    expect([...order].sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 20 }, (_, k) => k)
+    );
+  });
+
+  it("degenerates safely", () => {
+    expect(shuffledGridOrder(0, 1)).toEqual([]);
+    expect(shuffledGridOrder(1, 1)).toEqual([0]);
   });
 });

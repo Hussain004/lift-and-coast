@@ -14,6 +14,7 @@ import {
   parseQualifyingFormat,
   parseRaceLaps,
   parseRivals,
+  parseSeed,
   parseSessionMode,
   parseTimeOfDay,
   saveSessionSetupPrefs,
@@ -289,5 +290,19 @@ describe("parseDifficulty", () => {
 
   it("round-trips through buildRaceUrl", () => {
     expect(buildRaceUrl({ difficulty: "ace" })).toContain("diff=ace");
+  });
+});
+
+describe("parseSeed", () => {
+  it("accepts non-negative ints, rejects everything else", () => {
+    expect(parseSeed("42")).toBe(42);
+    expect(parseSeed("0")).toBe(0);
+    expect(parseSeed(null)).toBeNull();
+    expect(parseSeed("pole")).toBeNull();
+    expect(parseSeed("-3")).toBeNull();
+  });
+
+  it("round-trips through buildRaceUrl", () => {
+    expect(buildRaceUrl({ seed: 99 })).toContain("seed=99");
   });
 });

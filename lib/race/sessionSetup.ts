@@ -69,6 +69,14 @@ export function parseDifficulty(raw: string | null): AIDifficulty {
   return DEFAULT_DIFFICULTY;
 }
 
+// Random-grid seed (see the seed field above): a non-negative integer, or
+// null when absent/unparseable (legacy pole start, not an error).
+export function parseSeed(raw: string | null): number | null {
+  if (raw === null) return null;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
 export interface RaceUrlParams {
   mode?: SessionMode;
   track?: string;
@@ -81,6 +89,14 @@ export interface RaceUrlParams {
   qformat?: QualifyingFormat;
   rivals?: number;
   difficulty?: AIDifficulty;
+  /**
+   * Random-grid seed (?seed=): shuffles the whole grid for quick races
+   * (see page.tsx) so the player doesn't always start at pole. Absent on
+   * old links (which keep the legacy pole start) and ignored wherever an
+   * explicit grid already exists (qualifying results, championship,
+   * net rooms).
+   */
+  seed?: number;
 }
 
 /**
@@ -122,6 +138,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.qformat !== undefined) query.set("qformat", params.qformat);
   if (params.rivals !== undefined) query.set("rivals", String(params.rivals));
   if (params.difficulty !== undefined) query.set("diff", params.difficulty);
+  if (params.seed !== undefined) query.set("seed", String(params.seed));
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }

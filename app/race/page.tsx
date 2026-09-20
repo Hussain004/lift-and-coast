@@ -11,9 +11,10 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
+import { shuffledGridOrder } from "@/lib/race/rosterData";
 import { netRoom } from "@/lib/net/peer";
 import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
@@ -97,7 +98,7 @@ function RaceContent() {
     rivalCount
   );
   const playerSlot = netActive && netSlot !== null ? netSlot : 0;
-  const rivals = !netActive || !netValid
+  const baseRivals = !netActive || !netValid
     ? soloRivals
     : (() => {
         const members = roomState?.members ?? [];
@@ -113,9 +114,30 @@ function RaceContent() {
           .filter(({ slot }) => slot !== playerSlot)
           .map(({ entry }) => entry);
       })();
-  const playerGridSpot = netActive && netValid ? playerSlot + 1 : parseGridSpot(searchParams.get("grid"));
   const sessionMode = netActive && netValid ? "race" : parseSessionMode(searchParams.get("mode"));
   const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
+  // Random grid for quick races (?seed= from the home Drive link): the
+  // whole field - player included - shuffles, so nobody is gifted pole.
+  // Explicit grids always win: qualifying results (?grid=), championship
+  // rounds (whose panel sets ?grid=), and net rooms (join order). Missing
+  // or unparseable seeds keep the legacy pole start, so every old link
+  // drives exactly as before. Pure over the URL (seeded shuffle), so
+  // refreshes and shared links reproduce the same grid.
+  const gridSeed = parseSeed(searchParams.get("seed"));
+  const explicitGrid = parseGridSpot(searchParams.get("grid"));
+  const randomGrid =
+    !netActive && gridSeed !== null && explicitGrid === null && champRound === null
+      ? shuffledGridOrder(soloRivals.length + 1, gridSeed)
+      : null;
+  // Index of the player's entry in grid order (0 = pole entry first).
+  const playerOrderIndex = randomGrid?.indexOf(0) ?? 0;
+  const playerGridSpot = netActive && netValid ? playerSlot + 1 : explicitGrid ?? playerOrderIndex + 1;
+  const rivals =
+    randomGrid === null
+      ? baseRivals
+      : randomGrid
+          .filter((entry) => entry !== 0)
+          .map((entry) => soloRivals[entry - 1]);
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));

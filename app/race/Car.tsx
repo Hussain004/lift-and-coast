@@ -47,6 +47,7 @@ import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
 import type { CarPose } from "@/lib/net/snapshots";
 import { gridSlot } from "@/lib/race/grid";
@@ -337,6 +338,9 @@ export function Car({
     new Array(SECTOR_COUNT).fill(null)
   );
   const ghostRecorderRef = useRef(createGhostRecorder());
+  // Progress continuity (see progressTracker.ts): rank and racecraft
+  // read tracked progress, never the flicker-prone scan, at the seam.
+  const progressTrackerRef = useRef(createProgressTracker());
   // Ghost replay (see F1CarBody's ghost prop): the reference lap driven
   // back as a translucent silhouette of the real car, posed every frame
   // from the recorder - wheels parked, since a replay needs no steering.
@@ -876,6 +880,11 @@ export function Car({
     const bodyRot = body.rotation();
     const status = checkTrackLimits(track, t.x, t.z);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
+    // Ranked progress comes from the continuity tracker, not the raw
+    // scan: at the start/finish seam the scan flickers between ~0 and
+    // ~trackLength for a car sitting on the line, slingshotting it
+    // between P1 and P20. Edge/lateral/surfaces below keep the scan.
+    const tracked = trackProgress(track, t.x, t.z, progressTrackerRef.current);
 
     if (!raceFinishedRef.current) {
       raceElapsedSecondsRef.current += dt;
@@ -884,7 +893,7 @@ export function Car({
       const yawNow = yawFromQuaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
       raceRef.current.player = {
         lapCount: lap.lapCount,
-        progressMeters: status.progressMeters,
+        progressMeters: tracked.progressMeters,
         speedMs: computeSignedForwardSpeed(body.linvel(), yawNow),
       };
       const progresses = [raceRef.current.player, ...raceRef.current.opponents];
@@ -896,15 +905,6 @@ export function Car({
       // at ~10Hz, not per tick - order and gaps never move faster.
       towerFrameRef.current += 1;
       if (towerRef?.current && towerFrameRef.current % 6 === 0) {
-        // TEMP DEBUG (removed after diagnosis)
-        if (towerFrameRef.current % 600 === 0) {
-          const opp = raceRef.current.opponents.map(
-            (o, k) => `${k}:${o.lapCount}x${Math.round(o.progressMeters)}`
-          );
-          console.log(
-            `[towerdbg] t=${raceElapsedSecondsRef.current.toFixed(1)} player=${raceRef.current.player.lapCount}x${Math.round(raceRef.current.player.progressMeters)} opp=[${opp.join(" ")}]`
-          );
-        }
         const entries = buildTowerEntries(
           { code: playerCode, color: bodyColor, progress: raceRef.current.player },
           towerOpponents(rivals, raceRef.current.opponents),
@@ -1154,7 +1154,7 @@ export function Car({
       }
     }
 
-    const delta = deltaTrackerRef.current.recordSample(status.progressMeters, lap.currentLapSeconds);
+    const delta = deltaTrackerRef.current.recordSample(tracked.progressMeters, lap.currentLapSeconds);
     if (deltaRef?.current) {
       deltaRef.current.textContent = formatDelta(delta);
       deltaRef.current.dataset.sign = delta === null || delta === 0 ? "" : delta > 0 ? "behind" : "ahead";

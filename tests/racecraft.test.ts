@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   composeRacePace,
   mergeOffsetFactor,
+  obstacleLateral,
   squeezeDecision,
   decideOvertake,
   followPaceScale,
   slipstreamBonus,
   trackGapMeters,
+  unwrapGap,
   yieldPaceScale,
 } from "../lib/ai/racecraft";
 
@@ -30,7 +32,6 @@ describe("decideOvertake", () => {
     gapMeters: 8,
     closingSpeedMs: 3,
     speedMs: 70,
-    leaderSpeedMs: 67,
     throttleZone: true,
     cornerAheadMeters: 300,
     aggression: 0.5,
@@ -62,7 +63,8 @@ describe("decideOvertake", () => {
 
   it("fires on a whisper of closing and latches past the gate", () => {
     expect(decideOvertake({ ...base, closingSpeedMs: 0.4 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, closingSpeedMs: 0.2 }).attempt).toBe(false);
+    expect(decideOvertake({ ...base, closingSpeedMs: 0.2 }).attempt).toBe(true);
+    expect(decideOvertake({ ...base, closingSpeedMs: 0.1 }).attempt).toBe(false);
 
     // The follow discipline kills closing speed on approach: without the
     // latch the attempt would die the same tick it starts.
@@ -82,31 +84,11 @@ describe("decideOvertake", () => {
     expect(decideOvertake({ ...base, gapMeters: 14, aggression: 0 }).attempt).toBe(false);
   });
 
-  it("squeezes past a parked car without lunge pace", () => {
-    const d = decideOvertake({ ...base, gapMeters: 5, speedMs: 8, leaderSpeedMs: 0 });
-    expect(d.attempt).toBe(true);
-    expect(d.paceBonus).toBe(0);
-    expect(d.offsetMeters).not.toBe(0);
-    expect(d.urgent).toBe(true);
-    expect(decideOvertake(base).urgent).toBe(false);
-  });
-
-  it("sees a parked car from far away at speed", () => {
-    expect(
-      decideOvertake({ ...base, gapMeters: 50, speedMs: 65, leaderSpeedMs: 0 }).attempt
-    ).toBe(true);
-    expect(
-      decideOvertake({ ...base, gapMeters: 90, speedMs: 65, leaderSpeedMs: 0 }).attempt
-    ).toBe(false);
-  });
-
-  it("picks through a corner queue at crawl speed", () => {
-    const crawl = { ...base, gapMeters: 6, speedMs: 10, leaderSpeedMs: 0, throttleZone: false };
-    const d = decideOvertake(crawl);
-    expect(d.attempt).toBe(true);
-    expect(d.urgent).toBe(true);
-    // ...but not at racing speed mid-corner: that way lies the grandstand.
-    expect(decideOvertake({ ...crawl, speedMs: 50 }).attempt).toBe(false);
+  it("needs a racing target: parked cars belong to the squeeze", () => {
+    // A stopped car ahead is not a lunge (no closing ever builds) - the
+    // squeeze below handles it. Proving the split: decideOvertake alone
+    // refuses, compose with the obstacle squeezes.
+    expect(decideOvertake({ ...base, gapMeters: 5, closingSpeedMs: 0 }).attempt).toBe(false);
   });
 });
 
@@ -124,10 +106,11 @@ describe("followPaceScale", () => {
     const welded = followPaceScale({ gapMeters: 1.8, throttleZone: true, aggression: 0.5, leaderSpeedMs: 60, ownSpeedMs: 60 });
     expect(welded).toBeLessThan(1);
     expect(welded).toBeGreaterThanOrEqual(0.3);
-    // ...but never below a crawl that strands the car.
+    // ...and to a full stop behind a stopped car (which then unblocks
+    // the squeeze to crawl around it).
     expect(
       followPaceScale({ gapMeters: 1, throttleZone: true, aggression: 0.5, leaderSpeedMs: 0, ownSpeedMs: 5 })
-    ).toBeGreaterThanOrEqual(0.3);
+    ).toBe(0);
   });
 
   it("matches the leader bumper-to-bumper but closes from distance", () => {
@@ -186,7 +169,7 @@ describe("composeRacePace", () => {
     const scene = {
       ...input,
       rivals: [{ key: "lead", gapMeters: 1, speedMs: 67.5 }],
-      ownSpeedMs: 67.7,
+      ownSpeedMs: 67.6,
     };
     const passing = composeRacePace({ ...scene, alreadyAttemptingKey: "lead" });
     const queued = composeRacePace({ ...scene, alreadyAttemptingKey: null });
@@ -213,24 +196,95 @@ describe("composeRacePace", () => {
 
 describe("squeezeDecision", () => {
   // Straight line down -Z (line frame): the pursuit shift for an offset m
-  // is perp*m with perp = (-dirZ, dirX) = (1, 0) - see pathFollower.
-  const line = { lineX: 0, lineZ: 0, lineDirX: 0, lineDirZ: -1, overtakeSide: 1 as const };
+  // is perp*m with perp = (-dirZ, dirX) = (1, 0) - see pathFollower. A
+  // positive lateral puts the obstacle on the +perp side, so the car goes
+  // negative (away).
+  const pref = { overtakeSide: 1 as const };
 
   it("goes around the side the obstacle is not on", () => {
-    const right = squeezeDecision({ ...line, obstacleX: 2, obstacleZ: -5 });
-    expect(right?.offsetMeters).toBeLessThan(0);
-    // Pursuit point lands on the opposite side from the obstacle.
-    expect(right!.offsetMeters * 1 + 2).toBeLessThan(0.01);
-    const left = squeezeDecision({ ...line, obstacleX: -2, obstacleZ: -5 });
-    expect(left?.offsetMeters).toBeGreaterThan(0);
+    expect(squeezeDecision({ ...pref, lateralMeters: 2 })?.offsetMeters).toBe(-2.5);
+    expect(squeezeDecision({ ...pref, lateralMeters: -2 })?.offsetMeters).toBe(2.5);
   });
 
   it("uses the preferred side dead ahead and ignores far-off obstacles", () => {
-    expect(squeezeDecision({ ...line, obstacleX: 0.2, obstacleZ: -5 })?.offsetMeters).toBe(2.5);
+    expect(squeezeDecision({ ...pref, lateralMeters: 0.2 })?.offsetMeters).toBe(2.5);
+    expect(squeezeDecision({ lateralMeters: 0.2, overtakeSide: -1 })?.offsetMeters).toBe(-2.5);
+    expect(squeezeDecision({ ...pref, lateralMeters: 5 })).toBeNull();
+  });
+});
+
+describe("obstacleLateral", () => {
+  it("signs the across-track side in the line frame", () => {
+    // Line down -Z: perp = (1, 0), so +X is positive lateral.
+    expect(obstacleLateral(2, -5, 0, 0, 0, -1)).toBeCloseTo(2, 9);
+    expect(obstacleLateral(-2, -5, 0, 0, 0, -1)).toBeCloseTo(-2, 9);
+    expect(obstacleLateral(0, -5, 0, 0, 0, -1)).toBeCloseTo(0, 9);
+  });
+});
+
+describe("compose squeeze", () => {
+  const input = {
+    ownSpeedMs: 8,
+    rivals: [{ key: "lead", gapMeters: 5, speedMs: 0 }],
+    throttleZone: true,
+    cornerAheadMeters: 400,
+    aggression: 0.5,
+    risk: 0.3,
+    overtakeSide: 1 as const,
+    basePace: 1.0,
+    alreadyAttemptingKey: null,
+  };
+
+  it("squeezes past a parked car at crawl pace without lunge pace", () => {
+    const out = composeRacePace({
+      ...input,
+      obstacles: [{ gapMeters: 5, speedMs: 0, lateralMeters: 0.2 }],
+    });
+    expect(out.decision.attempt).toBe(true);
+    expect(out.decision.urgent).toBe(true);
+    expect(out.decision.paceBonus).toBe(0);
+    expect(out.paceMult).toBeLessThan(0.2);
+  });
+
+  it("sees a parked car from far away at speed", () => {
+    // The lead rival is far and moving (no lunge): only the obstacle
+    // matters here.
+    const openRoad = {
+      ...input,
+      rivals: [{ key: "lead", gapMeters: 60, speedMs: 60 }],
+    };
+    const far = composeRacePace({
+      ...openRoad,
+      ownSpeedMs: 65,
+      obstacles: [{ gapMeters: 50, speedMs: 0, lateralMeters: 0 }],
+    });
+    expect(far.decision.attempt).toBe(true);
     expect(
-      squeezeDecision({ ...line, obstacleX: 0.2, obstacleZ: -5, overtakeSide: -1 })?.offsetMeters
-    ).toBe(-2.5);
-    expect(squeezeDecision({ ...line, obstacleX: 5, obstacleZ: -5 })).toBeNull();
+      composeRacePace({
+        ...openRoad,
+        ownSpeedMs: 65,
+        obstacles: [{ gapMeters: 90, speedMs: 0, lateralMeters: 0 }],
+      }).decision.attempt
+    ).toBe(false);
+  });
+
+  it("picks through a corner queue at crawl speed, not at racing speed", () => {
+    const crawl = {
+      ...input,
+      ownSpeedMs: 10,
+      throttleZone: false,
+      obstacles: [{ gapMeters: 6, speedMs: 0, lateralMeters: 0 }],
+    };
+    expect(composeRacePace(crawl).decision.attempt).toBe(true);
+    expect(composeRacePace({ ...crawl, ownSpeedMs: 50 }).decision.attempt).toBe(false);
+  });
+
+  it("ignores moving cars as obstacles", () => {
+    const out = composeRacePace({
+      ...input,
+      obstacles: [{ gapMeters: 5, speedMs: 40, lateralMeters: 0 }],
+    });
+    expect(out.decision.urgent).toBe(false);
   });
 });
 
@@ -277,5 +331,23 @@ describe("mergeOffsetFactor", () => {
     expect(mergeOffsetFactor(-1)).toBeCloseTo(0.75, 9);
     expect(mergeOffsetFactor(-4)).toBe(0);
     expect(mergeOffsetFactor(-10)).toBe(0);
+  });
+});
+
+describe("unwrapGap", () => {
+  const L = 5891;
+  it("reads physical proximity across the start/finish seam", () => {
+    // Car 8m behind the line (progress wraps near L) vs car on it.
+    expect(unwrapGap(0, 5883, 0, 2, L)).toBeCloseTo(10, 6);
+    expect(unwrapGap(0, 2, 0, 5883, L)).toBeCloseTo(-10, 6);
+  });
+
+  it("leaves normal gaps alone; lapped gaps wrap by design", () => {
+    expect(unwrapGap(1, 100, 1, 150, L)).toBe(50);
+    expect(unwrapGap(1, 150, 1, 100, L)).toBe(-50);
+    // A full lap apart reads as coincident: safe because every consumer
+    // is range- and speed-gated (a lapped car physically alongside IS an
+    // imminent encounter; one far away is outside all windows).
+    expect(unwrapGap(2, 100, 1, 100, L)).toBe(0);
   });
 });

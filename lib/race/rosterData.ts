@@ -19,6 +19,7 @@
 // React, so server components (the home page ticker counts) can import it.
 // The hook and storage live in ./roster (client).
 import teamsData from "../../data/teams.json";
+import { mulberry32 } from "../ai/personalities";
 
 export interface RosterDriver {
   code: string;
@@ -133,6 +134,23 @@ export function resolveFieldRoster(
     if (rivals.length >= count) break;
   }
   return { team, driver, rivals };
+}
+
+/**
+ * Random grid order for quick races (see ?seed= in sessionSetup.ts):
+ * Fisher-Yates over slot indices with a seeded RNG, so the same seed
+ * always deals the same grid (refreshes and shared links reproduce it)
+ * while every Drive click deals a fresh one. Pure and unit-tested.
+ */
+export function shuffledGridOrder(carCount: number, seed: number): number[] {
+  const count = Number.isFinite(carCount) ? Math.max(0, Math.floor(carCount)) : 0;
+  const order = Array.from({ length: count }, (_, k) => k);
+  const rng = mulberry32(seed >>> 0);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
 }
 
 export interface NetGridDriver {
