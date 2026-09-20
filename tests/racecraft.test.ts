@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeRacePace,
+  mergeOffsetFactor,
   squeezeDecision,
   decideOvertake,
   followPaceScale,
@@ -119,6 +120,16 @@ describe("slipstreamBonus", () => {
 });
 
 describe("followPaceScale", () => {
+  it("backs out of a nose-to-tail weld instead of matching", () => {
+    const welded = followPaceScale({ gapMeters: 1.8, throttleZone: true, aggression: 0.5, leaderSpeedMs: 60, ownSpeedMs: 60 });
+    expect(welded).toBeLessThan(1);
+    expect(welded).toBeGreaterThanOrEqual(0.3);
+    // ...but never below a crawl that strands the car.
+    expect(
+      followPaceScale({ gapMeters: 1, throttleZone: true, aggression: 0.5, leaderSpeedMs: 0, ownSpeedMs: 5 })
+    ).toBeGreaterThanOrEqual(0.3);
+  });
+
   it("matches the leader bumper-to-bumper but closes from distance", () => {
     // Same speed, tucked in: no reason to slow.
     expect(
@@ -256,5 +267,15 @@ describe("target-keyed latch", () => {
     });
     expect(beaten.decision.attempt).toBe(false);
     expect(beaten.attemptKey).toBeNull();
+  });
+});
+
+describe("mergeOffsetFactor", () => {
+  it("holds full offset astern and washes out as the nose clears", () => {
+    expect(mergeOffsetFactor(10)).toBe(1);
+    expect(mergeOffsetFactor(0)).toBe(1);
+    expect(mergeOffsetFactor(-1)).toBeCloseTo(0.75, 9);
+    expect(mergeOffsetFactor(-4)).toBe(0);
+    expect(mergeOffsetFactor(-10)).toBe(0);
   });
 });

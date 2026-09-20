@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GRID_BEHIND_METERS, gridSlot } from "../lib/race/grid";
+import { GRID_BEHIND_METERS, SPAWN_CLEARANCE_METERS, gridSlot, groundElevationAt } from "../lib/race/grid";
 import { getTrack } from "../lib/tracks/trackData";
 
 const track = getTrack("silverstone");
@@ -51,5 +51,28 @@ describe("gridSlot", () => {
     for (let slot = 1; slot < 20; slot++) {
       expect(along(slots[slot])).toBeLessThanOrEqual(along(slots[slot - 1]) + 1e-9);
     }
+  });
+});
+
+describe("gridSlot elevation", () => {
+  it("sits every slot on the surface, never at a flat height", () => {
+    // Suzuka's final sector climbs ~2m across the grid: flat y=1 spawns
+    // buried back-grid cars, grinding the solver into NaN (the frozen
+    // 20-car Suzuka starts). Every slot reports ground + clearance.
+    for (const id of ["silverstone", "suzuka"] as const) {
+      const t = getTrack(id);
+      for (let slot = 0; slot < 20; slot++) {
+        const spawn = gridSlot(t, slot);
+        expect(spawn.y - groundElevationAt(t, spawn.x, spawn.z)).toBeCloseTo(
+          SPAWN_CLEARANCE_METERS,
+          9
+        );
+      }
+    }
+    const suzuka = getTrack("suzuka");
+    const back = gridSlot(suzuka, 19);
+    // The back row genuinely sits higher than pole here - a flat spawn
+    // height would bury it.
+    expect(back.y).toBeGreaterThan(gridSlot(suzuka, 0).y + 1);
   });
 });

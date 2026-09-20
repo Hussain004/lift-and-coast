@@ -136,6 +136,14 @@ export function followPaceScale(args: {
   const followGap = (args.throttleZone ? 14 : 6) + (1 - aggression) * 8;
   if (args.gapMeters > followGap) return 1;
   const own = Math.max(1, args.ownSpeedMs);
+  // Nose-to-tail (under ~3m gap-to-nose with a ~4m car): back OUT instead
+  // of matching - sitting inside the leader's gearbox welds the pair, and
+  // a sustained deep weld grinds the contact solver into NaN (the frozen
+  // Suzuka 20-car starts). Skipped automatically mid-pass (see
+  // composeRacePace: the follow discipline stands down while latched).
+  if (args.gapMeters < 3) {
+    return Math.min(1, Math.max(0.3, (Math.max(0, args.leaderSpeedMs) - 2) / own));
+  }
   // Allowed closing shrinks with the gap: from ~8 m/s at the edge of the
   // window down to matching speeds bumper-to-bumper.
   const allowedSpeed = Math.max(0, args.leaderSpeedMs) + Math.max(0, args.gapMeters - 2) * 0.8;
@@ -185,6 +193,21 @@ export function squeezeDecision(args: {
   if (Math.abs(s) > 3.5) return null;
   const side = s >= 0.5 ? -1 : s <= -0.5 ? 1 : args.overtakeSide;
   return { offsetMeters: side * 2.5 };
+}
+
+/**
+ * Merging back to the line while completing a pass: full offset until the
+ * nose is past (dead alongside is clean air at a 2.4m separation - wider
+ * than the car), then washing out across the four meters ahead - like a
+ * real overtake, which finishes by TAKING the line in front, not by
+ * merging into the leader's rear quarter. Without the merge, a latched
+ * car holds its offset into side contact and the pair slow each other
+ * for half the race (measured: -30% distance) instead of resolving.
+ */
+export function mergeOffsetFactor(gapMeters: number): number {
+  if (gapMeters >= 0) return 1;
+  if (gapMeters <= -4) return 0;
+  return (gapMeters + 4) / 4;
 }
 
 export interface RaceRival {

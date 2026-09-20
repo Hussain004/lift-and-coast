@@ -559,7 +559,15 @@ export function Car({
     // Reused below for the surface grip penalty too, instead of a second
     // brute-force nearest-centerline-point scan for the same position.
     const limitStatus = checkTrackLimits(track, pos.x, pos.z);
+    // The finiteness guard is load-bearing: a dense pack can grind the
+    // contact solver into NaN (seen as a frozen frame plus dead WASM on
+    // 20-car Suzuka starts), and NaN spreads car-to-car within ticks - so
+    // a poisoned car resets with zeroed velocities BEFORE the next step,
+    // exactly like an off-track excursion, and the field never notices.
+    const lv0 = body.linvel();
+    const rt0 = body.rotation();
     if (
+      !Number.isFinite(pos.x + pos.y + pos.z + lv0.x + lv0.y + lv0.z + rt0.x + rt0.y + rt0.z + rt0.w) ||
       limitStatus.distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
       Math.hypot(pos.x, pos.z) > worldEdgeResetMeters(track)
     ) {
@@ -567,7 +575,7 @@ export function Car({
       // Track-relative spawn height: startPos is the start/finish line's own
       // x/z, and the elevation build normalizes that point to y=0 (see
       // scripts/build-track.mts), so 1m above it is still right.
-      body.setTranslation({ x: gridSpot.x, y: 1, z: gridSpot.z }, true);
+      body.setTranslation({ x: gridSpot.x, y: gridSpot.y, z: gridSpot.z }, true);
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -888,6 +896,15 @@ export function Car({
       // at ~10Hz, not per tick - order and gaps never move faster.
       towerFrameRef.current += 1;
       if (towerRef?.current && towerFrameRef.current % 6 === 0) {
+        // TEMP DEBUG (removed after diagnosis)
+        if (towerFrameRef.current % 600 === 0) {
+          const opp = raceRef.current.opponents.map(
+            (o, k) => `${k}:${o.lapCount}x${Math.round(o.progressMeters)}`
+          );
+          console.log(
+            `[towerdbg] t=${raceElapsedSecondsRef.current.toFixed(1)} player=${raceRef.current.player.lapCount}x${Math.round(raceRef.current.player.progressMeters)} opp=[${opp.join(" ")}]`
+          );
+        }
         const entries = buildTowerEntries(
           { code: playerCode, color: bodyColor, progress: raceRef.current.player },
           towerOpponents(rivals, raceRef.current.opponents),
@@ -1193,7 +1210,7 @@ export function Car({
       <RigidBody
         ref={chassisRef}
         colliders={false}
-        position={[gridSpot.x, 1, gridSpot.z]}
+        position={[gridSpot.x, gridSpot.y, gridSpot.z]}
         rotation={[0, startPos.headingRad, 0]}
         linearDamping={LINEAR_DAMPING}
         angularDamping={ANGULAR_DAMPING}

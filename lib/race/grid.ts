@@ -12,9 +12,18 @@ export const GRID_OFFSET_FRACTION_OF_HALF_WIDTH = 0.35;
 
 export interface GridSpawn {
   x: number;
+  /** Ground elevation under the slot plus spawn clearance (see
+   * SPAWN_CLEARANCE_METERS) - never a flat y=1, which buries back-grid
+   * cars on tracks with elevation (Suzuka's final sector climbs ~2m
+   * across the grid: buried chassis grind the solver into NaN, freezing
+   * the whole session). */
+  y: number;
   z: number;
   startsBehindLine: boolean;
 }
+
+/** Chassis spawn height above the ground. */
+export const SPAWN_CLEARANCE_METERS = 1;
 
 function frame(track: TrackData): {
   forwardX: number;
@@ -26,6 +35,23 @@ function frame(track: TrackData): {
   const forwardX = -Math.sin(yaw);
   const forwardZ = -Math.cos(yaw);
   return { forwardX, forwardZ, rightX: -forwardZ, rightZ: forwardX };
+}
+
+/**
+ * Ground elevation (centerline y) under a world position - for spawns and
+ * resets, which must sit relative to the surface, never at a flat height.
+ */
+export function groundElevationAt(track: TrackData, x: number, z: number): number {
+  let best = 0;
+  let bestSq = Infinity;
+  for (const [cx, cy, cz] of track.centerline) {
+    const distSq = (cx - x) ** 2 + (cz - z) ** 2;
+    if (distSq < bestSq) {
+      bestSq = distSq;
+      best = cy;
+    }
+  }
+  return best;
 }
 
 /**
@@ -46,9 +72,12 @@ export function gridSlot(track: TrackData, slot: number): GridSpawn {
   const lateral =
     slot === 0 ? 0 : (slot % 2 === 0 ? -1 : 1) * halfWidth * GRID_OFFSET_FRACTION_OF_HALF_WIDTH;
   const behind = Math.ceil(slot / 2) * GRID_BEHIND_METERS;
+  const x = track.startPos.x + rightX * lateral - forwardX * behind;
+  const z = track.startPos.z + rightZ * lateral - forwardZ * behind;
   return {
-    x: track.startPos.x + rightX * lateral - forwardX * behind,
-    z: track.startPos.z + rightZ * lateral - forwardZ * behind,
+    x,
+    y: groundElevationAt(track, x, z) + SPAWN_CLEARANCE_METERS,
+    z,
     startsBehindLine: behind > 0,
   };
 }

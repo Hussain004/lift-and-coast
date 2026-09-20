@@ -48,11 +48,13 @@ import {
 } from "../lib/ai/personalities";
 import {
   composeRacePace,
+  mergeOffsetFactor,
   trackGapMeters,
 } from "../lib/ai/racecraft";
 import { createLapTimer } from "../lib/race/lapTimer";
 import { gridSlot } from "../lib/race/grid";
 import silverstone from "../data/tracks/silverstone.json";
+import suzuka from "../data/tracks/suzuka.json";
 import type { TrackData } from "../lib/tracks/types";
 
 const FLIP_THRESHOLD_RAD = 0.6;
@@ -76,6 +78,11 @@ interface FieldCar {
   traveled: number;
   prevX: number;
   prevZ: number;
+  raceSeconds: number;
+  spawnX: number;
+  spawnY: number;
+  spawnZ: number;
+  spawnYaw: number;
 }
 
 interface FieldResult {
@@ -85,11 +92,21 @@ interface FieldResult {
   swaps: number;
   attemptTicks: number;
   maxOffset: number;
+  firewallResets: number;
 }
 
-async function simulateField(order: string[], seconds: number): Promise<FieldResult[]> {
+export async function simulateField(
+  order: string[],
+  seconds: number,
+  holdSeconds = 0,
+  // biome-ignore lint: test helper shared with the suzuka scratch below
+  trackOverride?: TrackData,
+  /** Grid slot multiplier: 3 spreads the field (no concertina) to isolate
+   * contact vs geometry as a panic cause. */
+  slotScale = 1
+): Promise<FieldResult[]> {
     await RAPIER.init();
-    const track = silverstone as TrackData;
+    const track = (trackOverride ?? silverstone) as TrackData;
     const racingLine = computeRacingLine(track);
     const timestep = 1 / 60;
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
@@ -111,10 +128,10 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
     // adjacent): the pack must sort itself out without piling up.
 
     const cars: FieldCar[] = order.map((code, slot) => {
-      const grid = gridSlot(track, slot);
+      const grid = gridSlot(track, slot * slotScale);
       const chassis = world.createRigidBody(
         RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(grid.x, 1, grid.z)
+          .setTranslation(grid.x, grid.y, grid.z)
           .setRotation(
             new RAPIER.Quaternion(
               0,
@@ -135,6 +152,10 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
       return {
         code,
         chassis,
+        spawnX: grid.x,
+        spawnY: grid.y,
+        spawnZ: grid.z,
+        spawnYaw: track.startPos.headingRad,
         controller: createCarController(RAPIER, world, chassis),
         gearbox: createGearboxState(true),
         lapTimer: createLapTimer({
@@ -154,6 +175,7 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
         traveled: 0,
         prevX: grid.x,
         prevZ: grid.z,
+        raceSeconds: 0,
       };
     });
 
@@ -165,7 +187,33 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
     let prevOrder: number[] | null = null;
 
     const steps = Math.round(seconds / timestep);
+    let firewallResets = 0;
     for (let i = 0; i < steps; i++) {
+      // NaN firewall (mirrors the game backstop in AICar.tsx): a poisoned
+      // body resets to its grid slot with zeroed velocities BEFORE the
+      // step, so one grinding contact can't take down the world.
+      for (const car of cars) {
+        const fp = car.chassis.translation();
+        const fl = car.chassis.linvel();
+        const fr = car.chassis.rotation();
+        if (
+          ![fp.x, fp.y, fp.z, fl.x, fl.y, fl.z, fr.x, fr.y, fr.z, fr.w].every(Number.isFinite)
+        ) {
+          firewallResets++;
+          car.chassis.setTranslation({ x: car.spawnX, y: car.spawnY, z: car.spawnZ }, true);
+          car.chassis.setRotation(
+            new RAPIER.Quaternion(
+              0,
+              Math.sin(car.spawnYaw / 2),
+              0,
+              Math.cos(car.spawnYaw / 2)
+            ),
+            true
+          );
+          car.chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          car.chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        }
+      }
       // Lap/progress bookkeeping for every car first (mirrors AICar: the
       // lap section runs before the controls in the same tick).
       for (const car of cars) {
@@ -228,7 +276,7 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
         // Same shared book the live car runs (see composeRacePace) -
         // including the latched lunge, so this test exercises the real
         // decision lifecycle, not a copy of it.
-        const { paceMult: racedPace, decision, attemptKey } = composeRacePace({
+        const composed = composeRacePace({
           ownSpeedMs: car.speedMs,
           rivals,
           throttleZone,
@@ -239,14 +287,31 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
           basePace: paceMult,
           alreadyAttemptingKey: car.attemptKey,
         });
+        const { paceMult: racedPace, decision: composedDecision, attemptKey } = composed;
+        // Launch hold (mirrors AICar): no lateral moves in the opening
+        // seconds; pace discipline already ran.
+        let decision = composedDecision;
+        if (!(i * timestep < holdSeconds)) car.raceSeconds += timestep;
+        if (car.raceSeconds < 12) {
+          decision = { attempt: false, offsetMeters: 0, paceBonus: 0, urgent: false };
+          car.attemptKey = null;
+        } else {
+          car.attemptKey = attemptKey;
+        }
         paceMult = racedPace;
-        car.attemptKey = attemptKey;
         if (decision.attempt) car.attemptTicks++;
-        const target = decision.attempt ? decision.offsetMeters : 0;
+        const targetGap =
+          car.attemptKey !== null
+            ? (rivals.find((r) => r.key === car.attemptKey)?.gapMeters ?? Infinity)
+            : Infinity;
+        const target = decision.attempt ? decision.offsetMeters * mergeOffsetFactor(targetGap) : 0;
         const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * timestep;
         car.offset += Math.min(maxStep, Math.max(-maxStep, target - car.offset));
         car.maxOffset = Math.max(car.maxOffset, Math.abs(car.offset));
-        const controls = computeAIControls(
+        const held = i * timestep < holdSeconds;
+        const controls = held
+          ? { throttle: 0, brake: 0.4, steer: 0, zone: car.zone, boostEligible: false }
+          : computeAIControls(
           racingLine,
           p.x,
           p.z,
@@ -268,7 +333,24 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
           { state: car.gearbox, shiftUp: false, shiftDown: false }
         );
       }
-      world.step();
+      try {
+        world.step();
+      } catch (err) {
+        // On a physics panic, dump every car's position before rethrowing:
+        // pinning the death zone is what diagnosed the buried-spawn NaN.
+        const dump = cars.map((car) => {
+          let pos = "unreadable";
+          try {
+            const p = car.chassis.translation();
+            pos = [p.x, p.y, p.z].map((v) => (Number.isFinite(v) ? v.toFixed(1) : String(v))).join(",");
+          } catch {
+            /* unreadable */
+          }
+          return `${car.code}@${pos}`;
+        });
+        console.log(`PANIC at tick ${i} (t=${(i * timestep).toFixed(2)}s): ${dump.join(" ")}`);
+        throw err;
+      }
       for (const car of cars) {
         const samples = wheelGroundPositions(car.chassis).map((wheel) =>
           sampleSurface(track, wheel.x, wheel.z)
@@ -304,7 +386,15 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
       }
     }
 
-    return cars.map((car) => ({ maxTilt: car.maxTilt, traveled: car.traveled, leadChanges, swaps, attemptTicks: car.attemptTicks, maxOffset: car.maxOffset }));
+    return cars.map((car) => ({
+      maxTilt: car.maxTilt,
+      traveled: car.traveled,
+      leadChanges,
+      swaps,
+      attemptTicks: car.attemptTicks,
+      maxOffset: car.maxOffset,
+      firewallResets,
+    }));
 }
 
 describe("AI field race", () => {
@@ -334,22 +424,23 @@ describe("AI field race", () => {
     // a formation-train regression reads as zeros here, not vibes.
     const codes = ["COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM"];
     const results = await simulateField(codes, 180);
-    for (const car of results) {
-      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
-      expect(car.traveled).toBeGreaterThan(6000);
-    }
     console.log(
       "field180:",
       JSON.stringify({
         swaps: results[0].swaps,
         leadChanges: results[0].leadChanges,
         attempts: results.map((car) => car.attemptTicks),
+        traveled: results.map((car) => Math.round(car.traveled)),
+        resets: results.map((car) => car.firewallResets),
       })
     );
+    for (const car of results) {
+      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(car.traveled).toBeGreaterThan(6000);
+    }
   }, 240000);
 
-  it("a five-car pack start survives the opening lap without piling up", async () => {
-    // Adjacent grid slots, mixed traits: the Lap-1 concertina that once
+  it("a five-car pack start survives the opening lap without piling up", async () => {    // Adjacent grid slots, mixed traits: the Lap-1 concertina that once
     // permanently jammed the field must clear itself - everyone circulating
     // within a minute, nobody flipped, nobody beached.
     const results = await simulateField(["COL", "ALO", "STR", "HUL", "BOR"], 60);
@@ -358,4 +449,23 @@ describe("AI field race", () => {
       expect(car.traveled).toBeGreaterThan(1500);
     }
   }, 180000);
+
+  it("a full 20-car grid survives the Suzuka start without solver death", async () => {
+    // The shipped bug: flat y=1 spawns buried back-grid cars where the
+    // final sector climbs, grinding the contact solver into NaN (frozen
+    // frame, dead WASM). With elevation-aware spawns plus the NaN
+    // firewall, the whole field launches and circulates - and the
+    // firewall never fires once in a healthy run.
+    const codes = [
+      "COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM",
+      "LEC", "OCO", "BEA", "NOR", "PIA", "RUS", "ANT", "LAW",
+      "LIN", "VER", "HAD", "SAI",
+    ];
+    const results = await simulateField(codes, 30, 3, suzuka as TrackData);
+    for (const car of results) {
+      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(car.traveled).toBeGreaterThan(500);
+    }
+    expect(results[0].firewallResets).toBe(0);
+  }, 240000);
 });

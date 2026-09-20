@@ -55,6 +55,7 @@ import {
 } from "@/lib/ai/personalities";
 import {
   composeRacePace,
+  mergeOffsetFactor,
   squeezeDecision,
   trackGapMeters,
   type ProgressLike,
@@ -281,6 +282,13 @@ export function AICar({
   // zone is last tick's (one tick of lag at 60Hz is nothing next to a
   // multi-second overtake); mistakes arm per lap from the seeded RNG.
   const offsetRef = useRef(0);
+  // Launch clock (seconds since this car started driving): offsets stay
+  // parked for the opening seconds while twenty cars sort out a standing
+  // start shoulder-to-shoulder - swerving a full grid at launch is how
+  // cars end up welded together and the solver ends up NaN (see the
+  // Suzuka 20-car panic). Pace discipline (follow, slipstream) still runs
+  // from green so nobody rear-ends anyone; only the lateral moves wait.
+  const raceSecondsRef = useRef(0);
   // Latched lunge target key (see composeRacePace): the car being passed,
   // so mid-pass jostle can't re-target the move onto the next car up the
   // road and stillbirth it.
@@ -294,11 +302,12 @@ export function AICar({
 
   const racingLine = useMemo(() => computeRacingLine(track), [track]);
 
-  const { spawnX, spawnZ, spawnQuat } = useMemo(() => {
+  const { spawnX, spawnY, spawnZ, spawnQuat } = useMemo(() => {
     const grid = gridSlot(track, gridSlotIndex);
     const yaw = track.startPos.headingRad;
     return {
       spawnX: grid.x,
+      spawnY: grid.y,
       spawnZ: grid.z,
       spawnQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)),
     };
@@ -325,12 +334,20 @@ export function AICar({
     // Same safety backstop as the player's car (Car.tsx) - without it, a
     // path-follower bug or a bad launch could leave the AI stuck off-course
     // or run it past the finite ground field's edge for the rest of the
-    // session with nothing to recover it.
+    // session with nothing to recover it. The finiteness guard is load-
+    // bearing: a dense pack can grind the contact solver into NaN (seen as
+    // a frozen frame plus dead WASM on 20-car Suzuka starts), and NaN
+    // spreads car-to-car within ticks - so a poisoned car blinks back to
+    // its grid slot with zeroed velocities BEFORE the next step, and the
+    // rest of the field never notices.
+    const lv0 = body.linvel();
+    const rt0 = body.rotation();
     if (
+      !Number.isFinite(pos.x + pos.y + pos.z + lv0.x + lv0.y + lv0.z + rt0.x + rt0.y + rt0.z + rt0.w) ||
       limitStatus.distanceFromEdgeMeters > OFF_TRACK_RESET_METERS ||
       Math.hypot(pos.x, pos.z) > worldEdgeResetMeters(track)
     ) {
-      body.setTranslation({ x: spawnX, y: 1, z: spawnZ }, true);
+      body.setTranslation({ x: spawnX, y: spawnY, z: spawnZ }, true);
       body.setRotation({ x: spawnQuat.x, y: spawnQuat.y, z: spawnQuat.z, w: spawnQuat.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -377,6 +394,7 @@ export function AICar({
     // countdown (the AI is held stationary by the throttle gate below too).
     if (raceStartRef?.current ?? true) {
       const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
+      raceSecondsRef.current += world.timestep;
       if (raceRef?.current) {
         const opponents = raceRef.current.opponents;
         while (opponents.length <= aiIndex) {
@@ -530,6 +548,7 @@ export function AICar({
       // table and go around the side it isn't on - a line-relative offset
       // alone can steer into a carcass sitting meters off the line.
       let decision = composed;
+      overtakeKeyRef.current = attemptKey;
       if (trafficRef && nearestAheadSpeed < 3 && nearestAheadGap > -2 && nearestAheadGap < 12) {
         const traffic = trafficRef.current;
         const anchorPoint = racingLine[anchor];
@@ -574,15 +593,32 @@ export function AICar({
           }
         }
       }
-      overtakeKeyRef.current = attemptKey;
       paceMult = racedPace;
+      // Launch hold (see raceSecondsRef): no lateral moves while the field
+      // sorts out the start. Pace discipline already ran above, so the
+      // pack still launches cleanly - only the swerves wait.
+      if (raceSecondsRef.current < 12) {
+        decision = { attempt: false, offsetMeters: 0, paceBonus: 0, urgent: false };
+        overtakeKeyRef.current = null;
+      }
       // The lunge offset ramps toward its target so a move starts as a
       // drift across, never a swerve - and washes out the same way when
-      // the attempt ends (corner, lift, or the pass sticks). Squeezes past
-      // stopped cars ramp twice as fast (see urgent): at crawl speed there
+      // the attempt ends (corner, lift, or the pass sticks). The offset
+      // merges back toward the line as the nose goes clear (see
+      // mergeOffsetFactor): holding full offset while alongside grinds
+      // the pair instead of finishing the move. Measured against the
+      // latched target's own gap, not whoever is nearest - mid-pass the
+      // two routinely differ by a car length. Squeezes past stopped
+      // cars ramp twice as fast (see urgent): at crawl speed there
       // is no swerve risk, and the slow ramp would still be unfolding at
       // contact.
-      const offsetTarget = decision.attempt ? decision.offsetMeters : 0;
+      const targetGap =
+        overtakeKeyRef.current !== null
+          ? (rivals.find((r) => r.key === overtakeKeyRef.current)?.gapMeters ?? nearestAheadGap)
+          : nearestAheadGap;
+      const offsetTarget = decision.attempt
+        ? decision.offsetMeters * mergeOffsetFactor(targetGap)
+        : 0;
       const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * world.timestep;
       offsetRef.current += Math.min(maxStep, Math.max(-maxStep, offsetTarget - offsetRef.current));
       const aiControls = computeAIControls(
@@ -709,7 +745,7 @@ export function AICar({
     <RigidBody
       ref={chassisRef}
       colliders={false}
-      position={[spawnX, 1, spawnZ]}
+      position={[spawnX, spawnY, spawnZ]}
       rotation={[0, track.startPos.headingRad, 0]}
       linearDamping={LINEAR_DAMPING}
       angularDamping={ANGULAR_DAMPING}
