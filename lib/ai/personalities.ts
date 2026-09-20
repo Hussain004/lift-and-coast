@@ -4,7 +4,7 @@
 // here, derived deterministically from the driver's FIA code, so the same
 // code always drives the same way on every visit and both sides of a net
 // room agree without a round-trip. Deterministic does not mean uniform:
-// the field spreads ~2% on raw pace, overtakes, makes mistakes, and runs
+// the field spreads ~3.5% on raw pace, overtakes, makes mistakes, and runs
 // different tire curves - a train that holds formation all race is gone.
 //
 // Stability discipline (non-negotiable, see lib/ai/pathFollower.ts): every
@@ -55,7 +55,7 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
 }
 
 export interface DriverTraits {
-  /** Target-speed multiplier, roughly 0.99..1.012 across the field. */
+  /** Target-speed multiplier, roughly 0.985..1.02 across the field. */
   pace: number;
   /** 0 (cautious) .. 1 (dive-bomber): overtake willingness, follow gap. */
   aggression: number;
@@ -82,7 +82,11 @@ export function traitsForDriver(code: string): DriverTraits {
   const h = hashDriverCode(code);
   const unit = (shift: number): number => ((h >>> shift) % 1000) / 1000;
   return {
-    pace: 0.99 + unit(0) * 0.022,
+    // 3.5% across the field: adjacent cars differ ~0.2%/lap (tenths, not
+    // seconds), but the fastest visibly marches and backmarkers become
+    // traffic - a 2% spread proved too fine to produce a pass inside a
+    // 3-lap sprint (see the live tower logs that sized this).
+    pace: 0.985 + unit(0) * 0.035,
     aggression: 0.15 + unit(10) * 0.7,
     risk: unit(20) * unit(5),
     latePace: unit(15) * 2 - 1,
@@ -92,12 +96,15 @@ export function traitsForDriver(code: string): DriverTraits {
 
 /**
  * Tire-curve multiplier over a race distance: latePace > 0 means the driver
- * gets relatively faster as the race goes on (and vice versa). Bounded to
- * about +/-0.5% so it shapes strategy, never decides it outright.
+ * gets relatively faster as the race goes on (and vice versa). Sized to
+ * move races, not just color them: opposite tire types swing ~2% across
+ * the distance, so early flyers get caught and passed late - without a
+ * delta this big the field self-sorts by raw pace on lap one and stays
+ * there, which is exactly the formation train this system exists to break.
  */
 export function tireCurveMultiplier(latePace: number, raceProgress01: number): number {
   const progress = Math.min(1, Math.max(0, raceProgress01));
-  return 1 + latePace * (progress - 0.35) * 0.008;
+  return 1 + latePace * (progress - 0.35) * 0.02;
 }
 
 /** Mulberry32: tiny seeded RNG for per-race mistake scheduling. */

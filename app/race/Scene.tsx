@@ -545,6 +545,12 @@ export function Scene({
   // the player's gated inputs (guest upload), the host's finishing board,
   // and interpolated remote frames (guest render).
   const carPosesRef = useRef<Record<number, CarPose>>({});
+  // Live traffic table (see squeezeDecision in racecraft.ts): every
+  // simulated car reports its world position here each physics tick, so
+  // any car can see where a slow/stopped obstacle actually sits instead
+  // of guessing from the line. Keys are "p" (player) and "a{k}" (rival
+  // aiIndex) - relative geometry only, no slot bookkeeping.
+  const trafficRef = useRef<Record<string, { x: number; z: number }>>({});
   const playerInputRef = useRef<{ throttle: number; brake: number; steer: number } | null>(null);
   const netResultRef = useRef<{ positions: Record<string, number>; winnerCode: string } | null>(null);
   const remoteBuffersRef = useRef<Record<number, TimedSnapshot<RemoteCarFrame>[]>>({});
@@ -635,6 +641,8 @@ export function Scene({
           netResultRef={netResultRef}
           netActive={netRole !== null}
           netSlot={playerSlot}
+          trafficRef={trafficRef}
+          trafficKey="p"
           raceStartRef={raceStartRef}
           sharedRewindActiveRef={sharedRewindActiveRef}
           qualifyingRef={qualifyingRef}
@@ -665,6 +673,8 @@ export function Scene({
                 difficulty={difficulty}
                 sessionSeedRef={sessionSeedRef}
                 raceLaps={raceLaps}
+                trafficRef={trafficRef}
+                trafficKey={`a${k}`}
                 netInputRef={
                   netRole === "host" && netHumanSlots.includes(gridSlotIndex)
                     ? netInputRefs[k]

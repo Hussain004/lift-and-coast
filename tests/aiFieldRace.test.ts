@@ -47,11 +47,8 @@ import {
   traitsForDriver,
 } from "../lib/ai/personalities";
 import {
-  decideOvertake,
-  followPaceScale,
-  slipstreamBonus,
+  composeRacePace,
   trackGapMeters,
-  yieldPaceScale,
 } from "../lib/ai/racecraft";
 import { createLapTimer } from "../lib/race/lapTimer";
 import { gridSlot } from "../lib/race/grid";
@@ -71,6 +68,9 @@ interface FieldCar {
   progressMeters: number;
   speedMs: number;
   offset: number;
+  attemptKey: string | null;
+  attemptTicks: number;
+  maxOffset: number;
   zone: "throttle" | "lift" | "brake-medium" | "brake-hard";
   maxTilt: number;
   traveled: number;
@@ -82,6 +82,9 @@ interface FieldResult {
   maxTilt: number;
   traveled: number;
   leadChanges: number;
+  swaps: number;
+  attemptTicks: number;
+  maxOffset: number;
 }
 
 async function simulateField(order: string[], seconds: number): Promise<FieldResult[]> {
@@ -143,6 +146,9 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
         progressMeters: 0,
         speedMs: 0,
         offset: 0,
+        attemptKey: null,
+        attemptTicks: 0,
+        maxOffset: 0,
         zone: "throttle" as const,
         maxTilt: 0,
         traveled: 0,
@@ -155,6 +161,8 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
       car.lapCount * track.lengthMeters + car.progressMeters;
     let leadChanges = 0;
     let lastLeader = 0;
+    let swaps = 0;
+    let prevOrder: number[] | null = null;
 
     const steps = Math.round(seconds / timestep);
     for (let i = 0; i < steps; i++) {
@@ -173,35 +181,41 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
         );
         car.speedMs = computeSignedForwardSpeed(car.chassis.linvel(), yaw);
       }
-      // Leaderboard once a second: any P1 change is a pass (or a mistake
-      // dropping the leader - either way the train is broken).
+      // Full-field order once a second: P1 changes plus every pairwise
+      // swap below - a train that never shuffles reads as zeros.
       if (i % 60 === 0) {
         const ranked = [...cars].sort((a, b) => totalOf(b) - totalOf(a));
-        const leader = cars.indexOf(ranked[0]);
+        const order = ranked.map((car) => cars.indexOf(car));
+        const leader = order[0];
         if (i > 0 && leader !== lastLeader) leadChanges++;
         lastLeader = leader;
+        if (prevOrder !== null) {
+          for (let a = 0; a < order.length; a++) {
+            for (let b = a + 1; b < order.length; b++) {
+              const wasA = prevOrder.indexOf(order[a]);
+              const wasB = prevOrder.indexOf(order[b]);
+              if (wasA > wasB) swaps++;
+            }
+          }
+        }
+        prevOrder = order;
       }
       for (const car of cars) {
         const traits = traitsForDriver(car.code);
         const raceProgress = Math.min(1, Math.max(0, car.lapCount / 3));
         let paceMult =
           traits.pace * difficultyPaceScale("pro") * tireCurveMultiplier(traits.latePace, raceProgress);
-        let aheadGap = Infinity;
-        let aheadSpeed = 0;
-        let behindGap = -Infinity;
-        for (const other of cars) {
-          if (other === car) continue;
-          const gap = trackGapMeters(
-            { lapCount: car.lapCount, progressMeters: car.progressMeters },
-            { lapCount: other.lapCount, progressMeters: other.progressMeters },
-            track.lengthMeters
-          );
-          if (gap >= 0 && gap < aheadGap) {
-            aheadGap = gap;
-            aheadSpeed = other.speedMs;
-          }
-          if (gap < 0 && gap > behindGap) behindGap = gap;
-        }
+        const rivals = cars
+          .filter((other) => other !== car)
+          .map((other) => ({
+            key: other.code,
+            gapMeters: trackGapMeters(
+              { lapCount: car.lapCount, progressMeters: car.progressMeters },
+              { lapCount: other.lapCount, progressMeters: other.progressMeters },
+              track.lengthMeters
+            ),
+            speedMs: other.speedMs,
+          }));
         const p = car.chassis.translation();
         const rot = car.chassis.rotation();
         const yaw = Math.atan2(
@@ -211,30 +225,27 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
         const throttleZone = car.zone === "throttle";
         const anchor = nearestLineIndex(racingLine, p.x, p.z);
         const cornerAhead = cornerAheadMeters(racingLine, anchor, Math.abs(car.speedMs), paceMult);
-        const decision = decideOvertake({
-          gapMeters: aheadGap,
-          closingSpeedMs: car.speedMs - aheadSpeed,
-          speedMs: car.speedMs,
-          leaderSpeedMs: aheadSpeed,
+        // Same shared book the live car runs (see composeRacePace) -
+        // including the latched lunge, so this test exercises the real
+        // decision lifecycle, not a copy of it.
+        const { paceMult: racedPace, decision, attemptKey } = composeRacePace({
+          ownSpeedMs: car.speedMs,
+          rivals,
           throttleZone,
           cornerAheadMeters: cornerAhead,
           aggression: traits.aggression,
           risk: traits.risk,
           overtakeSide: traits.overtakeSide,
+          basePace: paceMult,
+          alreadyAttemptingKey: car.attemptKey,
         });
-        paceMult *=
-          1 + slipstreamBonus({ gapMeters: aheadGap, speedMs: car.speedMs, throttleZone }) + decision.paceBonus;
-        paceMult *= followPaceScale({
-          gapMeters: aheadGap,
-          throttleZone,
-          aggression: traits.aggression,
-          leaderSpeedMs: aheadSpeed,
-          ownSpeedMs: car.speedMs,
-        });
-        paceMult *= yieldPaceScale({ gapToFollowerMeters: behindGap, aggression: traits.aggression });
+        paceMult = racedPace;
+        car.attemptKey = attemptKey;
+        if (decision.attempt) car.attemptTicks++;
         const target = decision.attempt ? decision.offsetMeters : 0;
-        const maxStep = 1.5 * timestep;
+        const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * timestep;
         car.offset += Math.min(maxStep, Math.max(-maxStep, target - car.offset));
+        car.maxOffset = Math.max(car.maxOffset, Math.abs(car.offset));
         const controls = computeAIControls(
           racingLine,
           p.x,
@@ -293,7 +304,7 @@ async function simulateField(order: string[], seconds: number): Promise<FieldRes
       }
     }
 
-    return cars.map((car) => ({ maxTilt: car.maxTilt, traveled: car.traveled, leadChanges }));
+    return cars.map((car) => ({ maxTilt: car.maxTilt, traveled: car.traveled, leadChanges, swaps, attemptTicks: car.attemptTicks, maxOffset: car.maxOffset }));
 }
 
 describe("AI field race", () => {
@@ -309,7 +320,33 @@ describe("AI field race", () => {
       expect(car.traveled).toBeGreaterThan(4000);
     }
     expect(results[0].leadChanges).toBeGreaterThanOrEqual(1);
+    // The pass must come from genuine lunges - offset attempts that
+    // actually move the car off the line - not from mistakes alone.
+    const attempts = results.reduce((sum, car) => sum + car.attemptTicks, 0);
+    expect(attempts).toBeGreaterThan(60);
+    const widest = Math.max(...results.map((car) => car.maxOffset));
+    expect(widest).toBeGreaterThan(1);
   }, 180000);
+
+  it("an eight-car field swaps positions through a full race distance", async () => {
+    // The live-observed scenario: grid-start grid order, 180s of racing.
+    // Counts every position swap (not just the lead) plus lunge ticks, so
+    // a formation-train regression reads as zeros here, not vibes.
+    const codes = ["COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM"];
+    const results = await simulateField(codes, 180);
+    for (const car of results) {
+      expect(car.maxTilt).toBeLessThan(FLIP_THRESHOLD_RAD);
+      expect(car.traveled).toBeGreaterThan(6000);
+    }
+    console.log(
+      "field180:",
+      JSON.stringify({
+        swaps: results[0].swaps,
+        leadChanges: results[0].leadChanges,
+        attempts: results.map((car) => car.attemptTicks),
+      })
+    );
+  }, 240000);
 
   it("a five-car pack start survives the opening lap without piling up", async () => {
     // Adjacent grid slots, mixed traits: the Lap-1 concertina that once

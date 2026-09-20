@@ -42,8 +42,8 @@ describe("traitsForDriver", () => {
     const paces = codes.map((c) => traitsForDriver(c).pace);
     expect(new Set(paces).size).toBeGreaterThan(1);
     for (const pace of paces) {
-      expect(pace).toBeGreaterThanOrEqual(0.99);
-      expect(pace).toBeLessThanOrEqual(1.012);
+      expect(pace).toBeGreaterThanOrEqual(0.985);
+      expect(pace).toBeLessThanOrEqual(1.02);
     }
     const aggro = codes.map((c) => traitsForDriver(c).aggression);
     for (const a of aggro) {
@@ -77,9 +77,9 @@ describe("tireCurveMultiplier", () => {
     expect(tireCurveMultiplier(-1, 0.35)).toBeCloseTo(1, 6);
     expect(tireCurveMultiplier(1, 1)).toBeGreaterThan(tireCurveMultiplier(1, 0));
     expect(tireCurveMultiplier(-1, 1)).toBeLessThan(tireCurveMultiplier(-1, 0));
-    // Bounded: never decides a race outright.
-    expect(tireCurveMultiplier(1, 1)).toBeLessThan(1.01);
-    expect(tireCurveMultiplier(-1, 0)).toBeGreaterThan(0.99);
+    // Sized to move races: opposite tire types swing ~2% across the distance.
+    expect(tireCurveMultiplier(1, 1)).toBeLessThan(1.02);
+    expect(tireCurveMultiplier(1, 1) - tireCurveMultiplier(-1, 1)).toBeGreaterThan(0.015);
   });
 
   it("clamps out-of-range progress", () => {

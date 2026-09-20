@@ -129,6 +129,8 @@ export function Car({
   rivals = [],
   playerInputRef,
   carPosesRef,
+  trafficRef,
+  trafficKey,
   netResultRef,
   netActive = false,
   netSlot = 0,
@@ -213,6 +215,13 @@ export function Car({
    */
   playerInputRef?: React.RefObject<{ throttle: number; brake: number; steer: number } | null>;
   carPosesRef?: React.RefObject<Record<number, CarPose>>;
+  /**
+   * Live traffic table (see Scene.tsx): this car reports its world
+   * position here every physics tick under trafficKey, so AI rivals can
+   * see where it actually sits when slow or stopped.
+   */
+  trafficRef?: React.RefObject<Record<string, { x: number; z: number }>>;
+  trafficKey?: string;
   netResultRef?: React.RefObject<{ positions: Record<string, number>; winnerCode: string } | null>;
   netActive?: boolean;
   /**
@@ -716,6 +725,10 @@ export function Car({
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
 
     rewindBufferRef.current.push(snapshotOf(body));
+    if (trafficRef && trafficKey !== undefined) {
+      const tp = body.translation();
+      trafficRef.current[trafficKey] = { x: tp.x, z: tp.z };
+    }
     if (carPosesRef) {
       const rot = body.rotation();
       const lv = body.linvel();
