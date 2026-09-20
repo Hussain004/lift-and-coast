@@ -165,3 +165,30 @@ export function playerGridSpot(session: QualifyingSession): number {
   }
   return spot;
 }
+
+/**
+ * Full grid order from a finished session: every side's code sorted by
+ * best valid lap (no-time sorts behind, exact ties break toward the
+ * player first, then roster order), for the quali -> race handoff (see
+ * ?order=). Before the grid order only the player's own spot traveled,
+ * so AI rivals always lined up in roster order no matter who was fastest
+ * - pole and P20 rarely belonged to anyone who earned them.
+ */
+export function sessionGridOrder(
+  best: { player: number | null; opponents: (number | null)[] },
+  playerCode: string,
+  rivalCodes: readonly string[]
+): string[] {
+  const entries: { code: string; time: number | null; index: number }[] = [
+    { code: playerCode, time: best.player, index: -1 },
+    ...rivalCodes.map((code, k) => ({ code, time: best.opponents[k] ?? null, index: k })),
+  ];
+  entries.sort((a, b) => {
+    if (a.time === null && b.time === null) return a.index - b.index;
+    if (a.time === null) return 1;
+    if (b.time === null) return -1;
+    if (a.time !== b.time) return a.time - b.time;
+    return a.index - b.index;
+  });
+  return entries.map((e) => e.code);
+}

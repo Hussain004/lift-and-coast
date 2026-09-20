@@ -97,6 +97,11 @@ export interface RaceUrlParams {
    * net rooms).
    */
   seed?: number;
+  /**
+   * Full grid order (?order=, pole first): set by the qualifying banner
+   * so every car lines up where it qualified, not just the player.
+   */
+  order?: string[];
 }
 
 /**
@@ -109,13 +114,16 @@ export interface RaceUrlParams {
 export function retargetSessionUrl(
   search: string,
   mode: SessionMode,
-  grid: number | null
+  grid: number | null,
+  order: readonly string[] | null = null
 ): string {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   params.set("mode", mode);
   if (grid === null) params.delete("grid");
   else params.set("grid", String(grid));
   if (mode !== "qualifying") params.delete("qformat");
+  if (order !== null && order.length > 0) params.set("order", order.join(","));
+  else params.delete("order");
   const suffix = params.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }
@@ -139,6 +147,9 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.rivals !== undefined) query.set("rivals", String(params.rivals));
   if (params.difficulty !== undefined) query.set("diff", params.difficulty);
   if (params.seed !== undefined) query.set("seed", String(params.seed));
+  if (params.order !== undefined && params.order.length > 0) {
+    query.set("order", params.order.join(","));
+  }
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }

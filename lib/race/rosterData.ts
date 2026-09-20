@@ -137,6 +137,25 @@ export function resolveFieldRoster(
 }
 
 /**
+ * Parses a ?order= grid (comma-separated FIA codes, pole first): unknown
+ * codes, blanks and duplicates reject it (null), so a hand-edited link
+ * falls back to the other grid sources instead of dropping cars. Length
+ * is checked by the caller against the session's field (see page.tsx) -
+ * a stale order from a different-sized grid must not apply either.
+ */
+export function parseGridOrder(raw: string | null): string[] | null {
+  if (raw === null) return null;
+  const codes = raw
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .filter((code) => code.length > 0);
+  if (codes.length === 0) return null;
+  if (new Set(codes).size !== codes.length) return null;
+  if (!codes.every(isKnownDriverCode)) return null;
+  return codes;
+}
+
+/**
  * Random grid order for quick races (see ?seed= in sessionSetup.ts):
  * Fisher-Yates over slot indices with a seeded RNG, so the same seed
  * always deals the same grid (refreshes and shared links reproduce it)

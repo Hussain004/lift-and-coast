@@ -14,7 +14,7 @@ import { parseTrackId } from "@/lib/tracks/registry";
 import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
-import { shuffledGridOrder } from "@/lib/race/rosterData";
+import { parseGridOrder, shuffledGridOrder } from "@/lib/race/rosterData";
 import { netRoom } from "@/lib/net/peer";
 import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
@@ -118,26 +118,45 @@ function RaceContent() {
   const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
   // Random grid for quick races (?seed= from the home Drive link): the
   // whole field - player included - shuffles, so nobody is gifted pole.
-  // Explicit grids always win: qualifying results (?grid=), championship
-  // rounds (whose panel sets ?grid=), and net rooms (join order). Missing
-  // or unparseable seeds keep the legacy pole start, so every old link
-  // drives exactly as before. Pure over the URL (seeded shuffle), so
-  // refreshes and shared links reproduce the same grid.
+  // Explicit grids always win, in this order: a full ?order= board (the
+  // qualifying banner), ?grid= (qualifying/championship panels), then
+  // ?seed=, then the legacy pole start. Net rooms always use join order.
+  // Missing or unparseable values fall through to the next source, so
+  // every old link drives exactly as before. Pure over the URL (seeded
+  // shuffle), so refreshes and shared links reproduce the same grid.
   const gridSeed = parseSeed(searchParams.get("seed"));
   const explicitGrid = parseGridSpot(searchParams.get("grid"));
+  const fullOrder = (() => {
+    if (netActive || champRound !== null) return null;
+    const parsed = parseGridOrder(searchParams.get("order"));
+    if (parsed === null || parsed.length !== soloRivals.length + 1) return null;
+    if (!parsed.includes(driver.code)) return null;
+    const fieldCodes = new Set([driver.code, ...soloRivals.map((r) => r.code)]);
+    if (!parsed.every((code) => fieldCodes.has(code))) return null;
+    return parsed;
+  })();
   const randomGrid =
-    !netActive && gridSeed !== null && explicitGrid === null && champRound === null
+    fullOrder === null &&
+    !netActive &&
+    gridSeed !== null &&
+    explicitGrid === null &&
+    champRound === null
       ? shuffledGridOrder(soloRivals.length + 1, gridSeed)
       : null;
   // Index of the player's entry in grid order (0 = pole entry first).
-  const playerOrderIndex = randomGrid?.indexOf(0) ?? 0;
-  const playerGridSpot = netActive && netValid ? playerSlot + 1 : explicitGrid ?? playerOrderIndex + 1;
+  const playerOrderIndex =
+    fullOrder !== null
+      ? fullOrder.indexOf(driver.code)
+      : (randomGrid?.indexOf(0) ?? 0);
+  const playerGridSpot =
+    netActive && netValid ? playerSlot + 1 : explicitGrid ?? playerOrderIndex + 1;
+  const byCode = new Map(soloRivals.map((r) => [r.code, r]));
   const rivals =
-    randomGrid === null
-      ? baseRivals
-      : randomGrid
-          .filter((entry) => entry !== 0)
-          .map((entry) => soloRivals[entry - 1]);
+    fullOrder !== null
+      ? fullOrder.filter((code) => code !== driver.code).map((code) => byCode.get(code)!)
+      : randomGrid === null
+        ? baseRivals
+        : randomGrid.filter((entry) => entry !== 0).map((entry) => soloRivals[entry - 1]);
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
@@ -186,7 +205,7 @@ function RaceContent() {
   return (
     <div className={styles.wrap}>
       <Scene
-        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
+        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
         rivals={rivals}

@@ -8,6 +8,7 @@ import {
   qualifyingWinner,
   recordQualiLap,
   tickQualifyingSession,
+  sessionGridOrder,
 } from "../lib/race/qualifying";
 
 describe("polePosition", () => {
@@ -127,5 +128,25 @@ describe("QualifyingSession", () => {
     session = recordQualiLap(session, "player", 91);
     // 88 and 90 beat 91; 92 and the no-time lose to it: P3.
     expect(playerGridSpot(session)).toBe(3);
+  });
+});
+
+describe("sessionGridOrder", () => {
+  it("sorts every side by best, no-times last, player wins ties", () => {
+    const order = sessionGridOrder(
+      { player: 90, opponents: [88, null, 90] },
+      "YOU",
+      ["A", "B", "C"]
+    );
+    expect(order).toEqual(["A", "YOU", "C", "B"]);
+  });
+
+  it("covers the whole field with no drops", () => {
+    const order = sessionGridOrder(
+      { player: null, opponents: [null, 95] },
+      "YOU",
+      ["A", "B"]
+    );
+    expect(order).toEqual(["B", "YOU", "A"]);
   });
 });

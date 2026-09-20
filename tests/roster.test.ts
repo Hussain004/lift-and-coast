@@ -11,6 +11,7 @@ import {
   resolveFieldRoster,
   resolveNetGridRoster,
   shuffledGridOrder,
+  parseGridOrder,
   resolveRosterSelection,
   saveRosterPrefs,
 } from "../lib/race/roster";
@@ -210,5 +211,16 @@ describe("shuffledGridOrder", () => {
   it("degenerates safely", () => {
     expect(shuffledGridOrder(0, 1)).toEqual([]);
     expect(shuffledGridOrder(1, 1)).toEqual([0]);
+  });
+});
+
+describe("parseGridOrder", () => {
+  it("parses code lists, rejecting junk", () => {
+    expect(parseGridOrder("VER,NOR,PIA")).toEqual(["VER", "NOR", "PIA"]);
+    expect(parseGridOrder(" ver , nor ")).toEqual(["VER", "NOR"]);
+    expect(parseGridOrder(null)).toBeNull();
+    expect(parseGridOrder("")).toBeNull();
+    expect(parseGridOrder("VER,XXX")).toBeNull();
+    expect(parseGridOrder("VER,VER")).toBeNull();
   });
 });

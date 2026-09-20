@@ -55,7 +55,7 @@ import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
-import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
+import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, sessionGridOrder, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
@@ -1134,7 +1134,14 @@ export function Car({
         if (champRound !== null) {
           recordChampionshipQuali(champRound, spot).catch(() => {});
         }
-        const raceHref = retargetSessionUrl(window.location.search, "race", spot);
+        // Full grid order for the race link (see ?order=): every car
+        // lines up where it qualified, not just the player.
+        const gridOrder = sessionGridOrder(
+          mergedBest,
+          playerCode,
+          rivals.map((rival) => rival.code)
+        );
+        const raceHref = retargetSessionUrl(window.location.search, "race", spot, gridOrder);
         // Fastest rival lap for the summary line (best of whoever set one).
         let bestRival: number | null = null;
         let bestRivalCode = "RIVAL";

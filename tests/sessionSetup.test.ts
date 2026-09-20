@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRaceUrl,
+  retargetSessionUrl,
   DEFAULT_RACE_LAPS,
   DEFAULT_RIVALS,
   DEFAULT_TIME_OF_DAY,
@@ -304,5 +305,17 @@ describe("parseSeed", () => {
 
   it("round-trips through buildRaceUrl", () => {
     expect(buildRaceUrl({ seed: 99 })).toContain("seed=99");
+  });
+});
+
+describe("grid order urls", () => {
+  it("round-trips ?order= through build and retarget", () => {
+    const url = buildRaceUrl({ mode: "race", order: ["VER", "NOR"] });
+    expect(url).toContain("order=VER%2CNOR");
+    const retargeted = retargetSessionUrl("?track=spa&mode=qualifying", "race", 2, ["NOR", "VER"]);
+    expect(retargeted).toContain("mode=race");
+    expect(retargeted).toContain("grid=2");
+    expect(retargeted).toContain("order=NOR%2CVER");
+    expect(retargetSessionUrl("?order=VER", "race", null)).not.toContain("order=");
   });
 });
