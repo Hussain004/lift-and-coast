@@ -11,11 +11,15 @@ import {
 } from "@react-three/rapier";
 import { Car } from "./Car";
 import { AICar } from "./AICar";
+import { RemoteCar, type RemoteCarFrame } from "./RemoteCar";
+import { NetClient, NetHost } from "./NetSync";
+import type { CarPose, TimedSnapshot } from "@/lib/net/snapshots";
 import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
@@ -42,21 +46,44 @@ const GO_DISPLAY_SECONDS = 0.75;
 function RaceStartCountdown({
   raceStartRef,
   countdownRef,
+  goAtMs = 0,
 }: {
   raceStartRef: React.RefObject<boolean>;
   countdownRef: React.RefObject<HTMLDivElement | null>;
+  /**
+   * Plan section 16: net-room lights alignment. The host's START message
+   * carries go-time; every peer (host included) delays its local
+   * countdown by the remainder, so all grids go within ~a frame of each
+   * other instead of by mount order. Clamped at zero (a late joiner just
+   * runs the normal countdown) and the display never shows above 3.
+   * A timestamp (not a precomputed delay) so page render stays pure -
+   * the Date.now() subtraction happens inside useFrame, never in render.
+   */
+  goAtMs?: number;
 }) {
   const elapsedRef = useRef(0);
   const finishedRef = useRef(false);
+  const startedRef = useRef(false);
 
   useFrame((_, dt) => {
     if (finishedRef.current) return;
+    if (!startedRef.current) {
+      startedRef.current = true;
+      const delayMs = goAtMs > 0 ? Math.max(0, goAtMs - Date.now()) : 0;
+      elapsedRef.current = -delayMs / 1000;
+    }
     elapsedRef.current += dt;
     const elapsed = elapsedRef.current;
+    if (elapsed < 0) {
+      if (countdownRef.current) countdownRef.current.textContent = "3";
+      return;
+    }
 
     if (elapsed < COUNTDOWN_SECONDS) {
       if (countdownRef.current) {
-        countdownRef.current.textContent = String(Math.ceil(COUNTDOWN_SECONDS - elapsed));
+        countdownRef.current.textContent = String(
+          Math.max(1, Math.ceil(COUNTDOWN_SECONDS - elapsed))
+        );
       }
       return;
     }
@@ -413,6 +440,9 @@ export function Scene({
   playerGridSpot = null,
   playerCode = "YOU",
   rivals = [],
+  netRole = null,
+  netHumanSlots = [],
+  countdownGoAtMs = 0,
   countdownRef,
   qualifyingDisplayRef,
   penaltyToastRef,
@@ -474,6 +504,17 @@ export function Scene({
    * Scene when it changes, so every useRef below stays correct).
    */
   rivals?: { code: string; color: string }[];
+  /**
+   * Plan section 16: net-room role. Null is a solo session (every car
+   * simulated locally). Host simulates the player, all AI and every
+   * guest's car (from their inputs); guests simulate only themselves and
+   * render everyone else from host snapshots.
+   */
+  netRole?: "host" | "guest" | null;
+  /** Grid slots driven by humans (join order) - host only. */
+  netHumanSlots?: number[];
+  /** Lights alignment from the host's START go-time (see RaceStartCountdown). */
+  countdownGoAtMs?: number;
   countdownRef: React.RefObject<HTMLDivElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
@@ -481,6 +522,36 @@ export function Scene({
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
   const raceStartRef = useRef(false);
+  // Net-room shared state (plan section 16) - created always, used only
+  // with netRole set, so solo sessions pay nothing but four empty refs:
+  // per-slot poses (every simulated car reports here for broadcast),
+  // the player's gated inputs (guest upload), the host's finishing board,
+  // and interpolated remote frames (guest render).
+  const carPosesRef = useRef<Record<number, CarPose>>({});
+  const playerInputRef = useRef<{ throttle: number; brake: number; steer: number } | null>(null);
+  const netResultRef = useRef<{ positions: Record<string, number>; winnerCode: string } | null>(null);
+  const remoteBuffersRef = useRef<Record<number, TimedSnapshot<RemoteCarFrame>[]>>({});
+  const playerSlot = (playerGridSpot ?? 1) - 1;
+  const aiSlots = useMemo(
+    () => rivals.map((_, k) => (k < playerSlot ? k : k + 1)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rivals.length, playerSlot]
+  );
+  const slotToOpponent = useMemo(() => {
+    const map: Record<number, number> = {};
+    aiSlots.forEach((slot, k) => {
+      map[slot] = k;
+    });
+    return map;
+  }, [aiSlots]);
+  const netInputRefs = useMemo(
+    () =>
+      rivals.map(() => ({
+        current: null as { throttle: number; brake: number; steer: number; atMs: number } | null,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rivals.length]
+  );
   // Shared rewind flag (see Car.tsx's sharedRewindActiveRef): the player
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
@@ -542,6 +613,11 @@ export function Scene({
           playerGridSpot={playerGridSpot}
           playerCode={playerCode}
           rivals={rivals}
+          playerInputRef={playerInputRef}
+          carPosesRef={carPosesRef}
+          netResultRef={netResultRef}
+          netActive={netRole !== null}
+          netSlot={playerSlot}
           raceStartRef={raceStartRef}
           sharedRewindActiveRef={sharedRewindActiveRef}
           qualifyingRef={qualifyingRef}
@@ -552,11 +628,11 @@ export function Scene({
           audioRef={audioRef}
         />
         {sessionMode !== "practice" &&
+          netRole !== "guest" &&
           rivals.map((rival, k) => {
             // Grid slots fill 1..N+1 around the player's own spot: the
             // rivals take every other slot in field order.
-            const playerSlot = (playerGridSpot ?? 1) - 1;
-            const gridSlotIndex = k < playerSlot ? k : k + 1;
+            const gridSlotIndex = aiSlots[k];
             return (
               <AICar
                 key={rival.code}
@@ -568,14 +644,63 @@ export function Scene({
                 qualifyingRef={qualifyingRef}
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
+                netInputRef={
+                  netRole === "host" && netHumanSlots.includes(gridSlotIndex)
+                    ? netInputRefs[k]
+                    : undefined
+                }
+                carPosesRef={netRole === "host" ? carPosesRef : undefined}
                 bodyColor={rival.color}
                 audioRef={audioRef}
               />
             );
           })}
+        {sessionMode !== "practice" &&
+          netRole === "guest" &&
+          rivals.map((rival, k) => (
+            <RemoteCar
+              key={rival.code}
+              buffersRef={remoteBuffersRef}
+              slot={aiSlots[k]}
+              markerIndex={k}
+              minimapMarkerEls={aiMarkerEls}
+              bodyColor={rival.color}
+            />
+          ))}
+        {netRole === "host" && sessionMode === "race" && (
+          <NetHost
+            raceRef={raceRef}
+            carPosesRef={carPosesRef}
+            track={track}
+            raceLaps={raceLaps ?? DEFAULT_RACE_LAPS}
+            playerCode={playerCode}
+            playerColor={playerBodyColor}
+            playerSlot={playerSlot}
+            rivals={rivals}
+            aiSlots={aiSlots}
+            netResultRef={netResultRef}
+            netInputRefs={netInputRefs}
+          />
+        )}
+        {netRole === "guest" && (
+          <NetClient
+            raceRef={raceRef}
+            playerInputRef={playerInputRef}
+            chassisRef={chassisRef}
+            remoteBuffersRef={remoteBuffersRef}
+            netResultRef={netResultRef}
+            raceResultRef={raceResultRef}
+            playerSlot={playerSlot}
+            slotToOpponent={slotToOpponent}
+          />
+        )}
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
-      <RaceStartCountdown raceStartRef={raceStartRef} countdownRef={countdownRef} />
+      <RaceStartCountdown
+        raceStartRef={raceStartRef}
+        countdownRef={countdownRef}
+        goAtMs={countdownGoAtMs}
+      />
     </Canvas>
   );
 }

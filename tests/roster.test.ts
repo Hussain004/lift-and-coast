@@ -9,6 +9,7 @@ import {
   parseDriverCode,
   parseTeamId,
   resolveFieldRoster,
+  resolveNetGridRoster,
   resolveRosterSelection,
   saveRosterPrefs,
 } from "../lib/race/roster";
@@ -168,5 +169,25 @@ describe("resolveFieldRoster", () => {
     const fallback = resolveFieldRoster("not-a-team", "XXX", 3);
     expect(fallback.rivals.length).toBe(3);
     expect(fallback.driver.code).toBe(DEFAULT_DRIVER_CODE);
+  });
+});
+
+describe("resolveNetGridRoster", () => {
+  it("fills empty slots in roster order, skipping humans", () => {
+    const fill = resolveNetGridRoster(["VER", "NOR"], 3);
+    expect(fill.length).toBe(3);
+    expect(fill.map((d) => d.code)).toEqual(["GAS", "COL", "ALO"]);
+  });
+
+  it("caps at the roster and clamps bad counts", () => {
+    expect(resolveNetGridRoster([], 99).length).toBe(22);
+    expect(resolveNetGridRoster([], 0)).toEqual([]);
+    expect(resolveNetGridRoster([], -2)).toEqual([]);
+  });
+
+  it("is deterministic for the same inputs (host and guest agree)", () => {
+    const a = resolveNetGridRoster(["HAM", "LEC"], 5);
+    const b = resolveNetGridRoster(["HAM", "LEC"], 5);
+    expect(a).toEqual(b);
   });
 });

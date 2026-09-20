@@ -131,6 +131,23 @@ export function renderTowerHtml(entries: readonly TowerEntry[]): string {
 }
 
 /**
+ * Pairs each rival with its live progress for the tower builders below -
+ * shared by Car.tsx (live HUD) and NetHost (broadcast), so both rank the
+ * same field the same way. Missing progress (a car that has not ticked
+ * yet) reads as a stopped car at the line, never as absent.
+ */
+export function towerOpponents(
+  rivals: readonly { code: string; color: string }[],
+  opponents: readonly (RaceProgress | undefined)[]
+): { code: string; color: string; progress: RaceProgress }[] {
+  return rivals.map((rival, k) => ({
+    code: rival.code,
+    color: rival.color,
+    progress: opponents[k] ?? { lapCount: 0, progressMeters: 0 },
+  }));
+}
+
+/**
  * Builds tower entries (positions + gaps) for the player plus every
  * opponent from live progress. Gap meters convert with the follower's own
  * speed (see renderTowerHtml); a stopped follower floors at a crawl so

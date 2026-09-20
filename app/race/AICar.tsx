@@ -55,6 +55,7 @@ import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
 import type { QualifyingTimes } from "@/lib/race/qualifying";
+import type { CarPose } from "@/lib/net/snapshots";
 import type { TrackData } from "@/lib/tracks/types";
 
 /**
@@ -90,6 +91,8 @@ export function AICar({
   sharedRewindActiveRef,
   gridSlotIndex = 1,
   aiIndex = 0,
+  netInputRef,
+  carPosesRef,
   bodyColor = "#ff5a3c",
   audioRef,
 }: {
@@ -120,6 +123,22 @@ export function AICar({
    */
   gridSlotIndex?: number;
   aiIndex?: number;
+  /**
+   * Remote-human driving (plan section 16): when present, this car is a
+   * guest's car simulated on the host - inputs come over the net instead
+   * of the path follower, always with auto gears (a guest's manual shifts
+   * don't cross the wire; pace matches to within gearing). Stale input
+   * (guest lagged or gone >500ms) falls back to the path follower, so a
+   * dropped guest's car keeps racing as AI instead of parking on track.
+   * Absent entirely for solo AI (and every AI on guests, which don't
+   * simulate at all).
+   */
+  netInputRef?: React.RefObject<{ throttle: number; brake: number; steer: number; atMs: number } | null>;
+  /**
+   * Per-slot pose table (see Scene.tsx) - written every physics tick for
+   * the host's snapshot broadcast. Keyed by grid slot (see gridSlotIndex).
+   */
+  carPosesRef?: React.RefObject<Record<number, CarPose>>;
   /** Garage pick (see lib/race/roster.ts) - this rival's own team livery. */
   bodyColor?: string;
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
@@ -292,7 +311,15 @@ export function AICar({
     // path follower's target-speed logic and applyCarControls' steer-scale/
     // traction-control gating.
     const speedMs = computeSignedForwardSpeed(body.linvel(), yaw);
-    const controls = computeAIControls(racingLine, pos.x, pos.z, yaw, speedMs);
+    // Remote-human driving (see netInputRef): fresh guest input wins;
+    // stale or absent input falls back to the path follower, so this car
+    // is always a real AI opponent even with no guest attached.
+    const netInput = netInputRef?.current ?? null;
+    const netFresh = netInput !== null && Date.now() - netInput.atMs < 500;
+    const controls =
+      netFresh && netInput
+        ? { throttle: netInput.throttle, brake: netInput.brake, steer: netInput.steer }
+        : computeAIControls(racingLine, pos.x, pos.z, yaw, speedMs);
 
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
     const raceStarted = raceStartRef?.current ?? true;
@@ -345,6 +372,16 @@ export function AICar({
     applyDragImpulse(body, "high-downforce", world.timestep);
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
     aiBufferRef.current.push(snapshotOf(body));
+    if (carPosesRef) {
+      const rot = body.rotation();
+      const lv = body.linvel();
+      const pp = body.translation();
+      carPosesRef.current[gridSlotIndex] = {
+        position: [pp.x, pp.y, pp.z],
+        rotation: [rot.x, rot.y, rot.z, rot.w],
+        linvel: [lv.x, lv.y, lv.z],
+      };
+    }
   });
 
   useFrame(() => {

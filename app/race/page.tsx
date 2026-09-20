@@ -11,9 +11,11 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
-import { parseDriverCode, parseTeamId, resolveFieldRoster } from "@/lib/race/roster";
+import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
+import { netRoom } from "@/lib/net/peer";
+import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
@@ -45,24 +47,72 @@ export default function RacePage() {
 function RaceContent() {
   const searchParams = useSearchParams();
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
-  const champRound = parseChampRound(searchParams.get("champ"));
-  const sessionMode = parseSessionMode(searchParams.get("mode"));
   const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
-  // Explicit grid only (?grid= from a qualifying result or the
-  // championship panel) - the race never reads the season itself, so grid
-  // assignment stays synchronous with spawning.
-  const playerGridSpot = parseGridSpot(searchParams.get("grid"));
   const rivalCount = parseRivals(searchParams.get("rivals"));
+  // Plan section 16 (online multiplayer): a live room turns this visit
+  // into a net session (?room= + ?role= + ?slot=, all set by the lobby's
+  // START navigation). The room lives in a module singleton that survives
+  // client-side navigation - but NOT a hard refresh, which lands back in
+  // solo exactly (same track, same garage, local AI): a refresh must never
+  // strand a driver in a half-joined ghost room.
+  const roomCode = searchParams.get("room");
+  const roleParam = searchParams.get("role");
+  const roomState = typeof window === "undefined" ? null : netRoom.getState();
+  const netRole: "host" | "guest" | null =
+    roomCode !== null &&
+    isRoomCode(roomCode) &&
+    (roleParam === "host" || roleParam === "guest") &&
+    roomState !== null &&
+    roomState.code === roomCode &&
+    roomState.role === roleParam &&
+    roomState.status !== "idle"
+      ? roleParam
+      : null;
+  const netActive = netRole !== null;
+  const netSlot = (() => {
+    if (!netActive) return null;
+    if (netRole === "host") return 0;
+    const n = parseInt(searchParams.get("slot") ?? "", 10);
+    return Number.isInteger(n) && n >= 1 && n <= MAX_FIELD_SIZE - 1 ? n : null;
+  })();
+  // A guest slot that doesn't validate degrades to solo rather than
+  // spawning two cars in one slot.
+  const netValid = !netActive || netSlot !== null;
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
   // Garage pick from the home screen (see lib/race/roster.ts): the player
   // runs their own team's primary, and every rival runs its own team's
-  // primary - a full grid dresses per team, like the real thing.
-  const { team, driver, rivals } = resolveFieldRoster(
+  // primary - a full grid dresses per team, like the real thing. In net
+  // rooms the humans come from the lobby roster (join order = grid
+  // order) with the same deterministic AI fill on both sides (see
+  // resolveNetGridRoster), so host and guest dress the same grid.
+  const { team, driver, rivals: soloRivals } = resolveFieldRoster(
     parseTeamId(searchParams.get("team")),
     parseDriverCode(searchParams.get("driver")),
     rivalCount
   );
+  const playerSlot = netActive && netSlot !== null ? netSlot : 0;
+  const rivals = !netActive || !netValid
+    ? soloRivals
+    : (() => {
+        const members = roomState?.members ?? [];
+        const humans = members.map((m) => ({ code: m.driver.code, color: m.driver.color }));
+        const totalCars = rivalCount + 1;
+        const fill = resolveNetGridRoster(
+          humans.map((h) => h.code),
+          Math.max(0, totalCars - humans.length)
+        );
+        const grid = [...humans, ...fill];
+        return grid
+          .map((entry, slot) => ({ entry, slot }))
+          .filter(({ slot }) => slot !== playerSlot)
+          .map(({ entry }) => entry);
+      })();
+  const playerGridSpot = netActive && netValid ? playerSlot + 1 : parseGridSpot(searchParams.get("grid"));
+  const sessionMode = netActive && netValid ? "race" : parseSessionMode(searchParams.get("mode"));
+  const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
+  const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
+  const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
   // Resolved per-render from the selected track - only changes on a URL
   // change (this page is client-only with no other state), so the build
@@ -109,7 +159,7 @@ function RaceContent() {
   return (
     <div className={styles.wrap}>
       <Scene
-        key={`${track.id}-${rivals.length}-${sessionMode}`}
+        key={`${track.id}-${rivals.length}-${sessionMode}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
         rivals={rivals}
@@ -135,6 +185,9 @@ function RaceContent() {
         raceLaps={raceLaps}
         champRound={champRound}
         sessionMode={sessionMode}
+        netRole={netActive && netValid ? netRole : null}
+        netHumanSlots={(netActive && netValid ? (roomState?.members ?? []) : []).map((_, index) => index)}
+        countdownGoAtMs={countdownGoAtMs}
         qualiFormat={qualiFormat}
         playerGridSpot={playerGridSpot}
         countdownRef={countdownRef}

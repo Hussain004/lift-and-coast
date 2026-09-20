@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTowerEntries, computeRacePosition, computeRacePositions, renderTowerHtml } from "../lib/race/racePosition";
+import { buildTowerEntries, computeRacePosition, computeRacePositions, renderTowerHtml, towerOpponents } from "../lib/race/racePosition";
 
 const TRACK_LENGTH = 5891;
 
@@ -104,5 +104,19 @@ describe("buildTowerEntries + renderTowerHtml", () => {
     );
     expect(renderTowerHtml(entries)).not.toContain("<b>");
     expect(renderTowerHtml(entries)).toContain("&lt;b&gt;");
+  });
+});
+
+describe("towerOpponents", () => {
+  it("pairs rivals with progress and defaults missing cars to the line", () => {
+    const out = towerOpponents(
+      [
+        { code: "A", color: "#111111" },
+        { code: "B", color: "#222222" },
+      ],
+      [{ lapCount: 1, progressMeters: 100 }]
+    );
+    expect(out[0]).toEqual({ code: "A", color: "#111111", progress: { lapCount: 1, progressMeters: 100 } });
+    expect(out[1]).toEqual({ code: "B", color: "#222222", progress: { lapCount: 0, progressMeters: 0 } });
   });
 });

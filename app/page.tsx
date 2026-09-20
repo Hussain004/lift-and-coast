@@ -1,4 +1,5 @@
 import { Championship } from "./Championship";
+import { Multiplayer } from "./Multiplayer";
 import { SaveTransfer } from "./SaveTransfer";
 import { SessionSetup } from "./SessionSetup";
 import { TeamSetup } from "./TeamSetup";
@@ -44,6 +45,12 @@ export default function Home() {
           <b>03</b> SEASON
         </p>
         <Championship />
+      </div>
+      <div className={styles.section}>
+        <p className={styles.eyebrow}>
+          <b>04</b> MULTIPLAYER
+        </p>
+        <Multiplayer />
       </div>
       <p className={styles.tip}>
         Lift &amp; coast: it&apos;s not slow, it&apos;s strategic.

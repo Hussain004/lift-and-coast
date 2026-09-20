@@ -1,0 +1,112 @@
+"use client";
+
+import { useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import { F1CarBody } from "./F1CarBody";
+import {
+  bracketSnapshots,
+  interpolatePose,
+  renderTimestamp,
+  type CarPose,
+  type TimedSnapshot,
+} from "@/lib/net/snapshots";
+
+export interface RemoteCarFrame {
+  pose: CarPose;
+  speedMs: number;
+}
+
+/**
+ * A remotely-driven car (plan section 16): pure rendering, no physics.
+ * Guests don't simulate anyone but themselves - every other car (host,
+ * other guests, AI) arrives as snapshots (see NetClient) and is posed
+ * here by interpolation, with wheels spun from the snapshot speed. No
+ * collider, no controller, no lap timer: laps and timing are the host's
+ * job, this car just needs to look right. Missing buffers (slot with no
+ * snapshots yet) render parked at the origin until data arrives - a
+ * joined-late car fades in by construction rather than needing a case.
+ */
+export function RemoteCar({
+  buffersRef,
+  slot,
+  markerIndex,
+  minimapMarkerEls,
+  bodyColor = "#ff5a3c",
+}: {
+  /** Per-slot snapshot buffers owned by NetClient (see snapshots.ts). */
+  buffersRef?: React.RefObject<Record<number, TimedSnapshot<RemoteCarFrame>[]>>;
+  /** Grid slot this car renders (see gridSlot in grid.ts). */
+  slot: number;
+  /** Index into the minimap dots (rivals order, see page.tsx). */
+  markerIndex: number;
+  minimapMarkerEls?: React.RefObject<(SVGCircleElement | null)[]>;
+  bodyColor?: string;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const steerRefs = useRef<(THREE.Group | null)[]>([]);
+  const spinRefs = useRef<(THREE.Group | null)[]>([]);
+  const spinAngleRef = useRef(0);
+  const lastFrameRef = useRef<TimedSnapshot<RemoteCarFrame> | null>(null);
+
+  useFrame((_, dt) => {
+    const group = groupRef.current;
+    if (!group) return;
+    const buffer = buffersRef?.current?.[slot];
+    const atMs = renderTimestamp(Date.now());
+    const bracket = buffer ? bracketSnapshots(buffer, atMs) : null;
+    let frame: TimedSnapshot<RemoteCarFrame> | null = null;
+    if (bracket !== null) {
+      if ("exact" in bracket) {
+        frame = { atMs, state: bracket.exact };
+      } else {
+        const u = bracket.u;
+        frame = {
+          atMs,
+          state: {
+            pose: interpolatePose(bracket.a.state.pose, bracket.b.state.pose, u),
+            speedMs:
+              bracket.a.state.speedMs + (bracket.b.state.speedMs - bracket.a.state.speedMs) * u,
+          },
+        };
+      }
+    }
+    if (frame) {
+      lastFrameRef.current = frame;
+      group.position.set(
+        frame.state.pose.position[0],
+        frame.state.pose.position[1],
+        frame.state.pose.position[2]
+      );
+      group.quaternion.set(
+        frame.state.pose.rotation[0],
+        frame.state.pose.rotation[1],
+        frame.state.pose.rotation[2],
+        frame.state.pose.rotation[3]
+      );
+      group.visible = true;
+    } else if (!lastFrameRef.current) {
+      group.visible = false;
+      return;
+    }
+    const speed = (frame ?? lastFrameRef.current)?.state.speedMs ?? 0;
+    // Fixed wheel radius approximation for the spin read - matches the
+    // visual radius closely enough that nobody can tell at race distance.
+    spinAngleRef.current += (speed / 0.33) * Math.min(dt, 0.1);
+    spinRefs.current.forEach((spin) => {
+      if (spin) spin.rotation.x = spinAngleRef.current;
+    });
+    const marker = minimapMarkerEls?.current?.[markerIndex];
+    if (marker) {
+      marker.setAttribute("cx", group.position.x.toFixed(1));
+      marker.setAttribute("cy", group.position.z.toFixed(1));
+    }
+  });
+
+  return (
+    <group ref={groupRef} visible={false}>
+      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
+    </group>
+  );
+}
+

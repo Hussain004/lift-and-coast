@@ -48,11 +48,12 @@ import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } fr
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
+import type { CarPose } from "@/lib/net/snapshots";
 import { gridSlot } from "@/lib/race/grid";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
-import { computeRacePositions, buildTowerEntries, renderTowerHtml, type RaceState } from "@/lib/race/racePosition";
+import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
@@ -132,6 +133,11 @@ export function Car({
   playerGridSpot = null,
   playerCode = "YOU",
   rivals = [],
+  playerInputRef,
+  carPosesRef,
+  netResultRef,
+  netActive = false,
+  netSlot = 0,
   raceStartRef,
   sharedRewindActiveRef,
   qualifyingRef,
@@ -202,6 +208,24 @@ export function Car({
   playerGridSpot?: number | null;
   /** The player's FIA code for the tower (see page.tsx's roster pick). */
   playerCode?: string;
+  /**
+   * Net-room telemetry taps (plan section 16) - all owned by Scene.tsx:
+   * playerInputRef carries this car's gated inputs for the guest upload,
+   * carPosesRef collects every simulated car by grid slot for the host
+   * broadcast, netResultRef carries the host's authoritative finishing
+   * order (guests show it instead of their locally computed one), and
+   * netActive marks a net room (championship never scores net exhibitions,
+   * on any side).
+   */
+  playerInputRef?: React.RefObject<{ throttle: number; brake: number; steer: number } | null>;
+  carPosesRef?: React.RefObject<Record<number, CarPose>>;
+  netResultRef?: React.RefObject<{ positions: Record<string, number>; winnerCode: string } | null>;
+  netActive?: boolean;
+  /**
+   * This car's grid slot (0-based, see page.tsx's playerSlot): the key
+   * into the host's slot-keyed finishing board (see netResultRef).
+   */
+  netSlot?: number;
   /**
    * The rivals in field order (see resolveFieldRoster): code + livery per
    * car for the tower, and the count sizes the qualifying session. Fixed
@@ -604,6 +628,16 @@ export function Car({
       ? driveInput
       : { ...driveInput, throttle: 0, deploy: false };
 
+    // Guest input upload reads the gated inputs actually applied (see
+    // playerInputRef) - what the car does, not what the keys say.
+    if (playerInputRef) {
+      playerInputRef.current = {
+        throttle: gatedDriveInput.throttle,
+        brake: gatedDriveInput.brake,
+        steer: gatedDriveInput.steer,
+      };
+    }
+
     const energyStatus = energySystemRef.current.update(
       { brakeAmount: gatedDriveInput.brake, deployRequested: gatedDriveInput.deploy },
       world.timestep
@@ -683,6 +717,16 @@ export function Car({
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
 
     rewindBufferRef.current.push(snapshotOf(body));
+    if (carPosesRef) {
+      const rot = body.rotation();
+      const lv = body.linvel();
+      const pp = body.translation();
+      carPosesRef.current[(playerGridSpot ?? 1) - 1] = {
+        position: [pp.x, pp.y, pp.z],
+        rotation: [rot.x, rot.y, rot.z, rot.w],
+        linvel: [lv.x, lv.y, lv.z],
+      };
+    }
   });
 
   function renderSectors() {
@@ -834,11 +878,7 @@ export function Car({
       if (towerRef?.current && towerFrameRef.current % 6 === 0) {
         const entries = buildTowerEntries(
           { code: playerCode, color: bodyColor, progress: raceRef.current.player },
-          rivals.map((rival, k) => ({
-            code: rival.code,
-            color: rival.color,
-            progress: raceRef.current?.opponents[k] ?? { lapCount: 0, progressMeters: 0 },
-          })),
+          towerOpponents(rivals, raceRef.current.opponents),
           track.lengthMeters
         );
         towerRef.current.innerHTML = renderTowerHtml(entries);
@@ -916,8 +956,14 @@ export function Car({
             )
           : [1];
         const finalPosition = finalPositions[0];
+        // Net rooms: the host's broadcast order is the result (see
+        // netResultRef) - every guest shows the same board, and nobody
+        // scores a championship round from an exhibition. Slot-keyed, so
+        // shared driver codes can't collide.
+        const netPositions = netActive ? netResultRef?.current?.positions ?? null : null;
+        const shownPosition = netPositions?.[String(netSlot)] ?? finalPosition;
         let championshipSuffix = "";
-        if (champRound !== null) {
+        if (champRound !== null && !netActive) {
           championshipSuffix =
             `  //  ROUND ${champRound + 1}: P${finalPosition} (+${pointsForPosition(finalPosition)} PTS)`;
           // Fire-and-forget, same as the personal-best write below: the
@@ -925,7 +971,7 @@ export function Car({
           recordChampionshipResult(champRound, finalPosition).catch(() => {});
         }
         raceResultRef.current.textContent =
-          `P${finalPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
+          `P${shownPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
           championshipSuffix +
           `  //  PRESS ENTER TO RESTART`;
       }

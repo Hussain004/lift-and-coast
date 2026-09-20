@@ -96,9 +96,7 @@ export interface FieldRival {
   teamId: string;
   /** Livery color for the car, tower chip and minimap dot. */
   color: string;
-}
-
-export interface FieldRoster {
+}export interface FieldRoster {
   team: RosterTeam;
   driver: RosterDriver;
   /** Opponents in deterministic roster order, capped at the request. */
@@ -138,4 +136,43 @@ export function resolveFieldRoster(
     if (rivals.length >= count) break;
   }
   return { team, driver, rivals };
+}
+
+export interface NetGridDriver {
+  code: string;
+  name: string;
+  teamId: string;
+  color: string;
+}
+
+/**
+ * Plan section 16 (online multiplayer): deterministic AI fill for a net
+ * grid. Humans (lobby join order, own liveries) take the first slots; the
+ * remaining slots go to the first drivers in roster order whose codes no
+ * human holds. Pure over the same inputs on host and guest, so both sides
+ * dress the same grid without a round-trip - the only shared state is the
+ * lobby roster both already have.
+ */
+export function resolveNetGridRoster(
+  humanCodes: readonly string[],
+  aiCount: number
+): NetGridDriver[] {
+  const taken = new Set(humanCodes);
+  const fill: NetGridDriver[] = [];
+  const want = Number.isFinite(aiCount) ? Math.max(0, Math.floor(aiCount)) : 0;
+  for (const candidateTeam of TEAMS) {
+    for (const candidate of candidateTeam.drivers) {
+      if (fill.length >= want) break;
+      if (taken.has(candidate.code)) continue;
+      taken.add(candidate.code);
+      fill.push({
+        code: candidate.code,
+        name: candidate.name,
+        teamId: candidateTeam.id,
+        color: candidateTeam.primaryColor,
+      });
+    }
+    if (fill.length >= want) break;
+  }
+  return fill;
 }
