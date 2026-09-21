@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PROTOCOL_VERSION,
   ROOM_CODE_LENGTH,
   isRoomCode,
   makeRoomCode,
@@ -49,12 +50,12 @@ describe("parseNetMessage", () => {
   it("accepts a hello with a well-formed driver", () => {
     const msg = parseNetMessage({
       type: "hello",
-      version: 1,
+      version: PROTOCOL_VERSION,
       driver: { code: "VER", name: "V", teamId: "red-bull", color: "#3671c6" },
     });
     expect(msg).toEqual({
       type: "hello",
-      version: 1,
+      version: PROTOCOL_VERSION,
       driver: { code: "VER", name: "V", teamId: "red-bull", color: "#3671c6" },
     });
   });
@@ -113,5 +114,34 @@ describe("leave handshake", () => {
     });
     expect(parseNetMessage({ type: "bye", reason: 42 })).toBeNull();
     expect(parseNetMessage({ type: "bye" })).toBeNull();
+  });
+});
+
+describe("start handshake", () => {
+  it("takes a bare ready from a guest", () => {
+    expect(parseNetMessage({ type: "ready" })).toEqual({ type: "ready" });
+  });
+
+  it("carries a go stamp, rejecting a missing or non-numeric one", () => {
+    expect(parseNetMessage({ type: "go", atMs: 1234 })).toEqual({ type: "go", atMs: 1234 });
+    expect(parseNetMessage({ type: "go" })).toBeNull();
+    expect(parseNetMessage({ type: "go", atMs: "soon" })).toBeNull();
+  });
+
+  it("guards the guest's own pose sample field by field", () => {
+    const base = {
+      type: "pose",
+      slot: 1,
+      position: [1, 2, 3],
+      rotation: [0, 0, 0, 1],
+      linvel: [0, 0, -12],
+      speedMs: 12,
+    };
+    expect(parseNetMessage(base)).toEqual(base);
+    expect(parseNetMessage({ ...base, slot: undefined })).toBeNull();
+    expect(parseNetMessage({ ...base, position: [1, 2] })).toBeNull();
+    expect(parseNetMessage({ ...base, rotation: [0, 0, 0] })).toBeNull();
+    expect(parseNetMessage({ ...base, linvel: [0, "fast", 0] })).toBeNull();
+    expect(parseNetMessage({ ...base, speedMs: null })).toBeNull();
   });
 });

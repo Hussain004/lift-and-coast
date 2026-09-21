@@ -437,6 +437,12 @@ function HostLobby({
               tod: prefs.timeOfDay,
             };
             const slots = lobbySlots(effective);
+            // The go time travels for compatibility only: the race page's
+            // countdown holds on "3" until the room is actually ready (every
+            // guest reports that its scene is live), then runs one 3-2-1 off
+            // one host-stamped instant - see NetHost.signalGo/NetClient.
+            // A fixed offset from here used to let the host launch while a
+            // cold guest was still loading three.js and rapier.
             const atMs = Date.now() + 4000;
             netRoom.broadcast({ type: "start", settings, slots, atMs });
             netRoom.setSettings(settings);

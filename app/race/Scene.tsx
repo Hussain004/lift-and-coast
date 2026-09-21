@@ -12,7 +12,7 @@ import {
 import { Car } from "./Car";
 import { AICar } from "./AICar";
 import { RemoteCar, type RemoteCarFrame } from "./RemoteCar";
-import { NetClient, NetHost } from "./NetSync";
+import { NetClient, NetHost, type NetPoseState } from "./NetSync";
 import type { CarPose, TimedSnapshot } from "@/lib/net/snapshots";
 import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
@@ -48,6 +48,7 @@ function RaceStartCountdown({
   raceStartRef,
   countdownRef,
   goAtMs = 0,
+  goGate,
 }: {
   raceStartRef: React.RefObject<boolean>;
   countdownRef: React.RefObject<HTMLDivElement | null>;
@@ -61,6 +62,16 @@ function RaceStartCountdown({
    * the Date.now() subtraction happens inside useFrame, never in render.
    */
   goAtMs?: number;
+  /**
+   * Net rooms wait for the room's own go instead of the URL stamp: the
+   * guest's scene mounts at a different moment from the host's (three.js +
+   * rapier + track build), so a fixed goAt from the lobby let the host
+   * launch while a guest was still loading - the +1390m "gap" at lights
+   * out. Here the countdown holds on "3" until the gate opens (host: when
+   * every guest reports ready; guest: when the host's go arrives), then
+   * runs the same 3-2-1 off the same stamp. See NetHost.signalGo.
+   */
+  goGate?: { atMs: React.RefObject<number>; signalled: React.RefObject<boolean> };
 }) {
   const elapsedRef = useRef(0);
   const finishedRef = useRef(false);
@@ -69,8 +80,15 @@ function RaceStartCountdown({
   useFrame((_, dt) => {
     if (finishedRef.current) return;
     if (!startedRef.current) {
+      // Hold the grid (throttle stays locked via raceStartRef) until the
+      // room is actually ready to go.
+      if (goGate && !goGate.signalled.current) {
+        if (countdownRef.current) countdownRef.current.textContent = "3";
+        return;
+      }
+      const goAt = goGate ? goGate.atMs.current : goAtMs;
       startedRef.current = true;
-      const delayMs = goAtMs > 0 ? Math.max(0, goAtMs - Date.now()) : 0;
+      const delayMs = goAt > 0 ? Math.max(0, goAt - Date.now()) : 0;
       elapsedRef.current = -delayMs / 1000;
     }
     elapsedRef.current += dt;
@@ -575,6 +593,19 @@ export function Scene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rivals.length]
   );
+  // Per-rival authoritative guest pose (see NetSync's NetPoseState): the
+  // guest is the final word on its own car, so the host nudges its
+  // simulated copy toward these samples when they diverge.
+  const netPoseRefs = useMemo(
+    () => rivals.map(() => ({ current: null as NetPoseState | null })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rivals.length]
+  );
+  // Shared lights-out gate (see NetHost.signalGo / RaceStartCountdown's
+  // goGate): net rooms hold the whole grid until every driver's scene is
+  // live, then run one countdown off one stamp.
+  const netGoAtRef = useRef(0);
+  const netGoSignalledRef = useRef(false);
   // Shared rewind flag (see Car.tsx's sharedRewindActiveRef): the player
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
@@ -681,6 +712,7 @@ export function Scene({
                     : undefined
                 }
                 carPosesRef={netRole === "host" ? carPosesRef : undefined}
+                netPoseRef={netRole === "host" ? netPoseRefs[k] : undefined}
                 bodyColor={rival.color}
                 audioRef={audioRef}
               />
@@ -711,6 +743,9 @@ export function Scene({
             aiSlots={aiSlots}
             netResultRef={netResultRef}
             netInputRefs={netInputRefs}
+            netPoseRefs={netPoseRefs}
+            goAtRef={netGoAtRef}
+            goSignalledRef={netGoSignalledRef}
           />
         )}
         {netRole === "guest" && (
@@ -723,6 +758,8 @@ export function Scene({
             raceResultRef={raceResultRef}
             playerSlot={playerSlot}
             slotToOpponent={slotToOpponent}
+            goAtRef={netGoAtRef}
+            goSignalledRef={netGoSignalledRef}
           />
         )}
       </Physics>
@@ -731,6 +768,11 @@ export function Scene({
         raceStartRef={raceStartRef}
         countdownRef={countdownRef}
         goAtMs={countdownGoAtMs}
+        goGate={
+          netRole !== null
+            ? { atMs: netGoAtRef, signalled: netGoSignalledRef }
+            : undefined
+        }
       />
     </Canvas>
   );

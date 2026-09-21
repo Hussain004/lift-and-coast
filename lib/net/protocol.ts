@@ -8,7 +8,13 @@
 // message, never a crash. Versioned (`PROTOCOL_VERSION`) so a mismatched
 // client gets a clean rejection instead of a silent misread.
 
-export const PROTOCOL_VERSION = 1;
+// v2: adds the ready/go start handshake (guests acknowledge their scene
+// is live before lights-out - the host no longer races off while a guest
+// is still loading) and guest->host pose authority (the host blends its
+// copy of a guest's car toward the guest's own reported pose, which ends
+// the guest-side correction jitter). Cross-version rooms are rejected at
+// hello, so v1 peers can never half-understand a v2 room.
+export const PROTOCOL_VERSION = 2;
 
 /** Room codes are short, URL-safe, and human-readable over voice. */
 export const ROOM_CODE_LENGTH = 6;
@@ -95,6 +101,19 @@ export type NetMessage =
   | { type: "roster"; roster: RosterMember[] }
   | { type: "settings"; settings: NetSettings }
   | { type: "start"; settings: NetSettings; slots: Record<string, number>; atMs: number }
+  /** Guest -> host: my scene is live, I can take a lights-out time. */
+  | { type: "ready" }
+  /** Host -> all: lights-out alignment time (see RaceStartCountdown). */
+  | { type: "go"; atMs: number }
+  /** Guest -> host: authoritative pose for the guest's own car. */
+  | {
+      type: "pose";
+      slot: number;
+      position: [number, number, number];
+      rotation: [number, number, number, number];
+      linvel: [number, number, number];
+      speedMs: number;
+    }
   | { type: "input"; seq: number; throttle: number; brake: number; steer: number }
   | { type: "snapshot"; tick: number; cars: NetCarSnapshot[]; tower: NetTowerRow[] }
   /**
@@ -128,17 +147,21 @@ export interface NetTowerRow {
   isPlayer: boolean;
 }
 
+function isVec3(value: unknown): value is [number, number, number] {
+  return Array.isArray(value) && value.length === 3 && value.every((e) => typeof e === "number");
+}
+
+function isVec4(value: unknown): value is [number, number, number, number] {
+  return Array.isArray(value) && value.length === 4 && value.every((e) => typeof e === "number");
+}
+
 function isNetCarSnapshot(value: unknown): value is NetCarSnapshot {
   if (!isRecord(value)) return false;
-  const num3 = (v: unknown): v is [number, number, number] =>
-    Array.isArray(v) && v.length === 3 && v.every((e) => typeof e === "number");
-  const num4 = (v: unknown): v is [number, number, number, number] =>
-    Array.isArray(v) && v.length === 4 && v.every((e) => typeof e === "number");
   return (
     typeof value.slot === "number" &&
-    num3(value.position) &&
-    num4(value.rotation) &&
-    num3(value.linvel) &&
+    isVec3(value.position) &&
+    isVec4(value.rotation) &&
+    isVec3(value.linvel) &&
     typeof value.speedMs === "number" &&
     typeof value.lapCount === "number" &&
     typeof value.progressMeters === "number"
@@ -189,6 +212,30 @@ export function parseNetMessage(value: unknown): NetMessage | null {
       }
       if (!numberField(value.atMs)) return null;
       return { type: "start", settings: value.settings, slots, atMs: value.atMs };
+    }
+    case "ready":
+      return { type: "ready" };
+    case "go":
+      if (!numberField(value.atMs)) return null;
+      return { type: "go", atMs: value.atMs };
+    case "pose": {
+      if (
+        !numberField(value.slot) ||
+        !isVec3(value.position) ||
+        !isVec4(value.rotation) ||
+        !isVec3(value.linvel) ||
+        !numberField(value.speedMs)
+      ) {
+        return null;
+      }
+      return {
+        type: "pose",
+        slot: value.slot,
+        position: [value.position[0], value.position[1], value.position[2]],
+        rotation: [value.rotation[0], value.rotation[1], value.rotation[2], value.rotation[3]],
+        linvel: [value.linvel[0], value.linvel[1], value.linvel[2]],
+        speedMs: value.speedMs,
+      };
     }
     case "input":
       if (

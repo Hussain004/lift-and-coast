@@ -64,6 +64,7 @@ import {
   type RaceObstacle,
   type RaceRival,
 } from "@/lib/ai/racecraft";
+import type { NetPoseState } from "./NetSync";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import {
@@ -161,6 +162,7 @@ export function AICar({
   trafficRef,
   trafficKey,
   netInputRef,
+  netPoseRef,
   carPosesRef,
   bodyColor = "#ff5a3c",
   audioRef,
@@ -230,6 +232,15 @@ export function AICar({
    * simulate at all).
    */
   netInputRef?: React.RefObject<{ throttle: number; brake: number; steer: number; atMs: number } | null>;
+  /**
+   * The guest's own pose for this car (see NetSync's NetPoseState), written
+   * by NetHost on its "pose" stream. The host's simulation is the shared
+   * truth, but a guest is the final word on its own car, so a divergence
+   * beyond a few metres is nudged out here (never a teleport) - that is
+   * what keeps the guest's screen and everyone else's agreeing instead of
+   * fighting, which is what the pre-fix jitter was.
+   */
+  netPoseRef?: React.RefObject<NetPoseState | null>;
   /**
    * Per-slot pose table (see Scene.tsx) - written every physics tick for
    * the host's snapshot broadcast. Keyed by grid slot (see gridSlotIndex).
@@ -344,6 +355,34 @@ export function AICar({
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
+
+    // Guest pose reconciliation (see netPoseRef): a guest's car is
+    // simulated here from its inputs, but the guest is driving its own copy
+    // at the same time - if the two part ways (a contact resolved
+    // differently, a starved input stretch), the guest's copy is the one
+    // they are looking at. Blend a third of the way across on gross
+    // divergence only; inside 3m, leave it alone, because nudging tiny
+    // differences every tick is what reads as jitter. Skipped entirely when
+    // the guest has gone quiet - then this car is AI-driven (see netFresh
+    // below) and the pose we hold is a stale relic.
+    const guestPose = netPoseRef?.current ?? null;
+    if (guestPose) {
+      const guestInput = netInputRef?.current ?? null;
+      const guestActive = guestInput !== null && Date.now() - guestInput.atMs < 500;
+      if (guestActive && Date.now() - guestPose.atMs < 500) {
+        const cur = body.translation();
+        const gp = guestPose.pose.position;
+        const dx = gp[0] - cur.x;
+        const dy = gp[1] - cur.y;
+        const dz = gp[2] - cur.z;
+        if (Math.hypot(dx, dy, dz) > 3) {
+          body.setTranslation(
+            { x: cur.x + dx * 0.33, y: cur.y + dy * 0.33, z: cur.z + dz * 0.33 },
+            true
+          );
+        }
+      }
+    }
 
     const pos = body.translation();
     const limitStatus = checkTrackLimits(track, pos.x, pos.z, pos.y);

@@ -5,6 +5,7 @@ import type { RapierRigidBody } from "@react-three/rapier";
 import { netRoom } from "@/lib/net/peer";
 import {
   INPUT_HZ,
+  POSE_HZ,
   SNAPSHOT_HZ,
   pushSnapshot,
   type CarPose,
@@ -17,7 +18,7 @@ import {
   type RaceProgress,
   type RaceState,
 } from "@/lib/race/racePosition";
-import type { NetCarSnapshot, NetTowerRow } from "@/lib/net/protocol";
+import type { NetCarSnapshot, NetMessage, NetTowerRow } from "@/lib/net/protocol";
 import type { TrackData } from "@/lib/tracks/types";
 import type { RemoteCarFrame } from "./RemoteCar";
 
@@ -32,6 +33,23 @@ export interface NetResultState {
   positions: Record<string, number>;
   winnerCode: string;
 }
+
+/**
+ * A guest's authoritative car pose, stamped on arrival. The host blends
+ * its locally-simulated copy of that car toward this (see AICar's
+ * netPoseRef), so what the host sees - and broadcasts - tracks the guest's
+ * own simulation instead of drifting with input latency.
+ */
+export interface NetPoseState {
+  atMs: number;
+  pose: CarPose;
+  speedMs: number;
+}
+
+/** Lights-out is broadcast this long after the last guest reports ready. */
+const GO_DELAY_MS = 1800;
+/** Safety valve: a guest whose scene never mounts can't stall the room. */
+const READY_TIMEOUT_MS = 20000;
 
 /**
  * Host side of plan section 16: broadcasts the world the host simulates.
@@ -54,6 +72,9 @@ export function NetHost({
   aiSlots,
   netResultRef,
   netInputRefs,
+  netPoseRefs,
+  goAtRef,
+  goSignalledRef,
 }: {
   raceRef: React.RefObject<RaceState>;
   carPosesRef: React.RefObject<Record<number, CarPose>>;
@@ -69,15 +90,65 @@ export function NetHost({
   netResultRef: React.RefObject<NetResultState | null>;
   /** Per-rivals-entry input ref, written by grid slot. */
   netInputRefs: { current: NetInputState | null }[];
+  /** Per-rivals-entry authoritative guest pose, written by grid slot. */
+  netPoseRefs?: React.RefObject<NetPoseState | null>[];
+  /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
+  goAtRef: React.RefObject<number>;
+  goSignalledRef: React.RefObject<boolean>;
 }) {
   // Frozen join-order roster for input routing: members may leave mid-race,
   // but slots must not shift under running cars.
   const memberPeerIds = useRef<string[]>(netRoom.memberPeerIds());
   const sentResultsRef = useRef(false);
 
+  /**
+   * Ready/go start handshake. The lobby's "start" carries no go-time any
+   * more; the guests navigate, their scenes mount, and each reports
+   * "ready". Only when every human is ready (or the safety valve fires)
+   * does the host broadcast "go" with a lights-out timestamp - host and
+   * guests both feed it to RaceStartCountdown. Previously the START
+   * message carried atMs = Date.now() + 4000, but a cold guest takes
+   * longer than 4s to load three.js + rapier WASM: the host was mid-lap
+   * while the guest sat on the grid, which read as a +1390m gap.
+   */
+  const expectedGuestsRef = useRef(0);
+  const readyPeersRef = useRef<Set<string>>(new Set());
+  const goSentRef = useRef(false);
+
+  /**
+   * The single place lights-out is decided. One shared stamp is broadcast
+   * and stamped locally, so host and guests all run the same 3-2-1 from the
+   * same instant (see Scene's goGate) instead of each off its own clock.
+   */
+  const signalGo = () => {
+    if (goSentRef.current) return;
+    goSentRef.current = true;
+    const atMs = Date.now() + GO_DELAY_MS;
+    netRoom.broadcast({ type: "go", atMs });
+    goAtRef.current = atMs;
+    goSignalledRef.current = true;
+  };
+
+  useEffect(() => {
+    const expected = Math.max(0, memberPeerIds.current.length - 1);
+    expectedGuestsRef.current = expected;
+    // Host-only room (defensive - the lobby blocks this): nothing to wait
+    // for, go now.
+    if (expected <= 0) {
+      signalGo();
+      return;
+    }
+    // Safety valve: a guest whose scene never mounts (dead tab, endless
+    // load, a lost "ready") can't hold the room hostage - go with whatever
+    // we have after the timeout.
+    const id = setTimeout(signalGo, READY_TIMEOUT_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(
     () =>
-      netRoom.onMessage((fromPeerId, msg) => {
+      netRoom.onMessage((fromPeerId, msg: NetMessage) => {
         if (msg.type === "input") {
           const slot = memberPeerIds.current.indexOf(fromPeerId);
           if (slot <= 0) return;
@@ -92,6 +163,25 @@ export function NetHost({
               };
             }
           }
+        } else if (msg.type === "pose") {
+          // The guest is authoritative over its own car: stage the pose
+          // for AICar's blend (its physics still runs so collisions and
+          // suspension stay alive; this only corrects drift).
+          if (netPoseRefs) {
+            for (let k = 0; k < aiSlots.length; k++) {
+              if (aiSlots[k] === msg.slot) {
+                netPoseRefs[k].current = {
+                  atMs: Date.now(),
+                  pose: { position: msg.position, rotation: msg.rotation, linvel: msg.linvel },
+                  speedMs: msg.speedMs,
+                };
+              }
+            }
+          }
+        } else if (msg.type === "ready") {
+          if (memberPeerIds.current.indexOf(fromPeerId) <= 0) return;
+          readyPeersRef.current.add(fromPeerId);
+          if (readyPeersRef.current.size >= expectedGuestsRef.current) signalGo();
         } else if (msg.type === "hello") {
           // No late joins mid-race: the grid was set at START.
           netRoom.dropPeer(fromPeerId, "Race already started - wait in the lobby.");
@@ -111,7 +201,10 @@ export function NetHost({
         const slot = memberPeerIds.current.indexOf(peerId);
         if (slot <= 0) return;
         for (let k = 0; k < aiSlots.length; k++) {
-          if (aiSlots[k] === slot) netInputRefs[k].current = null;
+          if (aiSlots[k] === slot) {
+            netInputRefs[k].current = null;
+            if (netPoseRefs) netPoseRefs[k].current = null;
+          }
         }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -210,6 +303,8 @@ export function NetClient({
   raceResultRef,
   playerSlot,
   slotToOpponent,
+  goAtRef,
+  goSignalledRef,
 }: {
   raceRef: React.RefObject<RaceState>;
   playerInputRef: React.RefObject<{ throttle: number; brake: number; steer: number } | null>;
@@ -221,6 +316,9 @@ export function NetClient({
   playerSlot: number;
   /** Grid slot -> raceRef.opponents index, for feeding remote progress. */
   slotToOpponent: Record<number, number>;
+  /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
+  goAtRef: React.RefObject<number>;
+  goSignalledRef: React.RefObject<boolean>;
 }) {
   const seqRef = useRef(0);
   // Host's peer id at mount (members are host-first join order): the only
@@ -238,6 +336,54 @@ export function NetClient({
   useEffect(() => {
     lastSnapshotRef.current = Date.now();
   }, []);
+
+  /**
+   * Ready handshake (see NetHost): this component only mounts once the
+   * guest's scene is live - three.js, rapier and the track mesh all built -
+   * which is exactly when the host may safely set a lights-out time. The
+   * ready is re-sent on a slow tick until the go arrives, so one dropped
+   * datagram costs a moment, not the race.
+   */
+  useEffect(() => {
+    const send = () => {
+      if (goSignalledRef.current) return;
+      const host = hostIdRef.current;
+      if (host === null) return;
+      netRoom.sendTo(host, { type: "ready" });
+    };
+    send();
+    const id = setInterval(send, 1500);
+    return () => clearInterval(id);
+  }, [goSignalledRef]);
+
+  /**
+   * Guest pose uplink: our own car's truth, from our own simulation. The
+   * host nudges its copy of this car toward these samples, so what every
+   * other driver sees of us matches what we see of ourselves instead of
+   * drifting with input latency (a starved or laggy link used to leave the
+   * host's copy AI-driving, and the guest's own correction fighting it -
+   * the jitter). Low rate, gross-error correction only: never a teleport.
+   */
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!goSignalledRef.current) return;
+      const body = chassisRef.current;
+      const host = hostIdRef.current;
+      if (!body || host === null || hostLostRef.current) return;
+      const p = body.translation();
+      const r = body.rotation();
+      const v = body.linvel();
+      netRoom.sendTo(host, {
+        type: "pose",
+        slot: playerSlot,
+        position: [p.x, p.y, p.z],
+        rotation: [r.x, r.y, r.z, r.w],
+        linvel: [v.x, v.y, v.z],
+        speedMs: Math.hypot(v.x, v.z),
+      });
+    }, 1000 / POSE_HZ);
+    return () => clearInterval(id);
+  }, [chassisRef, playerSlot, goSignalledRef]);
 
   function declareHostLost(): void {
     if (hostLostRef.current) return;
@@ -281,14 +427,26 @@ export function NetClient({
     const id = setInterval(() => {
       if (netRoom.getState().status !== "racing") return;
       if (hostIdRef.current === null) return;
+      // Only after lights-out: before the go, silence is expected (the room
+      // is waiting on readiness), not a dead host.
+      if (!goSignalledRef.current) return;
       if (Date.now() - lastSnapshotRef.current > 5000) declareHostLost();
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [goSignalledRef]);
 
   useEffect(
     () =>
       netRoom.onMessage((_, msg) => {
+        if (msg.type === "go") {
+          // Lights-out alignment from the host (see NetHost.signalGo): stamp
+          // it and open the countdown gate. The watchdog baseline restarts
+          // here too - snapshots only matter once cars are running.
+          goAtRef.current = msg.atMs;
+          goSignalledRef.current = true;
+          lastSnapshotRef.current = Date.now();
+          return;
+        }
         if (msg.type === "snapshot") {
           const now = Date.now();
           lastSnapshotRef.current = now;
@@ -320,17 +478,21 @@ export function NetClient({
               };
             }
           }
-          // Soft correction for the guest's own body: blend toward host
-          // truth past 2.5m of divergence, velocities untouched so it
-          // reads as a nudge, never a teleport.
+          // Soft correction for the guest's own body: the host's copy is
+          // input-driven and we keep uploading our own pose, so the two
+          // simulations only part ways on a contact the host resolved
+          // differently. Past 3m of divergence, blend a quarter of the way
+          // across per snapshot (velocities untouched - it reads as a nudge,
+          // never a teleport); inside 3m, do nothing at all, because chasing
+          // tiny differences is exactly what made the car jitter.
           const self = msg.cars.find((car) => car.slot === playerSlot);
           const body = chassisRef.current;
-          if (self && body) {
+          if (self && body && goSignalledRef.current) {
             const p = body.translation();
             const dx = self.position[0] - p.x;
             const dy = self.position[1] - p.y;
             const dz = self.position[2] - p.z;
-            if (Math.hypot(dx, dy, dz) > 2.5) {
+            if (Math.hypot(dx, dy, dz) > 3) {
               body.setTranslation(
                 { x: p.x + dx * 0.25, y: p.y + dy * 0.25, z: p.z + dz * 0.25 },
                 true

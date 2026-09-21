@@ -219,7 +219,15 @@ class NetRoom {
           this.setState({
             status: "lobby",
             selfId: peer.id,
-            members: [{ peerId: peer.id, driver }],
+            // The welcome carries the host's full host-first roster - adopt
+            // it wholesale. Previously this listed only ourselves, and the
+            // synthetic roster dispatch below fired before any race-side
+            // listener existed, so the guest stayed alone in its own member
+            // list: rivals were built from [self] (the host became an AI
+            // ghost), inputs routed to members[0] = ourselves (the host's
+            // copy of our car fell back to AI and "drove itself"), and the
+            // self-correction fought that diverging copy (jitter).
+            members: msg.roster.length > 0 ? msg.roster : [{ peerId: peer.id, driver }],
             settings: msg.settings,
             notice: null,
           });

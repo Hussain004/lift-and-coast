@@ -14,6 +14,14 @@ export const INTERP_DELAY_MS = 120;
 export const SNAPSHOT_TTL_MS = 1000;
 /** Input upload rate guest -> host (see NetClient). */
 export const INPUT_HZ = 30;
+/**
+ * Pose upload rate guest -> host (see NetClient/NetHost's "pose" message).
+ * The host simulates a guest's car from inputs; this slower stream is the
+ * guest's own truth for its car, used only to correct gross drift (an
+ * input-starved stretch, a divergent contact) - so a low rate is plenty
+ * and the correction is a nudge, never a visible snap.
+ */
+export const POSE_HZ = 10;
 
 export interface TimedSnapshot<T> {
   atMs: number;
