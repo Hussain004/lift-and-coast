@@ -433,6 +433,9 @@ export function NetClient({
       if (Date.now() - lastSnapshotRef.current > 5000) declareHostLost();
     }, 1000);
     return () => clearInterval(id);
+    // declareHostLost is a stable ref-only closure (see its definition); the
+    // watchdog must not re-arm on renders, so the exhaustive-deps gap stands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goSignalledRef]);
 
   useEffect(

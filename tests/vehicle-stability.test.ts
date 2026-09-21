@@ -4,6 +4,7 @@ import {
   DEFAULT_BRAKE_FORCE,
   DEFAULT_ENGINE_FORCE,
   DEFAULT_STABILIZE_STRENGTH,
+  resolveYawDampingTorque,
 } from "../lib/physics/vehicle";
 
 const TUNING = {
@@ -11,6 +12,27 @@ const TUNING = {
   brakeForce: DEFAULT_BRAKE_FORCE,
   stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
 };
+
+describe("resolveYawDampingTorque", () => {
+  it("ignores everything a car does while racing", () => {
+    // 1.2g at 60 m/s is ~1.5 rad/s; hairpin turn-in peaks under 2 rad/s.
+    expect(resolveYawDampingTorque(0)).toBe(0);
+    expect(resolveYawDampingTorque(1.5)).toBe(0);
+    expect(resolveYawDampingTorque(-1.9)).toBe(0);
+    expect(resolveYawDampingTorque(2.2)).toBe(0);
+  });
+
+  it("opposes a spin, harder the faster it spins", () => {
+    const gentle = resolveYawDampingTorque(2.5);
+    const full = resolveYawDampingTorque(4.5);
+    // Opposite sign to the spin: damping, never drive.
+    expect(gentle).toBeLessThan(0);
+    expect(resolveYawDampingTorque(-2.5)).toBeGreaterThan(0);
+    expect(full).toBeLessThan(gentle);
+    // Capped, so it can never out-muscle the tires.
+    expect(resolveYawDampingTorque(12)).toBe(full);
+  });
+});
 
 // A flipped/tipped-over car has tilted roughly 90 degrees (pi/2) or more
 // from upright. Stay well clear of that so this catches real instability,

@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  alongsideRisk,
   composeRacePace,
-  mergeOffsetFactor,
-  obstacleLateral,
-  shouldDeployBoost,
-  squeezeDecision,
   decideOvertake,
   followPaceScale,
+  mergeOffsetFactor,
+  obstacleLateral,
+  offsetTargetMeters,
+  shouldDeployBoost,
   slipstreamBonus,
+  squeezeDecision,
   trackGapMeters,
   unwrapGap,
   yieldPaceScale,
@@ -358,12 +360,92 @@ describe("target-keyed latch", () => {
 });
 
 describe("mergeOffsetFactor", () => {
-  it("holds full offset astern and washes out as the nose clears", () => {
-    expect(mergeOffsetFactor(10)).toBe(1);
+  it("holds the whole offset while the cars overlap, then wipes it out once clear", () => {
+    // Astern or alongside: hold the line (crossing now IS the contact).
+    expect(mergeOffsetFactor(20)).toBe(1);
     expect(mergeOffsetFactor(0)).toBe(1);
-    expect(mergeOffsetFactor(-1)).toBeCloseTo(0.75, 9);
-    expect(mergeOffsetFactor(-4)).toBe(0);
-    expect(mergeOffsetFactor(-10)).toBe(0);
+    expect(mergeOffsetFactor(-2)).toBe(1);
+    expect(mergeOffsetFactor(-4.5)).toBe(1);
+    // Nose a car length clear of the other's body: start crossing.
+    expect(mergeOffsetFactor(-6.5)).toBeCloseTo(0.5, 9);
+    // Fully clear: on the line.
+    expect(mergeOffsetFactor(-8.5)).toBe(0);
+    expect(mergeOffsetFactor(-20)).toBe(0);
+  });
+});
+
+describe("alongsideRisk", () => {
+  it("only fires for a car that is actually where we'd move to", () => {
+    // A car in the tower 4m up the road but on the far side of the track:
+    // my merge sweeps my own side down to the line, never across - and a
+    // dead-center car (lateral ~0) DOES block, so the sign check above is
+    // what keeps the far side out, not the band.
+    expect(
+      alongsideRisk({ others: [{ gapMeters: 4, lateralMeters: -3.5 }], ownOffsetMeters: 2.5 })
+    ).toBe(false);
+    // The same car sitting between the line and our offset: contact on the
+    // way across.
+    expect(
+      alongsideRisk({ others: [{ gapMeters: 4, lateralMeters: 0.5 }], ownOffsetMeters: 2 })
+    ).toBe(true);
+    // Alongside but a lap away in tower terms is still alongside in space.
+    expect(
+      alongsideRisk({ others: [{ gapMeters: -5, lateralMeters: 1 }], ownOffsetMeters: 2 })
+    ).toBe(true);
+    // A CONVOY: the car ahead/behind at the same wide offset as us is not
+    // between us and the line - merging home sweeps the whole queue back
+    // together instead of both of us holding the off-line lane for laps
+    // (the herding the feature exists to prevent).
+    expect(
+      alongsideRisk({ others: [{ gapMeters: -4, lateralMeters: 2.6 }], ownOffsetMeters: 2.7 })
+    ).toBe(false);
+    // Long gone: not our problem.
+    expect(
+      alongsideRisk({ others: [{ gapMeters: 30, lateralMeters: 0 }], ownOffsetMeters: 0 })
+    ).toBe(false);
+  });
+});
+
+describe("offsetTargetMeters", () => {
+  it("chases a live lunge, holds a spent one alongside, then washes out", () => {
+    expect(
+      offsetTargetMeters({
+        attempting: true,
+        attemptOffsetMeters: 2.5,
+        gapToTargetMeters: 8,
+        alongside: false,
+        currentOffsetMeters: 1,
+      })
+    ).toBe(2.5);
+    expect(
+      offsetTargetMeters({
+        attempting: true,
+        attemptOffsetMeters: 2.5,
+        gapToTargetMeters: -8.5,
+        alongside: true,
+        currentOffsetMeters: 2.5,
+      })
+    ).toBe(0);
+    // Move over: still alongside, so the line is held (not snapped across).
+    expect(
+      offsetTargetMeters({
+        attempting: false,
+        attemptOffsetMeters: 0,
+        gapToTargetMeters: 3,
+        alongside: true,
+        currentOffsetMeters: 2.2,
+      })
+    ).toBe(2.2);
+    // Nobody there any more: give the line back.
+    expect(
+      offsetTargetMeters({
+        attempting: false,
+        attemptOffsetMeters: 0,
+        gapToTargetMeters: 3,
+        alongside: false,
+        currentOffsetMeters: 2.2,
+      })
+    ).toBe(0);
   });
 });
 

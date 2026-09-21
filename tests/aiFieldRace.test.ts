@@ -23,6 +23,7 @@ import {
   computeSignedForwardSpeed,
   computeStabilizingTorque,
   createCarController,
+  resolveYawDampingTorque,
   wheelGroundPositions,
 } from "../lib/physics/vehicle";
 import { computeDownforceN } from "../lib/physics/aero";
@@ -50,9 +51,10 @@ import {
   type AIDifficulty,
 } from "../lib/ai/personalities";
 import {
+  alongsideRisk,
   composeRacePace,
-  mergeOffsetFactor,
   obstacleLateral,
+  offsetTargetMeters,
   shouldDeployBoost,
   unwrapGap,
   type RaceObstacle,
@@ -269,6 +271,20 @@ export async function simulateField(
         }
         prevOrder = order;
       }
+      if (process.env.FIELD_TRACE && i % 120 === 0) {
+        console.log(
+          `SEC t=${(i * timestep).toFixed(0)} ` +
+            cars
+              .map((c) => {
+                const cr = c.chassis.rotation();
+                const cUp = new Vector3(0, 1, 0).applyQuaternion(
+                  new Quaternion(cr.x, cr.y, cr.z, cr.w)
+                );
+                return `${c.code}@${c.progressMeters.toFixed(0)} v=${c.speedMs.toFixed(0)} off=${c.offset.toFixed(1)} tilt=${c.maxTilt.toFixed(2)} now=${cUp.angleTo(UP).toFixed(2)} att=${c.attemptKey ?? "-"} tr=${c.traveled.toFixed(0)}`;
+              })
+              .join(" | ")
+        );
+      }
       for (const car of cars) {
         const traits = traitsForDriver(car.code);
         const raceProgress = Math.min(1, Math.max(0, car.lapCount / 3));
@@ -311,28 +327,28 @@ export async function simulateField(
         const dirZ = nextPoint.position[2] - anchorPoint.position[2];
         const dirLen = Math.hypot(dirX, dirZ);
         const obstacles: RaceObstacle[] = [];
+        const others: { gapMeters: number; lateralMeters: number }[] = [];
         if (dirLen > 1e-6) {
           for (const other of cars) {
             if (other === car) continue;
             const op = other.chassis.translation();
-            obstacles.push({
-              gapMeters: unwrapGap(
-                car.lapCount,
-                car.progressMeters,
-                other.lapCount,
-                other.progressMeters,
-                track.lengthMeters
-              ),
-              speedMs: other.speedMs,
-              lateralMeters: obstacleLateral(
-                op.x,
-                op.z,
-                anchorPoint.position[0],
-                anchorPoint.position[2],
-                dirX / dirLen,
-                dirZ / dirLen
-              ),
-            });
+            const gapMeters = unwrapGap(
+              car.lapCount,
+              car.progressMeters,
+              other.lapCount,
+              other.progressMeters,
+              track.lengthMeters
+            );
+            const lateralMeters = obstacleLateral(
+              op.x,
+              op.z,
+              anchorPoint.position[0],
+              anchorPoint.position[2],
+              dirX / dirLen,
+              dirZ / dirLen
+            );
+            others.push({ gapMeters, lateralMeters });
+            obstacles.push({ gapMeters, speedMs: other.speedMs, lateralMeters });
           }
         }
         const composed = composeRacePace({
@@ -371,10 +387,22 @@ export async function simulateField(
             `t=${(i * timestep).toFixed(0)} COL gap=${ag ? ag.gapMeters.toFixed(1) : "none"} att=${car.attemptKey} off=${car.offset.toFixed(2)} v=${car.speedMs.toFixed(1)} pace=${paceMult.toFixed(3)}`
           );
         }
-        const target = decision.attempt ? decision.offsetMeters * mergeOffsetFactor(targetGap) : 0;
+        const target = offsetTargetMeters({
+          attempting: decision.attempt,
+          attemptOffsetMeters: decision.offsetMeters,
+          gapToTargetMeters: targetGap,
+          alongside: alongsideRisk({ others, ownOffsetMeters: car.offset }),
+          currentOffsetMeters: car.offset,
+          brakeZoneMeters: cornerAhead,
+        });
         const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * timestep;
         car.offset += Math.min(maxStep, Math.max(-maxStep, target - car.offset));
         car.maxOffset = Math.max(car.maxOffset, Math.abs(car.offset));
+        if (process.env.FIELD_TRACE && Math.abs(target) > 1 && Math.abs(car.offset) < 0.5) {
+          console.log(
+            `OFF car=${car.code} tick=${i} t=${(i * timestep).toFixed(1)} target=${target.toFixed(2)} key=${car.attemptKey ?? "-"} att=${decision.attempt} urgent=${decision.urgent} offReq=${decision.offsetMeters.toFixed(1)} zone=${car.zone} v=${car.speedMs.toFixed(1)} pace=${paceMult.toFixed(2)}`
+          );
+        }
         const held = i * timestep < holdSeconds;
         const parkedCar = parked.includes(car.code);
         // Push-to-Pass, the identical policy AICar runs (see
@@ -464,6 +492,12 @@ export async function simulateField(
             { x: torque[0] * timestep, y: torque[1] * timestep, z: torque[2] * timestep },
             true
           );
+        }
+        // Spin recovery (mirrors AICar): yaw-only damping above the rate a
+        // car actually corners at, so a contact can't leave a car broadside.
+        const yawDamping = resolveYawDampingTorque(car.chassis.angvel().y);
+        if (yawDamping !== 0) {
+          car.chassis.applyTorqueImpulse({ x: 0, y: yawDamping * timestep, z: 0 }, true);
         }
         car.chassis.applyImpulse(
           { x: 0, y: -computeDownforceN(car.controller.currentVehicleSpeed(), "high-downforce") * timestep, z: 0 },

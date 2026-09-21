@@ -1,5 +1,5 @@
 import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
-import { MAX_DECEL_MS2 } from "../tracks/racingLine";
+import { MAX_DECEL_MS2, maxLateralAccelMs2 } from "../tracks/racingLine";
 
 // Plan section 6: "steer toward a lookahead point on the racing line;
 // throttle/brake targets derived from curvature ahead (brake *before* the
@@ -64,6 +64,41 @@ import { MAX_DECEL_MS2 } from "../tracks/racingLine";
 const LOOKAHEAD_SECONDS = 1.0;
 const LOOKAHEAD_MIN_METERS = 24;
 const LOOKAHEAD_MAX_METERS = 50;
+/**
+ * Corner-entry preview cap (see the curvature clamp in computeAIControls).
+ * The speed-scaled preview above is validated for open road, but pure
+ * pursuit cuts INSIDE the reference line on any curve tighter than the
+ * preview is long - by roughly L^2 / (8R), so a 24m preview round a 25m
+ * hairpin runs ~3m inside the line, which is exactly the "AI clips the
+ * apex / cuts T1" symptom (Spa's La Source, Monaco's Grand Hotel). The
+ * line already rides close to the inside kerb there, so 3m inside is off
+ * the ribbon.
+ *
+ * The fix is the standard one: shrink the preview toward the corner's own
+ * radius, using the radius the speed profile itself implies (R = v^2 / a_lat
+ * at the profile speed the car is currently chasing - see
+ * maxLateralAccelMs2). That is self-consistent: the profile's backward pass
+ * already slows the car for corners ahead, so the implied radius tightens on
+ * approach AND through the corner, and the preview follows it down. On open
+ * road the implied radius is huge and the validated 24-50m preview is
+ * untouched; in a hairpin it falls to ~13-16m, where the geometric cutting
+ * error is around a meter instead of three.
+ *
+ * Measured over the 180s-per-track harness on all twenty registered
+ * circuits (the run tests/trackAIStability.test.ts performs), sweeping the
+ * fraction/floor: the worst off-track excursion of the whole set falls from
+ * 7.1m to 3.7m (Monaco; COTA 7.1 -> 1.9, Silverstone 4.1 -> 1.6, Spa 6.1 ->
+ * 2.4) at unchanged lap pace and unchanged max-tilt on every circuit except
+ * Monaco's barrier-lined streets (0.19 -> 0.34 rad, still far from the flip
+ * gate). Tighter values cut the line error further but this control law's
+ * documented chaotic sensitivity surfaced instead - at 0.75R Suzuka's
+ * max-tilt jumped to 0.74 rad - so this is the tightest setting that keeps
+ * the whole set's stability margin intact. Hence the deliberately wide-body
+ * floor as well: a preview much under ~14m made the low-speed controller
+ * twitchy, exactly as the sweep this file's history describes found.
+ */
+const LOOKAHEAD_TIGHT_FRACTION = 0.85;
+const LOOKAHEAD_TIGHT_MIN_METERS = 14;
 const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error reaches this.
 // Brake planning: how far ahead to scan the profile for its minimum. The
 // trigger below fires full brake only when the deceleration REQUIRED to
@@ -225,13 +260,37 @@ export function computeAIControls(
 ): AIControls {
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ);
+  const nearestPoint = line[nearest];
+  // Pace headroom bound: personality/tire/racecraft multipliers stack to
+  // ~1.1 at Ace (elite trait x tier x late-race tire curve). The cap bounds
+  // CORNERING overspeed above the profile - the first thing that slides -
+  // while straight-line overspeed is simply drag-limited. Ace field sims
+  // (see tests/aiFieldRace.test.ts) gate the stability of the raised
+  // ceiling.
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.12, Math.max(0.9, paceScale)) : 1;
+  const profileTarget =
+    (useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs) * clampedPace;
 
   // Preview distance scales with speed - see LOOKAHEAD_SECONDS above. Walk
   // the line by its own segment lengths rather than assuming a fixed point
   // spacing, so this stays correct if the builder's resample spacing changes.
+  // Capped by the corner's own implied radius (see LOOKAHEAD_TIGHT_*): the
+  // line's speed profile at this point already reflects every corner it is
+  // braking for, so v^2 / a_lat(v) is that corner's radius as the car
+  // experiences it, and a preview longer than the corner is what cuts the
+  // apex.
+  const impliedRadiusMeters =
+    profileTarget > 1
+      ? (profileTarget * profileTarget) / Math.max(1, maxLateralAccelMs2(profileTarget))
+      : Infinity;
+  const curvatureCapMeters = Math.max(
+    LOOKAHEAD_TIGHT_MIN_METERS,
+    impliedRadiusMeters * LOOKAHEAD_TIGHT_FRACTION
+  );
   const lookaheadMeters = Math.min(
     LOOKAHEAD_MAX_METERS,
-    Math.max(LOOKAHEAD_MIN_METERS, Math.abs(carSpeedMs) * LOOKAHEAD_SECONDS)
+    Math.max(LOOKAHEAD_MIN_METERS, Math.abs(carSpeedMs) * LOOKAHEAD_SECONDS),
+    curvatureCapMeters
   );
   let lookaheadIndex = nearest;
   let previewedMeters = 0;
@@ -269,16 +328,7 @@ export function computeAIControls(
   while (yawError < -Math.PI) yawError += 2 * Math.PI;
   const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
 
-  const nearestPoint = line[nearest];
-  // Pace headroom bound: personality/tire/racecraft multipliers stack to
-  // ~1.07 at Ace (elite trait x 1.05 tier x late-race tire curve). The cap
-  // bounds CORNERING overspeed above the profile - the first thing that
-  // slides - while straight-line overspeed is simply drag-limited. Ace
-  // field sims (see tests/aiFieldRace.test.ts) gate the stability of the
-  // raised ceiling.
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.08, Math.max(0.9, paceScale)) : 1;
-  const baseTarget =
-    (useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs) * clampedPace;
+  const baseTarget = profileTarget;
   const speedError = baseTarget - carSpeedMs;
   const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
   let brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;

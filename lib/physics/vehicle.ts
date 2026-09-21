@@ -518,7 +518,33 @@ export function computeStabilizingTorque(
 }
 
 /**
- * Aerodynamic drag opposing the chassis's actual horizontal velocity vector
+ * Spin damping for AI cars (see AICar.tsx): the stabilizing torque above
+ * only rights TILT - a side contact leaves yaw spinning freely, which is
+ * how a bumped AI ends up broadside with the car behind driving into its
+ * flank. This is a yaw-only damper that stays completely inert through
+ * normal driving: a car pulling 1.2g at 60 m/s corners at ~1.5 rad/s and a
+ * hairpin turn-in peaks near 1.9, so the threshold sits above both, and
+ * only the rates a genuine contact (or a spin) produces are damped. The
+ * torque ramps from the threshold to SPIN_DAMPING_STRENGTH over the next
+ * 1.5 rad/s and is capped there, so a flick can never fight a real slide
+ * harder than a fixed ceiling.
+ */
+const SPIN_DAMPING_THRESHOLD_RAD_S = 2.2;
+const SPIN_DAMPING_FULL_RAD_S = 3.7;
+const SPIN_DAMPING_STRENGTH = 900;
+
+export function resolveYawDampingTorque(angvelY: number): number {
+  const magnitude = Math.abs(angvelY);
+  if (magnitude <= SPIN_DAMPING_THRESHOLD_RAD_S) return 0;
+  const ramp = Math.min(
+    1,
+    (magnitude - SPIN_DAMPING_THRESHOLD_RAD_S) /
+      (SPIN_DAMPING_FULL_RAD_S - SPIN_DAMPING_THRESHOLD_RAD_S)
+  );
+  return -Math.sign(angvelY) * ramp * SPIN_DAMPING_STRENGTH;
+}
+
+/**
  * (not just forward speed), so it slows sliding as well as driving. Shared
  * between Car.tsx and the headless harness so both simulate the same car.
  */

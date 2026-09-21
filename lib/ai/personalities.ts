@@ -27,7 +27,7 @@ export function parseDifficulty(raw: string | null): AIDifficulty {
   return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
 }
 
-/** Global pace multiplier applied to every AI target speed. Ace rides ~5%
+/** Global pace multiplier applied to every AI target speed. Ace rides ~8%
  * over the reference profile - sized to run with a strong player who also
  * deploys Push-to-Pass (the AI deploys too, see lib/ai/racecraft.ts's
  * shouldDeployBoost), with the pathFollower clamp bounding the worst-case
@@ -41,7 +41,7 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
     case "pro":
       return 1.0;
     case "ace":
-      return 1.05;
+      return 1.08;
   }
 }
 
@@ -57,7 +57,7 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
     case "pro":
       return 0;
     case "ace":
-      return 0.25;
+      return 0.3;
   }
 }
 
@@ -71,7 +71,7 @@ export function difficultyMistakeScale(difficulty: AIDifficulty): number {
     case "pro":
       return 1.0;
     case "ace":
-      return 0.5;
+      return 0.35;
   }
 }
 
@@ -121,10 +121,10 @@ export const DRIVER_TIERS: Record<string, 1 | 2 | 3 | 4> = {
 };
 
 const TIER_PACE: Record<1 | 2 | 3 | 4, number> = {
-  1: 0.014,
+  1: 0.018,
   2: 0.005,
   3: -0.005,
-  4: -0.014,
+  4: -0.018,
 };
 
 const TIER_AGGRESSION: Record<1 | 2 | 3 | 4, [number, number]> = {

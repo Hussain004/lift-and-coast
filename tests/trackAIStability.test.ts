@@ -67,9 +67,11 @@ const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   sochi: 4500,
   nurburgring: 4500,
 };
-// Observed worst single off-track excursion is ~6m (down from ~23m before
-// the downforce-aware profile); this only catches a genuine runaway.
-const MAX_OFF_TRACK_METERS = 30;
+// Observed worst single off-track excursion is now 3.7m (Monaco, down from
+// 7.1m before the curvature-adaptive preview in pathFollower.ts); this gate
+// sits above that with margin so it catches a genuine runaway - the
+// pre-fix controller would fail it on COTA alone.
+const MAX_OFF_TRACK_METERS = 6;
 
 describe("per-track AI stability", () => {
   for (const { id, name } of TRACKS) {

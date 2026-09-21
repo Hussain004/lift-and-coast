@@ -180,13 +180,13 @@ export function slipstreamBonus(args: {
  * the leader's exact speed the moment they got close, which killed every
  * lunge's closing speed at birth and (with pace spreads this size) held
  * the whole field in a train. This version still caps closure - arrival
- * speed drops from +8 m/s at the window edge to +2 m/s at 3m, so nobody
- * punts anyone - but never fully cancels it: a genuinely faster car keeps
- * creeping into lunge range, and decideOvertake (which latches on commit)
- * takes over from there. Below 3m it still backs ALL the way out behind a
- * stopped car (a queue that arrives at speed is a pile-up, not a wait)
- * and hard-checks behind a moving one, because inside a car length the
- * contact solver, not racecraft, is the next line of defense (see the
+ * speed drops from ~7 m/s at the window edge to under 1.5 m/s at 3m, so
+ * nobody punts anyone - but never fully cancels it: a genuinely faster car
+ * keeps creeping into lunge range, and decideOvertake (which latches on
+ * commit) takes over from there. Below 3m it still backs ALL the way out
+ * behind a stopped car (a queue that arrives at speed is a pile-up, not a
+ * wait) and hard-checks behind a moving one, because inside a car length
+ * the contact solver, not racecraft, is the next line of defense (see the
  * Suzuka 20-car NaN notes).
  */
 export function followPaceScale(args: {
@@ -223,7 +223,7 @@ export function followPaceScale(args: {
   // everyone.
   const allowedSpeed =
     Math.max(0, args.leaderSpeedMs) +
-    Math.max(2, args.gapMeters - 2) * (stopped ? 0.4 : 0.7 + aggression * 0.5);
+    Math.max(1.2, args.gapMeters - 2) * (stopped ? 0.4 : 0.5 + aggression * 0.35);
   const floor = stopped ? 0 : 0.55;
   return Math.min(1, Math.max(floor, allowedSpeed / own));
 }
@@ -283,18 +283,34 @@ export function obstacleLateral(
 }
 
 /**
+ * Nose-to-nose separation at which two cars stop overlapping (a car is
+ * 4m long, so noses 4.5m apart leaves a hand's width of daylight between
+ * the passer's tail and the leader's nose).
+ */
+const MERGE_HOLD_METERS = 4.5;
+/** Distance over which the offset washes out once the cars are clear. */
+const MERGE_WASH_METERS = 4;
+
+/**
  * Merging back to the line while completing a pass: full offset until the
- * nose is past (dead alongside is clean air at a 2.4m separation - wider
- * than the car), then washing out across the four meters ahead - like a
- * real overtake, which finishes by TAKING the line in front, not by
- * merging into the leader's rear quarter. Without the merge, a latched
- * car holds its offset into side contact and the pair slow each other
- * for half the race (measured: -30% distance) instead of resolving.
+ * passer is genuinely CLEAR of the car it just went by, then washing out
+ * across the following four meters - like a real overtake, which finishes
+ * by TAKING the line in front, not by cutting across the leader's nose.
+ *
+ * The hold window is the fix for the shove-and-spin contact: noses level
+ * means the bodies overlap, so an offset that started washing the moment
+ * the passer's nose edged ahead steered its flank straight into the
+ * leader's front wheel - the leader then pivots about the contact and ends
+ * up sideways, with the passer t-boning it. Holding the wide line until
+ * the whole car is past (and only then crossing) removes the mechanism
+ * entirely, at the cost of the passer staying a couple of meters off-line
+ * for a moment longer - which is what a real driver does.
  */
 export function mergeOffsetFactor(gapMeters: number): number {
-  if (gapMeters >= 0) return 1;
-  if (gapMeters <= -4) return 0;
-  return (gapMeters + 4) / 4;
+  if (gapMeters >= -MERGE_HOLD_METERS) return 1;
+  const pastHold = -gapMeters - MERGE_HOLD_METERS;
+  if (pastHold >= MERGE_WASH_METERS) return 0;
+  return 1 - pastHold / MERGE_WASH_METERS;
 }
 
 export interface RaceRival {
@@ -312,6 +328,86 @@ export interface RaceObstacle {
   gapMeters: number;
   speedMs: number;
   lateralMeters: number;
+}
+
+/**
+ * Side-by-side awareness: is another car INSIDE my merge path? A merge
+ * moves from `ownOffsetMeters` toward the line (offset 0) on the same
+ * side, so the only body that can be hit is one whose line-frame lateral
+ * lies between the line and my own offset - a car further out or on the
+ * other side is never in the way. That last case matters: without it, a
+ * CONVOY (two attackers parked at the same wide offset behind the same
+ * leader) each saw the other as "alongside" and both held their offset
+ * for hundreds of meters - the herd the whole feature is meant to break.
+ * Long gaps alone cannot answer this - two cars 3m apart nose-to-nose sit
+ * in the same band whether they are wheel-to-wheel or in a queue - so the
+ * lateral comparison does the work.
+ */
+const ALONGSIDE_LONGITUDINAL_METERS = 6;
+/**
+ * Lateral lane width for the check above: closer to my own offset than
+ * this means the other car is IN MY LANE (a convoy team-mate parked at
+ * "the same" wide line), not between me and the racing line - merging
+ * home past it is a non-event, and treating it as a blocker is exactly
+ * the herding this feature exists to prevent. A car nearer the line than
+ * the band genuinely occupies my merge path (my body is ~2m wide).
+ */
+const ALONGSIDE_LATERAL_BAND_METERS = 0.9;
+
+export function alongsideRisk(args: {
+  others: { gapMeters: number; lateralMeters: number }[];
+  ownOffsetMeters: number;
+}): boolean {
+  const own = args.ownOffsetMeters;
+  if (own === 0) return false;
+  for (const other of args.others) {
+    if (Math.abs(other.gapMeters) >= ALONGSIDE_LONGITUDINAL_METERS) continue;
+    // Clearly on the far side of the track: my merge sweeps MY side down
+    // to the line, so it can never reach them.
+    if (other.lateralMeters * own < -0.5) continue;
+    if (Math.abs(other.lateralMeters) < Math.abs(own) - ALONGSIDE_LATERAL_BAND_METERS) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The lateral offset to chase this tick, shared verbatim by the live car
+ * (AICar.tsx) and the headless field sim so the two cannot drift apart:
+ * - a live lunge chases its own offset, held at full until the pass is
+ *   genuinely clear (see mergeOffsetFactor);
+ * - with no move live, an offset that is still in hand is HELD as long as
+ *   another car is actually alongside - crossing back would be the same
+ *   contact from the other direction, and this is the case that used to
+ *   produce it: a lunged-and-abandoned car snapping onto the line with the
+ *   leader's front wheel level with its flank;
+ * - otherwise nothing, so the caller's ramp washes it out and the car drops
+ *   back into the tow.
+ */
+export function offsetTargetMeters(args: {
+  attempting: boolean;
+  attemptOffsetMeters: number;
+  gapToTargetMeters: number;
+  alongside: boolean;
+  currentOffsetMeters: number;
+  /** Meters to the next braking zone - past this, cross NOW (see below). */
+  brakeZoneMeters?: number;
+}): number {
+  if (args.attempting) {
+    return args.attemptOffsetMeters * mergeOffsetFactor(args.gapToTargetMeters);
+  }
+  // A braking zone inside MERGE_HOLD_METERS turns the hold off: cross
+  // immediately (target 0, the caller's ramp shapes the final flick).
+  // Cornering grip - the thing the profile's turn-in discipline buys -
+  // only exists on the line, and a held offset that outlives turn-in is
+  // exactly the pre-fix Suzuka-essses flip: 2.6m wide for 300m of esses,
+  // merging at the exit at full corner speed. Nobody is passing in a
+  // braking zone's turn-in anyway - the earlier latch gate (see
+  // decideOvertake's cornerAheadMeters check) already refuses to START
+  // one there; this only cleans up moves that END near one.
+  if ((args.brakeZoneMeters ?? Infinity) <= MERGE_HOLD_METERS) return 0;
+  return args.alongside ? args.currentOffsetMeters : 0;
 }
 
 export interface RacePaceInput {

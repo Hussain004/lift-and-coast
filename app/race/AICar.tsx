@@ -29,6 +29,7 @@ import {
   computeSignedForwardSpeed,
   computeStabilizingTorque,
   createCarController,
+  resolveYawDampingTorque,
   wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
@@ -56,9 +57,10 @@ import {
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import {
+  alongsideRisk,
   composeRacePace,
-  mergeOffsetFactor,
   obstacleLateral,
+  offsetTargetMeters,
   shouldDeployBoost,
   unwrapGap,
   type RaceObstacle,
@@ -591,6 +593,12 @@ export function AICar({
       // obstacleLateral): the shared squeeze in composeRacePace picks the
       // side each one isn't on. Lateral only - gap and speed ride in the
       // obstacle entries, range-gated there.
+      // Side-by-side awareness (see alongsideRisk): is another car
+      // physically where I would be if I moved across? The live traffic
+      // table carries every simulated car's own position, so the line-frame
+      // lateral of each one answers it exactly. Collected here for the
+      // offset merge below, alongside the obstacle list the squeeze uses.
+      const others: { gapMeters: number; lateralMeters: number }[] = [];
       const obstacles: RaceObstacle[] = [];
       if (trafficRef && race) {
         const traffic = trafficRef.current;
@@ -606,24 +614,23 @@ export function AICar({
             if (!entry) continue;
             const obstacle = traffic[key];
             if (!obstacle) continue;
-            obstacles.push({
-              gapMeters: unwrapGap(
-                myLap,
-                trackedProgress,
-                entry.lapCount,
-                entry.progressMeters,
-                track.lengthMeters
-              ),
-              speedMs: entry.speedMs ?? 99,
-              lateralMeters: obstacleLateral(
-                obstacle.x,
-                obstacle.z,
-                anchorPoint.position[0],
-                anchorPoint.position[2],
-                dirX / dirLen,
-                dirZ / dirLen
-              ),
-            });
+            const gapMeters = unwrapGap(
+              myLap,
+              trackedProgress,
+              entry.lapCount,
+              entry.progressMeters,
+              track.lengthMeters
+            );
+            const lateralMeters = obstacleLateral(
+              obstacle.x,
+              obstacle.z,
+              anchorPoint.position[0],
+              anchorPoint.position[2],
+              dirX / dirLen,
+              dirZ / dirLen
+            );
+            others.push({ gapMeters, lateralMeters });
+            obstacles.push({ gapMeters, speedMs: entry.speedMs ?? 99, lateralMeters });
           }
         }
       }
@@ -667,9 +674,22 @@ export function AICar({
         overtakeKeyRef.current !== null
           ? (rivals.find((r) => r.key === overtakeKeyRef.current)?.gapMeters ?? nearestAheadGap)
           : nearestAheadGap;
-      const offsetTarget = decision.attempt
-        ? decision.offsetMeters * mergeOffsetFactor(targetGap)
-        : 0;
+      // A live move holds its line until the pass is genuinely complete
+      // (see mergeOffsetFactor); with no move live, an offset still in hand
+      // is held only while someone actually blocks the way back (see
+      // alongsideRisk). A braking zone under MERGE_HOLD_METERS away kills
+      // the hold outright - the line is the only place cornering grip
+      // lives, and dying wide of turn-in is exactly the pre-fix Suzuka
+      // esses flip. Shared verbatim with the headless field sim (see
+      // racecraft's offsetTargetMeters), so the two can't drift apart.
+      const offsetTarget = offsetTargetMeters({
+        attempting: decision.attempt,
+        attemptOffsetMeters: decision.offsetMeters,
+        gapToTargetMeters: targetGap,
+        alongside: alongsideRisk({ others, ownOffsetMeters: offsetRef.current }),
+        currentOffsetMeters: offsetRef.current,
+        brakeZoneMeters: cornerAhead,
+      });
       const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * world.timestep;
       offsetRef.current += Math.min(maxStep, Math.max(-maxStep, offsetTarget - offsetRef.current));
       // Push-to-Pass strategy (see shouldDeployBoost): deploy on
@@ -755,6 +775,15 @@ export function AICar({
         { x: torque[0] * world.timestep, y: torque[1] * world.timestep, z: torque[2] * world.timestep },
         true
       );
+    }
+    // Spin recovery (see resolveYawDampingTorque): the stabilizing torque
+    // above only rights the car's TILT - a side contact leaves yaw spinning
+    // freely, which is how a bumped AI ends up broadside with the car
+    // behind driving into its flank. Damping only bites above the yaw rate
+    // a car actually corners at, so normal cornering is untouched.
+    const yawDamping = resolveYawDampingTorque(body.angvel().y);
+    if (yawDamping !== 0) {
+      body.applyTorqueImpulse({ x: 0, y: yawDamping * world.timestep, z: 0 }, true);
     }
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), "high-downforce");
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
