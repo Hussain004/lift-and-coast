@@ -142,6 +142,7 @@ export function Car({
   penaltyToastRef,
   track,
   bodyColor = "#39ff88",
+  accentColor,
   audioRef,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
@@ -259,6 +260,9 @@ export function Car({
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - the team's primary livery. */
   bodyColor?: string;
+  /** The team's secondary livery (see page.tsx) - the stripe accent; the
+   * shared shell derives one from the primary when none is passed. */
+  accentColor?: string;
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
    * car fills in the player half every render frame from live telemetry. */
   audioRef?: React.RefObject<AudioSnapshot>;
@@ -1212,7 +1216,13 @@ export function Car({
   return (
     <>
       <group ref={ghostGroupRef} visible={false}>
-        <F1CarBody bodyColor={bodyColor} steerRefs={ghostSteerRefs} spinRefs={ghostSpinRefs} ghost />
+        <F1CarBody
+          bodyColor={bodyColor}
+          accentColor={accentColor}
+          steerRefs={ghostSteerRefs}
+          spinRefs={ghostSpinRefs}
+          ghost
+        />
       </group>
       <RigidBody
         ref={chassisRef}
@@ -1251,7 +1261,13 @@ export function Car({
         */}
         <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
         <group ref={visualRef}>
-          <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} flapRef={flapRef} />
+          <F1CarBody
+            bodyColor={bodyColor}
+            accentColor={accentColor}
+            steerRefs={steerRefs}
+            spinRefs={spinRefs}
+            flapRef={flapRef}
+          />
         </group>
       </RigidBody>
     </>

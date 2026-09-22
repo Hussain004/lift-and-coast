@@ -487,6 +487,7 @@ export function Scene({
   qualifyingDisplayRef,
   penaltyToastRef,
   playerBodyColor,
+  playerAccentColor,
   audioRef,
   timeOfDay = "day",
 }: {
@@ -494,6 +495,9 @@ export function Scene({
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - team primary for the player. */
   playerBodyColor: string;
+  /** The pick's secondary paint, passed straight through to the player car's
+   * livery stripe (see app/race/CarBodyMesh.tsx). */
+  playerAccentColor?: string;
   /** Shared with the race audio rig - every car fills it in every frame. */
   audioRef?: React.RefObject<AudioSnapshot>;
   speedRef: React.RefObject<HTMLDivElement | null>;
@@ -699,6 +703,7 @@ export function Scene({
           penaltyToastRef={penaltyToastRef}
           track={track}
           bodyColor={playerBodyColor}
+          accentColor={playerAccentColor}
           audioRef={audioRef}
         />
         {sessionMode !== "practice" &&

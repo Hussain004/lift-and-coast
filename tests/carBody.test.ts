@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CHASSIS_HALF_EXTENTS, CAR_WHEELS } from "../lib/physics/vehicle";
 import {
+  DEFAULT_ACCENT_COLOR,
+  FLAP_CLOSED_INCLINE_RAD,
   FLAP_OPEN_RAD,
+  computeAccentColor,
   computeF1BodyPanels,
+  mergePanelBoxes,
   stepFlapAngle,
 } from "../lib/race/carBody";
 
@@ -152,5 +156,154 @@ describe("computeF1BodyPanels", () => {
     expect(mid).toBeLessThan(0);
     expect(mid).toBeGreaterThan(FLAP_OPEN_RAD);
     expect(stepFlapAngle(FLAP_OPEN_RAD, 0, 1)).toBe(0);
+  });
+});
+
+describe("premium body assembly", () => {
+  it("builds the rear wing as a two-element assembly between endplates", () => {
+    const { panels } = build();
+    // Wing elements are the wide centered panels out at the tail: the static
+    // main plane and the one moving flap above it.
+    const elements = panels.filter(
+      (p) => Math.abs(p.position[0]) < 1e-9 && p.position[2] > 1.5 && p.size[0] > 1.2
+    );
+    const flaps = elements.filter((p) => p.flap);
+    const mains = elements.filter((p) => !p.flap);
+    expect(flaps.length).toBe(1);
+    expect(mains.length).toBeGreaterThanOrEqual(1);
+    const flap = flaps[0];
+    const main = mains.reduce(
+      (lowest, panel) => (panel.position[1] < lowest.position[1] ? panel : lowest),
+      mains[0]
+    );
+    expect(flap.position[1]).toBeGreaterThan(main.position[1]);
+    // Same station, so the flap sweeps in the plane the main plane defines.
+    expect(Math.abs(flap.position[2] - main.position[2])).toBeLessThan(0.2);
+    // Endplates flank the wing and are set wider apart than the flap is.
+    const endplates = panels.filter((p) => p.position[2] > 1.5 && Math.abs(p.position[0]) > 0.7);
+    expect(endplates.length).toBeGreaterThanOrEqual(2);
+    const innerFace = Math.min(
+      ...endplates.map((p) => Math.abs(p.position[0]) - p.size[0] / 2)
+    );
+    expect(flap.size[0] / 2).toBeLessThan(innerFace);
+  });
+
+  it("parks the DRS flap at an angle of attack and opens further from it", () => {
+    expect(FLAP_CLOSED_INCLINE_RAD).toBeLessThan(0);
+    const deployed = FLAP_CLOSED_INCLINE_RAD + FLAP_OPEN_RAD;
+    // Opens past the park angle without folding flat over the wing: about
+    // 49 degrees of travel for the deployed flap.
+    expect(deployed).toBeLessThan(FLAP_CLOSED_INCLINE_RAD);
+    expect(deployed).toBeGreaterThan(-1.3);
+  });
+
+  it("deploys the flap in about a quarter second of frames", () => {
+    let angle = 0;
+    for (let frame = 0; frame < 15; frame++) {
+      const next = stepFlapAngle(angle, FLAP_OPEN_RAD, 1 / 60);
+      expect(next).toBeLessThanOrEqual(angle);
+      expect(next).toBeGreaterThanOrEqual(FLAP_OPEN_RAD);
+      angle = next;
+    }
+    expect(angle).toBeCloseTo(FLAP_OPEN_RAD, 9);
+  });
+
+  it("paints livery stripes in a second color", () => {
+    const { panels } = build();
+    expect(panels.some((p) => p.color === "accent")).toBe(true);
+  });
+
+  it("derives a readable accent from a single-paint livery", () => {
+    const luminance = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    };
+    for (const paint of ["#0d2c5c", "#ff2800", "#00a19b", "#d9d9d9", "#8f959c"]) {
+      const accent = computeAccentColor(paint);
+      expect(accent).toMatch(/^#[0-9a-f]{6}$/);
+      expect(Math.abs(luminance(accent) - luminance(paint))).toBeGreaterThan(0.15);
+    }
+    // Dark paints lighten, very light paints darken.
+    expect(luminance(computeAccentColor("#0d2c5c"))).toBeGreaterThan(luminance("#0d2c5c"));
+    expect(luminance(computeAccentColor("#ffffff"))).toBeLessThan(luminance("#ffffff"));
+    // Shorthand hex works; junk falls back instead of throwing.
+    expect(computeAccentColor("#abc")).toMatch(/^#[0-9a-f]{6}$/);
+    expect(computeAccentColor("not-a-color")).toBe(DEFAULT_ACCENT_COLOR);
+    expect(computeAccentColor("")).toBe(DEFAULT_ACCENT_COLOR);
+  });
+});
+
+describe("mergePanelBoxes", () => {
+  it("emits one box per panel with outward-facing winding", () => {
+    const { panels } = build();
+    const boxes = panels.filter((p) => !p.flap);
+    const { positions, normals, indices } = mergePanelBoxes(boxes);
+    expect(positions.length).toBe(boxes.length * 24 * 3);
+    expect(normals.length).toBe(boxes.length * 24 * 3);
+    expect(indices.length).toBe(boxes.length * 36);
+    // Uint16 index headroom (see the bounds comment in carBody.ts).
+    expect(indices.length).toBeGreaterThan(0);
+    const vertices = positions.length / 3;
+    expect(vertices).toBeLessThan(65536);
+    for (let i = 0; i < indices.length; i++) {
+      expect(indices[i]).toBeLessThan(vertices);
+    }
+    // Every triangle's geometric normal (from its winding) must match the
+    // normal stored on its vertices - which is what proves the faces are
+    // wound front-facing and point outward.
+    const at = (i: number) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+    for (let t = 0; t < indices.length; t += 3) {
+      const a = indices[t];
+      const [p0, p1, p2] = [at(a), at(indices[t + 1]), at(indices[t + 2])];
+      const u = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+      const v = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+      const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const length = Math.hypot(n[0], n[1], n[2]);
+      expect(length).toBeGreaterThan(1e-9);
+      const stored = [normals[a * 3], normals[a * 3 + 1], normals[a * 3 + 2]];
+      expect(Math.hypot(stored[0], stored[1], stored[2])).toBeCloseTo(1, 9);
+      for (let axis = 0; axis < 3; axis++) {
+        expect(Math.abs(n[axis] / length - stored[axis])).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it("spans exactly the panels' bounds and repeats itself exactly", () => {
+    const { panels } = build();
+    const boxes = panels.filter((p) => !p.flap);
+    const first = mergePanelBoxes(boxes);
+    const second = mergePanelBoxes(boxes);
+    expect(first.positions).toEqual(second.positions);
+    expect(first.normals).toEqual(second.normals);
+    expect(first.indices).toEqual(second.indices);
+    for (let axis = 0; axis < 3; axis++) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const panel of boxes) {
+        min = Math.min(min, panel.position[axis] - panel.size[axis] / 2);
+        max = Math.max(max, panel.position[axis] + panel.size[axis] / 2);
+      }
+      for (let i = 0; i < first.positions.length; i += 3) {
+        expect(first.positions[i + axis]).toBeGreaterThanOrEqual(min - 1e-9);
+        expect(first.positions[i + axis]).toBeLessThanOrEqual(max + 1e-9);
+      }
+      let seenMin = Infinity;
+      let seenMax = -Infinity;
+      for (let i = 0; i < first.positions.length; i += 3) {
+        seenMin = Math.min(seenMin, first.positions[i + axis]);
+        seenMax = Math.max(seenMax, first.positions[i + axis]);
+      }
+      // Float32 buffers vs float64 expectations: a float32 ulp at a few
+      // meters is ~2e-7, so compare with headroom rather than exactly.
+      expect(Math.abs(seenMin - min)).toBeLessThan(1e-5);
+      expect(Math.abs(seenMax - max)).toBeLessThan(1e-5);
+    }
+  });
+
+  it("handles an empty group without emitting anything", () => {
+    const merged = mergePanelBoxes([]);
+    expect(merged.positions.length).toBe(0);
+    expect(merged.normals.length).toBe(0);
+    expect(merged.indices.length).toBe(0);
   });
 });

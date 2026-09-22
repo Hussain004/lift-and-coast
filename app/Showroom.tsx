@@ -4,9 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Sparkles } from "@react-three/drei";
-import { CAR_WHEELS, CHASSIS_HALF_EXTENTS } from "@/lib/physics/vehicle";
-import { computeF1BodyPanels, type BodyPanelColor } from "@/lib/race/carBody";
 import { computeDriverFigure, type FigureColor } from "@/lib/race/driverFigure";
+import { CarBodyShell, CarWheels } from "./race/CarBodyMesh";
 import {
   resolveRosterSelection,
   useRosterSelection,
@@ -20,21 +19,6 @@ import {
 // scenery - no physics, no colliders, shadows off for a cheap frame.
 const AUTO_SPEED_RAD_S = 0.45;
 const RESUME_DELAY_S = 2.5;
-
-function partColor(
-  color: BodyPanelColor,
-  team: RosterTeam
-): string {
-  if (color === "livery") return team.primaryColor;
-  return {
-    carbon: "#161616",
-    helmet: "#ededed",
-    visor: "#101418",
-    tire: "#131313",
-    rim: "#8f9296",
-    light: "#ff2222",
-  }[color];
-}
 
 function figureColor(
   color: FigureColor,
@@ -75,17 +59,7 @@ function Turntable({
   const lastInput = useRef(RESUME_DELAY_S);
   const float = useRef(0);
 
-  const body = useMemo(
-    () =>
-      computeF1BodyPanels(
-        CHASSIS_HALF_EXTENTS,
-        CAR_WHEELS.map((w) => ({ x: w.position[0], z: w.position[2] }))
-      ),
-    []
-  );
   const figure = useMemo(() => computeDriverFigure(), []);
-  const statics = body.panels.filter((p) => !p.flap);
-  const flap = body.panels.find((p) => p.flap);
 
   useFrame((_, dt) => {
     const g = group.current;
@@ -143,41 +117,15 @@ function Turntable({
         lastInput.current = RESUME_DELAY_S;
       }}
     >
-      {/* Car, shut flap parked. */}
-      {statics.map((panel, i) => (
-        <mesh key={`panel-${i}`} position={panel.position}>
-          <boxGeometry args={panel.size} />
-          <meshStandardMaterial color={partColor(panel.color, team)} roughness={0.45} metalness={0.25} />
-        </mesh>
-      ))}
-      {flap && (
-        <group position={[flap.position[0], flap.position[1], flap.position[2] - flap.size[2] / 2]}>
-          <mesh position={[0, 0, flap.size[2] / 2]}>
-            <boxGeometry args={flap.size} />
-            <meshStandardMaterial color={partColor(flap.color, team)} roughness={0.45} metalness={0.25} />
-          </mesh>
-        </group>
-      )}
-      <mesh position={body.helmet.position}>
-        <sphereGeometry args={[body.helmet.radius, 16, 12]} />
-        <meshStandardMaterial color={partColor("helmet", team)} roughness={0.4} metalness={0.2} />
-      </mesh>
-      <mesh position={body.halo.position} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[body.halo.radius, body.halo.tube, 8, 24]} />
-        <meshStandardMaterial color={partColor("carbon", team)} roughness={0.5} metalness={0.3} />
-      </mesh>
-      {CAR_WHEELS.map((wheel, i) => (
-        <group key={`wheel-${i}`} position={wheel.position}>
-          <mesh rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[wheel.radius, wheel.radius, 0.28, 20]} />
-            <meshStandardMaterial color={partColor("tire", team)} roughness={0.9} />
-          </mesh>
-          <mesh rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[wheel.radius * 0.55, wheel.radius * 0.55, 0.3, 12]} />
-            <meshStandardMaterial color={partColor("rim", team)} roughness={0.35} metalness={0.6} />
-          </mesh>
-        </group>
-      ))}
+      {/* Car in full livery, DRS flap parked shut: the same shell every car
+          on the grid draws (see app/race/CarBodyMesh.tsx), in studio finish
+          and with the pick's secondary color as the stripe accent. */}
+      <CarBodyShell
+        bodyColor={team.primaryColor}
+        accentColor={team.secondaryColor}
+        studio
+      />
+      <CarWheels studio />
       {/* Driver figure at the car's left flank, feet on the plinth.
           Wheel bottoms sit at y=-0.69 in body frame, so that is ground. */}
       <group position={[-1.7, -0.69, 0.2]}>

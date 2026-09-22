@@ -208,6 +208,7 @@ function RaceContent() {
         key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
+        playerAccentColor={team.secondaryColor}
         rivals={rivals}
         playerCode={driver.code}
         speedRef={speedRef}

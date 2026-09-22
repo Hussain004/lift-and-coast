@@ -21,7 +21,7 @@ const BINDINGS: [string, string][] = [
   ["WASD / ←↑↓→", "drive"],
   ["R (hold)", "rewind"],
   ["Shift (hold)", "deploy"],
-  ["E", "aero mode"],
+  ["E", "aero · DRS"],
   ["C", "cycle cameras"],
   ["V", "orbit view"],
   ["1 / 2 / 3", "tires"],
