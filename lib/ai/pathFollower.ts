@@ -120,7 +120,41 @@ const STEER_GAIN = 1.0;
  * book (see AICar.tsx), which anchors its corner-ahead scan to the same
  * point the steering pursues from.
  */
-export function nearestLineIndex(line: RacingLinePoint[], x: number, z: number): number {  let nearestIdx = 0;
+export function nearestLineIndex(
+  line: RacingLinePoint[],
+  x: number,
+  z: number,
+  warmStartIndex?: number
+): number {
+  // Warm start (optional): the previous tick's answer for the same car. A
+  // moving car's nearest point creeps a few indices per tick, so scanning a
+  // bounded window around it is equivalent to the full scan and turns the
+  // per-tick O(n) cost (every caller runs at 60Hz per car) into O(window).
+  // The window is deliberately generous (±40 ≈ ±80m at the builder's 2m
+  // spacing - five seconds of flat-out travel) and its best answer is
+  // validated against a hard distance bound before acceptance: a car that
+  // jumped (respawn, rewind, spawn) sits outside any sane window and gets
+  // the exact full scan instead. The result is identical to the full scan
+  // in every case where the car is racing on/around the line.
+  if (warmStartIndex !== undefined && line.length > 0) {
+    const n = line.length;
+    let bestIdx = -1;
+    let bestDistSq = Infinity;
+    for (let k = -40; k <= 40; k++) {
+      const i = (warmStartIndex + k + n) % n;
+      const [lx, , lz] = line[i].position;
+      const distSq = (lx - x) ** 2 + (lz - z) ** 2;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestIdx = i;
+      }
+    }
+    // 30m ≈ 15 line points of slack - the car can never legitimately be
+    // that far off the line while racing, so exceeding it means the warm
+    // index is stale and only the exact scan is trustworthy.
+    if (bestIdx >= 0 && bestDistSq <= 30 * 30) return bestIdx;
+  }
+  let nearestIdx = 0;
   let nearestDistSq = Infinity;
   for (let i = 0; i < line.length; i++) {
     const [lx, , lz] = line[i].position;
@@ -256,10 +290,17 @@ export function computeAIControls(
    *   function: it just pursues the shifted point with the same gains.
    */
   paceScale = 1,
-  lateralOffsetMeters = 0
+  lateralOffsetMeters = 0,
+  /**
+   * Optional warm start for the internal nearest-line search (see
+   * nearestLineIndex): pass the index this car used last tick to skip the
+   * full O(n) scan. Optional and validated, so every existing caller,
+   * test and the headless harness run exactly as before.
+   */
+  warmStartIndex?: number
 ): AIControls {
   const n = line.length;
-  const nearest = nearestLineIndex(line, carX, carZ);
+  const nearest = nearestLineIndex(line, carX, carZ, warmStartIndex);
   const nearestPoint = line[nearest];
   // Pace headroom bound: personality/tire/racecraft multipliers stack to
   // ~1.1 at Ace (elite trait x tier x late-race tire curve). The cap bounds

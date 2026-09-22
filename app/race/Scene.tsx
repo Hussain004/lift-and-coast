@@ -222,6 +222,20 @@ function setPerspectiveFov(camera: THREE.Camera, fov: number) {
   }
 }
 
+/**
+ * Stage-and-apply helper for the yaw-only Euler the camera modes below
+ * rotate their offset arms through. Allocated once per camera (see
+ * yawEuler's own comment): three.js's Euler.set mutates in place, so
+ * rotating through this reuses one object instead of allocating a fresh
+ * THREE.Euler per frame per mode.
+ */
+function setCamEuler(
+  euler: THREE.Euler,
+  yawRad: number
+): THREE.Euler {
+  return euler.set(0, yawRad, 0, "YXZ");
+}
+
 function ChaseCamera({
   target,
   cameraMode,
@@ -241,6 +255,10 @@ function ChaseCamera({
   const forward = useRef(new THREE.Vector3());
   const worldPos = useRef(new THREE.Vector3());
   const worldQuat = useRef(new THREE.Quaternion());
+  // Yaw-only rotation staging, allocated once: the camera applied a fresh
+  // THREE.Euler per frame before (up to 4 allocations/frame churn for GC;
+  // reusing one instance is identical math, zero garbage).
+  const yawEuler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
   // Free-orbit state (plan section 9 replay cam) plus the mode this frame
   // ran, so entering orbit anchors once on the car's position instead of
   // re-anchoring (and snapping) every frame.
@@ -347,7 +365,7 @@ function ChaseCamera({
     // future camera mode must keep this unsmoothed - it's the fix for a
     // real, previously-shipped bug, not a style choice.
     if (mode === "cockpit") {
-      offset.current.copy(COCKPIT_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
+      offset.current.copy(COCKPIT_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       camera.position.copy(desiredPos.current);
 
@@ -357,7 +375,7 @@ function ChaseCamera({
       // offset above uses, for the same reason position stays yaw-only
       // (a pitching/rolling look target would whip the horizon around on
       // every bump).
-      forward.current.set(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
+      forward.current.set(0, 0, -1).applyEuler(setCamEuler(yawEuler.current, yaw));
       lookAt.current.set(
         desiredPos.current.x + forward.current.x * 20,
         desiredPos.current.y,
@@ -370,11 +388,11 @@ function ChaseCamera({
       // only higher, further back, and aimed further ahead with a downward
       // tilt so the chassis sits low in frame - no lag filter on either
       // term, for the same speed-dependent-gap reason documented below.
-      offset.current.copy(TCAM_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
+      offset.current.copy(TCAM_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       camera.position.copy(desiredPos.current);
 
-      forward.current.set(0, 0, -1).applyEuler(new THREE.Euler(0, yaw, 0));
+      forward.current.set(0, 0, -1).applyEuler(setCamEuler(yawEuler.current, yaw));
       lookAt.current.set(
         desiredPos.current.x + forward.current.x * 30,
         t.y + 0.9,
@@ -406,7 +424,7 @@ function ChaseCamera({
       camera.lookAt(orbit.current.ax, orbit.current.ay, orbit.current.az);
       setPerspectiveFov(camera, ORBIT_FOV);
     } else {
-      offset.current.copy(CHASE_OFFSET).applyEuler(new THREE.Euler(0, yaw, 0));
+      offset.current.copy(CHASE_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       camera.position.copy(desiredPos.current);
 

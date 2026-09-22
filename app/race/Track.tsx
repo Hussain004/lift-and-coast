@@ -9,10 +9,10 @@ import { buildStructureGeometry } from "@/lib/tracks/structures";
 import { buildFlora, type FloraBuild } from "@/lib/tracks/flora";
 import {
   buildRacingLineRibbon,
-  computeRacingLine,
   updateLiveZoneColors,
   type ThrottleZone,
 } from "@/lib/tracks/racingLine";
+import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { TrackData } from "@/lib/tracks/types";
 
 // Lifts the racing line's rendered geometry just above the track surface
@@ -56,8 +56,13 @@ function RacingLine({
   racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
+  // Warm start for the per-frame live-zone repaint (see
+  // updateLiveZoneColors): this component's last nearest-line index. The
+  // player's nearest point moves a couple of line points per frame, so
+  // the next frame's windowed search is equivalent to the full scan.
+  const nearestIdxRef = useRef(0);
   const { geometry, line } = useMemo(() => {
-    const line = computeRacingLine(track);
+    const line = getRacingLine(track);
     const { positions, colors, indices } = buildRacingLineRibbon(
       line,
       RACING_LINE_HALF_WIDTH_METERS,
@@ -102,15 +107,17 @@ function RacingLine({
     // for a color overlay the driver reads.
     const speedMs = Math.hypot(lv.x, lv.z);
     const colorAttr = geometry.getAttribute("color") as THREE.BufferAttribute;
-    updateLiveZoneColors(
+    const nearest = updateLiveZoneColors(
       line,
       colorAttr.array as Float32Array,
       t.x,
       t.z,
       speedMs,
       LIVE_COLOR_LOOKAHEAD_METERS,
-      ZONE_COLOR
+      ZONE_COLOR,
+      nearestIdxRef.current
     );
+    nearestIdxRef.current = nearest;
     colorAttr.needsUpdate = true;
   });
 

@@ -42,7 +42,7 @@ import {
   sampleSurface,
   wheelSurfaceGrips,
 } from "@/lib/tracks/surfaces";
-import { computeRacingLine } from "@/lib/tracks/racingLine";
+import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
 import { cornerAheadMeters, computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
 import { createEnergySystem } from "@/lib/physics/energy";
@@ -328,8 +328,13 @@ export function AICar({
   const mistakeArmedRef = useRef(false);
   const mistakeAtMetersRef = useRef(0);
   const mistakeTimeLeftRef = useRef(0);
+  // Warm-started nearest-line search (see nearestLineIndex): this car's
+  // last anchor index. The anchor now computes once per tick above the
+  // input branch (the racecraft book and computeAIControls share it), so
+  // both per-tick full-line scans collapse into one windowed one.
+  const nearestIdxRef = useRef(0);
 
-  const racingLine = useMemo(() => computeRacingLine(track), [track]);
+  const racingLine = useMemo(() => getRacingLine(track), [track]);
 
   const { spawnX, spawnY, spawnZ, spawnQuat } = useMemo(() => {
     const grid = gridSlot(track, gridSlotIndex);
@@ -586,8 +591,14 @@ export function AICar({
         rivals.reduce((best, rival) => (rival.gapMeters >= 0 && rival.gapMeters < best ? rival.gapMeters : best), Infinity);
       const throttleZone = zoneRef.current === "throttle";
       // Corner room for a lunge, anchored to the same line point the
-      // steering pursues from (see cornerAheadMeters).
-      const anchor = nearestLineIndex(racingLine, pos.x, pos.z);
+      // steering pursues from (see cornerAheadMeters). This scan is the
+      // per-tick anchor: warm-started from this car's last answer, and its
+      // result feeds computeAIControls below as that scan's warm start -
+      // both per-tick nearest-line searches collapse into one windowed
+      // one (same car, same position, same tick: the anchor IS the
+      // steering's nearest point).
+      const anchor = nearestLineIndex(racingLine, pos.x, pos.z, nearestIdxRef.current);
+      nearestIdxRef.current = anchor;
       const cornerAhead = cornerAheadMeters(racingLine, anchor, Math.abs(speedMs), paceMult);
       // Slow/stopped obstacles with line-frame laterals (see
       // obstacleLateral): the shared squeeze in composeRacePace picks the
@@ -717,7 +728,11 @@ export function AICar({
         speedMs,
         willDeploy,
         paceMult,
-        offsetRef.current
+        offsetRef.current,
+        // The anchor above is this car's nearest line point at this exact
+        // position - passing it makes the internal scan a confirmed
+        // windowed hit (distance 0) instead of a second full-line scan.
+        anchor
       );
       zoneRef.current = aiControls.zone;
       boostEligibleRef.current = aiControls.boostEligible;

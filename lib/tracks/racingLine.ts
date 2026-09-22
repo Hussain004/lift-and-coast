@@ -411,7 +411,33 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
 // project's own history (see racingLine.ts's module comment on
 // displaySpeedMs) is that even innocuous-looking changes near the AI's
 // control path have caused real regressions.
-function nearestPointIndex(line: RacingLinePoint[], x: number, z: number): number {
+//
+// The optional warm start mirrors pathFollower's version with the same
+// validated-window shape (±40 points, 30m acceptance bound falling back
+// to the exact scan) but lives here, in this file, per the isolation
+// policy above: the HUD's per-frame scan drops from O(n) to O(window)
+// without the two files sharing any code.
+function nearestPointIndex(
+  line: RacingLinePoint[],
+  x: number,
+  z: number,
+  warmStartIndex?: number
+): number {
+  if (warmStartIndex !== undefined && line.length > 0) {
+    const n = line.length;
+    let bestIdx = -1;
+    let bestDistSq = Infinity;
+    for (let k = -40; k <= 40; k++) {
+      const i = (warmStartIndex + k + n) % n;
+      const [lx, , lz] = line[i].position;
+      const distSq = (lx - x) ** 2 + (lz - z) ** 2;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && bestDistSq <= 30 * 30) return bestIdx;
+  }
   let nearestIdx = 0;
   let nearestDistSq = Infinity;
   for (let i = 0; i < line.length; i++) {
@@ -464,10 +490,11 @@ export function updateLiveZoneColors(
   carZ: number,
   currentSpeedMs: number,
   lookaheadMeters: number,
-  zoneColor: Record<ThrottleZone, [number, number, number]>
-): void {
+  zoneColor: Record<ThrottleZone, [number, number, number]>,
+  warmStartIndex?: number
+): number {
   const n = line.length;
-  const nearest = nearestPointIndex(line, carX, carZ);
+  const nearest = nearestPointIndex(line, carX, carZ, warmStartIndex);
   let distance = 0;
   for (let k = 0; k < n; k++) {
     const i = (nearest + k) % n;
@@ -493,6 +520,10 @@ export function updateLiveZoneColors(
     distance += line[i].distanceToNextMeters;
     if (distance > lookaheadMeters) break;
   }
+  // Hand the anchor to the next frame: a moving car's nearest point moves
+  // a point or two per frame, so the next call's warm-started windowed
+  // search is equivalent to the full scan at a fraction of the cost.
+  return nearest;
 }
 
 export interface RacingLineRibbon {
