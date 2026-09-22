@@ -939,6 +939,63 @@ const TRACKS: {
     // way the DEM pipeline's own averaging makes Suzuka's crossing agree.
     manualElevationBlendRadiusMeters: 40,
   },
+  // The 2026-season additions: the seven rounds this roster was still
+  // missing. Catalunya is the only one TUMFTM has width coverage for, so its
+  // per-point widths are real and its start line comes from the aligned CSV
+  // (autoStart). The other six build with the flat 13m fallback - documented
+  // as such, not a placeholder pretending to be measured - and take the
+  // dataset's own index 0 as the lap line, the same convention the rest of
+  // the roster uses.
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/us-2022.geojson`,
+    id: "miami",
+    name: "Miami International Autodrome",
+    widthFile: null,
+    elevationFile: "miami.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/es-1991.geojson`,
+    id: "barcelona",
+    name: "Circuit de Barcelona-Catalunya",
+    widthFile: "Catalunya.csv",
+    elevationFile: "barcelona.json",
+    autoStart: true,
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/es-2026.geojson`,
+    id: "madrid",
+    name: "Circuito de Madring",
+    widthFile: null,
+    elevationFile: "madrid.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/az-2016.geojson`,
+    id: "baku",
+    name: "Baku City Circuit",
+    widthFile: null,
+    elevationFile: "baku.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/sg-2008.geojson`,
+    id: "singapore",
+    name: "Marina Bay Street Circuit",
+    widthFile: null,
+    elevationFile: "singapore.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/us-2023.geojson`,
+    id: "lasvegas",
+    name: "Las Vegas Strip Circuit",
+    widthFile: null,
+    elevationFile: "lasvegas.json",
+  },
+  {
+    rawPath: `${scriptDir}/../data/tracks/raw/qa-2004.geojson`,
+    id: "lusail",
+    name: "Lusail International Circuit",
+    widthFile: null,
+    elevationFile: "lusail.json",
+  },
 ];
 
 let totalPoints = 0;

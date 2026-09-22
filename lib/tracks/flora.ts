@@ -491,6 +491,180 @@ const FLORA: Record<string, FloraConfig> = {
     lateralMaxM: 60,
     seed: 1927,
   },
+  // 2026-season additions: each setting follows the circuit's own
+  // surroundings, same rule as the rest of the table - subtropical palms and
+  // tropical broadleaf at Miami, Mediterranean pine and holm oak around
+  // Barcelona, cypress and dry plateau scrub at Madring, Caspian boulevard
+  // planes and palms at Baku, tropical rain trees at Marina Bay, Mojave scrub
+  // and juniper at Las Vegas, desert palms and scrub at Lusail.
+  miami: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.8, 3],
+        heightM: [7, 12],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [5, 8],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 45,
+    lateralMinM: 10,
+    lateralMaxM: 55,
+    seed: 2022,
+  },
+  barcelona: {
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: DUNE_PINE,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3.5],
+        heightM: [4, 7],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 55,
+    lateralMinM: 8,
+    lateralMaxM: 45,
+    seed: 1991,
+  },
+  madrid: {
+    species: [
+      {
+        shape: "conifer",
+        canopyColors: CYPRESS_GREEN,
+        trunkColor: "#4E4234",
+        canopySizeM: [1, 1.8],
+        heightM: [6, 11],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.2, 2],
+        heightM: [2.5, 4],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 35,
+    lateralMinM: 10,
+    lateralMaxM: 60,
+    seed: 2026,
+  },
+  baku: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 10],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.6, 2.6],
+        heightM: [6, 10],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 40,
+    lateralMinM: 8,
+    lateralMaxM: 45,
+    seed: 2016,
+  },
+  singapore: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: MONACO_LEAF,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [3, 5],
+        heightM: [8, 14],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.8, 3],
+        heightM: [7, 12],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 45,
+    lateralMinM: 8,
+    lateralMaxM: 40,
+    seed: 2008,
+  },
+  lasvegas: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1, 1.8],
+        heightM: [2, 3.5],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: JUNIPER_GREEN,
+        trunkColor: "#4E4234",
+        canopySizeM: [1.4, 2.2],
+        heightM: [3, 5],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 30,
+    lateralMinM: 10,
+    lateralMaxM: 70,
+    seed: 2023,
+  },
+  lusail: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.8, 3],
+        heightM: [7, 12],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1, 2],
+        heightM: [2.5, 4],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 30,
+    lateralMinM: 10,
+    lateralMaxM: 60,
+    seed: 2004,
+  },
 };
 
 export function getFloraConfig(trackId: string): FloraConfig | null {

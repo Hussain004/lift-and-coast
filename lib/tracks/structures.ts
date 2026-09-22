@@ -21,6 +21,13 @@ import hockenheim from "../../data/tracks/structures/hockenheim.json";
 import sepang from "../../data/tracks/structures/sepang.json";
 import sochi from "../../data/tracks/structures/sochi.json";
 import nurburgring from "../../data/tracks/structures/nurburgring.json";
+import miami from "../../data/tracks/structures/miami.json";
+import barcelona from "../../data/tracks/structures/barcelona.json";
+import madrid from "../../data/tracks/structures/madrid.json";
+import baku from "../../data/tracks/structures/baku.json";
+import singapore from "../../data/tracks/structures/singapore.json";
+import lasvegas from "../../data/tracks/structures/lasvegas.json";
+import lusail from "../../data/tracks/structures/lusail.json";
 
 /**
  * Trackside structures (plan section 4, circuit detail): pit buildings,
@@ -87,6 +94,13 @@ const FILES: Record<string, StructuresFile> = {
   sepang: sepang as StructuresFile,
   sochi: sochi as StructuresFile,
   nurburgring: nurburgring as StructuresFile,
+  miami: miami as StructuresFile,
+  barcelona: barcelona as StructuresFile,
+  madrid: madrid as StructuresFile,
+  baku: baku as StructuresFile,
+  singapore: singapore as StructuresFile,
+  lasvegas: lasvegas as StructuresFile,
+  lusail: lusail as StructuresFile,
 };
 
 export function getStructures(trackId: string): VendoredStructure[] {

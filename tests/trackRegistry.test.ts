@@ -34,6 +34,16 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   sepang: 5543,
   sochi: 5848,
   nurburgring: 5148,
+  // 2026-calendar additions: lengths from the source dataset's own
+  // `length` property (data/tracks/raw/{us-2022,es-1991,es-2026,az-2016,
+  // sg-2008,us-2023,qa-2004}.geojson).
+  miami: 5412,
+  barcelona: 4655,
+  madrid: 5474,
+  baku: 6003,
+  singapore: 4928,
+  lasvegas: 6201,
+  lusail: 5380,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
@@ -42,7 +52,10 @@ const RESAMPLE_SPACING_METERS = 2;
 // stay within. Silverstone is genuinely the widest; the others sit near
 // 9.5m. Monaco is hand-authored (TUMFTM has no coverage - see
 // scripts/build-track.mts): 7m at the hairpin, ~12m on the fast sections.
-const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = {
+// The 2026 additions bar Barcelona have no TUMFTM coverage either, so the
+// build applies its documented flat 13m fallback there (`flat: true` pins
+// that fallback to exactly flat - see the assertion below).
+const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number; flat?: boolean }> = {
   silverstone: { min: 10.5, max: 19.0, mean: 13.8 },
   monza: { min: 7.0, max: 13.5, mean: 9.4 },
   spa: { min: 7.0, max: 17.5, mean: 9.8 },
@@ -63,6 +76,13 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number }> = 
   sepang: { min: 13.0, max: 17.0, mean: 14.6 },
   sochi: { min: 10.5, max: 21.0, mean: 12.6 },
   nurburgring: { min: 7.0, max: 22.0, mean: 11.8 },
+  miami: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  barcelona: { min: 8.5, max: 18.0, mean: 11.2 },
+  madrid: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  baku: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  singapore: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  lasvegas: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  lusail: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
 };
 
 // Elevation as built from the vendored DEM samples (see
@@ -102,6 +122,16 @@ const ELEVATION_BANDS: Record<
   sepang: { range: [18, 30], maxGrade: 0.08 },
   sochi: { range: [4, 8], maxGrade: 0.03 },
   nurburgring: { range: [42, 60], maxGrade: 0.12 },
+  // 2026 additions, measured from the built DEM profiles. Baku's DEM is
+  // Caspian shore + city (32m of genuine relief); Lusail is a flat desert
+  // bowl at 4.3m.
+  miami: { range: [3, 8], maxGrade: 0.04 },
+  barcelona: { range: [18, 34], maxGrade: 0.09 },
+  madrid: { range: [12, 25], maxGrade: 0.09 },
+  baku: { range: [22, 44], maxGrade: 0.13 },
+  singapore: { range: [7, 15], maxGrade: 0.06 },
+  lasvegas: { range: [15, 30], maxGrade: 0.07 },
+  lusail: { range: [2, 7], maxGrade: 0.03 },
 };
 
 describe("parseTrackId", () => {
@@ -215,7 +245,7 @@ describe("built track data integrity", () => {
         expect(maxGrade).toBeLessThan(band.maxGrade);
       });
 
-      it("carries real per-point widths, not a flat placeholder", () => {
+      it("carries per-point widths from real data or the documented fallback", () => {
         // Built from the vendored TUMFTM racetrack-database (see
         // data/tracks/raw/tumftm/README.md) - except Monaco, whose widths
         // are hand-authored segments (TUMFTM has no coverage, see
@@ -233,8 +263,17 @@ describe("built track data integrity", () => {
           sum += value;
         }
         expect(Math.abs(sum / w.length - band.mean)).toBeLessThan(0.5);
-        // The along-lap variation is the whole point of using real data.
-        expect(Math.max(...w) - Math.min(...w)).toBeGreaterThan(1.5);
+        if (band.flat) {
+          // No TUMFTM coverage upstream: the build's documented flat 13m
+          // fallback (see scripts/build-track.mts). Pin the fallback to
+          // exactly flat, so it cannot silently drift; the variation gate
+          // below does not apply to it.
+          expect(Math.max(...w)).toBeCloseTo(13, 6);
+          expect(Math.min(...w)).toBeCloseTo(13, 6);
+        } else {
+          // The along-lap variation is the whole point of using real data.
+          expect(Math.max(...w) - Math.min(...w)).toBeGreaterThan(1.5);
+        }
       });
 
       it("is resampled at a uniform ~2m spacing", () => {

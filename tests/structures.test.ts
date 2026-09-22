@@ -180,6 +180,11 @@ const PITLANE_MAPPED: Record<string, boolean> = {
   melbourne: false,
   shanghai: false,
   sochi: false,
+  // Las Vegas's pit lane sits inside the temporary paddock footprint on
+  // Terrebec Avenue and is not mapped as a raceway in OSM (checked:
+  // no raceway way near the pit straight, named or otherwise). Pit walls
+  // there derive from the named "Pit" buildings instead.
+  lasvegas: false,
 };
 
 describe("vendored structures", () => {

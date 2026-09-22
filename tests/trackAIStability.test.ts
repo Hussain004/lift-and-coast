@@ -66,6 +66,20 @@ const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   sepang: 4500,
   sochi: 4500,
   nurburgring: 4500,
+  // Fourth batch, same method (2026 additions): Miami 5500 (1.1 laps,
+  // observed 5963 - the stadium-section hairpins pace it like Bahrain's
+  // traction zones), Barcelona 6000 (observed 6337), Madrid 4500 (0.9 laps
+  // in 180s - Madring's 22-corner rhythm is the slowest profile of the
+  // set), Baku 5000 (observed 5776), Singapore 4000 (observed 4655 - the
+  // slowest bar Madrid), Las Vegas 5500 (observed 6498), Lusail 5000
+  // (observed 6125).
+  miami: 5500,
+  barcelona: 6000,
+  madrid: 4500,
+  baku: 5000,
+  singapore: 4000,
+  lasvegas: 5500,
+  lusail: 5000,
 };
 // Observed worst single off-track excursion is now 3.7m (Monaco, down from
 // 7.1m before the curvature-adaptive preview in pathFollower.ts); this gate

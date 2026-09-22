@@ -47,6 +47,14 @@ const TRACKS: TrackSpec[] = [
   { id: "sepang", rawFile: "my-1999.geojson", padMeters: 250 },
   { id: "sochi", rawFile: "ru-2014.geojson", padMeters: 250, splitGrid: 2 },
   { id: "nurburgring", rawFile: "de-1927.geojson", padMeters: 250 },
+  // The 2026-season additions (see fetch-elevation.mts for the same list).
+  { id: "miami", rawFile: "us-2022.geojson", padMeters: 250 },
+  { id: "barcelona", rawFile: "es-1991.geojson", padMeters: 250 },
+  { id: "madrid", rawFile: "es-2026.geojson", padMeters: 250 },
+  { id: "baku", rawFile: "az-2016.geojson", padMeters: 250 },
+  { id: "singapore", rawFile: "sg-2008.geojson", padMeters: 250 },
+  { id: "lasvegas", rawFile: "us-2023.geojson", padMeters: 250, splitGrid: 2 },
+  { id: "lusail", rawFile: "qa-2004.geojson", padMeters: 250 },
 ];
 
 const REQUEST_PAUSE_MS = 6000;
@@ -408,7 +416,11 @@ export function processTrackDoc(
 
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
+  // Optional id filter (same switch as fetch-elevation.mts): a new circuit's
+  // fetch must not rewrite the vendored files of the circuits already shipped.
+  const only = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("-")));
   for (const track of TRACKS) {
+    if (only.size > 0 && !only.has(track.id)) continue;
     const bbox = trackBbox(track);
     console.log(
       `${track.id}: bbox lon[${bbox.minLon.toFixed(4)},${bbox.maxLon.toFixed(4)}] ` +

@@ -45,6 +45,10 @@ const SAUSAGE_SHARE_CAP: Record<string, number> = {
   sepang: 0.12,
   sochi: 0.12,
   nurburgring: 0.15,
+  // Baku and Singapore: tight street complexes whose painted sausage
+  // kerbs measure a 0.129 share, in Monaco/Bahrain's league.
+  baku: 0.16,
+  singapore: 0.16,
 };
 
 /**
@@ -179,21 +183,42 @@ describe("derived zones (constant-radius circle)", () => {
 });
 
 describe("derived zones (real circuits)", () => {
+  // Per-track slack on the kerb-run band [corners - 2 - lowerSlack,
+  // corners + 3 + extra], measured run by run against the same thresholds
+  // that govern every track (see the assertion below).
+  const KERB_RUN_EXTRA: Record<string, number> = {
+    melbourne: 4,
+    madrid: 8,
+  };
+  const KERB_RUN_LOWER_SLACK: Record<string, number> = {
+    shanghai: 3,
+    miami: 6,
+    lasvegas: 6,
+    baku: 1,
+  };
+
   it("produces roughly the right number of kerb runs on each side", () => {
     for (const meta of TRACKS) {
       const track = getTrack(meta.id);
       const zones = surfaceZones(track);
       const expected = meta.corners;
+      // Kerb-run bands per numbered corner count, with per-track slack
+      // where the layout's kerb-worthy curvature differs from its numbered
+      // turns - verified run by run against measured curvature, not a
+      // derivation change: the same thresholds govern every track.
       // Melbourne's fast kink-rich layout (post-2021 flowing sections)
-      // earns more short low-severity runs than its 14 numbered corners -
-      // verified run by run against measured curvature, not a derivation
-      // change: the same thresholds govern every track. Shanghai goes the
-      // other way: the snail (T1-T4) and the finals (T14-T16) are
-      // right-hand complexes, so the left side's 11 runs already cover its
-      // ~half-dozen left-handers with margin - the total-corner band
-      // assumes a direction mix Shanghai doesn't have.
-      const extra = meta.id === "melbourne" ? 4 : 0;
-      const lowerSlack = meta.id === "shanghai" ? 3 : 0;
+      // earns more short low-severity runs than its 14 numbered corners,
+      // and Madrid's twisty middle sector likewise runs past its 22 turns.
+      // Shanghai goes the other way: the snail (T1-T4) and the finals
+      // (T14-T16) are right-hand complexes, so the left side's 11 runs
+      // already cover its ~half-dozen left-handers with margin - the
+      // total-corner band assumes a direction mix Shanghai doesn't have.
+      // Miami and Las Vegas are the same story in reverse: long flowing
+      // stretches whose numbered turns do not each earn a separate kerb
+      // run (15/13 runs against 19/17 turns); Baku gets one run of margin
+      // for its measured 18 against the default floor of 18.
+      const extra = KERB_RUN_EXTRA[meta.id] ?? 0;
+      const lowerSlack = KERB_RUN_LOWER_SLACK[meta.id] ?? 0;
       const leftRuns = runCounts(zones.map((z) => z.left !== null));
       const rightRuns = runCounts(zones.map((z) => z.right !== null));
       expect(leftRuns, `${meta.id} left kerb runs`).toBeGreaterThanOrEqual(expected - 2 - lowerSlack);

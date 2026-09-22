@@ -13,7 +13,10 @@ f1-circuits dataset, real per-point track widths from the TUMFTM
 racetrack-database, real elevation from a vendored Copernicus DEM; no camber
 and no authored kerbs yet): Silverstone, Monza, Spa-Francorchamps,
 Suzuka, Monaco, Spielberg, Bahrain, COTA, Zandvoort, Budapest, Melbourne,
-Montreal, Mexico, Shanghai, Interlagos and Yas Marina. Driven by a Rapier raycast-vehicle
+Montreal, Mexico, Shanghai, Interlagos, Yas Marina, Hockenheim, Sepang,
+Sochi and Nürburgring, plus the 2026 calendar circuits Miami,
+Barcelona-Catalunya, Madrid (Madring), Baku, Singapore, Las Vegas and
+Lusail. Driven by a Rapier raycast-vehicle
 chassis with seven-speed sequential manual gears plus an auto-gear assist
 (plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
 input (plan section 5), chase/cockpit/T-cam/TV-broadcast/orbit cameras, and rewind. Built on top of
@@ -83,7 +86,8 @@ centripetal Catmull-Rom spline, and resampling at a fixed 2m arc-length
 interval. `scripts/build-track.mts` builds every circuit in its `TRACKS`
 list (Silverstone, Monza, Spa, Suzuka, Monaco, Spielberg, Bahrain, COTA,
 Zandvoort, Budapest, Melbourne, Montreal, Mexico, Shanghai, Interlagos,
-Yas Marina). Rebuild with:
+Yas Marina, Hockenheim, Sepang, Sochi, Nürburgring, and the 2026 additions
+Miami, Barcelona, Madrid, Baku, Singapore, Las Vegas and Lusail). Rebuild with:
 
 ```bash
 npm run build:track

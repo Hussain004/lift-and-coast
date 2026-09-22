@@ -59,6 +59,15 @@ const TRACKS: { id: string; rawFile: string }[] = [
   { id: "sepang", rawFile: "my-1999.geojson" },
   { id: "sochi", rawFile: "ru-2014.geojson" },
   { id: "nurburgring", rawFile: "de-1927.geojson" },
+  // The 2026-season additions: the seven rounds the roster was missing.
+  // Catalunya is the only one TUMFTM also covers (see build-track.mts).
+  { id: "miami", rawFile: "us-2022.geojson" },
+  { id: "barcelona", rawFile: "es-1991.geojson" },
+  { id: "madrid", rawFile: "es-2026.geojson" },
+  { id: "baku", rawFile: "az-2016.geojson" },
+  { id: "singapore", rawFile: "sg-2008.geojson" },
+  { id: "lasvegas", rawFile: "us-2023.geojson" },
+  { id: "lusail", rawFile: "qa-2004.geojson" },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -123,7 +132,14 @@ async function fetchChunk(coords: [number, number][]): Promise<number[]> {
 
 mkdirSync(OUT_DIR, { recursive: true });
 
+// Optional id filter - `node --experimental-strip-types
+// scripts/fetch-elevation.mts miami baku` refetches just those circuits, so
+// adding a circuit can never silently move the vendored samples (and the
+// built bytes) of the circuits already shipped.
+const only = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith("-")));
+
 for (const { id, rawFile } of TRACKS) {
+  if (only.size > 0 && !only.has(id)) continue;
   const geo = JSON.parse(readFileSync(`${scriptDir}/../data/tracks/raw/${rawFile}`, "utf-8"));
   const rawCoords: [number, number][] = geo.features[0].geometry.coordinates;
   const coords = densify(rawCoords, SAMPLE_SPACING_METERS);

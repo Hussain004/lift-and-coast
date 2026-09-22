@@ -141,6 +141,13 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   sepang: 18,
   sochi: 3,
   nurburgring: 40,
+  miami: 3,
+  barcelona: 15,
+  madrid: 10,
+  baku: 20,
+  singapore: 6,
+  lasvegas: 12,
+  lusail: 2,
 };
 
 // How far the field may dip under the ribbon at an edge sample. The
@@ -180,6 +187,13 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   sepang: 0.5,
   sochi: 0.5,
   nurburgring: 0.5,
+  miami: 0.5,
+  barcelona: 0.5,
+  madrid: 0.5,
+  baku: 0.5,
+  singapore: 0.5,
+  lasvegas: 0.5,
+  lusail: 0.5,
 };
 
 describe("buildTerrainGeometry (real circuits)", () => {
@@ -247,6 +261,23 @@ describe("buildTerrainGeometry (real circuits)", () => {
               const halfW = track.width[mid] / 2;
               const sx = x + (-tz / len) * (halfW + 8) * side;
               const sz = z + (tx / len) * (halfW + 8) * side;
+              // Skip folded-layout probes: where another leg of the ribbon
+              // passes within 20m, the nearest terrain vertex can belong to
+              // that leg's asphalt rather than this trap (Baku's city
+              // section folds to 13m), so the verdict would be the other
+              // leg's paint, never this probe's. Measured over every
+              // circuit: all probes clear other legs by 27m+ except Baku
+              // (13.5m) and Singapore (22.7m) - 20m only skips probes that
+              // cannot answer truthfully. A midpoint skipped here is still
+              // covered by the gravel-count assertion above.
+              let otherLeg = Infinity;
+              for (let j = 0; j < n; j += 5) {
+                const span = Math.min(Math.abs(j - mid), n - Math.abs(j - mid)) * 2;
+                if (span < 40) continue;
+                const [qx, , qz] = track.centerline[j];
+                otherLeg = Math.min(otherLeg, Math.hypot(qx - sx, qz - sz));
+              }
+              if (otherLeg < 20) continue;
               let nearest = -1;
               let nearestSq = Infinity;
               for (let v = 0; v < verts; v++) {
