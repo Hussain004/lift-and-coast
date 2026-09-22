@@ -307,10 +307,16 @@ export function computeAIControls(
   // CORNERING overspeed above the profile - the first thing that slides -
   // while straight-line overspeed is simply drag-limited. Ace field sims
   // (see tests/aiFieldRace.test.ts) gate the stability of the raised
-  // ceiling.
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.12, Math.max(0.9, paceScale)) : 1;
-  const profileTarget =
-    (useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs) * clampedPace;
+  // ceiling. The floor is zero: racecraft's follow cap has to be able to
+  // stop a car behind a stopped one (a 0.9 floor here silently turned
+  // every "stop" into "ram at 90%" - the grid-start and queue shunts).
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.12, Math.max(0, paceScale)) : 1;
+  const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
+  const profileTarget = unscaledTarget * clampedPace;
+  // The preview geometry below keeps the pace range it was validated over:
+  // a follow cap slowing the car must not also shorten the lookahead to a
+  // hairpin's length at 60 m/s.
+  const steeringTarget = unscaledTarget * Math.max(0.9, clampedPace);
 
   // Preview distance scales with speed - see LOOKAHEAD_SECONDS above. Walk
   // the line by its own segment lengths rather than assuming a fixed point
@@ -321,8 +327,8 @@ export function computeAIControls(
   // experiences it, and a preview longer than the corner is what cuts the
   // apex.
   const impliedRadiusMeters =
-    profileTarget > 1
-      ? (profileTarget * profileTarget) / Math.max(1, maxLateralAccelMs2(profileTarget))
+    steeringTarget > 1
+      ? (steeringTarget * steeringTarget) / Math.max(1, maxLateralAccelMs2(steeringTarget))
       : Infinity;
   const curvatureCapMeters = Math.max(
     LOOKAHEAD_TIGHT_MIN_METERS,

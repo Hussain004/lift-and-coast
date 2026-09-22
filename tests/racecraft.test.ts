@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
-  alongsideRisk,
-  composeRacePace,
-  decideOvertake,
-  followPaceScale,
-  mergeOffsetFactor,
+  createRacecraftState,
+  followGapMeters,
+  followSpeedCapMs,
+  lateralBand,
   obstacleLateral,
-  offsetTargetMeters,
   shouldDeployBoost,
   slipstreamBonus,
-  squeezeDecision,
+  stepRacecraft,
   trackGapMeters,
   unwrapGap,
-  yieldPaceScale,
+  type FieldCarView,
+  type LineContext,
+  type RacecraftInput,
+  type RacecraftState,
 } from "../lib/ai/racecraft";
+import { computeLineRoom } from "../lib/tracks/racingLineCache";
+import { computeRacingLine } from "../lib/tracks/racingLine";
+import type { TrackData } from "../lib/tracks/types";
 
 const TRACK = 5891;
 
@@ -27,74 +31,6 @@ describe("trackGapMeters", () => {
       TRACK - 5000 + 100,
       6
     );
-  });
-});
-
-describe("decideOvertake", () => {
-  const base = {
-    gapMeters: 8,
-    closingSpeedMs: 3,
-    speedMs: 70,
-    throttleZone: true,
-    cornerAheadMeters: 300,
-    aggression: 0.5,
-    risk: 0.3,
-    overtakeSide: 1 as const,
-    alreadyAttempting: false,
-  };
-
-  it("lunges on a straight when closing, sided by preference", () => {
-    const d = decideOvertake(base);
-    expect(d.attempt).toBe(true);
-    expect(d.offsetMeters).toBeGreaterThan(0);
-    expect(d.paceBonus).toBeGreaterThan(0);
-    expect(decideOvertake({ ...base, overtakeSide: -1 }).offsetMeters).toBeLessThan(0);
-  });
-
-  it("refuses corners, slow speed, no closure, and far gaps", () => {
-    expect(decideOvertake({ ...base, throttleZone: false }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, speedMs: 20 }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, closingSpeedMs: 0 }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, gapMeters: 40 }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, gapMeters: -5 }).attempt).toBe(false);
-    // ...but 25 m/s is enough: slow circuits (Monaco averages ~30) and
-    // slow-corner exits must see moves too, or they never race at all.
-    expect(decideOvertake({ ...base, speedMs: 30 }).attempt).toBe(true);
-  });
-
-  it("lets risk-takers lunge with less road, not the cautious", () => {
-    expect(decideOvertake({ ...base, cornerAheadMeters: 50, risk: 0.9 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, cornerAheadMeters: 50, risk: 0 }).attempt).toBe(false);
-  });
-
-  it("fires on a whisper of closing and latches past the gate", () => {
-    expect(decideOvertake({ ...base, closingSpeedMs: 0.4 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, closingSpeedMs: 0.2 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, closingSpeedMs: 0.1 }).attempt).toBe(false);
-
-    // The follow discipline kills closing speed on approach: without the
-    // latch the attempt would die the same tick it starts.
-    const stalled = decideOvertake({ ...base, closingSpeedMs: 0.1, alreadyAttempting: true });
-    expect(stalled.attempt).toBe(true);
-    expect(decideOvertake({ ...base, closingSpeedMs: 0.1 }).attempt).toBe(false);
-    // ...but clears once the pass sticks, the road ends, or the zone flips.
-    expect(decideOvertake({ ...base, gapMeters: -5, alreadyAttempting: true }).attempt).toBe(false);
-    expect(decideOvertake({ ...base, throttleZone: false, alreadyAttempting: true }).attempt).toBe(false);
-    expect(
-      decideOvertake({ ...base, cornerAheadMeters: 10, alreadyAttempting: true }).attempt
-    ).toBe(false);
-  });
-
-  it("reaches further with aggression", () => {
-    expect(decideOvertake({ ...base, gapMeters: 14, aggression: 1 }).attempt).toBe(true);
-    expect(decideOvertake({ ...base, gapMeters: 14, aggression: 0 }).attempt).toBe(false);
-  });
-
-  it("needs a racing target: parked cars belong to the squeeze", () => {
-    // A stopped car ahead is not a lunge (no closing ever builds) - the
-    // squeeze below handles it. Proving the split: decideOvertake alone
-    // refuses, compose with the obstacle squeezes.
-    expect(decideOvertake({ ...base, gapMeters: 5, closingSpeedMs: 0 }).attempt).toBe(false);
   });
 });
 
@@ -136,118 +72,6 @@ describe("slipstreamBonus", () => {
   });
 });
 
-describe("followPaceScale", () => {
-  it("backs out of a nose-to-tail weld instead of matching", () => {
-    const welded = followPaceScale({ gapMeters: 1.8, throttleZone: true, aggression: 0.5, leaderSpeedMs: 60, ownSpeedMs: 60 });
-    expect(welded).toBeLessThan(1);
-    expect(welded).toBeGreaterThanOrEqual(0.3);
-    // ...and to a full stop behind a stopped car (which then unblocks
-    // the squeeze to crawl around it).
-    expect(
-      followPaceScale({ gapMeters: 1, throttleZone: true, aggression: 0.5, leaderSpeedMs: 0, ownSpeedMs: 5 })
-    ).toBe(0);
-  });
-
-  it("matches the leader bumper-to-bumper but closes from distance", () => {
-    // Same speed, tucked in: no reason to slow.
-    expect(
-      followPaceScale({ gapMeters: 3, throttleZone: true, aggression: 0.5, leaderSpeedMs: 60, ownSpeedMs: 60 })
-    ).toBe(1);
-    // Arriving hot: shed the closing speed, harder when closer.
-    const far = followPaceScale({ gapMeters: 12, throttleZone: true, aggression: 0.5, leaderSpeedMs: 40, ownSpeedMs: 70 });
-    const near = followPaceScale({ gapMeters: 4, throttleZone: true, aggression: 0.5, leaderSpeedMs: 40, ownSpeedMs: 70 });
-    expect(far).toBeLessThan(1);
-    expect(near).toBeLessThan(far);
-    // Works in corners too, and ignores open road.
-    expect(
-      followPaceScale({ gapMeters: 5, throttleZone: false, aggression: 0.5, leaderSpeedMs: 30, ownSpeedMs: 45 })
-    ).toBeLessThan(1);
-    expect(
-      followPaceScale({ gapMeters: 60, throttleZone: true, aggression: 0, leaderSpeedMs: 40, ownSpeedMs: 70 })
-    ).toBe(1);
-  });
-});
-
-describe("yieldPaceScale", () => {
-  it("only cautious leaders give room when alongside", () => {
-    expect(yieldPaceScale({ gapToFollowerMeters: 0, aggression: 0.9 })).toBe(1);
-    expect(yieldPaceScale({ gapToFollowerMeters: 0, aggression: 0.1 })).toBeLessThan(1);
-    expect(yieldPaceScale({ gapToFollowerMeters: 20, aggression: 0.1 })).toBe(1);
-  });
-});
-
-describe("composeRacePace", () => {
-  const input = {
-    ownSpeedMs: 70,
-    rivals: [
-      { key: "lead", gapMeters: 8, speedMs: 67 },
-      { key: "tail", gapMeters: -50, speedMs: 60 },
-    ],
-    throttleZone: true,
-    cornerAheadMeters: 300,
-    aggression: 0.6,
-    risk: 0.3,
-    overtakeSide: 1 as const,
-    basePace: 1.0,
-    alreadyAttemptingKey: null,
-  };
-
-  it("stacks slipstream and lunge bonus on an attempt", () => {
-    const out = composeRacePace(input);
-    expect(out.decision.attempt).toBe(true);
-    expect(out.paceMult).toBeGreaterThan(1.03);
-  });
-
-  it("stands the follow discipline down mid-pass", () => {    // Closing decayed mid-pass (the follow discipline's own doing): the
-    // latch keeps the move alive at full pace plus bonus, while the same
-    // scene unlatched queues with the follow trim applied.
-    const scene = {
-      ...input,
-      rivals: [{ key: "lead", gapMeters: 1, speedMs: 67.5 }],
-      ownSpeedMs: 67.6,
-    };
-    const passing = composeRacePace({ ...scene, alreadyAttemptingKey: "lead" });
-    const queued = composeRacePace({ ...scene, alreadyAttemptingKey: null });
-    expect(passing.decision.attempt).toBe(true);
-    expect(queued.decision.attempt).toBe(false);
-    // Latched: slipstream + lunge bonus, zero follow drag.
-    expect(passing.paceMult).toBeCloseTo(1 + 0.05 + 0.02 + 0.6 * 0.02, 6);
-    // Queued: same slipstream, minus the follow trim.
-    expect(queued.paceMult).toBeLessThan(1.035);
-    expect(queued.paceMult).toBeLessThan(passing.paceMult);
-  });
-
-  it("holds the leader's pace bumper-to-bumper in corners", () => {
-    const out = composeRacePace({
-      ...input,
-      throttleZone: false,
-      rivals: [{ key: "lead", gapMeters: 3, speedMs: 30 }],
-      ownSpeedMs: 45,
-    });
-    expect(out.decision.attempt).toBe(false);
-    expect(out.paceMult).toBeLessThan(1);
-  });
-});
-
-describe("squeezeDecision", () => {
-  // Straight line down -Z (line frame): the pursuit shift for an offset m
-  // is perp*m with perp = (-dirZ, dirX) = (1, 0) - see pathFollower. A
-  // positive lateral puts the obstacle on the +perp side, so the car goes
-  // negative (away).
-  const pref = { overtakeSide: 1 as const };
-
-  it("goes around the side the obstacle is not on", () => {
-    expect(squeezeDecision({ ...pref, lateralMeters: 2 })?.offsetMeters).toBe(-2.5);
-    expect(squeezeDecision({ ...pref, lateralMeters: -2 })?.offsetMeters).toBe(2.5);
-  });
-
-  it("uses the preferred side dead ahead and ignores far-off obstacles", () => {
-    expect(squeezeDecision({ ...pref, lateralMeters: 0.2 })?.offsetMeters).toBe(2.5);
-    expect(squeezeDecision({ lateralMeters: 0.2, overtakeSide: -1 })?.offsetMeters).toBe(-2.5);
-    expect(squeezeDecision({ ...pref, lateralMeters: 5 })).toBeNull();
-  });
-});
-
 describe("obstacleLateral", () => {
   it("signs the across-track side in the line frame", () => {
     // Line down -Z: perp = (1, 0), so +X is positive lateral.
@@ -257,196 +81,272 @@ describe("obstacleLateral", () => {
   });
 });
 
-describe("compose squeeze", () => {
-  const input = {
-    ownSpeedMs: 8,
-    rivals: [{ key: "lead", gapMeters: 5, speedMs: 0 }],
-    throttleZone: true,
-    cornerAheadMeters: 400,
-    aggression: 0.5,
-    risk: 0.3,
-    overtakeSide: 1 as const,
-    basePace: 1.0,
-    alreadyAttemptingKey: null,
-  };
 
-  it("squeezes past a parked car at crawl pace without lunge pace", () => {
-    const out = composeRacePace({
-      ...input,
-      obstacles: [{ gapMeters: 5, speedMs: 0, lateralMeters: 0.2 }],
-    });
-    expect(out.decision.attempt).toBe(true);
-    expect(out.decision.urgent).toBe(true);
-    expect(out.decision.paceBonus).toBe(0);
-    expect(out.paceMult).toBeLessThan(0.2);
+describe("following", () => {
+  it("stops at a standoff behind a stopped car, with room to steer round it", () => {
+    // Far out at racing speed: no cap yet worth having.
+    expect(followSpeedCapMs(200, 0, followGapMeters(70, 0.5, false, 0))).toBeGreaterThan(55);
+    // Closer in, the cap is a braking curve down to zero at the standoff.
+    const standoff = followGapMeters(0, 0.5, false, 0);
+    expect(standoff).toBeGreaterThanOrEqual(12);
+    expect(followSpeedCapMs(standoff, 0, standoff)).toBe(0);
+    expect(followSpeedCapMs(standoff - 2, 0, standoff)).toBe(0);
   });
 
-  it("sees a parked car from far away at speed", () => {
-    // The lead rival is far and moving (no lunge): only the obstacle
-    // matters here.
-    const openRoad = {
-      ...input,
-      rivals: [{ key: "lead", gapMeters: 60, speedMs: 60 }],
-    };
-    const far = composeRacePace({
-      ...openRoad,
-      ownSpeedMs: 65,
-      obstacles: [{ gapMeters: 50, speedMs: 0, lateralMeters: 0 }],
-    });
-    expect(far.decision.attempt).toBe(true);
-    expect(
-      composeRacePace({
-        ...openRoad,
-        ownSpeedMs: 65,
-        obstacles: [{ gapMeters: 90, speedMs: 0, lateralMeters: 0 }],
-      }).decision.attempt
-    ).toBe(false);
-  });
-
-  it("picks through a corner queue at crawl speed, not at racing speed", () => {
-    const crawl = {
-      ...input,
-      ownSpeedMs: 10,
-      throttleZone: false,
-      obstacles: [{ gapMeters: 6, speedMs: 0, lateralMeters: 0 }],
-    };
-    expect(composeRacePace(crawl).decision.attempt).toBe(true);
-    expect(composeRacePace({ ...crawl, ownSpeedMs: 50 }).decision.attempt).toBe(false);
-  });
-
-  it("ignores moving cars as obstacles", () => {
-    const out = composeRacePace({
-      ...input,
-      obstacles: [{ gapMeters: 5, speedMs: 40, lateralMeters: 0 }],
-    });
-    expect(out.decision.urgent).toBe(false);
+  it("sits at a time gap behind a moving car, closer for the brave", () => {
+    const cautious = followGapMeters(70, 0, false);
+    const brave = followGapMeters(70, 1, false);
+    expect(cautious).toBeGreaterThan(brave);
+    expect(brave).toBeGreaterThan(8);
+    // At the gap the cap is the leader's own speed; beyond it, faster.
+    expect(followSpeedCapMs(brave, 60, brave)).toBeCloseTo(60, 6);
+    expect(followSpeedCapMs(brave + 10, 60, brave)).toBeGreaterThan(61);
+    // An attacker closing on its own target runs almost to its gearbox.
+    expect(followGapMeters(70, 0.5, true)).toBeLessThan(7);
   });
 });
 
-describe("target-keyed latch", () => {
-  const base = {
-    ownSpeedMs: 70,
+describe("lateralBand", () => {
+  const room = { roomPlusMeters: 5, roomMinusMeters: 5 };
+  const car = (gapMeters: number, lateralMeters: number | null): FieldCarView => ({
+    key: `c${gapMeters}:${lateralMeters}`,
+    gapMeters,
+    speedMs: 50,
+    lateralMeters,
+  });
+
+  it("closes the road on each overlapping car's side", () => {
+    const band = lateralBand({ ownLateralMeters: 0, cars: [car(1, 2.6), car(-2, -3)], ...room });
+    expect(band.hi).toBeCloseTo(0.1, 6);
+    expect(band.lo).toBeCloseTo(-0.5, 6);
+  });
+
+  it("ignores cars clear ahead/behind, unknown positions and bumper queues", () => {
+    const band = lateralBand({
+      ownLateralMeters: 0,
+      cars: [car(8, 0.5), car(-7, 1), car(2, null), car(4.5, 0.3)],
+      ...room,
+    });
+    expect(band).toEqual({ lo: -5, hi: 5 });
+  });
+
+  it("reports a sandwich as lo > hi", () => {
+    const band = lateralBand({ ownLateralMeters: 0, cars: [car(0, 2), car(1, -2)], ...room });
+    expect(band.lo).toBeGreaterThan(band.hi);
+  });
+});
+
+describe("stepRacecraft", () => {
+  const line = (overrides: Partial<LineContext> = {}): LineContext => ({
+    cornerAheadMeters: 400,
     throttleZone: true,
-    cornerAheadMeters: 300,
+    roomPlusMeters: 4,
+    roomMinusMeters: 4,
+    cornerSign: 0,
+    curveSign: 0,
+    impliedRadiusMeters: Infinity,
+    profileTargetMs: 70,
+    ...overrides,
+  });
+  const input = (overrides: Partial<RacecraftInput> = {}): RacecraftInput => ({
+    ownSpeedMs: 60,
+    ownLateralMeters: 0,
+    basePace: 1,
+    cars: [],
+    line: line(),
     aggression: 0.6,
     risk: 0.3,
-    overtakeSide: 1 as const,
-    basePace: 1.0,
+    overtakeSide: 1,
+    dt: 1 / 60,
+    trackLengthMeters: TRACK,
+    boostEligible: false,
+    batteryFraction: 1,
+    mistakeActive: false,
+    ...overrides,
+  });
+  const racingState = (): RacecraftState => ({ ...createRacecraftState(), initialized: true, raceSeconds: 30 });
+  const run = (state: RacecraftState, make: () => RacecraftInput, seconds: number) => {
+    let out = stepRacecraft(state, make());
+    for (let t = 1 / 60; t < seconds; t += 1 / 60) out = stepRacecraft(state, make());
+    return out;
   };
 
-  it("survives the target wobbling a meter behind mid-pass", () => {
-    const wobble = composeRacePace({
-      ...base,
-      rivals: [
-        { key: "mark", gapMeters: -1.5, speedMs: 69 },
-        { key: "next", gapMeters: 25, speedMs: 70 },
-      ],
-      alreadyAttemptingKey: "mark",
+  it("keeps each grid column in its own lane until the lights go out", () => {
+    const state = createRacecraftState();
+    stepRacecraft(state, input({ ownSpeedMs: 0, ownLateralMeters: 2.3 }));
+    run(state, () => input({ ownSpeedMs: 0, ownLateralMeters: 2.3 }), 2);
+    expect(state.offset).toBeCloseTo(2.3, 6);
+  });
+
+  it("brakes to a stop for a stopped car in its lane", () => {
+    const state = racingState();
+    const out = stepRacecraft(
+      state,
+      input({ ownSpeedMs: 30, cars: [{ key: "x", gapMeters: 25, speedMs: 0, lateralMeters: 0.4 }] })
+    );
+    expect(out.paceMult).toBeLessThan(0.4);
+  });
+
+  it("does not queue behind a car in the next lane", () => {
+    const state = racingState();
+    const out = stepRacecraft(
+      state,
+      input({ ownSpeedMs: 60, cars: [{ key: "x", gapMeters: 12, speedMs: 50, lateralMeters: 2.8 }] })
+    );
+    expect(out.paceMult).toBeGreaterThanOrEqual(1);
+  });
+
+  it("goes round a stopped car on the side with road", () => {
+    const state = racingState();
+    run(
+      state,
+      () =>
+        input({
+          ownSpeedMs: 40,
+          line: line({ roomPlusMeters: 0.5, roomMinusMeters: 5 }),
+          cars: [{ key: "x", gapMeters: 50, speedMs: 0, lateralMeters: 0 }],
+        }),
+      2
+    );
+    expect(state.offset).toBeLessThan(-2);
+  });
+
+  it("attacks on the side with room, toward the inside of the next corner", () => {
+    const leader: FieldCarView = { key: "lead", gapMeters: 12, speedMs: 55, lateralMeters: 0 };
+    const inside = racingState();
+    stepRacecraft(inside, input({ cars: [leader], line: line({ cornerSign: -1, cornerAheadMeters: 250 }) }));
+    expect(inside.attemptKey).toBe("lead");
+    expect(inside.attemptSide).toBe(-1);
+    // No room on that side: the other one, whatever the corner says.
+    const cramped = racingState();
+    stepRacecraft(
+      cramped,
+      input({ cars: [leader], line: line({ cornerSign: -1, cornerAheadMeters: 250, roomMinusMeters: 0.5 }) })
+    );
+    expect(cramped.attemptSide).toBe(1);
+  });
+
+  it("never picks a side somebody is already sitting in", () => {
+    const state = racingState();
+    stepRacecraft(
+      state,
+      input({
+        cars: [
+          { key: "lead", gapMeters: 12, speedMs: 55, lateralMeters: 0 },
+          { key: "beside", gapMeters: 1, speedMs: 60, lateralMeters: 2.8 },
+        ],
+      })
+    );
+    expect(state.attemptSide).toBe(-1);
+  });
+
+  it("never turns into a car alongside, even to defend or to take the line", () => {
+    const state = racingState();
+    state.offset = 0;
+    // A car on our +side, overlapping: the line (0) is fine, crossing past
+    // its band is not - even with the inside of the corner on that side.
+    run(
+      state,
+      () =>
+        input({
+          ownLateralMeters: state.offset,
+          line: line({ cornerSign: 1, cornerAheadMeters: 150 }),
+          cars: [
+            { key: "beside", gapMeters: 0.5, speedMs: 60, lateralMeters: 1.8 },
+            { key: "chaser", gapMeters: -10, speedMs: 64, lateralMeters: 0 },
+          ],
+        }),
+      3
+    );
+    expect(state.offset).toBeLessThanOrEqual(1.8 - 2.5 + 1e-6);
+  });
+
+  it("defends the inside once, on a straight, against a quicker car", () => {
+    const state = racingState();
+    run(
+      state,
+      () =>
+        input({
+          ownLateralMeters: state.offset,
+          line: line({ cornerSign: 1, cornerAheadMeters: 150 }),
+          cars: [{ key: "chaser", gapMeters: -10, speedMs: 64, lateralMeters: 0 }],
+        }),
+      2
+    );
+    expect(state.defendKey).toBe("chaser");
+    expect(state.offset).toBeGreaterThan(1);
+  });
+
+  it("gives a lapping car the road", () => {
+    const state = racingState();
+    const out = run(
+      state,
+      () =>
+        input({
+          ownLateralMeters: state.offset,
+          cars: [{ key: "leader", gapMeters: -20, rawGapMeters: TRACK - 20, speedMs: 65, lateralMeters: 0 }],
+        }),
+      2
+    );
+    expect(Math.abs(state.offset)).toBeGreaterThan(1);
+    expect(out.paceMult).toBeLessThan(1);
+  });
+});
+
+describe("computeLineRoom corner sign", () => {
+  // A stadium (two 300m straights, two 60m-radius semicircles): the only
+  // corners are the semicircles, so every point shortly before one must
+  // name the side the semicircle's centre lies on as the inside. Both
+  // directions of travel, so the convention can't be right by accident.
+  function stadium(reverse: boolean): TrackData {
+    const pts: [number, number, number][] = [];
+    const straight = 300;
+    const r = 60;
+    const step = 2;
+    for (let s = 0; s < straight; s += step) pts.push([s, 0, 0]);
+    for (let a = 0; a < Math.PI; a += step / r) pts.push([straight + r * Math.sin(a), 0, r - r * Math.cos(a)]);
+    for (let s = straight; s > 0; s -= step) pts.push([s, 0, 2 * r]);
+    for (let a = 0; a < Math.PI; a += step / r) pts.push([-r * Math.sin(a), 0, r + r * Math.cos(a)]);
+    if (reverse) pts.reverse();
+    const length = pts.reduce((sum, p, i) => {
+      const q = pts[(i + 1) % pts.length];
+      return sum + Math.hypot(q[0] - p[0], q[2] - p[2]);
+    }, 0);
+    return {
+      id: "stadium",
+      name: "stadium",
+      lengthMeters: length,
+      centerline: pts,
+      width: pts.map(() => 12),
+      startPos: { x: pts[0][0], z: pts[0][2], headingRad: 0 },
+    };
+  }
+
+  for (const reverse of [false, true]) {
+    it(`points at the corner centre (${reverse ? "reversed" : "forward"})`, () => {
+      const track = stadium(reverse);
+      const line = computeRacingLine(track);
+      const room = computeLineRoom(track, line);
+      const n = line.length;
+      let checked = 0;
+      for (let i = 0; i < n; i++) {
+        const p = track.centerline[i];
+        // Straight segments only, well clear of either end.
+        const onStraight = (p[2] === 0 || p[2] === 120) && p[0] > 60 && p[0] < 240;
+        if (!onStraight) continue;
+        const q = track.centerline[(i + 1) % n];
+        const dx = q[0] - p[0];
+        const dz = q[2] - p[2];
+        const len = Math.hypot(dx, dz);
+        // Heading toward the semicircle at x=300 (centre z=60) or at x=0.
+        const centre = dx > 0 ? [300, 60] : [0, 60];
+        const side = Math.sign((centre[0] - p[0]) * (-dz / len) + (centre[1] - p[2]) * (dx / len));
+        expect(room.cornerSign[i]).toBe(side);
+        checked++;
+      }
+      expect(checked).toBeGreaterThan(100);
     });
-    expect(wobble.decision.attempt).toBe(true);
-    expect(wobble.attemptKey).toBe("mark");
-    // ...but lets go once clearly beaten, re-targeting the road ahead.
-    const beaten = composeRacePace({
-      ...base,
-      rivals: [
-        { key: "mark", gapMeters: -8, speedMs: 69 },
-        { key: "next", gapMeters: 25, speedMs: 70 },
-      ],
-      alreadyAttemptingKey: "mark",
-    });
-    expect(beaten.decision.attempt).toBe(false);
-    expect(beaten.attemptKey).toBeNull();
-  });
-});
-
-describe("mergeOffsetFactor", () => {
-  it("holds the whole offset while the cars overlap, then wipes it out once clear", () => {
-    // Astern or alongside: hold the line (crossing now IS the contact).
-    expect(mergeOffsetFactor(20)).toBe(1);
-    expect(mergeOffsetFactor(0)).toBe(1);
-    expect(mergeOffsetFactor(-2)).toBe(1);
-    expect(mergeOffsetFactor(-4.5)).toBe(1);
-    // Nose a car length clear of the other's body: start crossing.
-    expect(mergeOffsetFactor(-6.5)).toBeCloseTo(0.5, 9);
-    // Fully clear: on the line.
-    expect(mergeOffsetFactor(-8.5)).toBe(0);
-    expect(mergeOffsetFactor(-20)).toBe(0);
-  });
-});
-
-describe("alongsideRisk", () => {
-  it("only fires for a car that is actually where we'd move to", () => {
-    // A car in the tower 4m up the road but on the far side of the track:
-    // my merge sweeps my own side down to the line, never across - and a
-    // dead-center car (lateral ~0) DOES block, so the sign check above is
-    // what keeps the far side out, not the band.
-    expect(
-      alongsideRisk({ others: [{ gapMeters: 4, lateralMeters: -3.5 }], ownOffsetMeters: 2.5 })
-    ).toBe(false);
-    // The same car sitting between the line and our offset: contact on the
-    // way across.
-    expect(
-      alongsideRisk({ others: [{ gapMeters: 4, lateralMeters: 0.5 }], ownOffsetMeters: 2 })
-    ).toBe(true);
-    // Alongside but a lap away in tower terms is still alongside in space.
-    expect(
-      alongsideRisk({ others: [{ gapMeters: -5, lateralMeters: 1 }], ownOffsetMeters: 2 })
-    ).toBe(true);
-    // A CONVOY: the car ahead/behind at the same wide offset as us is not
-    // between us and the line - merging home sweeps the whole queue back
-    // together instead of both of us holding the off-line lane for laps
-    // (the herding the feature exists to prevent).
-    expect(
-      alongsideRisk({ others: [{ gapMeters: -4, lateralMeters: 2.6 }], ownOffsetMeters: 2.7 })
-    ).toBe(false);
-    // Long gone: not our problem.
-    expect(
-      alongsideRisk({ others: [{ gapMeters: 30, lateralMeters: 0 }], ownOffsetMeters: 0 })
-    ).toBe(false);
-  });
-});
-
-describe("offsetTargetMeters", () => {
-  it("chases a live lunge, holds a spent one alongside, then washes out", () => {
-    expect(
-      offsetTargetMeters({
-        attempting: true,
-        attemptOffsetMeters: 2.5,
-        gapToTargetMeters: 8,
-        alongside: false,
-        currentOffsetMeters: 1,
-      })
-    ).toBe(2.5);
-    expect(
-      offsetTargetMeters({
-        attempting: true,
-        attemptOffsetMeters: 2.5,
-        gapToTargetMeters: -8.5,
-        alongside: true,
-        currentOffsetMeters: 2.5,
-      })
-    ).toBe(0);
-    // Move over: still alongside, so the line is held (not snapped across).
-    expect(
-      offsetTargetMeters({
-        attempting: false,
-        attemptOffsetMeters: 0,
-        gapToTargetMeters: 3,
-        alongside: true,
-        currentOffsetMeters: 2.2,
-      })
-    ).toBe(2.2);
-    // Nobody there any more: give the line back.
-    expect(
-      offsetTargetMeters({
-        attempting: false,
-        attemptOffsetMeters: 0,
-        gapToTargetMeters: 3,
-        alongside: false,
-        currentOffsetMeters: 2.2,
-      })
-    ).toBe(0);
-  });
+  }
 });
 
 describe("unwrapGap", () => {

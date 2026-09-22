@@ -42,9 +42,9 @@ import {
   sampleSurface,
   wheelSurfaceGrips,
 } from "@/lib/tracks/surfaces";
-import { getRacingLine } from "@/lib/tracks/racingLineCache";
+import { getLineRoom, getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
-import { cornerAheadMeters, computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
+import { computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
 import { createEnergySystem } from "@/lib/physics/energy";
 import {
   difficultyAggressionShift,
@@ -57,15 +57,23 @@ import {
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import {
-  alongsideRisk,
-  composeRacePace,
-  obstacleLateral,
-  offsetTargetMeters,
-  shouldDeployBoost,
+  createRacecraftState,
+  lateralAtLineIndex,
+  lineContextAt,
+  lineDirectionAt,
+  lineIndexAtProgress,
+  refineGap,
+  resetRacecraftState,
+  stepRacecraft,
   unwrapGap,
-  type RaceObstacle,
-  type RaceRival,
+  type FieldCarView,
 } from "@/lib/ai/racecraft";
+import {
+  createRecoveryState,
+  findRecoveryIndex,
+  recoveryPose,
+  updateRecovery,
+} from "@/lib/ai/recovery";
 import type { NetPoseState } from "./NetSync";
 import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
@@ -306,22 +314,12 @@ export function AICar({
   // difficulty change), so these never go stale.
   const traits = traitsForDriver(driverCode);
   const aggression = Math.min(1, Math.max(0, traits.aggression + difficultyAggressionShift(difficulty)));
-  // Racecraft state (see lib/ai/racecraft.ts): the lateral offset ramps
-  // toward its target so a lunge starts as a drift, never a swerve; the
-  // zone is last tick's (one tick of lag at 60Hz is nothing next to a
-  // multi-second overtake); mistakes arm per lap from the seeded RNG.
-  const offsetRef = useRef(0);
-  // Launch clock (seconds since this car started driving): offsets stay
-  // parked for the opening seconds while twenty cars sort out a standing
-  // start shoulder-to-shoulder - swerving a full grid at launch is how
-  // cars end up welded together and the solver ends up NaN (see the
-  // Suzuka 20-car panic). Pace discipline (follow, slipstream) still runs
-  // from green so nobody rear-ends anyone; only the lateral moves wait.
-  const raceSecondsRef = useRef(0);
-  // Latched lunge target key (see composeRacePace): the car being passed,
-  // so mid-pass jostle can't re-target the move onto the next car up the
-  // road and stillbirth it.
-  const overtakeKeyRef = useRef<string | null>(null);
+  // Racecraft state (see lib/ai/racecraft.ts): lateral offset ramp, attack
+  // and defence latches, the launch clock. Recovery (lib/ai/recovery.ts)
+  // puts a beached or upside-down car back on the line. The zone is last
+  // tick's (one tick of lag at 60Hz is nothing next to a pass).
+  const racecraftRef = useRef(createRacecraftState());
+  const recoveryRef = useRef(createRecoveryState());
   const zoneRef = useRef<ThrottleZone>("throttle");
   const rngRef = useRef<(() => number) | null>(null);
   const rngSeedRef = useRef(-1);
@@ -335,6 +333,7 @@ export function AICar({
   const nearestIdxRef = useRef(0);
 
   const racingLine = useMemo(() => getRacingLine(track), [track]);
+  const lineRoom = useMemo(() => getLineRoom(track), [track]);
 
   const { spawnX, spawnY, spawnZ, spawnQuat } = useMemo(() => {
     const grid = gridSlot(track, gridSlotIndex);
@@ -423,6 +422,7 @@ export function AICar({
       // pre-reset snapshot on release.
       aiWasRewindingRef.current = false;
       aiCursorRef.current = 0;
+      resetRacecraftState(racecraftRef.current);
       return;
     }
 
@@ -453,6 +453,7 @@ export function AICar({
       }
       aiCursorRef.current = 0;
       aiWasRewindingRef.current = false;
+      resetRacecraftState(racecraftRef.current);
     }
 
     // Grid start (Scene.tsx) - same reasoning as Car.tsx's identical guard:
@@ -461,7 +462,6 @@ export function AICar({
     // countdown (the AI is held stationary by the throttle gate below too).
     if (raceStartRef?.current ?? true) {
       const lap = lapTimerRef.current.update({ x: pos.x, z: pos.z }, world.timestep);
-      raceSecondsRef.current += world.timestep;
       if (raceRef?.current) {
         const opponents = raceRef.current.opponents;
         while (opponents.length <= aiIndex) {
@@ -553,173 +553,104 @@ export function AICar({
           armed: mistakeArmedRef,
           timeLeft: mistakeTimeLeftRef,
         });
-        // A real moment, not a wobble: half a second of big lift costs
-        // roughly half a second of race time - enough to lose a place to
-        // a car within a second, which is exactly the midfield battle.
         mistakeTimeLeftRef.current = 0.5 + rng() * 0.6;
       }
       if (mistakeTimeLeftRef.current > 0) {
         mistakeTimeLeftRef.current = Math.max(0, mistakeTimeLeftRef.current - world.timestep);
-        paceMult *= 1 - (0.3 + traits.risk * 0.25);
+        paceMult = Math.min(paceMult, 0.85);
       }
-      // The field around this car (see racecraft.ts): the player plus
-      // every other rival, as keyed track gaps from live progress - keys
-      // stay stable ("p", "o{k}") so a latched lunge tracks its target.
-      const rivals: RaceRival[] = [];
-      const race = raceRef?.current;
-      if (race) {
-        // Seam-unwrapped gaps (see unwrapGap): raw totals jump a full lap
-        // at the start/finish line, which would hide a car sitting on it.
-        const rel = (lap: number, prog: number): number =>
-          unwrapGap(myLap, trackedProgress, lap, prog, track.lengthMeters);
-        rivals.push({
-          key: "p",
-          gapMeters: rel(race.player.lapCount, race.player.progressMeters),
-          speedMs: race.player.speedMs ?? 0,
-        });
-        for (let k = 0; k < race.opponents.length; k++) {
-          if (k === aiIndex) continue;
-          const entry = race.opponents[k];
-          rivals.push({
-            key: `o${k}`,
-            gapMeters: rel(entry.lapCount, entry.progressMeters),
-            speedMs: entry.speedMs ?? 0,
-          });
-        }
-      }
-      const nearestAheadGap =
-        rivals.reduce((best, rival) => (rival.gapMeters >= 0 && rival.gapMeters < best ? rival.gapMeters : best), Infinity);
-      const throttleZone = zoneRef.current === "throttle";
-      // Corner room for a lunge, anchored to the same line point the
-      // steering pursues from (see cornerAheadMeters). This scan is the
-      // per-tick anchor: warm-started from this car's last answer, and its
-      // result feeds computeAIControls below as that scan's warm start -
-      // both per-tick nearest-line searches collapse into one windowed
-      // one (same car, same position, same tick: the anchor IS the
-      // steering's nearest point).
+      // The field around this car in the line frame (see racecraft.ts):
+      // seam-unwrapped gaps (exact within 25m), each car's lateral at its
+      // own place on the line, and raw race distance for blue flags. Keys
+      // stay stable ("p", "o{k}") so a latched attack tracks its target.
       const anchor = nearestLineIndex(racingLine, pos.x, pos.z, nearestIdxRef.current);
       nearestIdxRef.current = anchor;
-      const cornerAhead = cornerAheadMeters(racingLine, anchor, Math.abs(speedMs), paceMult);
-      // Slow/stopped obstacles with line-frame laterals (see
-      // obstacleLateral): the shared squeeze in composeRacePace picks the
-      // side each one isn't on. Lateral only - gap and speed ride in the
-      // obstacle entries, range-gated there.
-      // Side-by-side awareness (see alongsideRisk): is another car
-      // physically where I would be if I moved across? The live traffic
-      // table carries every simulated car's own position, so the line-frame
-      // lateral of each one answers it exactly. Collected here for the
-      // offset merge below, alongside the obstacle list the squeeze uses.
-      const others: { gapMeters: number; lateralMeters: number }[] = [];
-      const obstacles: RaceObstacle[] = [];
-      if (trafficRef && race) {
-        const traffic = trafficRef.current;
-        const anchorPoint = racingLine[anchor];
-        const nextPoint = racingLine[(anchor + 1) % racingLine.length];
-        const dirX = nextPoint.position[0] - anchorPoint.position[0];
-        const dirZ = nextPoint.position[2] - anchorPoint.position[2];
-        const dirLen = Math.hypot(dirX, dirZ);
-        if (dirLen > 1e-6) {
-          for (const key of Object.keys(traffic)) {
-            if (key === trafficKey) continue;
-            const entry = key === "p" ? race.player : race.opponents[parseInt(key.slice(1), 10)];
-            if (!entry) continue;
-            const obstacle = traffic[key];
-            if (!obstacle) continue;
-            const gapMeters = unwrapGap(
-              myLap,
-              trackedProgress,
-              entry.lapCount,
-              entry.progressMeters,
-              track.lengthMeters
-            );
-            const lateralMeters = obstacleLateral(
-              obstacle.x,
-              obstacle.z,
-              anchorPoint.position[0],
-              anchorPoint.position[2],
-              dirX / dirLen,
-              dirZ / dirLen
-            );
-            others.push({ gapMeters, lateralMeters });
-            obstacles.push({ gapMeters, speedMs: entry.speedMs ?? 99, lateralMeters });
-          }
+      const dir = lineDirectionAt(racingLine, anchor);
+      const cars: FieldCarView[] = [];
+      const race = raceRef?.current;
+      if (race) {
+        const traffic = trafficRef?.current;
+        const n = racingLine.length;
+        const view = (key: string, trafficKeyOf: string, entry: RaceState["player"]): void => {
+          const at = traffic?.[trafficKeyOf];
+          const coarse = unwrapGap(myLap, trackedProgress, entry.lapCount, entry.progressMeters, track.lengthMeters);
+          cars.push({
+            key,
+            gapMeters: at ? refineGap(coarse, pos.x, pos.z, at.x, at.z, dir.x, dir.z) : coarse,
+            rawGapMeters:
+              (entry.lapCount - myLap) * track.lengthMeters + (entry.progressMeters - trackedProgress),
+            speedMs: entry.speedMs ?? 0,
+            lateralMeters: at
+              ? lateralAtLineIndex(
+                  racingLine,
+                  lineIndexAtProgress(entry.progressMeters, track.lengthMeters, n),
+                  at.x,
+                  at.z
+                )
+              : null,
+          });
+        };
+        view("p", "p", race.player);
+        for (let k = 0; k < race.opponents.length; k++) {
+          if (k !== aiIndex) view(`o${k}`, `a${k}`, race.opponents[k]);
         }
       }
-      // Wheel-to-wheel pace (see composeRacePace): the shared book the
-      // headless field test runs in lockstep, so live behavior and test
+      const racecraft = racecraftRef.current;
+      if (raceStartRef?.current ?? true) racecraft.raceSeconds += world.timestep;
+      // Wheel-to-wheel driving (see stepRacecraft): the shared step the
+      // headless field gates run in lockstep, so live behavior and test
       // behavior cannot drift apart.
-      const { paceMult: racedPace, decision: composed, attemptKey } = composeRacePace({
+      const step = stepRacecraft(racecraft, {
         ownSpeedMs: speedMs,
-        rivals,
-        obstacles,
-        throttleZone,
-        cornerAheadMeters: cornerAhead,
+        ownLateralMeters: lateralAtLineIndex(
+          racingLine,
+          lineIndexAtProgress(trackedProgress, track.lengthMeters, racingLine.length),
+          pos.x,
+          pos.z
+        ),
+        basePace: paceMult,
+        cars,
+        line: lineContextAt(racingLine, lineRoom, anchor, Math.abs(speedMs), paceMult, zoneRef.current),
         aggression,
         risk: traits.risk,
         overtakeSide: traits.overtakeSide,
-        basePace: paceMult,
-        alreadyAttemptingKey: overtakeKeyRef.current,
+        dt: world.timestep,
+        trackLengthMeters: track.lengthMeters,
+        boostEligible: boostEligibleRef.current,
+        batteryFraction: batteryRef.current,
+        mistakeActive: mistakeTimeLeftRef.current > 0,
       });
-      let decision = composed;
-      overtakeKeyRef.current = attemptKey;
-      paceMult = racedPace;
-      // Launch hold (see raceSecondsRef): no lateral moves while the field
-      // sorts out the start. Pace discipline already ran above, so the
-      // pack still launches cleanly - only the swerves wait.
-      if (raceSecondsRef.current < 12) {
-        decision = { attempt: false, offsetMeters: 0, paceBonus: 0, urgent: false };
-        overtakeKeyRef.current = null;
+      paceMult = step.paceMult;
+      const willDeploy = step.deploy;
+      // Beached, wedged or upside down (see lib/ai/recovery.ts): back onto
+      // the line at its own progress once the road there is clear.
+      const up = body.rotation();
+      if (
+        updateRecovery(recoveryRef.current, {
+          racing: raceStartRef?.current ?? true,
+          speedMs,
+          upY: 1 - 2 * (up.x * up.x + up.z * up.z),
+          blocked: step.blocked,
+          dt: world.timestep,
+        })
+      ) {
+        const at = findRecoveryIndex(
+          racingLine,
+          anchor,
+          cars.map((car) => car.gapMeters)
+        );
+        if (at !== null) {
+          const pose = recoveryPose(racingLine, at);
+          body.setTranslation({ x: pose.x, y: pose.y, z: pose.z }, true);
+          body.setRotation({ x: 0, y: Math.sin(pose.yaw / 2), z: 0, w: Math.cos(pose.yaw / 2) }, true);
+          body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          recoveryRef.current = createRecoveryState();
+          resetRacecraftState(racecraft);
+          aiLapInvalidRef.current = true;
+          return;
+        }
       }
-      // The lunge offset ramps toward its target so a move starts as a
-      // drift across, never a swerve - and washes out the same way when
-      // the attempt ends (corner, lift, or the pass sticks). The offset
-      // merges back toward the line as the nose goes clear (see
-      // mergeOffsetFactor): holding full offset while alongside grinds
-      // the pair instead of finishing the move. Measured against the
-      // latched target's own gap, not whoever is nearest - mid-pass the
-      // two routinely differ by a car length. Squeezes past stopped
-      // cars ramp twice as fast (see urgent): at crawl speed there
-      // is no swerve risk, and the slow ramp would still be unfolding at
-      // contact.
-      const targetGap =
-        overtakeKeyRef.current !== null
-          ? (rivals.find((r) => r.key === overtakeKeyRef.current)?.gapMeters ?? nearestAheadGap)
-          : nearestAheadGap;
-      // A live move holds its line until the pass is genuinely complete
-      // (see mergeOffsetFactor); with no move live, an offset still in hand
-      // is held only while someone actually blocks the way back (see
-      // alongsideRisk). A braking zone under MERGE_HOLD_METERS away kills
-      // the hold outright - the line is the only place cornering grip
-      // lives, and dying wide of turn-in is exactly the pre-fix Suzuka
-      // esses flip. Shared verbatim with the headless field sim (see
-      // racecraft's offsetTargetMeters), so the two can't drift apart.
-      const offsetTarget = offsetTargetMeters({
-        attempting: decision.attempt,
-        attemptOffsetMeters: decision.offsetMeters,
-        gapToTargetMeters: targetGap,
-        alongside: alongsideRisk({ others, ownOffsetMeters: offsetRef.current }),
-        currentOffsetMeters: offsetRef.current,
-        brakeZoneMeters: cornerAhead,
-      });
-      const maxStep = (decision.attempt && decision.urgent ? 3.0 : 1.5) * world.timestep;
-      offsetRef.current += Math.min(maxStep, Math.max(-maxStep, offsetTarget - offsetRef.current));
-      // Push-to-Pass strategy (see shouldDeployBoost): deploy on
-      // boost-eligible straights per the driver's aggression, dump
-      // what's left on a lunge; never during a mistake lift (draining
-      // into a lift buys nothing). The deploy flag switches the speed
-      // targets to the precomputed boosted profile on the same tick the
-      // extra engine force arrives (see pathFollower's useBoostedSpeed
-      // contract), so boost and target speed can never disagree about
-      // what this car is doing - the reverted first AI-energy attempt
-      // gated boost on the zone alone and its targets disagreed.
-      const willDeploy =
-        mistakeTimeLeftRef.current <= 0 &&
-        shouldDeployBoost({
-          boostEligible: boostEligibleRef.current,
-          batteryFraction: batteryRef.current,
-          aggression,
-          attemptingLunge: decision.attempt,
-        });
       const aiControls = computeAIControls(
         racingLine,
         pos.x,
@@ -728,7 +659,7 @@ export function AICar({
         speedMs,
         willDeploy,
         paceMult,
-        offsetRef.current,
+        step.steerOffsetMeters,
         // The anchor above is this car's nearest line point at this exact
         // position - passing it makes the internal scan a confirmed
         // windowed hit (distance 0) instead of a second full-line scan.
