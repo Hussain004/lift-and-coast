@@ -44,6 +44,8 @@ import {
   type GraphicsQuality,
 } from "@/lib/render/quality";
 import { FrameRateGovernor, QualityContext, SurfaceMaterial, Sun } from "./renderQuality";
+import { SkyDome } from "./Sky";
+import { grassTexture, planarUvs } from "@/lib/render/textures";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -143,6 +145,7 @@ function Ground({ track }: { track: TrackData }) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(planarUvs(positions, 48), 2));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
     return { positions, indices, geometry };
@@ -152,7 +155,7 @@ function Ground({ track }: { track: TrackData }) {
     <RigidBody type="fixed" colliders={false} friction={0.6}>
       <TrimeshCollider args={[positions, indices]} />
       <mesh geometry={geometry} receiveShadow>
-        <SurfaceMaterial vertexColors />
+        <SurfaceMaterial vertexColors map={grassTexture()} />
       </mesh>
     </RigidBody>
   );
@@ -185,8 +188,12 @@ const ORBIT_FOV = 60;
 const TIME_OF_DAY_LIGHTING: Record<
   TimeOfDay,
   {
+    /** Horizon colour: sky base, fog and the far edge of everything. */
     sky: string;
+    zenith: string;
+    hills: string;
     ambientColor: string;
+    groundColor: string;
     ambientIntensity: number;
     sunColor: string;
     sunIntensity: number;
@@ -194,27 +201,36 @@ const TIME_OF_DAY_LIGHTING: Record<
   }
 > = {
   day: {
-    sky: "#87ceeb",
-    ambientColor: "#ffffff",
-    ambientIntensity: 0.45,
-    sunColor: "#ffffff",
-    sunIntensity: 1.5,
+    sky: "#cfe2f0",
+    zenith: "#3f7cc8",
+    hills: "#4f6b4a",
+    ambientColor: "#dbe9ff",
+    groundColor: "#4a5a34",
+    ambientIntensity: 0.75,
+    sunColor: "#fff6e6",
+    sunIntensity: 1.9,
     sunPosition: [50, 80, 20],
   },
   sunset: {
-    sky: "#dd8a4e",
-    ambientColor: "#ffdcbf",
-    ambientIntensity: 0.32,
-    sunColor: "#ffc27d",
-    sunIntensity: 1.7,
+    sky: "#f0b27a",
+    zenith: "#3b4f86",
+    hills: "#5a4a4e",
+    ambientColor: "#ffd9bd",
+    groundColor: "#4a3a2c",
+    ambientIntensity: 0.55,
+    sunColor: "#ffb870",
+    sunIntensity: 2.0,
     sunPosition: [90, 22, 10],
   },
   overcast: {
-    sky: "#9aa3ab",
-    ambientColor: "#cdd5dd",
-    ambientIntensity: 0.6,
-    sunColor: "#dfe8f2",
-    sunIntensity: 0.85,
+    sky: "#b8c0c7",
+    zenith: "#8c969f",
+    hills: "#5e6a62",
+    ambientColor: "#d5dce3",
+    groundColor: "#555c52",
+    ambientIntensity: 0.95,
+    sunColor: "#e6edf5",
+    sunIntensity: 0.8,
     sunPosition: [20, 80, -30],
   },
 };
@@ -693,8 +709,13 @@ export function Scene({
       <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
       <color attach="background" args={[lighting.sky]} />
       <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
-      <hemisphereLight
-        args={[lighting.ambientColor, "#3b4a2a", lighting.ambientIntensity]}
+      <hemisphereLight args={[lighting.ambientColor, lighting.groundColor, lighting.ambientIntensity]} />
+      <SkyDome
+        zenith={lighting.zenith}
+        horizon={lighting.sky}
+        hills={lighting.hills}
+        sunDirection={lighting.sunPosition}
+        sunColor={lighting.sunColor}
       />
       <Sun
         direction={lighting.sunPosition}

@@ -1,6 +1,7 @@
 "use client";
 
 import type * as THREE from "three";
+import type { TireCompoundId } from "@/lib/physics/tireModel";
 import { CarBodyShell, CarWheels } from "./CarBodyMesh";
 
 /**
@@ -19,6 +20,7 @@ export function F1CarBody({
   steerRefs,
   spinRefs,
   flapRef,
+  compoundRef,
   /** Ghost replay (see Car.tsx): translucent silhouette of the real car,
    * no shadows, wheels parked - a replay pose, not a driven chassis. */
   ghost = false,
@@ -34,6 +36,8 @@ export function F1CarBody({
    * open in low-drag mode. Absent, the flap parks at its shut inclination -
    * the AI never deploys. */
   flapRef?: React.RefObject<THREE.Group | null>;
+  /** The player's live tyre pick (see CarWheels) - sidewall stripe colour. */
+  compoundRef?: React.RefObject<TireCompoundId>;
   ghost?: boolean;
 }) {
   return (
@@ -44,7 +48,7 @@ export function F1CarBody({
         flapRef={flapRef}
         ghost={ghost}
       />
-      <CarWheels steerRefs={steerRefs} spinRefs={spinRefs} ghost={ghost} />
+      <CarWheels steerRefs={steerRefs} spinRefs={spinRefs} compoundRef={compoundRef} ghost={ghost} />
     </>
   );
 }

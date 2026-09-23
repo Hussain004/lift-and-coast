@@ -15,6 +15,7 @@ import {
 import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { TrackData } from "@/lib/tracks/types";
 import { chunkMesh, chunkPoints, thin } from "@/lib/render/chunks";
+import { asphaltTexture, planarUvs } from "@/lib/render/textures";
 import { SurfaceMaterial, useQuality } from "./renderQuality";
 
 /** Cell size for circuit-wide static geometry (see lib/render/chunks.ts). */
@@ -150,6 +151,7 @@ export function Track({
     const { positions, indices } = buildRibbonGeometry(track);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(planarUvs(positions, 6), 2));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     geometry.computeVertexNormals();
     // Visual kerb strips (plan section 4 point 6) - everything about how the
@@ -186,7 +188,7 @@ export function Track({
       <RigidBody type="fixed" colliders={false} friction={1.3}>
         <TrimeshCollider args={[positions, indices]} />
         <mesh geometry={geometry} receiveShadow>
-          <SurfaceMaterial color={RIBBON_COLOR} />
+          <SurfaceMaterial color={RIBBON_COLOR} map={asphaltTexture()} />
         </mesh>
       </RigidBody>
       <Structures track={track} />

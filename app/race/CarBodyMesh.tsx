@@ -1,9 +1,18 @@
 "use client";
 
+import { useRef } from "react";
 import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
 import { CAR_WHEELS } from "@/lib/physics/vehicle";
+import type { TireCompoundId } from "@/lib/physics/tireModel";
 import { FLAP_CLOSED_INCLINE_RAD, computeAccentColor } from "@/lib/race/carBody";
-import { FLAP_PIVOT, buildCarGeometry, buildWheelGeometry, type CarGeometry } from "@/lib/race/carSculpt";
+import {
+  COMPOUND_STRIPE_COLOR,
+  FLAP_PIVOT,
+  buildCarGeometry,
+  buildWheelGeometry,
+  type CarGeometry,
+} from "@/lib/race/carSculpt";
 import { useQuality } from "./renderQuality";
 
 // Shared renderer for the car (see lib/race/carSculpt.ts for the shapes):
@@ -14,7 +23,7 @@ import { useQuality } from "./renderQuality";
 // geometry set per team. Materials are cached per finish.
 
 const bodyCache = new Map<string, CarGeometry>();
-let wheelGeometry: THREE.BufferGeometry | null = null;
+const wheelCache = new Map<TireCompoundId, THREE.BufferGeometry>();
 const materialCache = new Map<string, THREE.Material>();
 
 function carGeometry(livery: string, accent: string): CarGeometry {
@@ -24,8 +33,10 @@ function carGeometry(livery: string, accent: string): CarGeometry {
   return geometry;
 }
 
-function wheels(): THREE.BufferGeometry {
-  return (wheelGeometry ??= buildWheelGeometry());
+function wheels(compound: TireCompoundId): THREE.BufferGeometry {
+  let geometry = wheelCache.get(compound);
+  if (!geometry) wheelCache.set(compound, (geometry = buildWheelGeometry(COMPOUND_STRIPE_COLOR[compound])));
+  return geometry;
 }
 
 type Finish = "paint" | "carbon" | "rubber";
@@ -98,27 +109,44 @@ export function CarBodyShell({
  * The four wheels on the physics-owned stations. `steerRefs`/`spinRefs`
  * keep the exact group structure the vehicle controllers write to (see
  * Car.tsx / AICar.tsx); pass neither for parked wheels (the showroom).
+ * `compoundRef` (the player's live 1/2/3 pick) swaps the sidewall stripe
+ * colour without a re-render; without one the car runs mediums.
  */
 export function CarWheels({
   steerRefs,
   spinRefs,
+  compoundRef,
   ghost = false,
   studio = false,
 }: {
   steerRefs?: React.RefObject<(THREE.Group | null)[]>;
   spinRefs?: React.RefObject<(THREE.Group | null)[]>;
+  compoundRef?: React.RefObject<TireCompoundId>;
   ghost?: boolean;
   studio?: boolean;
 }) {
   const { cheapMaterials: cheap } = useQuality();
   const rubber = material("rubber", { ghost, studio, cheap });
+  const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
+  useFrame(() => {
+    if (!compoundRef) return;
+    const want = wheels(compoundRef.current ?? "medium");
+    for (const mesh of meshRefs.current) if (mesh && mesh.geometry !== want) mesh.geometry = want;
+  });
   return (
     <>
       {CAR_WHEELS.map((wheel, i) => (
         <group key={`wheel-${i}`} position={wheel.position}>
           <group ref={steerRefs ? (el) => { steerRefs.current[i] = el; } : undefined}>
             <group ref={spinRefs ? (el) => { spinRefs.current[i] = el; } : undefined}>
-              <mesh geometry={wheels()} material={rubber} castShadow={!ghost} />
+              <mesh
+                ref={(el) => {
+                  meshRefs.current[i] = el;
+                }}
+                geometry={wheels("medium")}
+                material={rubber}
+                castShadow={!ghost}
+              />
             </group>
           </group>
         </group>

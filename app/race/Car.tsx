@@ -1267,6 +1267,7 @@ export function Car({
             steerRefs={steerRefs}
             spinRefs={spinRefs}
             flapRef={flapRef}
+            compoundRef={tireCompound}
           />
         </group>
       </RigidBody>

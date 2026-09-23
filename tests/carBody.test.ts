@@ -9,6 +9,7 @@ import {
   stepFlapAngle,
 } from "../lib/race/carBody";
 import {
+  COMPOUND_STRIPE_COLOR,
   FLAP_PIVOT,
   FLAP_SPAN,
   TIRE_WIDTH,
@@ -79,6 +80,22 @@ describe("sculpted car", () => {
       found = Math.abs(colors.getX(i) - livery.r) < 1e-3 && Math.abs(colors.getZ(i) - livery.b) < 1e-3;
     }
     expect(found).toBe(true);
+  });
+
+  it("paints each compound's sidewall stripe in its own colour", () => {
+    const hasColor = (g: THREE.BufferGeometry, hex: string): boolean => {
+      const c = new THREE.Color(hex);
+      const colors = g.getAttribute("color");
+      for (let i = 0; i < colors.count; i++) {
+        if (Math.abs(colors.getX(i) - c.r) + Math.abs(colors.getY(i) - c.g) + Math.abs(colors.getZ(i) - c.b) < 1e-3) return true;
+      }
+      return false;
+    };
+    for (const compound of ["soft", "medium", "hard"] as const) {
+      const wheel = buildWheelGeometry(COMPOUND_STRIPE_COLOR[compound]);
+      expect(hasColor(wheel, COMPOUND_STRIPE_COLOR[compound])).toBe(true);
+    }
+    expect(new Set(Object.values(COMPOUND_STRIPE_COLOR)).size).toBe(3);
   });
 
   it("builds a wheel on the physics radius with its axle along x", () => {

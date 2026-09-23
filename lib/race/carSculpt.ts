@@ -20,7 +20,8 @@ export const CARBON_COLOR = "#17181b";
 export const VISOR_COLOR = "#0b0e12";
 export const TIRE_COLOR = "#141414";
 export const RIM_COLOR = "#2b2d31";
-export const SIDEWALL_COLOR = "#f2c230";
+/** Sidewall stripe per compound, as painted on the real tyres. */
+export const COMPOUND_STRIPE_COLOR = { soft: "#e3322b", medium: "#f2c230", hard: "#f4f4f4" } as const;
 export const HELMET_COLOR = "#f2f2f2";
 export const LIGHT_COLOR = "#ff2a2a";
 
@@ -510,10 +511,11 @@ export function buildCarGeometry(livery: string, accent: string): CarGeometry {
 
 /**
  * One wheel, axis along x, centred on the physics wheel station: a rounded
- * tyre (lathe), rim, hub and a compound-coloured sidewall stripe, merged
+ * tyre (lathe), rim, hub and a compound-coloured sidewall stripe (red soft,
+ * yellow medium, white hard), merged
  * into a single vertex-coloured mesh.
  */
-export function buildWheelGeometry(): THREE.BufferGeometry {
+export function buildWheelGeometry(stripe: string = COMPOUND_STRIPE_COLOR.medium): THREE.BufferGeometry {
   const r = WHEEL_RADIUS;
   const hw = TIRE_WIDTH / 2;
   const profile = [
@@ -530,7 +532,7 @@ export function buildWheelGeometry(): THREE.BufferGeometry {
   const rim = new THREE.CylinderGeometry(0.212, 0.212, TIRE_WIDTH - 0.02, 16);
   const hub = new THREE.CylinderGeometry(0.07, 0.07, TIRE_WIDTH + 0.01, 8);
   const stripes = [-1, 1].map((side) => {
-    const t = new THREE.TorusGeometry(0.28, 0.011, 4, 24);
+    const t = new THREE.TorusGeometry(0.28, 0.016, 4, 24);
     t.rotateX(Math.PI / 2);
     t.translate(0, side * (hw + 0.001), 0);
     return t;
@@ -540,7 +542,7 @@ export function buildWheelGeometry(): THREE.BufferGeometry {
       colorize(normalize(tire), TIRE_COLOR),
       colorize(normalize(rim), RIM_COLOR),
       colorize(normalize(hub), CARBON_COLOR),
-      ...stripes.map((s) => colorize(normalize(s), SIDEWALL_COLOR)),
+      ...stripes.map((s) => colorize(normalize(s), stripe)),
     ],
     false
   );

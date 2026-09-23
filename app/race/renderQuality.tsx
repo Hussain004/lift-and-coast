@@ -23,12 +23,20 @@ export function useQuality(): QualitySettings {
 
 /** Lit surface material: PBR standard normally, Lambert on the cheap tier
  * (a fraction of the per-pixel cost - what matters when the GPU is a CPU). */
-export function SurfaceMaterial({ color, vertexColors }: { color?: string; vertexColors?: boolean }) {
+export function SurfaceMaterial({
+  color,
+  vertexColors,
+  map,
+}: {
+  color?: string;
+  vertexColors?: boolean;
+  map?: THREE.Texture;
+}) {
   const { cheapMaterials } = useQuality();
   return cheapMaterials ? (
-    <meshLambertMaterial color={color} vertexColors={vertexColors} />
+    <meshLambertMaterial color={color} vertexColors={vertexColors} map={map} />
   ) : (
-    <meshStandardMaterial color={color} vertexColors={vertexColors} />
+    <meshStandardMaterial color={color} vertexColors={vertexColors} map={map} roughness={0.95} />
   );
 }
 
