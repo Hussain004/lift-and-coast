@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  AERO_STRAIGHT_ENTER_METERS,
+  AERO_STRAIGHT_EXIT_METERS,
+  chooseAeroMode,
   createRacecraftState,
   followGapMeters,
   followSpeedCapMs,
@@ -20,6 +23,65 @@ import { computeRacingLine } from "../lib/tracks/racingLine";
 import type { TrackData } from "../lib/tracks/types";
 
 const TRACK = 5891;
+
+describe("chooseAeroMode", () => {
+  const straight = (cornerAheadMeters: number) => ({
+    throttleZone: true,
+    cornerAheadMeters,
+    curveSign: 0 as const,
+  });
+
+  it("deploys low drag only on a clear, fast straight", () => {
+    expect(
+      chooseAeroMode({
+        current: "high-downforce",
+        line: straight(AERO_STRAIGHT_ENTER_METERS),
+        speedMs: 45,
+        attempting: false,
+        blocked: false,
+      })
+    ).toBe("low-drag");
+    expect(
+      chooseAeroMode({
+        current: "high-downforce",
+        line: straight(100),
+        speedMs: 45,
+        attempting: false,
+        blocked: false,
+      })
+    ).toBe("high-downforce");
+  });
+
+  it("uses hysteresis and protects grip during attacks, blocks and corners", () => {
+    expect(
+      chooseAeroMode({
+        current: "low-drag",
+        line: straight(AERO_STRAIGHT_EXIT_METERS - 1),
+        speedMs: 45,
+        attempting: false,
+        blocked: false,
+      })
+    ).toBe("high-downforce");
+    expect(
+      chooseAeroMode({
+        current: "low-drag",
+        line: straight(300),
+        speedMs: 45,
+        attempting: true,
+        blocked: false,
+      })
+    ).toBe("high-downforce");
+    expect(
+      chooseAeroMode({
+        current: "low-drag",
+        line: { ...straight(300), curveSign: 1 },
+        speedMs: 45,
+        attempting: false,
+        blocked: false,
+      })
+    ).toBe("high-downforce");
+  });
+});
 
 describe("trackGapMeters", () => {
   it("measures signed gaps along the lap, across the line", () => {

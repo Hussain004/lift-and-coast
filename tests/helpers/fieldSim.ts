@@ -25,7 +25,7 @@ import {
   wheelGroundPositions,
   yawFromQuaternion,
 } from "../../lib/physics/vehicle";
-import { computeDownforceN, towDragScale } from "../../lib/physics/aero";
+import { computeDownforceN, towDragScale, type AeroMode } from "../../lib/physics/aero";
 import { createGearboxState } from "../../lib/physics/gearbox";
 import { buildRibbonGeometry } from "../../lib/tracks/mesh";
 import { buildTerrainGeometry } from "../../lib/tracks/terrain";
@@ -74,6 +74,7 @@ interface SimCar {
   collider: RAPIER.Collider;
   controller: RAPIER.DynamicRayCastVehicleController;
   gearbox: ReturnType<typeof createGearboxState>;
+  aeroMode: AeroMode;
   lapTimer: ReturnType<typeof createLapTimer>;
   lapCount: number;
   progressMeters: number;
@@ -207,6 +208,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       spawnYaw: track.startPos.headingRad,
       controller: createCarController(RAPIER, world, chassis),
       gearbox: createGearboxState(true),
+      aeroMode: "high-downforce" as AeroMode,
       lapTimer: createLapTimer({
         startPos: track.startPos,
         lineHalfWidth: 6,
@@ -368,7 +370,9 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         boostEligible: car.boostEligible,
         batteryFraction: car.battery,
         mistakeActive: false,
+        aeroMode: car.aeroMode,
       });
+      car.aeroMode = step.aeroMode;
       if (step.attempting) car.attemptTicks++;
       const upY = 1 - 2 * (rot.x * rot.x + rot.z * rot.z);
       const recoverAt =
@@ -506,7 +510,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         car.controller,
         samples.map((sample) => sample.kerbRiseMeters)
       );
-      applyLoadSensitiveFriction(car.controller, "high-downforce", 1, wheelSurfaceGrips(samples), 1);
+      applyLoadSensitiveFriction(car.controller, car.aeroMode, 1, wheelSurfaceGrips(samples), 1);
       car.controller.updateVehicle(timestep);
       const rot = car.chassis.rotation();
       const torque = computeStabilizingTorque(rot, DEFAULT_STABILIZE_STRENGTH);
@@ -523,7 +527,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       car.chassis.applyImpulse(
         {
           x: 0,
-          y: -computeDownforceN(car.controller.currentVehicleSpeed(), "high-downforce") * timestep,
+          y: -computeDownforceN(car.controller.currentVehicleSpeed(), car.aeroMode) * timestep,
           z: 0,
         },
         true
@@ -534,7 +538,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         { x: cp.x, z: cp.z, yawRad: yawFromQuaternion(rot.x, rot.y, rot.z, rot.w), speedMs: Math.hypot(cv.x, cv.z) },
         cars.filter((other) => other !== car).map((other) => other.chassis.translation())
       );
-      applyDragImpulse(car.chassis, "high-downforce", timestep, towDrag);
+      applyDragImpulse(car.chassis, car.aeroMode, timestep, towDrag);
       applySurfaceDragImpulse(car.chassis, meanSurfaceDrag(samples), timestep);
       const bodyUp = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(rot.x, rot.y, rot.z, rot.w));
       car.maxTilt = Math.max(car.maxTilt, bodyUp.angleTo(UP));

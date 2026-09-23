@@ -33,7 +33,7 @@ import {
   wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
-import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
+import { computeDownforceN, towDragScale, type AeroMode } from "@/lib/physics/aero";
 import { createGearboxState, gearboxSpeedMs, rpmForGear } from "@/lib/physics/gearbox";
 import { F1CarBody } from "./F1CarBody";
 import { checkTrackLimits, allWheelsOffTrack, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
@@ -269,6 +269,7 @@ export function AICar({
   // same rpm policy as the player's auto-assist - always auto, the AI never
   // drives in manual mode.
   const gearboxRef = useRef(createGearboxState(true));
+  const aeroModeRef = useRef<AeroMode>("high-downforce");
   // Latest gated controls for the audio snapshot below - recomputing
   // computeAIControls in useFrame would pay a second nearest-line scan per
   // render frame on top of the physics step's own.
@@ -538,6 +539,10 @@ export function AICar({
     // it keeps the legacy flat 1.
     let boostMultiplier = 1;
     if (netFresh && netInput) {
+      // A remotely driven car has no wing telemetry/strategy; keep the safe
+      // high-downforce mode rather than carrying a previous AI straight
+      // into a human-driven corner.
+      aeroModeRef.current = "high-downforce";
       controls = { throttle: netInput.throttle, brake: netInput.brake, steer: netInput.steer };
     } else {
       // Personality pace (see personalities.ts): driver skill times the
@@ -625,7 +630,9 @@ export function AICar({
         boostEligible: boostEligibleRef.current,
         batteryFraction: batteryRef.current,
         mistakeActive: mistakeTimeLeftRef.current > 0,
+        aeroMode: aeroModeRef.current,
       });
+      aeroModeRef.current = step.aeroMode;
       paceMult = step.paceMult;
       const willDeploy = step.deploy;
       // Beached, wedged or upside down (see lib/ai/recovery.ts): back onto
@@ -715,7 +722,7 @@ export function AICar({
     );
     applyLoadSensitiveFriction(
       controller,
-      "high-downforce",
+      aeroModeRef.current,
       1,
       wheelSurfaceGrips(surfaceSamples)
     );
@@ -737,7 +744,7 @@ export function AICar({
     if (yawDamping !== 0) {
       body.applyTorqueImpulse({ x: 0, y: yawDamping * world.timestep, z: 0 }, true);
     }
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), "high-downforce");
+    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroModeRef.current);
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     // Slipstream (see towDragScale): the same wake physics the player gets.
     const traffic = trafficRef?.current;
@@ -747,7 +754,7 @@ export function AICar({
           Object.entries(traffic).flatMap(([key, at]) => (key === trafficKey ? [] : [at]))
         )
       : 1;
-    applyDragImpulse(body, "high-downforce", world.timestep, towDrag);
+    applyDragImpulse(body, aeroModeRef.current, world.timestep, towDrag);
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
     aiBufferRef.current.push(snapshotOf(body));
     if (trafficRef && trafficKey !== undefined) {

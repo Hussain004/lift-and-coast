@@ -21,6 +21,7 @@
 //   inside of the next corner, and who is already there.
 import { cornerAheadMeters } from "./pathFollower";
 import { overrideModeActive } from "../physics/energy";
+import type { AeroMode } from "../physics/aero";
 import { maxLateralAccelMs2, type RacingLinePoint, type ThrottleZone } from "../tracks/racingLine";
 import type { LineRoom } from "../tracks/racingLineCache";
 
@@ -316,6 +317,35 @@ export function lineContextAt(
   };
 }
 
+export const AERO_STRAIGHT_ENTER_METERS = 220;
+export const AERO_STRAIGHT_EXIT_METERS = 120;
+
+/**
+ * Conservative AI active aero: a low-drag wing is worth deploying only on
+ * a genuinely clear, already-throttle straight. The wider entry and
+ * shorter exit thresholds provide hysteresis, so a point where the racing
+ * line briefly changes curvature cannot make the wing flap every frame.
+ * Attacks, traffic blocks and any braking/lift zone always return to the
+ * high-downforce grip case.
+ */
+export function chooseAeroMode(args: {
+  current: AeroMode;
+  line: Pick<LineContext, "throttleZone" | "cornerAheadMeters" | "curveSign">;
+  speedMs: number;
+  attempting: boolean;
+  blocked: boolean;
+}): AeroMode {
+  const safeStraight =
+    args.line.throttleZone &&
+    args.line.curveSign === 0 &&
+    args.speedMs >= 30 &&
+    !args.attempting &&
+    !args.blocked;
+  if (!safeStraight) return "high-downforce";
+  const threshold = args.current === "low-drag" ? AERO_STRAIGHT_EXIT_METERS : AERO_STRAIGHT_ENTER_METERS;
+  return args.line.cornerAheadMeters >= threshold ? "low-drag" : "high-downforce";
+}
+
 export interface RacecraftState {
   /** Current (ramped) lateral offset handed to the steering. */
   offset: number;
@@ -372,6 +402,8 @@ export interface RacecraftInput {
   boostEligible: boolean;
   batteryFraction: number;
   mistakeActive: boolean;
+  /** Current physical wing mode; the strategy returns the mode for this tick. */
+  aeroMode?: AeroMode;
 }
 
 export interface RacecraftOutput {
@@ -386,6 +418,8 @@ export interface RacecraftOutput {
   steerOffsetMeters: number;
   /** Within a second of the car ahead: Manual Override Mode (energy.ts). */
   override: boolean;
+  /** Active aero mode to apply to grip, downforce and drag this tick. */
+  aeroMode: AeroMode;
 }
 
 function clamp01(v: number): number {
@@ -754,5 +788,12 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   if (obstacleAim !== null && own < 10) {
     steerOffsetMeters = ownLat + (obstacleAim - ownLat) * (1 + 3 * (1 - own / 10));
   }
-  return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters, override };
+  const aeroMode = chooseAeroMode({
+    current: input.aeroMode ?? "high-downforce",
+    line,
+    speedMs: own,
+    attempting: attacking,
+    blocked,
+  });
+  return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters, override, aeroMode };
 }
