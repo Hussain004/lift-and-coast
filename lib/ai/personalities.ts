@@ -27,11 +27,10 @@ export function parseDifficulty(raw: string | null): AIDifficulty {
   return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
 }
 
-/** Global pace multiplier applied to every AI target speed. Ace rides ~8%
- * over the reference profile - sized to run with a strong player who also
- * deploys Push-to-Pass (the AI deploys too, see lib/ai/racecraft.ts's
- * shouldDeployBoost), with the pathFollower clamp bounding the worst-case
- * cornering overspeed. Pro stays the exact reference pace. */
+/** Global pace multiplier applied to every AI target speed. Ace is now a
+ * genuine benchmark tier rather than a cosmetic 8% label: its target envelope
+ * sits above the normal drag-limited cruise, while the path follower's pace
+ * clamp still bounds cornering overspeed. Pro remains the reference pace. */
 export function difficultyPaceScale(difficulty: AIDifficulty): number {
   switch (difficulty) {
     case "rookie":
@@ -41,7 +40,7 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
     case "pro":
       return 1.0;
     case "ace":
-      return 1.08;
+      return 1.14;
   }
 }
 
@@ -57,7 +56,7 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
     case "pro":
       return 0;
     case "ace":
-      return 0.3;
+      return 0.35;
   }
 }
 

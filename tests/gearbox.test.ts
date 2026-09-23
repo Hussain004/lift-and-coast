@@ -39,11 +39,14 @@ describe("rpmForGear", () => {
     expect(rpmForGear(-25, 4)).toBe(rpmForGear(25, 4));
   });
 
-  it("redlines around 21 m/s in 1st and ~62 m/s in 7th (top speed)", () => {
+  it("redlines around 21 m/s in 1st and leaves real top-gear headroom", () => {
     expect(rpmForGear(21, 1)).toBeGreaterThan(SHIFT_UP_RPM);
     expect(rpmForGear(21, 1)).toBeLessThanOrEqual(REDLINE_RPM);
-    expect(rpmForGear(62, 7)).toBeGreaterThan(SHIFT_UP_RPM);
-    expect(rpmForGear(62, 7)).toBeLessThanOrEqual(REDLINE_RPM);
+    // The final ratio is deliberately tall: deployment needs somewhere to
+    // go after the old 62 m/s artificial ceiling.
+    expect(rpmForGear(76, 7)).toBeGreaterThan(SHIFT_UP_RPM);
+    expect(rpmForGear(76, 7)).toBeLessThanOrEqual(REDLINE_RPM);
+    expect(rpmForGear(85, 7)).toBeGreaterThan(REDLINE_RPM);
   });
 
   it("returns idle rpm for out-of-range gears", () => {
@@ -204,8 +207,33 @@ describe("gearbox through simulateDrive (auto)", () => {
     );
     expect(result.maxTiltRad).toBeLessThan(0.6);
     expect(maxGear).toBe(GEAR_COUNT);
-    expect(maxSpeed).toBeGreaterThan(40);
-    expect(result.finalSpeedMs).toBeGreaterThan(40);
+    // The new final gear/drag balance should put the car into the low-80 m/s
+    // range on a long flat run, not leave the old 40+ m/s smoke-test floor.
+    expect(maxSpeed).toBeGreaterThan(70);
+    expect(result.finalSpeedMs).toBeGreaterThan(70);
+  });
+
+  it("gives deployment a measurable straight-line advantage", async () => {
+    const normal = await simulateDrive(
+      12,
+      { throttle: 1, brake: 0, steer: 0 },
+      {
+        engineForce: DEFAULT_ENGINE_FORCE,
+        brakeForce: DEFAULT_BRAKE_FORCE,
+        stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
+      }
+    );
+    const deployed = await simulateDrive(
+      12,
+      { throttle: 1, brake: 0, steer: 0, boostMultiplier: 1.6 },
+      {
+        engineForce: DEFAULT_ENGINE_FORCE,
+        brakeForce: DEFAULT_BRAKE_FORCE,
+        stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
+      }
+    );
+    expect(deployed.distanceMeters).toBeGreaterThan(normal.distanceMeters * 1.05);
+    expect(deployed.finalSpeedMs).toBeGreaterThan(normal.finalSpeedMs);
   });
 
   it("stays within 15% of the legacy flat-force straight-line performance", async () => {

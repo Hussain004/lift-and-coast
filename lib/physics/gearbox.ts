@@ -14,12 +14,13 @@
 // force the whole stability suite was verified against (peak thrust in
 // 1st gear at peak torque = exactly DEFAULT_ENGINE_FORCE).
 //
-// Constants chosen so 1st gear redlines at ~21 m/s and 7th gear at the
-// car's realistic top speed (~62 m/s), with F1-style close ratios between:
-// an upshift at redline lands the next gear right at the torque peak.
-// Thrust factors taper mildly toward the tall gears (0.91 in 7th) so gear
-// choice has a real, felt effect - but only downward from 1.0, keeping the
-// force envelope inside what the danger-scenario matrix already validated.
+// Constants chosen so 1st gear redlines at ~21 m/s and 7th gear has enough
+// headroom to let the car run into the low-80s m/s on a long straight. The
+// previous 6.89 final ratio redlined at only ~62 m/s, which made the profile's
+// old 70 m/s straight-line target unreachable in normal running and made a
+// battery deployment look like it did nothing. The deliberately tall final
+// gear still lands just above the torque band after the 6th-to-7th shift, so
+// it behaves like a real top gear rather than an artificial rev limiter.
 
 export interface GearboxState {
   /** 1-based gear, 1..GEAR_COUNT. */
@@ -52,9 +53,10 @@ const DRIVEN_WHEEL_CIRCUMFERENCE_M = 2 * Math.PI * DRIVEN_WHEEL_RADIUS_M;
 export const GEAR_COUNT = 7;
 
 // Overall ratios (gear ratio x final drive), 1st (shortest) to 7th.
-// Geometric spread ~1.20/step: redline speeds ~21 / 25 / 30 / 36 / 43 /
-// 52 / 62 m/s.
-export const GEAR_RATIOS = [20.3, 16.96, 14.17, 11.83, 9.88, 8.25, 6.89];
+// The first six retain the close, F1-like spread used by the original tuning;
+// final is deliberately taller so the car can use the available drag headroom
+// instead of sitting on the limiter at 62 m/s.
+export const GEAR_RATIOS = [20.3, 16.96, 14.17, 11.83, 9.88, 8.25, 5.6];
 
 // Mild mechanical-advantage taper toward the tall gears - 1st is 1.0 so
 // the legacy launch force (DEFAULT_ENGINE_FORCE at peak torque) is

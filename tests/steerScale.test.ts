@@ -33,9 +33,9 @@ describe("speedSensitiveSteerScale", () => {
   });
 
   it("floors out rather than reaching zero at high speed", () => {
-    const scale = speedSensitiveSteerScale(45);
+    const scale = speedSensitiveSteerScale(55);
     expect(scale).toBeGreaterThan(0);
-    expect(scale).toBeCloseTo(0.35, 5);
+    expect(scale).toBeCloseTo(0.42, 5);
     // Going even faster should not reduce it further.
     expect(speedSensitiveSteerScale(200)).toBe(scale);
   });

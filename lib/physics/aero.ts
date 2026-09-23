@@ -7,11 +7,15 @@
 // this car's current tuning.
 const DOWNFORCE_COEFFICIENT_N_PER_MS2 = 0.5;
 
-// Tuned so drag stays a minor share of engine force in the speed range the
-// existing stability suite already covers (~65N at 14.7 m/s vs 500N boosted
-// engine force, under 15%) - it should cap top speed, not fight low-speed
-// acceleration the way LINEAR_DAMPING already does.
-const DRAG_COEFFICIENT_N_PER_MS2 = 0.3;
+// Tuned so drag stays a minor share of engine force through the launch and
+// acceleration range, but still gives deployment a meaningful straight-line
+// window. The old 0.30 coefficient put the high-downforce car's drag-limited
+// top speed almost underneath the old 62 m/s final-gear ceiling, so deploying
+// on a long straight spent battery without changing the speed the car could
+// actually hold. 0.24 leaves a visible gap between normal and deployed pace
+// while keeping the same broad aero model (and the stability suite's braking
+// margin) intact.
+const DRAG_COEFFICIENT_N_PER_MS2 = 0.24;
 
 export type AeroMode = "high-downforce" | "low-drag";
 

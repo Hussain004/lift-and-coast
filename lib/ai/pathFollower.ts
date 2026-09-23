@@ -242,7 +242,7 @@ export function cornerAheadMeters(
 ): number {
   const n = line.length;
   if (n === 0) return 400;
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.06, Math.max(0.9, paceScale)) : 1;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0.9, paceScale)) : 1;
   let ahead = 0;
   for (let k = 0; k < n && ahead < 400; k++) {
     const point = line[(fromIndex + k) % n];
@@ -310,7 +310,7 @@ export function computeAIControls(
   // ceiling. The floor is zero: racecraft's follow cap has to be able to
   // stop a car behind a stopped one (a 0.9 floor here silently turned
   // every "stop" into "ram at 90%" - the grid-start and queue shunts).
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.12, Math.max(0, paceScale)) : 1;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0, paceScale)) : 1;
   const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
   const profileTarget = unscaledTarget * clampedPace;
   // The preview geometry below keeps the pace range it was validated over:

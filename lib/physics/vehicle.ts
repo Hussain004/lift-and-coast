@@ -407,8 +407,13 @@ const MAX_STEER_ANGLE = 0.45;
 // lock"). Scale steer angle down between these speeds, floored so the car
 // stays steerable rather than becoming unresponsive at top speed.
 const STEER_FULL_LOCK_SPEED_MS = 8;
-const STEER_MIN_LOCK_SPEED_MS = 45;
-const STEER_MIN_SCALE = 0.35;
+const STEER_MIN_LOCK_SPEED_MS = 55;
+// A modern formula car still has meaningful steering authority at 250 km/h.
+// The previous 0.35 floor made the car feel like it was on rails in fast
+// sweepers and forced a keyboard player to fight the snap-back. Keep the
+// reduction speed-sensitive, but leave enough lock for small corrections and
+// trail-braking without making the car twitchy.
+const STEER_MIN_SCALE = 0.42;
 
 export function speedSensitiveSteerScale(speedMs: number): number {
   const speed = Math.abs(speedMs);

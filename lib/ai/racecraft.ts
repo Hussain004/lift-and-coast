@@ -35,7 +35,7 @@ const PASS_LANE_METERS = 2.9;
 const LANE_HALF_WIDTH_METERS = 1.8;
 /** No attacks or defending while a standing start sorts itself out;
  * avoidance and following run from the green light. */
-const LAUNCH_HOLD_SECONDS = 10;
+const LAUNCH_HOLD_SECONDS = 5;
 const ATTACK_TIMEOUT_SECONDS = 10;
 const RETRY_COOLDOWN_SECONDS = 4;
 /** Offset ramp across the track: a drift, never a swerve... */

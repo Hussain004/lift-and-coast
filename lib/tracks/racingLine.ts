@@ -40,10 +40,10 @@ const SMOOTHING_BOX_RADIUS = 10;
 const SMOOTHING_PASSES = 4;
 
 // Speed-profile constants (also used to color the line - see ThrottleZone
-// below). MAX_SPEED_MS=70 was checked numerically against this car's
-// physics-derived terminal velocity - see lib/ai/pathFollower.ts's own
-// history/comments for that derivation (this module now owns the speed
-// profile the AI previously computed itself).
+// below). The profile owns the reference speed envelope shared by the AI and
+// the live-line overlay; it is intentionally not a second rigid speed clamp.
+// The normal and boosted ceilings leave room above the car's drag-limited
+// cruise so deployment can change the speed actually carried down a straight.
 //
 // The per-corner cap below used to be an empirically-tuned linear penalty
 // on a raw cross-product "turn" signal (turn * CURVATURE_SPEED_PENALTY).
@@ -58,7 +58,15 @@ const SMOOTHING_PASSES = 4;
 // cap depends on speed through downforce. A flat ~1.2g cap was tried first
 // and misfit both ends of the lap at once (see LATERAL_SAFETY_FACTOR).
 const SPEED_LOOKAHEAD_POINTS = 30;
-const MAX_SPEED_MS = 70;
+/**
+ * Straight-line reference speed for the shared AI profile. This is above the
+ * normal high-downforce equilibrium on purpose: the profile is a target
+ * envelope, not a second hard speed clamp, and leaving headroom above the
+ * car's drag-limited cruise is what makes a deployment useful on a long
+ * straight. The boosted profile gets a separate ceiling below.
+ */
+export const MAX_SPEED_MS = 86;
+export const MAX_BOOST_SPEED_MS = 94;
 const MIN_CORNER_SPEED_MS = 12;
 // Lateral grip cap, derived from the same physics the car drives on instead
 // of a separately-tuned constant: peak tire mu at the speed's own
@@ -345,13 +353,17 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
 
   const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, MAX_ACCEL_MS2, MAX_DECEL_MS2);
 
-  // Same raw cap and the same real (unboosted) decel limit - only the
-  // forward/accel side is boosted, matching how Push-to-Pass actually
-  // works (more engine force, not better brakes). See boostEligible's own
-  // comment for why this alone is enough to keep the corner braking point
-  // correct without extra logic.
+  // Same corner caps and the same real (unboosted) decel limit - only the
+  // forward/accel side and the straight-line ceiling are boosted, matching
+  // how Push-to-Pass actually works (more engine force, not better brakes).
+  // A separate raw ceiling is important: without it, deployment could only
+  // help while the car was still below the normal profile's artificial top
+  // speed, which is exactly the straight-line case the player cares about.
+  const boostedCurveOnlySpeed = Float64Array.from(curveOnlySpeed, (speed) =>
+    Math.min(MAX_BOOST_SPEED_MS, speed)
+  );
   const boostedTargetSpeedMs = computeCappedSpeedProfile(
-    curveOnlySpeed,
+    boostedCurveOnlySpeed,
     segmentLengths,
     MAX_ACCEL_MS2 * DEPLOY_BOOST_MULTIPLIER,
     MAX_DECEL_MS2
