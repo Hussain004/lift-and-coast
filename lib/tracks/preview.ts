@@ -163,3 +163,84 @@ export function previewStats(meta: TrackMeta): { length: string; corners: string
     direction: outline.direction === "clockwise" ? "Clockwise" : "Counterclockwise",
   };
 }
+
+/** Map regions for the circuit browser: each zooms the map and filters the
+ * circuit cards, so Europe's cluster of a dozen pins becomes pickable. */
+export type MapRegion = "world" | "europe" | "americas" | "middle-east" | "asia-pacific";
+
+export const MAP_REGIONS: { id: MapRegion; label: string }[] = [
+  { id: "world", label: "World" },
+  { id: "europe", label: "Europe" },
+  { id: "americas", label: "Americas" },
+  { id: "middle-east", label: "Middle East" },
+  { id: "asia-pacific", label: "Asia-Pacific" },
+];
+
+export function regionOf(meta: { lat: number; lon: number }): Exclude<MapRegion, "world"> {
+  if (meta.lon < -30) return "americas";
+  if (meta.lon >= 60) return "asia-pacific";
+  if (meta.lon >= 35 || meta.lat < 34) return "middle-east";
+  return "europe";
+}
+
+/** A view framing every pin in the region with a margin, at the map's
+ * locked 2:1 aspect. */
+export function regionView(tracks: readonly TrackMeta[], region: MapRegion): MapView {
+  if (region === "world") return fullWorldView();
+  const pins = tracks
+    .filter((t) => regionOf(t) === region)
+    .map((t) => projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H));
+  if (pins.length === 0) return fullWorldView();
+  const minX = Math.min(...pins.map((p) => p.x));
+  const maxX = Math.max(...pins.map((p) => p.x));
+  const minY = Math.min(...pins.map((p) => p.y));
+  const maxY = Math.max(...pins.map((p) => p.y));
+  const w = Math.max((maxX - minX) * 1.35, (maxY - minY) * 1.35 * (WORLD_MAP_W / WORLD_MAP_H), MAP_MIN_ZOOM_W * 1.6);
+  const h = viewH(w);
+  return clampMapView({ w, x: (minX + maxX) / 2 - w / 2, y: (minY + maxY) / 2 - h / 2 });
+}
+
+export type LabelSide = "right" | "left" | "above" | "below";
+
+/**
+ * Greedy label placement for map pins: each label tries right, left, above
+ * then below its pin and takes the first spot that overlaps no label
+ * already placed (and no other pin); priority ids (the picked circuit, the
+ * hovered one) place first and always get a spot. Sizes are in the same
+ * units as the pin positions: charWidth per character, lineHeight tall.
+ */
+export function placeLabels(
+  pins: { id: string; x: number; y: number; text: string }[],
+  priority: readonly string[],
+  charWidth: number,
+  lineHeight: number,
+  gap: number
+): Map<string, LabelSide> {
+  type Rect = { x0: number; y0: number; x1: number; y1: number };
+  const placed: Rect[] = [];
+  const out = new Map<string, LabelSide>();
+  const hit = (r: Rect) =>
+    placed.some((p) => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0) ||
+    pins.some((p) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1);
+  const ordered = [
+    ...pins.filter((p) => priority.includes(p.id)),
+    ...pins.filter((p) => !priority.includes(p.id)),
+  ];
+  for (const pin of ordered) {
+    const w = pin.text.length * charWidth;
+    const h = lineHeight;
+    const options: [LabelSide, Rect][] = [
+      ["right", { x0: pin.x + gap, y0: pin.y - h / 2, x1: pin.x + gap + w, y1: pin.y + h / 2 }],
+      ["left", { x0: pin.x - gap - w, y0: pin.y - h / 2, x1: pin.x - gap, y1: pin.y + h / 2 }],
+      ["above", { x0: pin.x - w / 2, y0: pin.y - gap - h, x1: pin.x + w / 2, y1: pin.y - gap }],
+      ["below", { x0: pin.x - w / 2, y0: pin.y + gap, x1: pin.x + w / 2, y1: pin.y + gap + h }],
+    ];
+    const free = options.find(([, r]) => !hit(r));
+    const choice = free ?? (priority.includes(pin.id) ? options[0] : undefined);
+    if (choice) {
+      out.set(pin.id, choice[0]);
+      placed.push(choice[1]);
+    }
+  }
+  return out;
+}

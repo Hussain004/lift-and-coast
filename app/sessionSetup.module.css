@@ -1,14 +1,81 @@
 .setup {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   border: 1px solid rgba(246, 243, 236, 0.1);
   border-radius: 18px;
   padding: 20px 24px 24px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 60px rgba(0, 0, 0, 0.35);
-  width: min(360px, 100%);
+  width: 100%;
+  min-width: 0;
+}
+
+/* The picked circuit, big: outline + stats at the head of the setup. */
+.circuit {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding-bottom: 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(246, 243, 236, 0.08);
+}
+
+.circuitOutline {
+  flex: none;
+  border-radius: 14px;
+  background: radial-gradient(120% 100% at 50% 0%, #121720 0%, #07080c 75%);
+  border: 1px solid rgba(246, 243, 236, 0.08);
+}
+
+.circuitOutline path {
+  fill: none;
+  stroke: #f6f3ec;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(225, 6, 0, 0.45));
+}
+
+.circuitStart {
+  fill: #ffd23f;
+}
+
+.circuitInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.circuitName {
+  color: #f6f3ec;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 10px;
+}
+
+.circuitStats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+}
+
+.circuitStats dt {
+  color: #7d838f;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.circuitStats dd {
+  margin: 0;
+  color: #e6e3dc;
+  text-align: right;
 }
 
 .sliderRow {
@@ -20,6 +87,7 @@
 }
 
 .label {
+  text-align: left;
   color: #d3ab63;
   font-family: var(--font-geist-mono);
   font-size: 11px;
@@ -28,9 +96,11 @@
 
 .presets {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   width: 100%;
-  justify-content: center;
+  justify-content: flex-start;
+  margin-bottom: 6px;
 }
 
 .preset {
@@ -88,6 +158,7 @@
 
 .drive {
   position: relative;
+  align-self: stretch;
   display: inline-flex;
   align-items: center;
   justify-content: center;

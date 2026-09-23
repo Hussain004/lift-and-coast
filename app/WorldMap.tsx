@@ -8,6 +8,7 @@ import {
 } from "@/lib/race/sessionSetup";
 import { TRACKS } from "@/lib/tracks/registry";
 import {
+  MAP_REGIONS,
   WORLD_MAP_H,
   WORLD_MAP_W,
   fullWorldView,
@@ -17,47 +18,81 @@ import {
   mapViewBox,
   outlinePath,
   panMapView,
+  placeLabels,
   previewStats,
   projectPin,
+  regionOf,
+  regionView,
   zoomMapView,
+  type MapRegion,
   type MapView,
 } from "@/lib/tracks/preview";
 import styles from "./worldMap.module.css";
 
-// Plan section 8 (World Map, Track Preview): the circuit picker as a real
-// zoomable world map plus a top-down outline of the picked track with its
-// stats. Coastlines are vendored Natural Earth 110m geometry (see
-// lib/tracks/preview.ts), drawn once as a single path - zoom and pan only
-// rewrite the SVG viewBox, never re-project. The pins are the session's
-// track picker (they replaced SessionSetup's button row), so clicking one
-// persists straight into the session prefs the Drive link reads.
+// Plan section 8 (World Map): the circuit browser. Region chips zoom the
+// map and filter the cards together - with 27 circuits, a dozen of them in
+// Europe, a world-scale pin map alone is hunt-and-peck. Pins get a large
+// invisible hit target; cards carry each circuit's outline. Both write the
+// same session prefs the Drive link reads, so they can never disagree.
+// Coastlines are vendored Natural Earth geometry drawn once as one path;
+// zoom and pan only rewrite the SVG viewBox.
 const MAP_BUTTON_ZOOM = 1.6;
-const PREVIEW_PX = 190;
-// Drag distance in screen px past which a press is a pan, not a pin click.
 const DRAG_PICK_THRESHOLD_PX = 4;
+const CARD_OUTLINE_PX = 64;
+const TWEEN_MS = 420;
+
+function pick(id: string): void {
+  const { raceLaps, timeOfDay, rivals, difficulty } = loadSessionSetupPrefs();
+  saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay, rivals, difficulty });
+}
 
 export function WorldMap() {
   const trackId = useSessionTrackId();
-  const meta = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
-  const outline = getOutline(meta.id);
-  const stats = previewStats(meta);
-  const fitted = outlinePath(outline.points, PREVIEW_PX, 14);
   const land = useMemo(() => landPath(getLandPolygons()), []);
-
+  const [region, setRegion] = useState<MapRegion>("world");
   const [view, setView] = useState<MapView>(() => fullWorldView());
-  const svgRef = useRef<SVGSVGElement>(null);
-  // Hovered (or keyboard-focused) pin for the name popover: the picked
-  // track already labels itself, so this only fires for the rest.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const viewRef = useRef(view);
+  const tweenRef = useRef(0);
   const panRef = useRef<{ startX: number; startY: number; view: MapView } | null>(null);
-  // A drag that starts on a pin still releases over it, which would click it
-  // - so a press that travels past the drag threshold disarms the click.
   const suppressClickRef = useRef(false);
 
-  const pick = (id: string) => {
-    const { raceLaps, timeOfDay, rivals, difficulty } = loadSessionSetupPrefs();
-    saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay, rivals, difficulty });
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  /** Eases the viewBox to a target instead of snapping. */
+  const flyTo = (target: MapView) => {
+    cancelAnimationFrame(tweenRef.current);
+    const from = viewRef.current;
+    let start: number | null = null;
+    const step = (now: number) => {
+      start ??= now;
+      const t = Math.min(1, (now - start) / TWEEN_MS);
+      const e = 1 - (1 - t) ** 3;
+      setView({
+        x: from.x + (target.x - from.x) * e,
+        y: from.y + (target.y - from.y) * e,
+        w: from.w + (target.w - from.w) * e,
+      });
+      if (t < 1) tweenRef.current = requestAnimationFrame(step);
+    };
+    tweenRef.current = requestAnimationFrame(step);
   };
+
+  useEffect(() => () => cancelAnimationFrame(tweenRef.current), []);
+
+  // Rendered map width: pins and labels are sized in screen pixels, so a
+  // phone gets the same ~28px touch target as a desktop.
+  const [mapPx, setMapPx] = useState(WORLD_MAP_W);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const observer = new ResizeObserver(([entry]) => setMapPx(Math.max(1, entry.contentRect.width)));
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
 
   // Wheel-zoom about the cursor. Native listener (not React's onWheel) so
   // preventDefault actually suppresses the page scroll.
@@ -66,6 +101,7 @@ export function WorldMap() {
     if (!svg) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      cancelAnimationFrame(tweenRef.current);
       const rect = svg.getBoundingClientRect();
       setView((v) => {
         const anchorX = v.x + ((e.clientX - rect.left) / rect.width) * v.w;
@@ -77,151 +113,162 @@ export function WorldMap() {
     return () => svg.removeEventListener("wheel", onWheel);
   }, []);
 
+  const chooseRegion = (next: MapRegion) => {
+    setRegion(next);
+    flyTo(regionView(TRACKS, next));
+  };
+
   const toSvgDelta = (dxPx: number, dyPx: number) => {
-    const svg = svgRef.current;
-    const rect = svg?.getBoundingClientRect();
+    const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return { dx: 0, dy: 0 };
     const unit = view.w / rect.width;
     return { dx: dxPx * unit, dy: dyPx * unit };
   };
 
-  // Inverse pin scale: dots and labels stay a constant screen size at any
-  // zoom instead of swelling into dinner plates.
-  const k = view.w / WORLD_MAP_W;
+  // Map units per screen pixel: pins keep a constant on-screen size at any
+  // zoom and any map width.
+  const k = view.w / mapPx;
+  const zoomedIn = view.w < WORLD_MAP_W / 2.2 && mapPx > 420;
+  const visible = region === "world" ? TRACKS : TRACKS.filter((t) => regionOf(t) === region);
+  const center = { x: view.x + view.w / 2, y: view.y + (view.w / WORLD_MAP_W) * WORLD_MAP_H / 2 };
+  // Label layout in map units (labels are 11px mono text scaled by k):
+  // zoomed out only the picked/hovered circuits speak, zoomed in everyone
+  // gets a collision-free spot where one exists.
+  const priority = [trackId, ...(hoveredId ? [hoveredId] : [])];
+  const labels = placeLabels(
+    TRACKS.filter((t) => zoomedIn || priority.includes(t.id)).map((t) => ({
+      id: t.id,
+      text: t.shortName,
+      ...projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H),
+    })),
+    priority,
+    7 * k,
+    13 * k,
+    9 * k
+  );
 
   return (
-    <div className={styles.setup}>
-      <div className={styles.label}>WORLD MAP</div>
-      <svg
-        ref={svgRef}
-        viewBox={mapViewBox(view)}
-        className={styles.map}
-        role="radiogroup"
-        aria-label="Circuit map"
-        onPointerDown={(e) => {
-          (e.target as SVGElement).setPointerCapture?.(e.pointerId);
-          suppressClickRef.current = false;
-          panRef.current = {
-            startX: e.clientX,
-            startY: e.clientY,
-            view,
-          };
-        }}
-        onPointerMove={(e) => {
-          const pan = panRef.current;
-          if (!pan) return;
-          if (
-            Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) >
-            DRAG_PICK_THRESHOLD_PX
-          ) {
-            suppressClickRef.current = true;
-          }
-          const { dx, dy } = toSvgDelta(pan.startX - e.clientX, pan.startY - e.clientY);
-          setView(panMapView(pan.view, dx, dy));
-        }}
-        onPointerUp={() => {
-          panRef.current = null;
-        }}
-        onPointerCancel={() => {
-          panRef.current = null;
-        }}
-      >
-        <path d={land} className={styles.land} />
-        {TRACKS.map((t) => {
-          const { x, y } = projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H);
-          const active = t.id === meta.id;
-          const flip = x > WORLD_MAP_W - 90;
-          return (
-            <g
-              key={t.id}
-              role="radio"
-              aria-checked={active}
-              aria-label={t.name}
-              tabIndex={0}
-              className={styles.pin}
-              transform={`translate(${x},${y}) scale(${k})`}
-              onMouseEnter={() => setHoveredId(t.id)}
-              onMouseLeave={() => setHoveredId((id) => (id === t.id ? null : id))}
-              onFocus={() => setHoveredId(t.id)}
-              onBlur={() => setHoveredId((id) => (id === t.id ? null : id))}
-              onClick={() => {
-                if (suppressClickRef.current) {
-                  suppressClickRef.current = false;
-                  return;
-                }
-                pick(t.id);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  pick(t.id);
-                }
-              }}
-            >
-              <title>{t.name}</title>
-              {active && <circle r={10} className={styles.pinRing} />}
-              <circle r={5} className={active ? styles.pinActive : styles.pinDot} />
-              {(active || hoveredId === t.id) && (
-                <text
-                  x={flip ? -12 : 12}
-                  y={4}
-                  textAnchor={flip ? "end" : "start"}
-                  className={active ? styles.pinLabel : styles.pinHover}
-                >
-                  {t.shortName}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      <div className={styles.mapControls}>
-        <button type="button" className={styles.mapButton} onClick={() => setView((v) => zoomMapView(v, v.x + v.w / 2, v.y + ((v.w / WORLD_MAP_W) * WORLD_MAP_H) / 2, MAP_BUTTON_ZOOM))} aria-label="Zoom in">
-          +
-        </button>
-        <button type="button" className={styles.mapButton} onClick={() => setView((v) => zoomMapView(v, v.x + v.w / 2, v.y + ((v.w / WORLD_MAP_W) * WORLD_MAP_H) / 2, 1 / MAP_BUTTON_ZOOM))} aria-label="Zoom out">
-          −
-        </button>
-        <button type="button" className={styles.mapButton} onClick={() => setView(fullWorldView())}>
-          RESET
-        </button>
+    <div className={styles.browser}>
+      <div className={styles.regions} role="tablist" aria-label="Map region">
+        {MAP_REGIONS.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            role="tab"
+            aria-selected={region === r.id}
+            className={region === r.id ? styles.regionActive : styles.region}
+            onClick={() => chooseRegion(r.id)}
+          >
+            {r.label}
+            <span className={styles.regionCount}>
+              {r.id === "world" ? TRACKS.length : TRACKS.filter((t) => regionOf(t) === r.id).length}
+            </span>
+          </button>
+        ))}
       </div>
-      <div className={styles.preview}>
+      <div className={styles.mapFrame}>
         <svg
-          width={PREVIEW_PX}
-          height={PREVIEW_PX}
-          viewBox={`0 0 ${PREVIEW_PX} ${PREVIEW_PX}`}
-          className={styles.outline}
-          role="img"
-          aria-label={`${meta.name} outline`}
+          ref={svgRef}
+          viewBox={mapViewBox(view)}
+          className={styles.map}
+          role="radiogroup"
+          aria-label="Circuit map"
+          onPointerDown={(e) => {
+            cancelAnimationFrame(tweenRef.current);
+            (e.target as SVGElement).setPointerCapture?.(e.pointerId);
+            suppressClickRef.current = false;
+            panRef.current = { startX: e.clientX, startY: e.clientY, view };
+          }}
+          onPointerMove={(e) => {
+            const pan = panRef.current;
+            if (!pan) return;
+            if (Math.hypot(e.clientX - pan.startX, e.clientY - pan.startY) > DRAG_PICK_THRESHOLD_PX) {
+              suppressClickRef.current = true;
+            }
+            const { dx, dy } = toSvgDelta(pan.startX - e.clientX, pan.startY - e.clientY);
+            setView(panMapView(pan.view, dx, dy));
+          }}
+          onPointerUp={() => {
+            panRef.current = null;
+          }}
+          onPointerCancel={() => {
+            panRef.current = null;
+          }}
         >
-          <path d={fitted.d} fill="none" stroke="#fff" strokeWidth={2.5} />
-          <circle cx={fitted.start.x} cy={fitted.start.y} r={3.5} fill="#ffd23f" />
+          <path d={land} className={styles.land} />
+          {TRACKS.map((t) => {
+            const { x, y } = projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H);
+            const active = t.id === trackId;
+            const side = labels.get(t.id);
+            return (
+              <g
+                key={t.id}
+                role="radio"
+                aria-checked={active}
+                aria-label={t.name}
+                tabIndex={0}
+                className={styles.pin}
+                transform={`translate(${x},${y}) scale(${k})`}
+                onMouseEnter={() => setHoveredId(t.id)}
+                onMouseLeave={() => setHoveredId((id) => (id === t.id ? null : id))}
+                onFocus={() => setHoveredId(t.id)}
+                onBlur={() => setHoveredId((id) => (id === t.id ? null : id))}
+                onClick={() => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
+                  pick(t.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    pick(t.id);
+                  }
+                }}
+              >
+                <title>{t.name}</title>
+                {/* Generous invisible hit target: 28px across on screen. */}
+                <circle r={14} className={styles.pinHit} />
+                {active && <circle r={12} className={styles.pinRing} />}
+                <circle r={active ? 6.5 : 5} className={active ? styles.pinActive : styles.pinDot} />
+                {side && (
+                  <text
+                    x={side === "right" ? 9 : side === "left" ? -9 : 0}
+                    y={side === "above" ? -11 : side === "below" ? 17 : 4}
+                    textAnchor={side === "right" ? "start" : side === "left" ? "end" : "middle"}
+                    className={active ? styles.pinLabel : styles.pinHover}
+                  >
+                    {t.shortName}
+                  </text>
+                )}
+              </g>
+            );
+          })}
         </svg>
-        <div className={styles.stats}>
-          <div className={styles.trackName}>{meta.name}</div>
-          <div className={styles.statRow}>
-            <span>LENGTH</span>
-            <span>{stats.length}</span>
-          </div>
-          <div className={styles.statRow}>
-            <span>CORNERS</span>
-            <span>{stats.corners}</span>
-          </div>
-          <div className={styles.statRow}>
-            <span>DIRECTION</span>
-            <span>{stats.direction}</span>
-          </div>
+        <div className={styles.mapControls}>
+          <button
+            type="button"
+            className={styles.mapButton}
+            aria-label="Zoom in"
+            onClick={() => flyTo(zoomMapView(view, center.x, center.y, MAP_BUTTON_ZOOM))}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={styles.mapButton}
+            aria-label="Zoom out"
+            onClick={() => flyTo(zoomMapView(view, center.x, center.y, 1 / MAP_BUTTON_ZOOM))}
+          >
+            −
+          </button>
         </div>
       </div>
-      {/* Circuit list: the same picker as the pins above, as a list - with
-          20 circuits a pin map alone is hunt-and-peck. Both read and write
-          the same session prefs (see pick), so they can never disagree. */}
-      <div className={styles.label}>CIRCUITS — {TRACKS.length}</div>
-      <div className={styles.trackList} role="listbox" aria-label="Circuit list">
-        {TRACKS.map((t) => {
-          const active = t.id === meta.id;
-          const rowStats = previewStats(t);
+      <div className={styles.cards} role="listbox" aria-label="Circuits">
+        {visible.map((t) => {
+          const active = t.id === trackId;
+          const outline = outlinePath(getOutline(t.id).points, CARD_OUTLINE_PX, 6);
           return (
             <button
               key={t.id}
@@ -229,12 +276,21 @@ export function WorldMap() {
               role="option"
               aria-selected={active}
               onClick={() => pick(t.id)}
-              className={active ? styles.trackRowActive : styles.trackRow}
+              onMouseEnter={() => setHoveredId(t.id)}
+              onMouseLeave={() => setHoveredId((id) => (id === t.id ? null : id))}
+              className={active ? styles.cardActive : styles.card}
             >
-              <span className={styles.trackRowName}>{t.shortName}</span>
-              <span className={styles.trackRowMeta}>
-                {rowStats.length} · {rowStats.corners} corners
-              </span>
+              <svg
+                width={CARD_OUTLINE_PX}
+                height={CARD_OUTLINE_PX}
+                viewBox={`0 0 ${CARD_OUTLINE_PX} ${CARD_OUTLINE_PX}`}
+                className={styles.cardOutline}
+                aria-hidden="true"
+              >
+                <path d={outline.d} />
+              </svg>
+              <span className={styles.cardName}>{t.shortName}</span>
+              <span className={styles.cardMeta}>{previewStats(t).length}</span>
             </button>
           );
         })}

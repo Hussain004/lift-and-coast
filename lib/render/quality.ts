@@ -73,6 +73,7 @@ export function parseGraphicsPref(raw: string | null | undefined): GraphicsPref 
 }
 
 export function loadGraphicsPref(): GraphicsPref {
+  if (typeof window === "undefined") return "auto";
   try {
     return parseGraphicsPref(window.localStorage.getItem(STORAGE_KEY));
   } catch {

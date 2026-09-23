@@ -165,3 +165,64 @@ describe("world map view", () => {
     expect(mapViewBox(fullWorldView())).toBe(`0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}`);
   });
 });
+
+describe("circuit browser regions and labels", () => {
+  it("puts every circuit in exactly one region, and frames each region's pins", async () => {
+    const { TRACKS } = await import("../lib/tracks/registry");
+    const { MAP_REGIONS, regionOf, regionView, projectPin, WORLD_MAP_W, WORLD_MAP_H } = await import("../lib/tracks/preview");
+    expect(regionOf({ lat: 52.07, lon: -1.02 })).toBe("europe");
+    expect(regionOf({ lat: 30.13, lon: -97.63 })).toBe("americas");
+    expect(regionOf({ lat: 26.03, lon: 50.51 })).toBe("middle-east");
+    expect(regionOf({ lat: -37.85, lon: 144.97 })).toBe("asia-pacific");
+    let total = 0;
+    for (const { id } of MAP_REGIONS.filter((r) => r.id !== "world")) {
+      const members = TRACKS.filter((t) => regionOf(t) === id);
+      expect(members.length).toBeGreaterThan(0);
+      total += members.length;
+      const view = regionView(TRACKS, id);
+      const h = (view.w / WORLD_MAP_W) * WORLD_MAP_H;
+      for (const t of members) {
+        const p = projectPin(t.lat, t.lon, WORLD_MAP_W, WORLD_MAP_H);
+        expect(p.x).toBeGreaterThan(view.x);
+        expect(p.x).toBeLessThan(view.x + view.w);
+        expect(p.y).toBeGreaterThan(view.y);
+        expect(p.y).toBeLessThan(view.y + h);
+      }
+    }
+    expect(total).toBe(TRACKS.length);
+  });
+
+  it("places labels without overlaps, and always places the priority pin", async () => {
+    const { placeLabels } = await import("../lib/tracks/preview");
+    const pins = [
+      { id: "a", x: 0, y: 0, text: "Alpha" },
+      { id: "b", x: 20, y: 0, text: "Bravo" },
+      { id: "c", x: 10, y: 3, text: "Charlie" },
+    ];
+    const placed = placeLabels(pins, ["c"], 7, 13, 9);
+    expect(placed.has("c")).toBe(true);
+    const rect = (p: (typeof pins)[number], side: string) => {
+      const w = p.text.length * 7;
+      if (side === "right") return [p.x + 9, p.y - 6.5, p.x + 9 + w, p.y + 6.5];
+      if (side === "left") return [p.x - 9 - w, p.y - 6.5, p.x - 9, p.y + 6.5];
+      if (side === "above") return [p.x - w / 2, p.y - 22, p.x + w / 2, p.y - 9];
+      return [p.x - w / 2, p.y + 9, p.x + w / 2, p.y + 22];
+    };
+    const boxes = pins.filter((p) => placed.has(p.id)).map((p) => rect(p, placed.get(p.id)!));
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const [a, b] = [boxes[i], boxes[j]];
+        expect(a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]).toBe(false);
+      }
+    }
+    // Far-apart pins all get their preferred right-hand spot.
+    const spread = placeLabels(
+      pins.map((p, i) => ({ ...p, y: i * 100 })),
+      [],
+      7,
+      13,
+      9
+    );
+    expect([...spread.values()]).toEqual(["right", "right", "right"]);
+  });
+});

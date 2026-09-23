@@ -23,7 +23,14 @@ import {
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
-import { parseTrackId } from "@/lib/tracks/registry";
+import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
+import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
+import {
+  GRAPHICS_OPTIONS,
+  loadGraphicsPref,
+  saveGraphicsPref,
+  type GraphicsPref,
+} from "@/lib/render/quality";
 import styles from "./sessionSetup.module.css";
 
 const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
@@ -64,6 +71,11 @@ export function SessionSetup() {
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
   const router = useRouter();
+  // Graphics tier (see lib/render/quality.ts), persisted like the rest.
+  const [graphics, setGraphics] = useState<GraphicsPref>(() => loadGraphicsPref());
+  const meta = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
+  const stats = previewStats(meta);
+  const hero = outlinePath(getOutline(meta.id).points, 150, 10);
 
   function driveUrl(seed: number | undefined) {
     return buildRaceUrl({
@@ -95,6 +107,23 @@ export function SessionSetup() {
 
   return (
     <div className={styles.setup}>
+      <div className={styles.circuit}>
+        <svg width={150} height={150} viewBox="0 0 150 150" className={styles.circuitOutline} role="img" aria-label={`${meta.name} outline`}>
+          <path d={hero.d} />
+          <circle cx={hero.start.x} cy={hero.start.y} r={4} className={styles.circuitStart} />
+        </svg>
+        <div className={styles.circuitInfo}>
+          <div className={styles.circuitName}>{meta.name}</div>
+          <dl className={styles.circuitStats}>
+            <dt>Length</dt>
+            <dd>{stats.length}</dd>
+            <dt>Corners</dt>
+            <dd>{stats.corners}</dd>
+            <dt>Direction</dt>
+            <dd>{stats.direction}</dd>
+          </dl>
+        </div>
+      </div>
       <div className={styles.label}>LIGHT</div>
       <div className={styles.presets} role="radiogroup" aria-label="Time of day">
         {TIME_OF_DAY_OPTIONS.map((option) => (
@@ -224,6 +253,27 @@ export function SessionSetup() {
           </div>
         </>
       )}
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>GRAPHICS</span>
+      </div>
+      <div className={styles.presets} role="radiogroup" aria-label="Graphics quality">
+        {GRAPHICS_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={graphics === option.id}
+            title={option.id === "auto" ? "Detects your hardware and adapts live" : undefined}
+            onClick={() => {
+              setGraphics(option.id);
+              saveGraphicsPref(option.id);
+            }}
+            className={graphics === option.id ? styles.presetActive : styles.preset}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <Link
         href={driveUrl(undefined)}
         onClick={(e) => {
