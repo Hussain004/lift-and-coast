@@ -40,7 +40,7 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
     case "pro":
       return 1.0;
     case "ace":
-      return 1.14;
+      return 1.18;
   }
 }
 

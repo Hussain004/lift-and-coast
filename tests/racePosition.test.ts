@@ -96,7 +96,7 @@ describe("buildTowerEntries + renderTowerHtml", () => {
     expect(Number.isFinite(entries[1].gapSeconds)).toBe(true);
   });
 
-  it("renders driver identity, lap fields, intervals, and race-control status", () => {
+  it("renders only the compact F1 interval and gap columns", () => {
     const entries = buildTowerEntries(
       {
         code: "YOU",
@@ -127,13 +127,18 @@ describe("buildTowerEntries + renderTowerHtml", () => {
       L
     );
     const html = renderTowerHtml(entries);
-    expect(html).toContain("Alex Runner");
-    expect(html).toContain("#44");
-    expect(html).toContain("1:23.125");
-    expect(html).toContain("1:22.900");
+    expect(entries[0]).toMatchObject({
+      name: "Alex Runner",
+      number: 44,
+      lastLapSeconds: 83.125,
+      bestLapSeconds: 82.9,
+      trackLimitWarningNumber: 2,
+    });
+    expect(html).toContain("YOU");
     expect(html).toContain("+5.0");
-    expect(html).toContain("W2/3");
-    expect(html).toContain("tower-status-warning");
+    expect(html).not.toContain("Alex Runner");
+    expect(html).not.toContain("1:23.125");
+    expect(html).not.toContain("W2/3");
   });
 
   it("escapes hostile codes", () => {

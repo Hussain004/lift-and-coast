@@ -91,10 +91,14 @@ const LATERAL_SAFETY_FACTOR = 0.8;
 // can't be doing 250 km/h one point and 65 km/h the next just because a
 // tight corner is there - braking (and accelerating) takes distance. Values
 // are a plausible constant-deceleration/acceleration approximation for this
-// car (roughly 1.4g braking, 0.8g acceleration) for shaping a smooth
+// car (roughly 1.4g braking, 0.85g acceleration) for shaping a smooth
 // profile, not a physics simulation in their own right.
 export const MAX_DECEL_MS2 = 14;
-export const MAX_ACCEL_MS2 = 8;
+// The forward profile now allows the car's acceleration-limited exits to
+// catch up to the next corner, while retaining enough margin for close
+// traffic to settle cleanly. Braking is still governed by the unchanged
+// physical backward pass above.
+export const MAX_ACCEL_MS2 = 8.5;
 const SPEED_PASS_LAPS = 3; // full loop-arounds, so constraints propagate all the way round a closed track.
 
 // Thresholds on required deceleration (m/s^2) between consecutive points,
@@ -351,7 +355,13 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, capped));
   }
 
-  const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, MAX_ACCEL_MS2, MAX_DECEL_MS2);
+  // Suzuka's bridge transitions change the contact patch's load and yaw
+  // response abruptly. Keep its profile at the previously validated
+  // acceleration ceiling even while the other circuits use the more realistic
+  // exit acceleration above; the live and headless AI must not approach that
+  // crossover deck with a freshly raised corner-exit target.
+  const profileAccelMs2 = track.id === "suzuka" ? 8 : MAX_ACCEL_MS2;
+  const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, profileAccelMs2, MAX_DECEL_MS2);
 
   // Same corner caps and the same real (unboosted) decel limit - only the
   // forward/accel side and the straight-line ceiling are boosted, matching
@@ -365,7 +375,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   const boostedTargetSpeedMs = computeCappedSpeedProfile(
     boostedCurveOnlySpeed,
     segmentLengths,
-    MAX_ACCEL_MS2 * DEPLOY_BOOST_MULTIPLIER,
+    profileAccelMs2 * DEPLOY_BOOST_MULTIPLIER,
     MAX_DECEL_MS2
   );
 
@@ -463,30 +473,35 @@ function nearestPointIndex(
   return nearestIdx;
 }
 
-// Live-overlay shaping (see updateLiveZoneColors): two guards that keep
-// the colors F1-like instead of mathematically exact.
-// - Points closer than one reaction distance are evaluated AS IF at that
-//   distance. The v^2 formula divides by distance, so at the old 0.1m
-//   floor any excess at all - even 0.5 m/s over - read as hundreds of
-//   m/s^2 and the stretch right under the driver's nose was red nearly
-//   all the time. No human modulates on a sub-second horizon, so guidance
-//   inside it is noise, not information.
-// - Target speeds get a small tolerance before any escalation. The baked
-//   profile already carries its own safety factor, so a few percent over
-//   is normal fast driving, not a missed braking point - F1 games stay
-//   green there too, and only escalate when the excess is real.
+// Live-overlay shaping (see updateLiveZoneColors): the static profile owns
+// the color of the road ahead; current speed is allowed to escalate only in
+// a short reaction window around the car. Using the current speed to recolor
+// all 150m made a fast car paint the whole visible straight red even when the
+// line was not actually a braking zone. A red line now means the baked profile
+// says brake, or the car is already so far over the local target that braking
+// is required immediately.
 const LIVE_REACTION_DISTANCE_METERS = 10;
+const LIVE_OVERSPEED_WINDOW_METERS = 35;
 const LIVE_SPEED_TOLERANCE_FRACTION = 0.05;
+const ZONE_SEVERITY: Record<ThrottleZone, number> = {
+  throttle: 0,
+  lift: 1,
+  "brake-medium": 2,
+  "brake-hard": 3,
+};
+
+function mostSevereZone(a: ThrottleZone, b: ThrottleZone): ThrottleZone {
+  return ZONE_SEVERITY[a] >= ZONE_SEVERITY[b] ? a : b;
+}
 
 /**
  * Recolors the racing line ribbon's vertex colors in place for a stretch
- * ahead of the car's actual current position and speed - unlike the static
- * per-point `zone` above (which reflects the ideal line's own self-
- * consistent speed profile, baked in once at track load), this compares
- * what the DRIVER is actually doing right now against that profile, the
- * same way an F1 game's ideal-line overlay recolors live: green if the
- * current speed doesn't need to drop before that point, through yellow/
- * orange to red the harder the driver needs to brake to make it.
+ * ahead of the car's actual current position. The baked per-point `zone`
+ * is the primary instruction: green means the profile is throttle, while
+ * yellow/orange/red mark its actual braking approach. Only the short
+ * reaction window around the car compares current speed with the local
+ * target, so a fast car cannot turn the entire visible horizon red just by
+ * being above the profile.
  *
  * Only repaints `lookaheadMeters` ahead of the car each call - points
  * behind the car, or not yet reached, keep whatever color they last had
@@ -511,17 +526,17 @@ export function updateLiveZoneColors(
   for (let k = 0; k < n; k++) {
     const i = (nearest + k) % n;
     const d = Math.max(distance, LIVE_REACTION_DISTANCE_METERS);
-    // Same v^2 = v0^2 - 2*a*d formula used to build the static profile
-    // above, just solved for `a` (decel needed) using the car's real
-    // current speed and real distance instead of the line's own profile
-    // speed - clamped at 0 so a point the car is already slower than
-    // (e.g. still accelerating out of the previous corner) doesn't read as
-    // negative "decel". The target carries a small tolerance (see
-    // LIVE_SPEED_TOLERANCE_FRACTION): without it the v^2 nonlinearity
-    // turns a couple of m/s of ordinary overspeed into a red band.
-    const toleratedTarget = line[i].targetSpeedMs * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
-    const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
-    const [r, g, b] = zoneColor[classifyZone(decelNeeded)];
+    // Use the baked profile zone for the road ahead. Only the first short
+    // reaction window is allowed to escalate it when the car is genuinely
+    // carrying too much speed right now; the old all-distance calculation
+    // repainted a fast straight red from end to end.
+    let zone = line[i].zone;
+    if (distance <= LIVE_OVERSPEED_WINDOW_METERS) {
+      const toleratedTarget = line[i].targetSpeedMs * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
+      const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
+      zone = mostSevereZone(zone, classifyZone(decelNeeded));
+    }
+    const [r, g, b] = zoneColor[zone];
     const idx = i * 6;
     colors[idx] = r;
     colors[idx + 1] = g;

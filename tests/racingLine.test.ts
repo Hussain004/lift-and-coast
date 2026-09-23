@@ -351,6 +351,23 @@ describe("updateLiveZoneColors", () => {
     expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR["brake-hard"]);
   });
 
+  it("does not paint the whole visible straight red from one fast sample", () => {
+    const line = buildStraightLine(300, 40);
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 80, 150, ZONE_COLOR);
+    const farIdx = 100 * 6;
+    expect([colors[farIdx], colors[farIdx + 1], colors[farIdx + 2]]).toEqual(ZONE_COLOR.throttle);
+  });
+
+  it("keeps a real baked braking zone red even when the car is slow", () => {
+    const line = buildStraightLine(300, 40);
+    line[60].zone = "brake-hard";
+    const colors = new Float32Array(line.length * 6);
+    updateLiveZoneColors(line, colors, 0, 0, 20, 150, ZONE_COLOR);
+    const idx = 60 * 6;
+    expect([colors[idx], colors[idx + 1], colors[idx + 2]]).toEqual(ZONE_COLOR["brake-hard"]);
+  });
+
   it("stays green a few percent over target (tolerance, not exactness)", () => {
     // 41.5 vs a 40 target is ordinary fast driving inside the profile's
     // own safety margin, not a missed braking point - F1 games stay green

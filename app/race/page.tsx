@@ -280,31 +280,16 @@ function RaceContent() {
       />
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
-      {/* Timing tower, broadcast style: live lap/position plus the full
-          field below - Car.tsx rewrites the rows ~10Hz (see
-          renderTowerHtml), so this container starts with one static row
-          per car and never goes stale on first paint. */}
+      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
+          rewrites the rows ~10Hz (see renderTowerHtml), while this static
+          first-paint version keeps the grid populated before lights out. */}
       <div className={styles.tower}>
         <div className={styles.towerEvent}>{trackName}</div>
-        <div className={styles.towerHeader}>
-          <span className={styles.liveBadge}>LIVE</span>
-          <span>GRAND PRIX</span>
-          <span>{rivals.length + 1} CARS</span>
-        </div>
-        <div className={styles.lap} ref={lapRef}>
-          LAP 1/{raceLaps} --:--.---  BEST --:--.---
-        </div>
-        <div className={styles.position} ref={positionRef}>
-          P{playerGridSpot}
-        </div>
         <div className={styles.towerColumns} aria-hidden="true">
           <span>POS</span>
           <span>DRIVER</span>
           <span>INT</span>
           <span>GAP</span>
-          <span>LAST</span>
-          <span>BEST</span>
-          <span>ST</span>
         </div>
         <div className={styles.towerRows} ref={towerRef}>
           {initialTowerRows.map((row) => (
@@ -315,23 +300,15 @@ function RaceContent() {
             >
               <span className="tower-pos">P{row.grid}</span>
               <span className="tower-driver">
-                <span className="tower-number">{row.number ? `#${row.number}` : "--"}</span>
                 <span className="code-chip" style={{ background: row.color }}>
                   {row.code}
                 </span>
-                <span className="tower-name">{row.name ?? row.code}</span>
-                {row.teamId ? <span className="tower-team">{row.teamId}</span> : null}
               </span>
               <span className="tower-interval">—</span>
               <span className="tower-gap">GRID</span>
-              <span className="tower-last">--.---</span>
-              <span className="tower-best">--.---</span>
-              <span className="tower-status">GRID</span>
             </div>
           ))}
         </div>
-        <div className={styles.sectors} ref={sectorsRef} />
-        <div className={styles.delta} ref={deltaRef} />
       </div>
       {/* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
           tires, aero and assist flags. */}

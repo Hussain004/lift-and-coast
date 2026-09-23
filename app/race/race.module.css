@@ -17,21 +17,21 @@
   letter-spacing: 2px;
 }
 
-/* Broadcast timing tower: a compact live leaderboard rather than a
-   three-column debug list. Car.tsx owns the live rows, but page.tsx renders
-   the same grid structure immediately so the first frame is already useful. */
+/* Compact F1 timing tower: driver, interval and gap only. Car.tsx owns the
+   live rows, but page.tsx renders the same structure immediately so the
+   first frame is already useful. */
 .tower {
   position: absolute;
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  width: min(690px, calc(100vw - 32px));
-  max-height: 72vh;
+  width: min(410px, calc(100vw - 24px));
+  max-height: 48vh;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   box-sizing: border-box;
-  padding: 10px 12px 12px;
+  padding: 7px 8px 8px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-top: 3px solid #e10600;
@@ -45,9 +45,9 @@
 
 .towerEvent {
   color: #f2f5f8;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 1.2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -98,17 +98,17 @@
 .towerColumns,
 :global(.tower-row) {
   display: grid;
-  grid-template-columns: 36px minmax(170px, 1fr) 58px 58px 74px 74px 42px;
+  grid-template-columns: 30px minmax(90px, 1fr) 52px 52px;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .towerColumns {
   color: #748091;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 1px;
-  padding: 0 5px 3px;
+  letter-spacing: 0.8px;
+  padding: 0 4px 2px;
   text-align: right;
 }
 
@@ -121,7 +121,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 24px;
+  min-height: 0;
+  max-height: 42vh;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #394452 transparent;
@@ -130,10 +131,10 @@
 /* Tower rows render from innerHTML (see renderTowerHtml), so these are
    global classes, not module-scoped. */
 :global(.tower-row) {
-  min-height: 26px;
-  padding: 3px 5px;
+  min-height: 22px;
+  padding: 2px 4px;
   color: #aeb8c5;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.5px;
   border-left: 3px solid transparent;
   background: rgba(255, 255, 255, 0.025);
@@ -242,15 +243,15 @@
   .tower {
     top: 12px;
     transform: none;
-    width: calc(100vw - 24px);
-    max-height: 44vh;
+    width: min(410px, calc(100vw - 24px));
+    max-height: 40vh;
   }
 
   .towerColumns,
   :global(.tower-row) {
-    grid-template-columns: 30px minmax(112px, 1fr) 47px 47px 61px 61px 36px;
-    gap: 4px;
-    font-size: 10px;
+    grid-template-columns: 27px minmax(70px, 1fr) 46px 46px;
+    gap: 3px;
+    font-size: 9px;
   }
 
   :global(.tower-team),

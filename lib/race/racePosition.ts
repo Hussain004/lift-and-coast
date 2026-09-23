@@ -118,25 +118,12 @@ function safeColor(color: string): string {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : "#888888";
 }
 
-function towerTime(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) return "--.---";
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds - minutes * 60;
-  return `${minutes}:${remainder.toFixed(3).padStart(6, "0")}`;
-}
-
-function trackLimitStatus(stage: TrackLimitStage | null, warningNumber = 1): string {
-  if (stage === null || stage === "clear") return "RUN";
-  if (stage === "warning") return `W${Math.min(3, Math.max(1, warningNumber))}/3`;
-  if (stage === "black-white") return "B/W";
-  return "+5s";
-}
-
 /**
  * Renders a broadcast-style timing row. The leader's first timing column is
  * LEADER; followers show interval to the car ahead, while the separate gap
  * column remains leader-relative. Last/best laps and race-control status
- * are display-only and never affect position.
+ * are retained in the data model for consumers such as multiplayer, while
+ * the compact broadcast renderer intentionally exposes only INT and GAP.
  */
 export function renderTowerHtml(entries: readonly TowerEntry[]): string {
   return orderTowerEntries(entries)
@@ -158,29 +145,12 @@ export function renderTowerHtml(entries: readonly TowerEntry[]): string {
               : `+${entry.intervalLapsDown} LAPS`
             : `+${entry.intervalSeconds.toFixed(1)}`;
       const code = escapeHtml(entry.code);
-      const name = escapeHtml(entry.name || entry.code);
-      const number = entry.number ? `#${entry.number}` : "--";
-      const team = entry.teamId ? escapeHtml(entry.teamId) : "";
-      const status = trackLimitStatus(entry.trackLimitStage, entry.trackLimitWarningNumber ?? 1);
-      const statusClass =
-        entry.trackLimitStage === "warning"
-          ? " tower-status-warning"
-          : entry.trackLimitStage === "black-white"
-            ? " tower-status-black-white"
-            : entry.trackLimitStage === "penalty"
-              ? " tower-status-penalty"
-              : "";
       return (
-        `<div class="tower-row${entry.isPlayer ? " tower-row-you" : ""}${entry.isFastestLap ? " tower-fastest" : ""}" data-code="${code}">` +
+        `<div class="tower-row${entry.isPlayer ? " tower-row-you" : ""}" data-code="${code}">` +
         `<span class="tower-pos">P${entry.position}</span>` +
-        `<span class="tower-driver"><span class="tower-number">${number}</span>` +
-        `<span class="code-chip" style="background:${safeColor(entry.color)}">${code}</span>` +
-        `<span class="tower-name">${name}</span>${team ? `<span class="tower-team">${team}</span>` : ""}</span>` +
+        `<span class="tower-driver"><span class="code-chip" style="background:${safeColor(entry.color)}">${code}</span></span>` +
         `<span class="tower-interval">${interval}</span>` +
-        `<span class="tower-gap">${gap}</span>` +
-        `<span class="tower-last">${towerTime(entry.lastLapSeconds)}</span>` +
-        `<span class="tower-best">${towerTime(entry.bestLapSeconds)}</span>` +
-        `<span class="tower-status${statusClass}">${status}</span></div>`
+        `<span class="tower-gap">${gap}</span></div>`
       );
     })
     .join("");
