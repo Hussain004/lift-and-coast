@@ -46,7 +46,7 @@ import {
 import { applyImpactDamage } from "@/lib/physics/damage";
 import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
 import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
-import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
 import type { CarPose } from "@/lib/net/snapshots";
@@ -890,7 +890,6 @@ export function Car({
 
     const t = body.translation();
     const bodyRot = body.rotation();
-    const status = checkTrackLimits(track, t.x, t.z, t.y);
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
     // Ranked progress comes from the continuity tracker, not the raw
     // scan: at the start/finish seam the scan flickers between ~0 and
@@ -904,7 +903,7 @@ export function Car({
     if (raceRef?.current) {
       const yawNow = yawFromQuaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
       raceRef.current.player = {
-        lapCount: lap.lapCount,
+        lapCount: standingsLapCount(lap, tracked.progressMeters, track.lengthMeters),
         progressMeters: tracked.progressMeters,
         speedMs: computeSignedForwardSpeed(body.linvel(), yawNow),
       };

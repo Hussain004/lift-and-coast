@@ -338,7 +338,7 @@ function ChaseCamera({
     };
   }, [gl, cameraMode]);
 
-  useFrame((_, dt) => {
+  useFrame(() => {
     const object = target.current;
     if (!object) return;
     const mode = cameraMode.current;

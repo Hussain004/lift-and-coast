@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLapTimer, formatLapTime } from "../lib/race/lapTimer";
+import { createLapTimer, formatLapTime, standingsLapCount } from "../lib/race/lapTimer";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -206,5 +206,28 @@ describe("createLapTimer startsBehindLine", () => {
     expect(crossing.lapCount).toBe(0);
     expect(crossing.bestLapSeconds).toBeNull();
     expect(crossing.currentLapSeconds).toBeCloseTo(3 + 1 / 60, 5);
+  });
+});
+
+describe("standingsLapCount", () => {
+  const L = 5891;
+  const state = (lapCount: number, currentLapSeconds: number, awaitingStart = false) => ({
+    lapCount,
+    currentLapSeconds,
+    awaitingStart,
+    lastLapSeconds: null,
+    bestLapSeconds: null,
+    crossedFinishLine: false,
+  });
+
+  it("counts a car on or behind the line at the start as lap -1", () => {
+    expect(standingsLapCount(state(0, 2), L - 3, L)).toBe(-1);
+    expect(standingsLapCount(state(0, 45, true), L - 10, L)).toBe(-1);
+  });
+
+  it("leaves real progress alone", () => {
+    expect(standingsLapCount(state(0, 2), 12, L)).toBe(0);
+    expect(standingsLapCount(state(0, 70), L - 50, L)).toBe(0);
+    expect(standingsLapCount(state(2, 3), L - 5, L)).toBe(2);
   });
 });

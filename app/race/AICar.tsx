@@ -75,7 +75,7 @@ import {
   updateRecovery,
 } from "@/lib/ai/recovery";
 import type { NetPoseState } from "./NetSync";
-import { createLapTimer, LINE_HALF_WIDTH_METERS } from "@/lib/race/lapTimer";
+import { createLapTimer, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import {
   applySnapshot,
@@ -469,7 +469,7 @@ export function AICar({
         }
         const rotNow = body.rotation();
         opponents[aiIndex] = {
-          lapCount: lap.lapCount,
+          lapCount: standingsLapCount(lap, trackedProgress, track.lengthMeters),
           progressMeters: trackedProgress,
           speedMs: computeSignedForwardSpeed(
             body.linvel(),

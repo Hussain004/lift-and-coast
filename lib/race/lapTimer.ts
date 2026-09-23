@@ -21,6 +21,10 @@ export interface LapTimerState {
   lastLapSeconds: number | null;
   bestLapSeconds: number | null;
   crossedFinishLine: boolean;
+  /** Still behind the line on a grid slot (the forgiven crossing hasn't
+   * happened): race standings should count this car at lap -1, or its
+   * ~full-lap progress reading ranks it ahead of the whole field. */
+  awaitingStart: boolean;
 }
 
 /**
@@ -40,6 +44,22 @@ export interface LapTimerState {
 /** No circuit laps faster than this; a crossing sooner is a car shuffling
  * back and forth over the line, never a lap. */
 export const MIN_LAP_SECONDS = 20;
+
+/**
+ * Lap count for race standings. A car sitting on or just behind the line at
+ * the start reads a progress near a full lap (the centerline's last points)
+ * while its lap count is still 0, which ranks it a lap ahead of the field.
+ * Such a car - lap 0, past half-distance, and either still waiting for its
+ * grid-slot crossing or within its first MIN_LAP_SECONDS - is behind the
+ * line: count it at lap -1. (No car covers half a lap in that time.)
+ */
+export function standingsLapCount(lap: LapTimerState, progressMeters: number, trackLengthMeters: number): number {
+  const behindLine =
+    lap.lapCount === 0 &&
+    progressMeters > trackLengthMeters / 2 &&
+    (lap.awaitingStart || lap.currentLapSeconds < MIN_LAP_SECONDS);
+  return behindLine ? -1 : lap.lapCount;
+}
 
 export function createLapTimer(config: LapTimerConfig) {
   const BEHIND_DEADZONE_METERS = 3;
@@ -97,7 +117,14 @@ export function createLapTimer(config: LapTimerConfig) {
     currentLapSeconds += dt;
     prevSignedForward = signedForward;
 
-    return { currentLapSeconds, lapCount, lastLapSeconds, bestLapSeconds, crossedFinishLine };
+    return {
+      currentLapSeconds,
+      lapCount,
+      lastLapSeconds,
+      bestLapSeconds,
+      crossedFinishLine,
+      awaitingStart: skipFirstCrossing,
+    };
   }
 
   /**
