@@ -4,6 +4,9 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { F1CarBody } from "./F1CarBody";
+import { createGearboxState, rpmForGear, updateGearbox } from "@/lib/physics/gearbox";
+import { yawFromQuaternion } from "@/lib/physics/vehicle";
+import { rpmTo01, type AudioSnapshot } from "@/lib/audio/raceAudio";
 import {
   bracketSnapshots,
   interpolatePose,
@@ -33,7 +36,11 @@ export function RemoteCar({
   markerIndex,
   minimapMarkerEls,
   bodyColor = "#ff5a3c",
+  audioRef,
 }: {
+  /** Race audio snapshot: a remote car fills its rival slot like an AI car
+   * does (rpm from the same auto-shift policy on its replicated speed). */
+  audioRef?: React.RefObject<AudioSnapshot>;
   /** Per-slot snapshot buffers owned by NetClient (see snapshots.ts). */
   buffersRef?: React.RefObject<Record<number, TimedSnapshot<RemoteCarFrame>[]>>;
   /** Grid slot this car renders (see gridSlot in grid.ts). */
@@ -48,6 +55,8 @@ export function RemoteCar({
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const spinAngleRef = useRef(0);
   const lastFrameRef = useRef<TimedSnapshot<RemoteCarFrame> | null>(null);
+  const gearboxRef = useRef(createGearboxState(true));
+  const lastSpeedRef = useRef(0);
 
   useFrame((_, dt) => {
     const group = groupRef.current;
@@ -90,6 +99,27 @@ export function RemoteCar({
       return;
     }
     const speed = (frame ?? lastFrameRef.current)?.state.speedMs ?? 0;
+    const shown = frame ?? lastFrameRef.current;
+    if (audioRef && shown) {
+      const gearbox = updateGearbox(gearboxRef.current, { speedMs: Math.abs(speed), shiftUp: false, shiftDown: false });
+      const [qx, qy, qz, qw] = shown.state.pose.rotation;
+      const [vx, , vz] = shown.state.pose.linvel;
+      // No inputs cross the wire: gaining speed reads as throttle.
+      const accelerating = speed > lastSpeedRef.current + 0.01;
+      audioRef.current.opponents[markerIndex] = {
+        rpm01: rpmTo01(rpmForGear(Math.abs(speed), gearbox.gear)),
+        throttle01: accelerating ? 1 : 0.15,
+        skid01: 0,
+        x: group.position.x,
+        z: group.position.z,
+        yawRad: yawFromQuaternion(qx, qy, qz, qw),
+        vx,
+        vz,
+        gear: gearbox.gear,
+        kerb01: 0,
+      };
+    }
+    lastSpeedRef.current = speed;
     // Fixed wheel radius approximation for the spin read - matches the
     // visual radius closely enough that nobody can tell at race distance.
     spinAngleRef.current += (speed / 0.33) * Math.min(dt, 0.1);

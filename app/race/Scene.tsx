@@ -818,6 +818,7 @@ export function Scene({
               markerIndex={k}
               minimapMarkerEls={aiMarkerEls}
               bodyColor={rival.color}
+              audioRef={audioRef}
             />
           ))}
         {netRole === "host" && sessionMode === "race" && (
