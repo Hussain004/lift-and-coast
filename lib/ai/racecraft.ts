@@ -317,8 +317,8 @@ export function lineContextAt(
   };
 }
 
-export const AERO_STRAIGHT_ENTER_METERS = 220;
-export const AERO_STRAIGHT_EXIT_METERS = 120;
+export const AERO_STRAIGHT_ENTER_METERS = 320;
+export const AERO_STRAIGHT_EXIT_METERS = 240;
 
 /**
  * Conservative AI active aero: a low-drag wing is worth deploying only on
@@ -330,15 +330,23 @@ export const AERO_STRAIGHT_EXIT_METERS = 120;
  */
 export function chooseAeroMode(args: {
   current: AeroMode;
-  line: Pick<LineContext, "throttleZone" | "cornerAheadMeters" | "curveSign">;
+  line: Pick<LineContext, "throttleZone" | "cornerAheadMeters" | "curveSign" | "cornerSign">;
   speedMs: number;
   attempting: boolean;
   blocked: boolean;
+  cars?: readonly Pick<FieldCarView, "gapMeters" | "speedMs" | "lateralMeters">[];
 }): AeroMode {
+  // A nearby car makes the straight no longer "safe" for a grip trade: the
+  // low-drag mode is reserved for a clear track, not merely a large gap in
+  // the traffic table. This also keeps the multiplayer field on one stable
+  // aero model while solo AI can use the straight-line advantage.
+  const trafficClear = args.cars === undefined || args.cars.length === 0;
   const safeStraight =
     args.line.throttleZone &&
     args.line.curveSign === 0 &&
-    args.speedMs >= 30 &&
+    args.line.cornerSign === 0 &&
+    args.speedMs >= 40 &&
+    trafficClear &&
     !args.attempting &&
     !args.blocked;
   if (!safeStraight) return "high-downforce";
@@ -515,7 +523,12 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   // a moving car - or, once the start has had a few seconds, a car that is
   // still parked right in front of a crawling one (a queue behind a wreck
   // must not deadlock).
-  const avoidRange = clamp(own * 1.5, 20, 90);
+  // Scan far enough ahead to give a stopped car time to move across and
+  // brake. The old 20m floor only noticed a parked obstacle after a 9m/s
+  // car was already committed to it; a 45m floor buys the lateral ramp time
+  // without affecting normal moving-car following (the speed test below
+  // still filters those out).
+  const avoidRange = clamp(own * 2, 45, 120);
   let obstacle: FieldCarView | undefined;
   for (const car of cars) {
     if (car.lateralMeters === null) continue;
@@ -794,6 +807,7 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     speedMs: own,
     attempting: attacking,
     blocked,
+    cars: input.cars,
   });
   return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters, override, aeroMode };
 }

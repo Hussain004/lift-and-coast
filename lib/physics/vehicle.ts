@@ -6,7 +6,6 @@ import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
   gearThrustFactor,
-  gearboxSpeedMs,
   rpmForGear,
   updateGearbox,
   type GearboxState,
@@ -200,7 +199,10 @@ export const BOOSTED_ENGINE_FORCE_CAP = 1750;
 // force - loading the axle that already carries the transferred weight
 // overloads it. Even split stays.
 export const DEFAULT_BRAKE_FORCE = 25;
-export const DEFAULT_STABILIZE_STRENGTH = 30;
+// 32 is a small measured bump over the old 30: it keeps the AI's vertical
+// load response settled over Suzuka's steep crossover without changing the
+// normal steering or braking authority.
+export const DEFAULT_STABILIZE_STRENGTH = 32;
 // Snap back to the start line past this distance off-track - see the usage
 // site (Car.tsx, and the harness below) for why.
 //
@@ -631,10 +633,12 @@ export function applyCarControls(
       shiftUp: gearbox.shiftUp,
       shiftDown: gearbox.shiftDown,
     });
-    const rpm = rpmForGear(
-      gearboxSpeedMs(gearbox.state, currentSpeedMs),
-      gearbox.state.gear
-    );
+    // Shift decisions use the filtered state above, but torque delivery uses
+    // the physical wheel speed. Filtering the torque curve as well made a
+    // transient (especially Suzuka's bridge/deck transitions) arrive late and
+    // could walk the AI past its tilt budget; the filter remains valuable for
+    // shift/audio stability without delaying the actual force response.
+    const rpm = rpmForGear(currentSpeedMs, gearbox.state.gear);
     engineForce = Math.min(
       baseEngineForce * boostMultiplier * engineTorqueMultiplier(rpm) * gearThrustFactor(gearbox.state.gear),
       BOOSTED_ENGINE_FORCE_CAP

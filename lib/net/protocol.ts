@@ -1,3 +1,5 @@
+import type { TrackLimitStage } from "../race/trackLimitSequence";
+
 // Plan section 16 (online multiplayer): wire protocol. Rooms are a star:
 // every guest holds exactly one reliable, ordered PeerJS data connection
 // to the host (the room leader), and the host relays nothing guest-to-
@@ -135,6 +137,11 @@ export interface NetCarSnapshot {
   speedMs: number;
   lapCount: number;
   progressMeters: number;
+  /** Broadcast timing fields; optional for compatibility with older peers. */
+  lastLapSeconds?: number | null;
+  bestLapSeconds?: number | null;
+  trackLimitStage?: TrackLimitStage;
+  trackLimitWarningNumber?: number | null;
 }
 
 export interface NetTowerRow {
@@ -157,6 +164,15 @@ function isVec4(value: unknown): value is [number, number, number, number] {
 
 function isNetCarSnapshot(value: unknown): value is NetCarSnapshot {
   if (!isRecord(value)) return false;
+  const optionalNumber = (field: unknown): boolean =>
+    field === undefined || field === null || typeof field === "number";
+  const stage = value.trackLimitStage;
+  const validStage =
+    stage === undefined ||
+    stage === "clear" ||
+    stage === "warning" ||
+    stage === "black-white" ||
+    stage === "penalty";
   return (
     typeof value.slot === "number" &&
     isVec3(value.position) &&
@@ -164,7 +180,11 @@ function isNetCarSnapshot(value: unknown): value is NetCarSnapshot {
     isVec3(value.linvel) &&
     typeof value.speedMs === "number" &&
     typeof value.lapCount === "number" &&
-    typeof value.progressMeters === "number"
+    typeof value.progressMeters === "number" &&
+    optionalNumber(value.lastLapSeconds) &&
+    optionalNumber(value.bestLapSeconds) &&
+    optionalNumber(value.trackLimitWarningNumber) &&
+    validStage
   );
 }
 

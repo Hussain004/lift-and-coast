@@ -29,6 +29,7 @@ describe("chooseAeroMode", () => {
     throttleZone: true,
     cornerAheadMeters,
     curveSign: 0 as const,
+    cornerSign: 0 as const,
   });
 
   it("deploys low drag only on a clear, fast straight", () => {
@@ -69,6 +70,16 @@ describe("chooseAeroMode", () => {
         speedMs: 45,
         attempting: true,
         blocked: false,
+      })
+    ).toBe("high-downforce");
+    expect(
+      chooseAeroMode({
+        current: "high-downforce",
+        line: straight(400),
+        speedMs: 60,
+        attempting: false,
+        blocked: false,
+        cars: [{ gapMeters: 250, speedMs: 55, lateralMeters: 0 }],
       })
     ).toBe("high-downforce");
     expect(

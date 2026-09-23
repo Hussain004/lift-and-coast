@@ -84,6 +84,31 @@ describe("parseNetMessage", () => {
     expect(ok).toEqual({ type: "results", positions: { 0: 1, 1: 2 }, winnerCode: "VER" });
   });
 
+  it("preserves optional timing telemetry in snapshots", () => {
+    const car = {
+      slot: 0,
+      position: [1, 2, 3],
+      rotation: [0, 0, 0, 1],
+      linvel: [0, 0, -20],
+      speedMs: 20,
+      lapCount: 2,
+      progressMeters: 100,
+      lastLapSeconds: 80.5,
+      bestLapSeconds: 79.9,
+      trackLimitStage: "warning",
+      trackLimitWarningNumber: 2,
+    };
+    const snapshot = parseNetMessage({ type: "snapshot", tick: 1, cars: [car], tower: [] });
+    expect(snapshot).toEqual({ type: "snapshot", tick: 1, cars: [car], tower: [] });
+    expect(
+      parseNetMessage({
+        type: "snapshot",
+        tick: 1,
+        cars: [{ ...car, trackLimitStage: "bogus" }],
+        tower: [],
+      })
+    ).toBeNull();
+  });
   it("rejects non-race settings", () => {
     expect(
       parseNetMessage({ type: "settings", settings: { track: "spa", mode: "practice", laps: 3, rivals: 1, tod: "day" } })

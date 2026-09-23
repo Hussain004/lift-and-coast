@@ -235,6 +235,10 @@ export function NetHost({
           speedMs: p.speedMs ?? 0,
           lapCount: p.lapCount,
           progressMeters: p.progressMeters,
+          lastLapSeconds: p.lastLapSeconds,
+          bestLapSeconds: p.bestLapSeconds,
+          trackLimitStage: p.trackLimitStage,
+          trackLimitWarningNumber: p.trackLimitWarningNumber,
         });
       };
       pushCar(playerSlot, race.player, { lapCount: 0, progressMeters: 0 });
@@ -475,10 +479,18 @@ export function NetClient({
             // own entry stays local (exact), never overwritten here.
             const oppIndex = slotToOpponent[car.slot];
             if (oppIndex !== undefined && raceRef.current) {
+              const previous = raceRef.current.opponents[oppIndex];
               raceRef.current.opponents[oppIndex] = {
+                ...previous,
                 lapCount: car.lapCount,
                 progressMeters: car.progressMeters,
                 speedMs: car.speedMs,
+                ...(car.lastLapSeconds !== undefined ? { lastLapSeconds: car.lastLapSeconds } : {}),
+                ...(car.bestLapSeconds !== undefined ? { bestLapSeconds: car.bestLapSeconds } : {}),
+                ...(car.trackLimitStage !== undefined ? { trackLimitStage: car.trackLimitStage } : {}),
+                ...(car.trackLimitWarningNumber !== undefined
+                  ? { trackLimitWarningNumber: car.trackLimitWarningNumber }
+                  : {}),
               };
             }
           }
