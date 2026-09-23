@@ -55,6 +55,14 @@ import { gridSlot } from "@/lib/race/grid";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
+import {
+  TRACK_LIMIT_PENALTY_SECONDS,
+  createTrackLimitSequence,
+  resetTrackLimitLap,
+  resetTrackLimitSequence,
+  trackLimitStageLabel,
+  updateTrackLimitSequence,
+} from "@/lib/race/trackLimitSequence";
 import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, sessionGridOrder, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
@@ -91,7 +99,6 @@ const SECTOR_COUNT = 3;
 // best AND runs a Quick Race at once - so both consequences apply
 // independently off the same violation rather than one suppressing the
 // other (see the ponytail note at the call site for what this doesn't do).
-const RACE_TRACK_LIMIT_PENALTY_SECONDS = 5;
 const PENALTY_TOAST_DURATION_SECONDS = 2.5;
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
@@ -339,6 +346,7 @@ export function Car({
   // unrelated later correction erase an earlier, still-valid infraction).
   const lapInvalidAtSecondsRef = useRef<number | null>(null);
   const sectorTimerRef = useRef(createSectorTimer(computeSectorGates(track, SECTOR_COUNT)));
+  const trackLimitSequenceRef = useRef(createTrackLimitSequence());
   const sectorResultsRef = useRef<(SectorCrossing | null)[]>(
     new Array(SECTOR_COUNT).fill(null)
   );
@@ -606,6 +614,7 @@ export function Car({
       // garbage split spanning the teleport (see sectorTimer.reset).
       sectorTimerRef.current.reset();
       damageGripMultiplierRef.current = 1;
+      resetTrackLimitSequence(trackLimitSequenceRef.current);
       return;
     }
 
@@ -642,6 +651,7 @@ export function Car({
       if (lapInvalidAtSecondsRef.current === null || rolledBackTo <= lapInvalidAtSecondsRef.current) {
         lapInvalidRef.current = false;
         lapInvalidAtSecondsRef.current = null;
+        resetTrackLimitSequence(trackLimitSequenceRef.current);
       }
       rewindCursorRef.current = 0;
       wasRewindingRef.current = false;
@@ -1101,6 +1111,7 @@ export function Car({
       lapInvalidRef.current = false;
       lapInvalidAtSecondsRef.current = null;
       damageGripMultiplierRef.current = 1;
+      resetTrackLimitLap(trackLimitSequenceRef.current);
     }
 
     const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);
@@ -1109,34 +1120,28 @@ export function Car({
       renderSectors();
     }
 
-    // The real track-limits rule (plan section 5, depth feature 7): the
-    // HUD warning fires on the same all-four-wheels-off rule that
-    // invalidates the lap (see allWheelsOffTrack) - a wheel still on the
-    // asphalt keeps the car legal, same as real regulations, so running
-    // wide with grip still on one side no longer flashes a warning.
+    // Race-control track-limits sequence: a first all-four-wheels-off
+    // moment is a warning, a sustained/repeated offense raises the
+    // black-and-white flag, and only the next stage applies the five-second
+    // penalty. A wheel still on the asphalt keeps the car legal, same as
+    // the real all-four-wheels rule.
     const wheelWorldPositions = wheelGroundPositions(body);
     const allFourWheelsOff = allWheelsOffTrack(track, wheelWorldPositions);
-    if (allFourWheelsOff) {
-      // Only record the timestamp on the first violation this lap - a
-      // rewind must reach back to the START of the infraction to undo it,
-      // not just its most recent moment.
-      if (!lapInvalidRef.current) {
-        lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
-        // ponytail: applied once here and never refunded, even if a later
-        // rewind reaches back far enough to clear lapInvalidRef (see the
-        // rewind-resume block above) - undoing the mistake stops it from
-        // costing another invalidated lap, but the race-clock penalty
-        // already happened. Revisit if that gap turns out to matter in
-        // practice.
-        if (!raceFinishedRef.current) {
-          raceElapsedSecondsRef.current += RACE_TRACK_LIMIT_PENALTY_SECONDS;
-          if (penaltyToastRef?.current) {
-            penaltyToastRef.current.textContent = `+${RACE_TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
-          }
-          penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
-        }
-      }
+    const limitUpdate = updateTrackLimitSequence(
+      trackLimitSequenceRef.current,
+      allFourWheelsOff,
+      dt
+    );
+    if (limitUpdate.penaltyJustApplied) {
+      if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
       lapInvalidRef.current = true;
+      if (!raceFinishedRef.current) {
+        raceElapsedSecondsRef.current += TRACK_LIMIT_PENALTY_SECONDS;
+        if (penaltyToastRef?.current) {
+          penaltyToastRef.current.textContent = `+${TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
+        }
+        penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
+      }
     }
 
     if (lapRef?.current) {
@@ -1238,7 +1243,9 @@ export function Car({
     }
 
     if (trackLimitRef?.current) {
-      trackLimitRef.current.textContent = allFourWheelsOff ? "TRACK LIMITS" : "";
+      trackLimitRef.current.textContent = allFourWheelsOff
+        ? trackLimitStageLabel(trackLimitSequenceRef.current.stage)
+        : "";
     }
 
     if (
