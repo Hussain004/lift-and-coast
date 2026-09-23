@@ -424,3 +424,23 @@
 .countdown:empty {
   display: none;
 }
+
+/* F-key performance readout (see FrameRateGovernor). Empty until toggled. */
+.perf {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  color: #9dffc2;
+  background: rgba(8, 10, 14, 0.72);
+  padding: 3px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.perf:empty {
+  display: none;
+}

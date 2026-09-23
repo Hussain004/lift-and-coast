@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -34,6 +34,16 @@ import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifyi
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
 import type { AIDifficulty } from "@/lib/ai/personalities";
+import {
+  QUALITY_SETTINGS,
+  loadGraphicsPref,
+  nextGraphicsPref,
+  resolveGraphicsQuality,
+  saveGraphicsPref,
+  type GraphicsPref,
+  type GraphicsQuality,
+} from "@/lib/render/quality";
+import { FrameRateGovernor, QualityContext, SurfaceMaterial, Sun } from "./renderQuality";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -142,7 +152,7 @@ function Ground({ track }: { track: TrackData }) {
     <RigidBody type="fixed" colliders={false} friction={0.6}>
       <TrimeshCollider args={[positions, indices]} />
       <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial vertexColors />
+        <SurfaceMaterial vertexColors />
       </mesh>
     </RigidBody>
   );
@@ -490,7 +500,10 @@ export function Scene({
   playerAccentColor,
   audioRef,
   timeOfDay = "day",
+  perfRef,
 }: {
+  /** Optional performance readout (F key) - see FrameRateGovernor. */
+  perfRef?: React.RefObject<HTMLDivElement | null>;
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - team primary for the player. */
@@ -637,24 +650,57 @@ export function Scene({
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
   const lighting = TIME_OF_DAY_LIGHTING[timeOfDay] ?? TIME_OF_DAY_LIGHTING.day;
+  // Graphics tier (see lib/render/quality.ts): resolved once at mount -
+  // antialiasing is a context-creation flag - then live: K cycles the
+  // preference, and "auto" can step itself down (FrameRateGovernor).
+  const [graphicsPref, setGraphicsPref] = useState<GraphicsPref>(() => loadGraphicsPref());
+  const [quality, setQuality] = useState<GraphicsQuality>(() => resolveGraphicsQuality(graphicsPref));
+  const settings = QUALITY_SETTINGS[quality];
+  const [antialias] = useState(settings.antialias);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.code === "KeyK") {
+        const next = nextGraphicsPref(graphicsPref);
+        saveGraphicsPref(next);
+        setGraphicsPref(next);
+        setQuality(resolveGraphicsQuality(next));
+      } else if (e.code === "KeyF" && perfRef?.current) {
+        const el = perfRef.current;
+        el.dataset.visible = el.dataset.visible === "1" ? "0" : "1";
+        el.textContent = el.dataset.visible === "1" ? "measuring..." : "";
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [graphicsPref, perfRef]);
 
   return (
     <Canvas
       shadows
+      dpr={Math.min(settings.maxDpr, typeof window === "undefined" ? 1 : window.devicePixelRatio)}
+      gl={{ antialias, powerPreference: "high-performance" }}
       camera={{
         fov: 65,
         position: [track.startPos.x, 3, track.startPos.z + 8],
-        far: 3000,
+        // Just past the fog's end: everything further is invisible anyway,
+        // so the GPU may as well clip it.
+        far: settings.fogFar + 40,
       }}
     >
+      <QualityContext.Provider value={settings}>
+      <FarPlane far={settings.fogFar + 40} />
+      <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
       <color attach="background" args={[lighting.sky]} />
-      <fog attach="fog" args={[lighting.sky, 40, 220]} />
-      <ambientLight intensity={lighting.ambientIntensity} color={lighting.ambientColor} />
-      <directionalLight
-        position={lighting.sunPosition}
-        intensity={lighting.sunIntensity}
+      <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
+      <hemisphereLight
+        args={[lighting.ambientColor, "#3b4a2a", lighting.ambientIntensity]}
+      />
+      <Sun
+        direction={lighting.sunPosition}
         color={lighting.sunColor}
-        castShadow
+        intensity={lighting.sunIntensity}
+        target={visualRef}
       />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
         <Ground track={track} />
@@ -797,6 +843,24 @@ export function Scene({
             : undefined
         }
       />
+      </QualityContext.Provider>
     </Canvas>
   );
+}
+
+/** Keeps the camera's far plane matched to the tier's draw distance (the
+ * Canvas camera prop only applies at creation). */
+function FarPlane({ far }: { far: number }) {
+  const camera = useThree((state) => state.camera);
+  useEffect(() => {
+    setCameraFar(camera, far);
+  }, [camera, far]);
+  return null;
+}
+
+function setCameraFar(camera: THREE.Camera, far: number): void {
+  if (camera instanceof THREE.PerspectiveCamera) {
+    camera.far = far;
+    camera.updateProjectionMatrix();
+  }
 }

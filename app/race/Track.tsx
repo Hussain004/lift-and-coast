@@ -14,6 +14,11 @@ import {
 } from "@/lib/tracks/racingLine";
 import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { TrackData } from "@/lib/tracks/types";
+import { chunkMesh, chunkPoints, thin } from "@/lib/render/chunks";
+import { SurfaceMaterial, useQuality } from "./renderQuality";
+
+/** Cell size for circuit-wide static geometry (see lib/render/chunks.ts). */
+const CHUNK_METERS = 180;
 
 // Lifts the racing line's rendered geometry just above the track surface
 // (the racing line carries the centerline's own y, and so does the ribbon's
@@ -181,13 +186,13 @@ export function Track({
       <RigidBody type="fixed" colliders={false} friction={1.3}>
         <TrimeshCollider args={[positions, indices]} />
         <mesh geometry={geometry} receiveShadow>
-          <meshStandardMaterial color={RIBBON_COLOR} />
+          <SurfaceMaterial color={RIBBON_COLOR} />
         </mesh>
       </RigidBody>
       <Structures track={track} />
       <Flora track={track} />
       <mesh geometry={kerbGeometry}>
-        <meshStandardMaterial vertexColors />
+        <SurfaceMaterial vertexColors />
       </mesh>
       <mesh geometry={edgeLineGeometry}>
         {/* basic (unlit) white, like the racing line overlay below: an edge
@@ -214,14 +219,18 @@ export function Track({
 function Structures({ track }: { track: TrackData }) {
   const { solid, visual } = useMemo(() => {
     const { solid, visual } = buildStructureGeometry(track);
-    const make = (positions: Float32Array, indices: Uint32Array, colors: Float32Array) => {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-      geometry.computeVertexNormals();
-      return { positions, indices, geometry };
-    };
+    const make = (positions: Float32Array, indices: Uint32Array, colors: Float32Array) =>
+      positions.length === 0
+        ? []
+        : chunkMesh({ positions, indices, colors }, CHUNK_METERS).map((chunk) => {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute("position", new THREE.BufferAttribute(chunk.positions, 3));
+            geometry.setAttribute("color", new THREE.BufferAttribute(chunk.colors!, 3));
+            geometry.setIndex(new THREE.BufferAttribute(chunk.indices, 1));
+            geometry.computeVertexNormals();
+            geometry.computeBoundingSphere();
+            return geometry;
+          });
     return {
       solid: make(solid.positions, solid.indices, solid.colors),
       visual: make(visual.positions, visual.indices, visual.colors),
@@ -230,77 +239,81 @@ function Structures({ track }: { track: TrackData }) {
 
   return (
     <>
-      {solid.positions.length > 0 && (
-        <mesh geometry={solid.geometry} castShadow receiveShadow>
-          <meshStandardMaterial vertexColors />
+      {solid.map((geometry, i) => (
+        <mesh key={`s${i}`} geometry={geometry} castShadow receiveShadow>
+          <SurfaceMaterial vertexColors />
         </mesh>
-      )}
-      {visual.positions.length > 0 && (
-        <mesh geometry={visual.geometry}>
-          <meshStandardMaterial vertexColors />
+      ))}
+      {visual.map((geometry, i) => (
+        <mesh key={`v${i}`} geometry={geometry}>
+          <SurfaceMaterial vertexColors />
         </mesh>
-      )}
+      ))}
     </>
   );
 }
 
 /**
  * Trackside flora (plan section 4, circuit detail): seeded low-poly trees,
- * one InstancedMesh per species - a few hundred trees for a couple of draw
- * calls. Visual-only like the structures massing. frustumCulled is off:
- * three would cull by the unit tree's own bounds at the origin, but the
- * instances span the whole circuit.
+ * instanced per species and per map cell, so stands behind the camera (or
+ * outside the sun's shadow box) are culled. The graphics tier thins the
+ * forest evenly (see thin) - the same trees always survive.
  */
 function Flora({ track }: { track: TrackData }) {
+  const { floraDensity } = useQuality();
   const builds = useMemo(() => buildFlora(track), [track]);
+  const chunks = useMemo(
+    () =>
+      builds.flatMap((build, s) => {
+        const items = thin(
+          build.instances.map((instance, i) => ({ ...instance, color: build.colors[i] })),
+          floraDensity
+        );
+        return chunkPoints(items, CHUNK_METERS).map((cell, c) => ({ key: `${s}:${c}`, build, cell }));
+      }),
+    [builds, floraDensity]
+  );
   return (
     <>
-      {builds.map(
-        (build, s) =>
-          build.instances.length > 0 && <FloraSpeciesMesh key={s} build={build} />
-      )}
+      {chunks.map(({ key, build, cell }) => (
+        <FloraChunkMesh key={key} geometry={build.geometry} cell={cell} />
+      ))}
     </>
   );
 }
 
-function FloraSpeciesMesh({ build }: { build: FloraBuild }) {
+function FloraChunkMesh({
+  geometry,
+  cell,
+}: {
+  geometry: FloraBuild["geometry"];
+  cell: { x: number; y: number; z: number; yaw: number; scale: number; color: string }[];
+}) {
   const ref = useRef<THREE.InstancedMesh | null>(null);
-  const { geometry, instances, colors } = build;
-  const count = instances.length;
-  const { matrices, tints } = useMemo(() => {
+  const count = cell.length;
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
     const dummy = new THREE.Object3D();
-    const matrices: THREE.Matrix4[] = new Array(count);
-    const tints: THREE.Color[] = new Array(count);
+    const tint = new THREE.Color();
     for (let i = 0; i < count; i++) {
-      const inst = instances[i];
+      const inst = cell[i];
       dummy.position.set(inst.x, inst.y, inst.z);
       dummy.rotation.set(0, inst.yaw, 0);
       dummy.scale.setScalar(inst.scale);
       dummy.updateMatrix();
-      matrices[i] = dummy.matrix.clone();
-      tints[i] = new THREE.Color(colors[i]);
-    }
-    return { matrices, tints };
-  }, [colors, count, instances]);
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    for (let i = 0; i < count; i++) {
-      mesh.setMatrixAt(i, matrices[i]);
-      mesh.setColorAt(i, tints[i]);
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, tint.set(inst.color));
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [matrices, tints, count]);
+    // Bounds over this cell's instances (three computes them from the
+    // instance matrices), so the cell can be culled as a unit.
+    mesh.computeBoundingSphere();
+  }, [cell, count]);
   return (
-    <instancedMesh
-      ref={ref}
-      args={[geometry, undefined, count]}
-      frustumCulled={false}
-      castShadow
-      receiveShadow
-    >
-      <meshStandardMaterial vertexColors />
+    <instancedMesh ref={ref} args={[geometry, undefined, count]} castShadow receiveShadow>
+      <SurfaceMaterial vertexColors />
     </instancedMesh>
   );
 }

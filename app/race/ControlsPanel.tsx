@@ -30,6 +30,8 @@ const BINDINGS: [string, string][] = [
   ["Q / Z", "shift gears"],
   ["G", "auto-gears"],
   ["M", "mute"],
+  ["K", "graphics"],
+  ["F", "fps"],
 ];
 
 export function ControlsPanel() {

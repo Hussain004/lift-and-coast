@@ -196,6 +196,7 @@ function RaceContent() {
   const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
   const penaltyToastRef = useRef<HTMLDivElement>(null);
   const muteRef = useRef<HTMLDivElement>(null);
+  const perfRef = useRef<HTMLDivElement>(null);
   // Shared with the race audio rig (see app/race/RaceAudioRig.tsx): both
   // cars write their latest telemetry here every render frame, and the rig
   // pumps it into the synth voices - plain mutable data, never React state,
@@ -243,7 +244,9 @@ function RaceContent() {
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
         timeOfDay={timeOfDay}
+        perfRef={perfRef}
       />
+      <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
       {/* Timing tower, broadcast style: live lap/position plus the full
           field below - Car.tsx rewrites the rows ~10Hz (see

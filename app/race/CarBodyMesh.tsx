@@ -1,6 +1,7 @@
 "use client";
 
 import * as THREE from "three";
+import { useQuality } from "./renderQuality";
 import { CAR_WHEELS, CHASSIS_HALF_EXTENTS } from "@/lib/physics/vehicle";
 import {
   FLAP_CLOSED_INCLINE_RAD,
@@ -96,7 +97,7 @@ function carBodyParts(): CarBodyParts {
 }
 
 const geometryCache = new Map<string, THREE.BufferGeometry>();
-const materialCache = new Map<string, THREE.MeshStandardMaterial>();
+const materialCache = new Map<string, THREE.Material>();
 
 /** Cached-by-key geometry factory: every distinct shape in the game is built
  * exactly once, however many cars ask for it. */
@@ -142,14 +143,28 @@ function paintFor(role: BodyPanelColor, bodyColor: string, accentColor?: string)
 function carMaterial(
   role: BodyPanelColor,
   paint: string,
-  options: { ghost?: boolean; studio?: boolean } = {}
-): THREE.MeshStandardMaterial {
+  options: { ghost?: boolean; studio?: boolean; cheap?: boolean } = {}
+): THREE.Material {
   const ghost = options.ghost ?? false;
   const studio = options.studio ?? false;
-  const key = `${role}|${paint}|${ghost ? "ghost" : "solid"}|${studio ? "studio" : "race"}`;
+  const cheap = options.cheap ?? false;
+  const key = `${role}|${paint}|${ghost ? "ghost" : "solid"}|${studio ? "studio" : "race"}|${cheap ? "lambert" : "pbr"}`;
   const cached = materialCache.get(key);
   if (cached) return cached;
   const finish = ROLE_FINISH[role];
+  if (cheap) {
+    // Low graphics tier (see lib/render/quality.ts): Lambert, no PBR.
+    const lambert = new THREE.MeshLambertMaterial({
+      color: paint,
+      emissive: new THREE.Color(finish.emissive ?? "#000000"),
+      emissiveIntensity: finish.emissiveIntensity ?? 0,
+      transparent: ghost,
+      opacity: ghost ? 0.35 : 1,
+      depthWrite: !ghost,
+    });
+    materialCache.set(key, lambert);
+    return lambert;
+  }
   const material = new THREE.MeshStandardMaterial({
     color: paint,
     roughness: studio ? Math.max(0.05, finish.roughness - 0.06) : finish.roughness,
@@ -184,9 +199,10 @@ export function CarBodyShell({
   ghost?: boolean;
   studio?: boolean;
 }) {
+  const { cheapMaterials: cheap } = useQuality();
   const { groups, flap, helmet, halo } = carBodyParts();
   const material = (role: BodyPanelColor) =>
-    carMaterial(role, paintFor(role, bodyColor, accentColor), { ghost, studio });
+    carMaterial(role, paintFor(role, bodyColor, accentColor), { ghost, studio, cheap });
   return (
     <>
       {groups.map((group) => (
@@ -251,6 +267,7 @@ export function CarWheels({
   ghost?: boolean;
   studio?: boolean;
 }) {
+  const { cheapMaterials: cheap } = useQuality();
   return (
     <>
       {CAR_WHEELS.map((wheel, i) => (
@@ -263,7 +280,7 @@ export function CarWheels({
                   `cyl:${wheel.radius}:${TIRE_WIDTH_METERS}:${TIRE_SEGMENTS}`,
                   () => new THREE.CylinderGeometry(wheel.radius, wheel.radius, TIRE_WIDTH_METERS, TIRE_SEGMENTS)
                 )}
-                material={carMaterial("tire", neutralColor("tire"), { ghost, studio })}
+                material={carMaterial("tire", neutralColor("tire"), { ghost, studio, cheap })}
                 castShadow={!ghost}
               />
               <mesh
@@ -278,7 +295,7 @@ export function CarWheels({
                       RIM_SEGMENTS
                     )
                 )}
-                material={carMaterial("rim", neutralColor("rim"), { ghost, studio })}
+                material={carMaterial("rim", neutralColor("rim"), { ghost, studio, cheap })}
                 castShadow={!ghost}
               />
             </group>
