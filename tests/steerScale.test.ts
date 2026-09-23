@@ -7,6 +7,7 @@ import {
   DEFAULT_ENGINE_FORCE,
   applyCarControls,
   applyLoadSensitiveFriction,
+  combinedBrakeScale,
   createCarController,
   speedSensitiveSteerScale,
 } from "../lib/physics/vehicle";
@@ -42,6 +43,15 @@ describe("speedSensitiveSteerScale", () => {
 
   it("is symmetric for reversing (negative) speed", () => {
     expect(speedSensitiveSteerScale(-30)).toBe(speedSensitiveSteerScale(30));
+  });
+});
+
+describe("combinedBrakeScale", () => {
+  it("leaves straight-line braking alone but trims combined high-speed braking", () => {
+    expect(combinedBrakeScale(60, 0)).toBe(1);
+    expect(combinedBrakeScale(0, 1)).toBe(1);
+    expect(combinedBrakeScale(60, 1)).toBeLessThan(1);
+    expect(combinedBrakeScale(60, 1)).toBeGreaterThan(0.75);
   });
 });
 

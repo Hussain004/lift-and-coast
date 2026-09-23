@@ -64,6 +64,25 @@ describe("AI field race", () => {
     expect(passes).toBeGreaterThanOrEqual(12);
   }, 480000);
 
+  it("places and launches a full Hungaroring grid on its curved run to turn one", async () => {
+    const codes = [
+      "COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM", "LEC", "OCO",
+      "BEA", "NOR", "PIA", "RUS", "ANT", "LAW", "LIN", "VER", "HAD", "SAI",
+    ];
+    const result = await simulateField(codes, {
+      seconds: 12,
+      holdSeconds: 3,
+      track: getTrack("budapest"),
+    });
+    upright(result);
+    expect(result.field.recoveries).toBe(0);
+    expect(result.field.contacts).toBeLessThanOrEqual(20);
+    for (const car of result.cars) {
+      expect(car.traveled).toBeGreaterThan(20);
+      expect(car.maxOffTrack).toBeLessThan(6);
+    }
+  }, 120000);
+
   it("an Ace field is measurably faster than a Pro field and stays upright", async () => {
     const codes = ["VER", "HAM", "ALO", "HUL", "STR", "COL"];
     const pro = await simulateField(codes, { seconds: 60 });

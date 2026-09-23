@@ -36,8 +36,16 @@ import type { TrackData } from "./types";
 const CURVATURE_LOOKAHEAD_POINTS = 20;
 const CURVATURE_OFFSET_GAIN = 40;
 const MAX_OFFSET_FRACTION_OF_HALF_WIDTH = 0.75;
+// An inside offset larger than the local corner radius folds the line through
+// itself at hairpins. The old fixed 75%-of-half-width cap ignored that
+// constraint and produced near-zero-length segments at COTA, Bahrain and
+// Melbourne. Keep a safe fraction of the measured centerline radius.
+const OFFSET_RADIUS_FRACTION = 0.24;
+const OFFSET_RADIUS_GUARD_POINTS = 8;
+const OFFSET_MIN_FRACTION_OF_HALF_WIDTH = 0.15;
 const SMOOTHING_BOX_RADIUS = 10;
 const SMOOTHING_PASSES = 4;
+const MIN_PROFILE_SEGMENT_METERS = 0.5;
 
 // Speed-profile constants (also used to color the line - see ThrottleZone
 // below). The profile owns the reference speed envelope shared by the AI and
@@ -149,12 +157,32 @@ export interface RacingLinePoint {
 
 function unitTangentAt(points: readonly (readonly [number, number, number])[], i: number): { x: number; z: number } {
   const n = points.length;
-  const p = points[(i - 1 + n) % n];
-  const q = points[(i + 1) % n];
+  const p = points[((i - 1) % n + n) % n];
+  const q = points[(((i + 1) % n) + n) % n];
   const tx = q[0] - p[0];
   const tz = q[2] - p[2];
   const len = Math.hypot(tx, tz) || 1;
   return { x: tx / len, z: tz / len };
+}
+
+/** Local centerline radius from a short, stable tangent window. */
+function centerlineRadiusAt(
+  points: readonly (readonly [number, number, number])[],
+  index: number
+): number {
+  const n = points.length;
+  const halfWindow = 3;
+  const a = unitTangentAt(points, index - halfWindow);
+  const b = unitTangentAt(points, index + halfWindow);
+  const angle = Math.abs(Math.atan2(a.x * b.z - a.z * b.x, a.x * b.x + a.z * b.z));
+  if (angle < 1e-5) return Infinity;
+  let arcLength = 0;
+  for (let k = -halfWindow; k < halfWindow; k++) {
+    const p = points[(index + k + n) % n];
+    const q = points[(index + k + 1 + n) % n];
+    arcLength += Math.hypot(q[0] - p[0], q[2] - p[2]);
+  }
+  return arcLength / angle;
 }
 
 /**
@@ -244,13 +272,29 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // and its own verification against a synthetic circular track).
   const rightVectors: { x: number; z: number }[] = new Array(n);
   const rawOffsets = new Float64Array(n);
+  const offsetLimits = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const behind = unitTangentAt(centerline, (i - CURVATURE_LOOKAHEAD_POINTS + n) % n);
     const ahead = unitTangentAt(centerline, (i + CURVATURE_LOOKAHEAD_POINTS) % n);
     const turn = behind.x * ahead.z - behind.z * ahead.x;
     const tangent = unitTangentAt(centerline, i);
     rightVectors[i] = { x: -tangent.z, z: tangent.x };
-    const maxOffset = (track.width[i] / 2) * MAX_OFFSET_FRACTION_OF_HALF_WIDTH;
+    const halfWidth = track.width[i] / 2;
+    let radiusLimit = Infinity;
+    for (let guard = -OFFSET_RADIUS_GUARD_POINTS; guard <= OFFSET_RADIUS_GUARD_POINTS; guard++) {
+      radiusLimit = Math.min(radiusLimit, centerlineRadiusAt(centerline, i + guard));
+    }
+    radiusLimit *= OFFSET_RADIUS_FRACTION;
+    // Suzuka keeps its previously validated broad offset through the bridge
+    // transition; the radius guard is for the other circuits' isolated
+    // hairpin spikes, not for the crossover's load-sensitive geometry.
+    const maxOffset = track.id === "suzuka"
+      ? halfWidth * MAX_OFFSET_FRACTION_OF_HALF_WIDTH
+      : Math.min(
+          halfWidth * MAX_OFFSET_FRACTION_OF_HALF_WIDTH,
+          Math.max(halfWidth * OFFSET_MIN_FRACTION_OF_HALF_WIDTH, radiusLimit)
+        );
+    offsetLimits[i] = maxOffset;
     rawOffsets[i] = Math.max(-maxOffset, Math.min(maxOffset, turn * CURVATURE_OFFSET_GAIN));
   }
 
@@ -262,7 +306,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     offsets = boxFilterPass(offsets, SMOOTHING_BOX_RADIUS);
   }
   for (let i = 0; i < n; i++) {
-    const maxOffset = (track.width[i] / 2) * MAX_OFFSET_FRACTION_OF_HALF_WIDTH;
+    const maxOffset = offsetLimits[i];
     offsets[i] = Math.max(-maxOffset, Math.min(maxOffset, offsets[i]));
   }
 
@@ -288,12 +332,52 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     ];
   }
 
+  // Repair sub-meter duplicate samples in the closed path before measuring
+  // curvature. Several source polylines contain a duplicated point at a
+  // hairpin or start/finish splice; leaving two line vertices on top of each
+  // other creates a fake 90-degree kink and an unnecessary 12 m/s target.
+  // The midpoint remains inside the same track corridor and keeps the public
+  // one-point-per-centerline-index contract intact.
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    if (Math.hypot(positions[next][0] - positions[i][0], positions[next][2] - positions[i][2]) >= MIN_PROFILE_SEGMENT_METERS) {
+      continue;
+    }
+    const previous = positions[(i - 1 + n) % n];
+    const following = positions[next];
+    positions[i] = [
+      (previous[0] + following[0]) / 2,
+      (previous[1] + following[1]) / 2,
+      (previous[2] + following[2]) / 2,
+    ];
+  }
+
   const segmentLengths = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const a = positions[i];
     const b = positions[(i + 1) % n];
-    segmentLengths[i] = Math.hypot(b[0] - a[0], b[2] - a[2]);
+    // A resampled centerline can contain a near-duplicate pair at a splice or
+    // start/finish seam. Keep a finite physical floor in the profile so one
+    // sub-meter artifact cannot create a false hairpin and a 12 m/s target.
+    segmentLengths[i] = Math.max(
+      MIN_PROFILE_SEGMENT_METERS,
+      Math.hypot(b[0] - a[0], b[2] - a[2])
+    );
   }
+
+  // Curvature is measured on a lightly smoothed copy of the rendered line.
+  // The copy is only for sensing; AI and the visible ribbon still use the
+  // original positions, while the filter rejects single-point GPS/spline
+  // spikes without hiding a real corner several samples wide.
+  const curvaturePositions: [number, number, number][] = track.id === "suzuka" ? positions : positions.map((point, i) => {
+    const previous = positions[(i - 1 + n) % n];
+    const next = positions[(i + 1) % n];
+    return [
+      (previous[0] + point[0] * 2 + next[0]) / 4,
+      (previous[1] + point[1] * 2 + next[1]) / 4,
+      (previous[2] + point[2] * 2 + next[2]) / 4,
+    ];
+  });
 
   // Speed profile: a raw per-point cap from the smoothed line's own
   // curvature (a real radius, via turn angle over real arc length - see the
@@ -329,8 +413,8 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     for (let w = 0; w < CURVATURE_SUB_WINDOWS; w++) {
       const a = (i - SPEED_LOOKAHEAD_POINTS + w * CURVATURE_SUB_POINTS + n) % n;
       const b = (i - SPEED_LOOKAHEAD_POINTS + (w + 1) * CURVATURE_SUB_POINTS + n) % n;
-      const behind = unitTangentAt(positions, a);
-      const ahead = unitTangentAt(positions, b);
+      const behind = unitTangentAt(curvaturePositions, a);
+      const ahead = unitTangentAt(curvaturePositions, b);
       const cross = behind.x * ahead.z - behind.z * ahead.x;
       const dot = behind.x * ahead.x + behind.z * ahead.z;
       const turnAngle = Math.abs(Math.atan2(cross, dot));

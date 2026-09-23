@@ -27,7 +27,7 @@ import {
   applyLoadSensitiveFriction,
   applySurfaceDragImpulse,
   computeSignedForwardSpeed,
-  computeStabilizingTorque,
+  applyVehicleStabilityTorques,
   createCarController,
   resolveYawDampingTorque,
   wheelGroundPositions,
@@ -337,13 +337,14 @@ export function AICar({
   const racingLine = useMemo(() => getRacingLine(track), [track]);
   const lineRoom = useMemo(() => getLineRoom(track), [track]);
 
-  const { spawnX, spawnY, spawnZ, spawnQuat } = useMemo(() => {
+  const { spawnX, spawnY, spawnZ, spawnYaw, spawnQuat } = useMemo(() => {
     const grid = gridSlot(track, gridSlotIndex);
-    const yaw = track.startPos.headingRad;
+    const yaw = grid.headingRad;
     return {
       spawnX: grid.x,
       spawnY: grid.y,
       spawnZ: grid.z,
+      spawnYaw: yaw,
       spawnQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)),
     };
   }, [track, gridSlotIndex]);
@@ -728,13 +729,7 @@ export function AICar({
     );
     controller.updateVehicle(world.timestep);
 
-    const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
-    if (torque[0] || torque[1] || torque[2]) {
-      body.applyTorqueImpulse(
-        { x: torque[0] * world.timestep, y: torque[1] * world.timestep, z: torque[2] * world.timestep },
-        true
-      );
-    }
+    applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
     // Spin recovery (see resolveYawDampingTorque): the stabilizing torque
     // above only rights the car's TILT - a side contact leaves yaw spinning
     // freely, which is how a bumped AI ends up broadside with the car
@@ -832,7 +827,7 @@ export function AICar({
       ref={chassisRef}
       colliders={false}
       position={[spawnX, spawnY, spawnZ]}
-      rotation={[0, track.startPos.headingRad, 0]}
+      rotation={[0, spawnYaw, 0]}
       linearDamping={LINEAR_DAMPING}
       angularDamping={ANGULAR_DAMPING}
       canSleep={false}

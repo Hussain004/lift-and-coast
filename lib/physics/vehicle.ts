@@ -405,6 +405,21 @@ export interface CarControls {
 
 const MAX_STEER_ANGLE = 0.45;
 
+// Combined-slip brake limiting: a car can keep the same brake pedal force in
+// a straight line, but locking all four raycast wheels while yawing at speed
+// creates an artificial pole-vault impulse in this model. This is a gentle
+// grip-budget correction, not an autopilot: it only trims brake force once
+// steering and speed are both meaningful, leaving ordinary braking and low
+// speed maneuvers untouched.
+const COMBINED_BRAKE_STEER_LOSS = 0.2;
+const COMBINED_BRAKE_SPEED_MS = 55;
+
+export function combinedBrakeScale(speedMs: number, steer: number): number {
+  const speedFactor = Math.min(1, Math.abs(speedMs) / COMBINED_BRAKE_SPEED_MS);
+  const steeringFactor = Math.min(1, Math.abs(steer));
+  return 1 - COMBINED_BRAKE_STEER_LOSS * speedFactor * steeringFactor;
+}
+
 // A binary keyboard press commands full lock instantly - fine standing
 // still, way too much at speed (plan section 5: "speed-sensitive max
 // lock"). Scale steer angle down between these speeds, floored so the car
@@ -523,6 +538,18 @@ export function computeStabilizingTorque(
   if (axis.lengthSq() < 1e-8) return [0, 0, 0];
   axis.normalize().multiplyScalar(strength * tilt);
   return [axis.x, axis.y, axis.z];
+}
+
+/** Apply the shared upright stability torque in one place. */
+export function applyVehicleStabilityTorques(
+  body: RigidBody,
+  strength: number,
+  timestep: number
+): void {
+  const [x, y, z] = computeStabilizingTorque(body.rotation(), strength);
+  if (x || y || z) {
+    body.applyTorqueImpulse({ x: x * timestep, y: y * timestep, z: z * timestep }, true);
+  }
 }
 
 /**
@@ -645,9 +672,10 @@ export function applyCarControls(
     );
   }
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
+  const brakeScale = combinedBrakeScale(currentSpeedMs, steer);
   CAR_WHEELS.forEach((wheel, i) => {
     controller.setWheelEngineForce(i, wheel.isDriven ? throttle * throttleScale * engineForce : 0);
-    controller.setWheelBrake(i, brake * maxBrakeForce);
+    controller.setWheelBrake(i, brake * maxBrakeForce * brakeScale);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });
 }

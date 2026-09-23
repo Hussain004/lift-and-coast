@@ -87,6 +87,7 @@ interface SimCar {
   battery: number;
   boostEligible: boolean;
   maxTilt: number;
+  maxOffTrack: number;
   traveled: number;
   prevX: number;
   prevZ: number;
@@ -105,6 +106,7 @@ interface SimCar {
 export interface CarResult {
   code: string;
   maxTilt: number;
+  maxOffTrack: number;
   traveled: number;
   attemptTicks: number;
   maxOffset: number;
@@ -187,9 +189,9 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         .setRotation(
           new RAPIER.Quaternion(
             0,
-            Math.sin(track.startPos.headingRad / 2),
+            Math.sin(grid.headingRad / 2),
             0,
-            Math.cos(track.startPos.headingRad / 2)
+            Math.cos(grid.headingRad / 2)
           )
         )
         .setLinearDamping(LINEAR_DAMPING)
@@ -205,7 +207,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       spawnX: grid.x,
       spawnY: grid.y,
       spawnZ: grid.z,
-      spawnYaw: track.startPos.headingRad,
+      spawnYaw: grid.headingRad,
       controller: createCarController(RAPIER, world, chassis),
       gearbox: createGearboxState(true),
       aeroMode: "high-downforce" as AeroMode,
@@ -225,6 +227,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       battery: 1,
       boostEligible: false,
       maxTilt: 0,
+      maxOffTrack: 0,
       traveled: 0,
       prevX: grid.x,
       prevZ: grid.z,
@@ -279,6 +282,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     for (const car of cars) {
       const p = car.chassis.translation();
       const status = checkTrackLimits(track, p.x, p.z, p.y);
+      car.maxOffTrack = Math.max(car.maxOffTrack, status.distanceFromEdgeMeters);
       const lap = car.lapTimer.update({ x: p.x, z: p.z }, timestep);
       // Same standings rule the game feeds racecraft (see standingsLapCount).
       car.lapCount = standingsLapCount(lap, status.progressMeters, track.lengthMeters);
@@ -565,6 +569,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     cars: cars.map((car) => ({
       code: car.code,
       maxTilt: car.maxTilt,
+      maxOffTrack: car.maxOffTrack,
       traveled: car.traveled,
       attemptTicks: car.attemptTicks,
       maxOffset: car.maxOffset,

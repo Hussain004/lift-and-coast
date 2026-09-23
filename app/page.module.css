@@ -773,6 +773,30 @@
   margin: 0 0 6px;
 }
 
+.supportLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  color: var(--gold);
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.supportLink:hover,
+.supportLink:focus-visible {
+  color: #fff8e8;
+  border-color: var(--gold);
+  background: rgba(211, 171, 99, 0.1);
+  transform: translateY(-1px);
+}
+
 .credit {
   font-family: var(--font-geist-mono);
   font-size: 10px;

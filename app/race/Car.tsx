@@ -28,7 +28,7 @@ import {
   applyLoadSensitiveFriction,
   applySurfaceDragImpulse,
   computeSignedForwardSpeed,
-  computeStabilizingTorque,
+  applyVehicleStabilityTorques,
   createCarController,
   wheelGroundPositions,
   yawFromQuaternion,
@@ -424,7 +424,7 @@ export function Car({
   const energySystemRef = useRef(createEnergySystem());
   const batteryFractionRef = useRef(1);
   const startRotationRef = useRef(
-    new THREE.Quaternion().setFromEuler(new THREE.Euler(0, startPos.headingRad, 0))
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(0, gridSpot.headingRad, 0))
   );
 
   useEffect(() => {
@@ -522,13 +522,7 @@ export function Car({
         applyLoadSensitiveFriction(controller, aeroMode.current);
         controller.updateVehicle(timestep);
 
-        const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
-        if (torque[0] || torque[1] || torque[2]) {
-          body.applyTorqueImpulse(
-            { x: torque[0] * timestep, y: torque[1] * timestep, z: torque[2] * timestep },
-            true
-          );
-        }
+        applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, timestep);
         const downforceN = computeDownforceN(controller.currentVehicleSpeed());
         body.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
         applyDragImpulse(body, aeroMode.current, timestep);
@@ -772,13 +766,7 @@ export function Car({
     );
     controller.updateVehicle(world.timestep);
 
-    const torque = computeStabilizingTorque(body.rotation(), DEFAULT_STABILIZE_STRENGTH);
-    if (torque[0] || torque[1] || torque[2]) {
-      body.applyTorqueImpulse(
-        { x: torque[0] * world.timestep, y: torque[1] * world.timestep, z: torque[2] * world.timestep },
-        true
-      );
-    }
+    applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current);
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     // Slipstream (see towDragScale): tucked in behind a rival, less drag.
@@ -1316,7 +1304,7 @@ export function Car({
         ref={chassisRef}
         colliders={false}
         position={[gridSpot.x, gridSpot.y, gridSpot.z]}
-        rotation={[0, startPos.headingRad, 0]}
+        rotation={[0, gridSpot.headingRad, 0]}
         linearDamping={LINEAR_DAMPING}
         angularDamping={ANGULAR_DAMPING}
         canSleep={false}

@@ -20,7 +20,7 @@ import {
   applyLoadSensitiveFriction,
   applySurfaceDragImpulse,
   computeSignedForwardSpeed,
-  computeStabilizingTorque,
+  applyVehicleStabilityTorques,
   createCarController,
   wheelGroundPositions,
 } from "../physics/vehicle";
@@ -421,20 +421,7 @@ export async function simulateDrive(
     }
     controller.updateVehicle(timestep);
 
-    const torque = computeStabilizingTorque(
-      chassis.rotation(),
-      options.stabilizeStrength
-    );
-    if (torque[0] || torque[1] || torque[2]) {
-      chassis.applyTorqueImpulse(
-        {
-          x: torque[0] * timestep,
-          y: torque[1] * timestep,
-          z: torque[2] * timestep,
-        },
-        true
-      );
-    }
+    applyVehicleStabilityTorques(chassis, options.stabilizeStrength, timestep);
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), stepAeroMode);
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
     applyDragImpulse(chassis, stepAeroMode, timestep);

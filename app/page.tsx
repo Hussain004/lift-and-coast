@@ -77,6 +77,14 @@ export default function Home() {
             Lift &amp; coast: it&apos;s not slow, it&apos;s strategic.
           </p>
           <SaveTransfer />
+          <a
+            className={styles.supportLink}
+            href="https://donatr.ee/hussain/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Support Lift &amp; Coast
+          </a>
           <p className={styles.credit}>
             React Three Fiber · Rapier physics · {TRACKS.length} circuits from real GPS
             centerlines

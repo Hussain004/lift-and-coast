@@ -29,19 +29,18 @@ const RACING_LINE_HEIGHT_OFFSET = 0.05;
 // line sweeps across an edge the throttle-map colors must win, and a 1cm
 // separation is plenty for the depth buffer this close to the camera.
 const EDGE_LINE_HEIGHT_OFFSET = 0.035;
-// Wide colored stripe (like an F1 game's throttle map), not a thin wire -
-// half this value each side of the line's own center. 1.3 (2.6m total)
-// looked too wide against this track's 13m width once actually driven -
-// cut roughly in half.
-const RACING_LINE_HALF_WIDTH_METERS = 0.6;
+// Wide colored stripe (like an F1 game's throttle map), not a thin wire.
+// 0.8m each side gives a readable 1.6m ribbon without hiding the track edge.
+const RACING_LINE_HALF_WIDTH_METERS = 0.8;
 
-// 0-1 RGB, matching this project's existing HUD palette (SECTOR_COLOR_HEX
-// in Car.tsx uses the same green/yellow; red matches the trackLimit HUD).
+// Restrained broadcast-style shades: cool green for throttle, amber for a
+// lift, orange for trail braking, and a deep red for a genuine hard-braking
+// zone. The darker red is intentionally distinct from the warning HUD red.
 const ZONE_COLOR: Record<ThrottleZone, [number, number, number]> = {
-  throttle: [0.22, 1, 0.53], // #39ff88
-  lift: [1, 0.82, 0.25], // #ffd23f
-  "brake-medium": [1, 0.45, 0.1], // orange
-  "brake-hard": [1, 0.23, 0.23], // #ff3b3b
+  throttle: [0.08, 0.78, 0.55], // #14c78c
+  lift: [0.95, 0.68, 0.12], // #f2ad1f
+  "brake-medium": [0.98, 0.32, 0.06], // #fa5110
+  "brake-hard": [0.78, 0.03, 0.12], // #c7071f
 };
 
 // How far ahead of the car (meters) the racing line's real-time color
@@ -133,7 +132,7 @@ function RacingLine({
           its own throttle/brake zone color (see ZONE_COLOR). basic (not
           standard) so scene lighting doesn't tint or darken the colors -
           this is a flat HUD-style overlay, not a lit surface. */}
-      <meshBasicMaterial vertexColors />
+      <meshBasicMaterial vertexColors toneMapped={false} />
     </mesh>
   );
 }

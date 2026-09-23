@@ -1,196 +1,136 @@
 # LIFT & COAST
 
 A serverless, browser-based formula racing game for the 2026 regulation era.
-Real track layouts, skill-based driving physics, energy management, and a
-retro-modern art style. No database, no DRS.
 
-Save the juice. Send the apex.
+Real circuit layouts, a living racing line, skill-based driving physics, energy management, wheel-to-wheel AI, and a retro-modern art style. No database, no DRS, and no mystery buttons that do not belong on a racing car.
 
-## Status
+**Save the juice. Send the apex.**
 
-A set of real circuit layouts (corner geometry and start line from the
-f1-circuits dataset, real per-point track widths from the TUMFTM
-racetrack-database, real elevation from a vendored Copernicus DEM; no camber
-and no authored kerbs yet): Silverstone, Monza, Spa-Francorchamps,
-Suzuka, Monaco, Spielberg, Bahrain, COTA, Zandvoort, Budapest, Melbourne,
-Montreal, Mexico, Shanghai, Interlagos, Yas Marina, Hockenheim, Sepang,
-Sochi and Nürburgring, plus the 2026 calendar circuits Miami,
-Barcelona-Catalunya, Madrid (Madring), Baku, Singapore, Las Vegas and
-Lusail. Driven by a Rapier raycast-vehicle
-chassis with seven-speed sequential manual gears plus an auto-gear assist
-(plan section 5, depth feature 4), keyboard input, gamepad/wheel analog
-input (plan section 5), chase/cockpit/T-cam/TV-broadcast/orbit cameras, and rewind. Built on top of
-the vertical slice:
+## What is in the garage
 
-- Energy harvesting + one-shot Push-to-Pass boost (Hold Shift)
-- Active Aero: high-downforce vs low-drag mode (E)
-- Tire compounds, wear and compound-grip degradation (1/2/3)
-- Assists: traction control (T), ABS (B), racing line (L); manual vs
-  auto gears (Q/Z shift, G toggles the assist)
-- Kerbs + surface zones: red/white kerb strips at the apex of every derived
-  corner (per-corner severity: sausage/aggressive/low), gravel runoff beyond
-  them, and grass with a distance-from-edge grip falloff - all classified per
-  wheel, sampled from real per-point zones (plan section 4 points 6-7).
-  Painted white edge lines outline both sides of the asphalt for the full
-  lap, so the road edge reads against sunlit grass as well as shade
-- Trackside architecture from mapped data: pit buildings, named grandstands
-  (stepped massing with red walls and roofed columns), pit walls derived
-  from the mapped pit lanes, fences, Monaco's tunnel roofs and Suzuka's
-  ferris wheel - all placed from vendored OpenStreetMap footprints, visual
-  only (plan section 4, circuit detail)
-- Trackside flora: seeded low-poly trees per circuit setting (cherry
-  blossom at Suzuka, poplars at Monza, spruce in the Ardennes, oaks at
-  Silverstone, cypress at Monaco, alpine spruce at Spielberg, desert scrub
-  in Bahrain, live oak at COTA, dune pine at Zandvoort, puszta green at
-  Budapest, eucalyptus at Melbourne, maple at Montreal, juniper in Mexico,
-  leaf green at Shanghai, broadleaf at Interlagos, palms at Yas Marina),
-  instanced, off the road and the gravel
-- Ghost laps + personal bests persisted in IndexedDB (per circuit)
-- Quick Race vs one AI opponent (runs the same physics as the player),
-  live race position, 5s rewind with lap-clock rollback
-- Session modes: solo Practice (any lap count), grid-setting Qualifying
-  (10-minute open session or one-shot flying lap, best valid lap counts),
-  and staggered-grid Races (pole at the line, P2 eight metres back)
-- Session setup on the home screen: garage (team/driver), world map with
-  track previews, Quick Race lap-count slider (1-20) and time-of-day
-  lighting (day/sunset/overcast) - all remembered via localStorage
-- Championship mode (plan sections 7-8): a season across every
-  registered circuit, each weekend running practice (optional) then
-  qualifying then the race, with F1-style points (25-18-...) and standings
-  on the home screen; the active season lives in IndexedDB and travels in
-  the save export/import bundle
-- Track-limit enforcement on the real all-four-wheels-off rule (warning,
-  penalty and lap invalidation all agree), damage,
-  minimap, sector times, delta timer, RPM/gear HUD
-- Synthesized race audio (Web Audio, zero samples): rpm-tracking engines
-  for both cars with positional opponent panning, tire-screech on slides,
-  impact thumps; M mutes (remembered via localStorage)
-- Headless vehicle-stability harness (`lib/ai/harness.ts`) hot-lapping the
-  real trimesh under stress scenarios, a per-track AI stability gate, plus
-  an AI stability diagnostic suite - all part of the test suite.
+- 27 real circuit layouts, including the 2026 calendar additions
+- A generated racing line with throttle, lift, trail-brake, and hard-brake zones
+- A readable racing-line overlay with a thicker broadcast-style ribbon
+- AI difficulty tiers from Rookie to Ace, with personality, mistakes, tire curves, traffic, overtakes, and active racing
+- Seven-speed sequential manual gears with an auto-gear assist
+- Energy harvesting and one-shot Push-to-Pass deployment
+- Active Aero with high-downforce and low-drag modes
+- Tire compounds, wear, grip changes, damage, and per-wheel surface effects
+- Traction control, ABS, manual gears, and a toggleable racing line
+- Keyboard, gamepad, and wheel input with shaped steering and braking
+- Chase, cockpit, T-cam, TV broadcast, orbit, and rewind cameras
+- Practice, qualifying, quick races, and full championship weekends
+- Multiplayer rooms with synchronized timing and race-control telemetry
+- Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
+- Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass
+- Madrid banking at T12 and Zandvoort's Hugenholtzbocht cross-slope
+- Synthesized Web Audio engines, tires, wind, impacts, limiter, and gear shifts
 
-Not built yet: camber, the full session flow (team/driver
-select, world map, time-of-day lighting presets - plan sections 7-8),
-difficulty tiers (blocked by the AI's
-chaotic-sensitivity findings, see pathFollower.ts), AI energy/aero
-deployment (first attempt destabilized the AI and was reverted; see the
-project memory docs), and day/night or weather.
+The game is entirely client-side. Your setups, championship, best laps, and preferences stay in the browser unless you export a save.
 
-## Track data
+## The racing line
 
-Circuit geometry comes from the `bacinger/f1-circuits` dataset (MIT
-licensed): raw GeoJSON polylines live in `data/tracks/raw/`. The processed
-per-track JSON in `data/tracks/*.json` is a build-time asset, generated by
-projecting the raw lon/lat polyline to a local meter plane, fitting a
-centripetal Catmull-Rom spline, and resampling at a fixed 2m arc-length
-interval. `scripts/build-track.mts` builds every circuit in its `TRACKS`
-list (Silverstone, Monza, Spa, Suzuka, Monaco, Spielberg, Bahrain, COTA,
-Zandvoort, Budapest, Melbourne, Montreal, Mexico, Shanghai, Interlagos,
-Yas Marina, Hockenheim, Sepang, Sochi, Nürburgring, and the 2026 additions
-Miami, Barcelona, Madrid, Baku, Singapore, Las Vegas and Lusail). Rebuild with:
+The line is generated from each circuit's real centerline and width data. It has two jobs:
+
+1. Give the AI a physically reachable speed target and steering reference.
+2. Give the driver an honest visual guide for where to lift and brake.
+
+The line builder now guards against sharp hairpin offsets, duplicate centerline samples, and start-finish splices. Its speed profile is checked for finite values, track containment, reachable acceleration, reachable braking, and readable zone runs. The AI follows the target-speed profile, not the displayed colors.
+
+For a repeatable solo-line check, run:
 
 ```bash
-npm run build:track
+npm run diagnose:line
 ```
 
-The width of each point is real, not a placeholder: it is transferred from
-the vendored `TUMFTM/racetrack-database` files in
-`data/tracks/raw/tumftm/` (per-point widths extracted from satellite
-imagery; LGPL-3.0, see the README there). The build mirrors their frame,
-rigidly aligns their centerline onto ours with a small deterministic ICP
-(1.2–1.8 m RMS), then reads off the total width at the nearest point and
-smooths it along the lap. That is what makes Silverstone genuinely wide
-(~13.8 m mean) and Monza/Spa/Suzuka narrower (~9.5 m) instead of every
-circuit being a flat 13 m. Monaco has no TUMFTM width file, so its real
-street widths (7 m at the hairpin, 12 m on the fast sections) are
-hand-authored station ranges in the build's `manualWidths` table, with a
-build-time gap check that throws rather than let a stretch go uncovered.
+That command runs the quality gates and hot-laps every registered circuit with the solo AI controller before racecraft is enabled. It reports the theoretical line lap, measured AI lap, off-track distance, and maximum tilt. The normal test suite still runs the fast analytic checks and the multi-car stability gates.
 
-Elevation is real too. `scripts/fetch-elevation.mts` walks each circuit's own
-polyline at a fixed 25 m spacing, samples Open-Meteo's `/v1/elevation`
-(Copernicus DEM GLO-90, ~90 m per sample) and vendors the result in
-`data/tracks/raw/elevation/`; the build then averages those samples in the
-*projected plane* (a 300 m disc) and normalizes the start/finish line to
-y=0. The averaging is 2D rather than along the lap on purpose: a DEM cannot
-see the Suzuka overpass, so the two arms of a self-crossing have to read the
-same hillside, or the ground under one of them ends up metres out. It is
-coarse by nature - it reports the terrain around the circuit, not a surveyed
-grade - so read the profile as the broad shape of the lap (about 11 m of
-relief at Silverstone, 20 m at Monza, 45 m at Suzuka, 92 m at Spa, 32 m at
-Monaco). Monaco is the exception to the DEM sourcing: its valley is finer
-than the DEM resolves and the samples came back inverted, so its profile is
-hand-authored station keyframes (`manualElevation`) instead, 2D-blended at
-40 m so the hairpin's overlapping arms agree the same way the DEM averaging
-makes Suzuka's crossing agree. Cars
-drive and land on a grass height field built from that profile
-(`lib/tracks/terrain.ts`) instead of a flat plane, so running wide at Spa
-puts the car on the hillside rather than 50 m down in a void.
+## Controls
 
-Adding a circuit is: drop its raw GeoJSON in `data/tracks/raw/`, add a row
-to `scripts/build-track.mts`, run the build, and register its id/name in
-`lib/tracks/registry.ts` (the geometry loader `lib/tracks/trackData.ts`
-maps the id to the built JSON). The per-track AI stability test then covers
-it automatically.
+| Action | Keyboard | Gamepad or wheel |
+| --- | --- | --- |
+| Throttle | `W` or `ArrowUp` | Right trigger or pedal |
+| Brake | `S` or `ArrowDown` | Left trigger or pedal |
+| Steer | `A` / `D` or arrow keys | Left stick or wheel |
+| Push-to-Pass | `Shift` | Assign as a button if supported |
+| Shift up | `Q` | Assign as a button if supported |
+| Shift down | `Z` | Assign as a button if supported |
+| Rewind | Hold `R` | Assign as a button if supported |
+| Auto-gear toggle | `G` | Assign as a button if supported |
+| Traction control | `T` | Assign as a button if supported |
+| ABS | `B` | Assign as a button if supported |
+| Racing line | `L` | Assign as a button if supported |
+| Active Aero | `E` | Assign as a button if supported |
+| Camera | `C` | Assign as a button if supported |
+| Tires | `1` / `2` / `3` | Assign as buttons if supported |
+| Mute | `M` | Assign as a button if supported |
 
-## Stack
-
-- Next.js (App Router) on Vercel
-- Three.js via React Three Fiber, `drei`
-- Rapier physics (`@dimforge/rapier3d-compat`, `@react-three/rapier`)
-- Zustand for state
-- TypeScript (strict)
-- Vitest
+ABS and traction control are assists, not driving eras. Turn them off when you want to feel the consequences.
 
 ## Development
+
+Install dependencies and start the local server:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. Pick a circuit, a session (Practice,
-Qualifying or Race) and the lap count on the home screen (all remembered
-between sessions), then Drive and use WASD
-or the arrow keys. Hold R to rewind the last few seconds after spinning
-off. Hold Shift to deploy harvested energy for a power boost
-(Push-to-Pass). Press E to toggle Active Aero between high-downforce
-cornering mode and a low-drag mode for a higher top speed on the straights.
-Press Q/Z to shift up/down and G to toggle the auto-gear assist, T for
-traction control, B for ABS, L for the racing line, C for the camera, and
-1/2/3 to fit soft/medium/hard tires. A connected gamepad or wheel is picked
-up automatically for analog steering (left stick) and throttle/brake (stick
-or triggers), through the same input shaping and brake ramp as the
-keyboard.
+Open `http://localhost:3000`, choose a circuit and session, and press Drive. The home screen stores garage choices, race settings, and lighting preferences locally.
 
-Start a Championship season on the home screen to run a full weekend
-(practice, qualifying, race) at every circuit for F1-style points; the
-standings there update as each round is scored, and the season is saved in IndexedDB alongside your best laps.
-
-## Testing
+Run the normal checks with:
 
 ```bash
-npm run test
+npm test
 npm run lint
 npx tsc --noEmit
+npm run build
 ```
 
-Vehicle stability is checked headlessly (no browser required): `lib/ai/harness.ts`
-runs the real Rapier vehicle controller under stress scenarios (hard throttle,
-steering lock, braking) both on a flat plane and on the actual trimesh, and
-asserts the car stays upright and on the track surface. The AI opponent is
-hot-lapped for 180s (more than a full lap) on every registered circuit by
-`tests/trackAIStability.test.ts`, so a new/changed track is verified before
-its AI can ship. The deeper Silverstone-tuned perturbation/telemetry guard
-runs on demand: `AI_TELEMETRY=1 npx vitest run tests/aiTelemetry.test.ts`.
+The deeper diagnostics are available when you are changing physics or AI behavior:
+
+```bash
+npm run diagnose:ai
+npm run diagnose:line
+```
+
+`diagnose:ai` prints per-wheel contact, suspension, and impulse data around excursions. `diagnose:line` measures the generated line first, then measures clean solo AI laps. The multi-car tests then cover launches, traffic, overtakes, parked cars, andSuzuka's bridge after the solo line is stable.
+
+## Track data
+
+Circuit geometry comes from the `bacinger/f1-circuits` dataset under the MIT license. Raw polylives live in `data/tracks/raw/`. The processed files in `data/tracks/*.json` are built by projecting the source lon/lat path into a local meter plane, fitting a centripetal Catmull-Rom spline, and resampling it at a fixed arc-length interval.
+
+Track widths come from the vendored `TUMFTM/racetrack-database` files. The build aligns the width frame to the processed centerline with a deterministic ICP fit, then transfers the real per-point width. Monaco's narrow street sections use authored width ranges where no satellite width file exists.
+
+Elevation comes from Copernicus DEM GLO-90 samples with a 2D blend around the circuit. The blend is deliberate: a DEM cannot distinguish the two arms of a crossover, so Suzuka's bridge and Monaco's overlapping sections need a shared hillside. Cars drive on a terrain height field built from that profile, not on a flat plane with a pretty texture.
+
+To rebuild every processed circuit:
+
+```bash
+npm run build:track
+```
+
+To add a circuit, place its raw GeoJSON in `data/tracks/raw/`, add it to `scripts/build-track.mts`, register its id and display name in `lib/tracks/registry.ts`, and add a stability entry. The quality and AI gates will then include it automatically.
+
+## Stack
+
+- Next.js App Router
+- React and TypeScript
+- Three.js through React Three Fiber
+- Rapier physics through `@react-three/rapier`
+- Zustand for client state
+- Vitest for unit, geometry, physics, and AI tests
 
 ## Deployment
 
-Zero-config on Vercel: connect this repository as a Vercel project. No
-environment variables or server infrastructure are required; all game state
-lives in the browser.
+The project is ready for Vercel or any static Node host. There are no environment variables, server database, or server-side game-state requirements. The race route loads circuit data in the browser, while the menu route stays light.
+
+## Support
+
+If the project earns a coffee, you can support it here:
+
+[donatr.ee/hussain](https://donatr.ee/hussain/)
 
 ## Legal
 
-Unofficial fan game - not affiliated with or endorsed by Formula One,
-the FIA, or any team, driver, or circuit. See NOTICE for the full
-disclaimer and third-party data licenses.
+Lift & Coast is an unofficial fan game. It is not affiliated with or endorsed by Formula One, the FIA, any team, driver, or circuit. See `NOTICE` for the full disclaimer and third-party data licenses.

@@ -153,4 +153,30 @@ describe("hard braking from top speed (rear-lift regression)", () => {
     expect(result.maxTiltRad).toBeLessThan(0.3);
     expect(worstRunSeconds).toBeLessThan(1);
   }, 120000);
+
+  it("does not pole-vault under combined braking and steering", async () => {
+    let rearAirborneSteps = 0;
+    const result = await simulateDrive(
+      20,
+      (t) => ({
+        throttle: t < 16 ? 1 : 0,
+        brake: t < 16 ? 0 : 1,
+        steer: t < 16 ? 0 : 0.8,
+      }),
+      {
+        ...TUNING,
+        onTelemetry: (sample) => {
+          if (
+            sample.elapsedSeconds >= 16 &&
+            !sample.wheels[2].isInContact &&
+            !sample.wheels[3].isInContact
+          ) {
+            rearAirborneSteps++;
+          }
+        },
+      }
+    );
+    expect(result.maxTiltRad).toBeLessThan(0.3);
+    expect(rearAirborneSteps).toBe(0);
+  }, 120000);
 });

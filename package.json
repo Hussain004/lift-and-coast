@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "diagnose:ai": "AI_TELEMETRY=1 vitest run tests/aiTelemetry.test.ts",
+    "diagnose:line": "LINE_BENCHMARK=1 vitest run tests/racingLineQuality.test.ts",
     "build:track": "node --experimental-strip-types scripts/build-track.mts"
   },
   "dependencies": {

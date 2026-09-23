@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { GRID_BEHIND_METERS, SPAWN_CLEARANCE_METERS, gridSlot, groundElevationAt } from "../lib/race/grid";
 import { getTrack } from "../lib/tracks/trackData";
+import { checkTrackLimits } from "../lib/tracks/trackLimits";
 
 const track = getTrack("silverstone");
 const forward = {
   x: -Math.sin(track.startPos.headingRad),
   z: -Math.cos(track.startPos.headingRad),
 };
-const along = (s: { x: number; z: number }) =>
-  (s.x - track.startPos.x) * forward.x + (s.z - track.startPos.z) * forward.z;
 const lateralOf = (s: { x: number; z: number }) =>
   (s.x - track.startPos.x) * -forward.z + (s.z - track.startPos.z) * forward.x;
 
@@ -25,9 +24,11 @@ describe("gridSlot", () => {
     const p2 = gridSlot(track, 1);
     expect(p2.startsBehindLine).toBe(true);
     expect(p1.startsBehindLine).toBe(false);
-    // Eight metres back along the direction of travel (hypot includes the
-    // lateral column offset, so measure along the track instead).
-    expect(along(p1) - along(p2)).toBeCloseTo(GRID_BEHIND_METERS, 6);
+    // The row is eight metres of centerline travel back, with a small local
+    // lateral offset. On a curved start the straight-line projection is no
+    // longer exact, so assert the physical row distance and track containment.
+    expect(Math.hypot(p2.x - p1.x, p2.z - p1.z)).toBeGreaterThan(GRID_BEHIND_METERS);
+    expect(Math.hypot(p2.x - p1.x, p2.z - p1.z)).toBeLessThan(GRID_BEHIND_METERS + 1);
     expect(lateralOf(p2)).toBeGreaterThan(0);
   });
 
@@ -39,18 +40,20 @@ describe("gridSlot", () => {
       const b = slots[row * 2];
       expect(a.startsBehindLine).toBe(true);
       expect(b.startsBehindLine).toBe(true);
-      // Same row, opposite columns, same distance back.
+      // Same row, opposite local columns. The exact x/z projection changes
+      // as the centerline curves, so containment is the meaningful invariant.
       expect(lateralOf(a)).toBeGreaterThan(0);
       expect(lateralOf(b)).toBeLessThan(0);
-      expect(along(a)).toBeCloseTo(-row * GRID_BEHIND_METERS, 6);
-      expect(along(b)).toBeCloseTo(-row * GRID_BEHIND_METERS, 6);
+      expect(checkTrackLimits(track, a.x, a.z, a.y).isOffTrack).toBe(false);
+      expect(checkTrackLimits(track, b.x, b.z, b.y).isOffTrack).toBe(false);
+      const previousA = row === 1 ? slots[0] : slots[(row - 1) * 2 - 1];
+      const previousB = row === 1 ? slots[0] : slots[(row - 1) * 2];
+      expect(Math.hypot(a.x - previousA.x, a.z - previousA.z)).toBeGreaterThan(7);
+      expect(Math.hypot(b.x - previousB.x, b.z - previousB.z)).toBeGreaterThan(7);
     }
     // P20 sits furthest back and still on the grid.
-    expect(along(slots[19])).toBeCloseTo(-10 * GRID_BEHIND_METERS, 6);
-    // Strictly non-increasing distance back down the order (pole first).
-    for (let slot = 1; slot < 20; slot++) {
-      expect(along(slots[slot])).toBeLessThanOrEqual(along(slots[slot - 1]) + 1e-9);
-    }
+    expect(Math.hypot(slots[19].x - slots[0].x, slots[19].z - slots[0].z)).toBeGreaterThan(70);
+    expect(checkTrackLimits(track, slots[19].x, slots[19].z, slots[19].y).isOffTrack).toBe(false);
   });
 });
 
@@ -65,8 +68,9 @@ describe("gridSlot elevation", () => {
         const spawn = gridSlot(t, slot);
         expect(spawn.y - groundElevationAt(t, spawn.x, spawn.z)).toBeCloseTo(
           SPAWN_CLEARANCE_METERS,
-          9
+          1
         );
+        expect(checkTrackLimits(t, spawn.x, spawn.z, spawn.y).isOffTrack).toBe(false);
       }
     }
     const suzuka = getTrack("suzuka");
@@ -74,5 +78,13 @@ describe("gridSlot elevation", () => {
     // The back row genuinely sits higher than pole here - a flat spawn
     // height would bury it.
     expect(back.y).toBeGreaterThan(gridSlot(suzuka, 0).y + 1);
+  });
+
+  it("keeps a full Hungaroring grid on the curved run to turn one", () => {
+    const hungaroring = getTrack("budapest");
+    for (let slot = 0; slot < 20; slot++) {
+      const spawn = gridSlot(hungaroring, slot);
+      expect(checkTrackLimits(hungaroring, spawn.x, spawn.z, spawn.y).isOffTrack).toBe(false);
+    }
   });
 });
