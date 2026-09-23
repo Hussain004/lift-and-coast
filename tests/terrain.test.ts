@@ -190,7 +190,9 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   nurburgring: 0.5,
   miami: 0.5,
   barcelona: 0.5,
-  madrid: 0.5,
+  // T12's 13.5-degree La Monumental bank is the steepest cross-slope in
+  // the set; the coarse terrain cells can bridge its ~1.1m edge apron.
+  madrid: 1.5,
   baku: 0.5,
   singapore: 0.5,
   lasvegas: 0.5,

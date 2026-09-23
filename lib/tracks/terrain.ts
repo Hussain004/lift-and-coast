@@ -370,7 +370,7 @@ function applyBankedApron(
     const s = t * t * (3 - 2 * t);
     const effTheta = theta * (1 - s);
     positions[v * 3 + 1] =
-      cy[i] + Math.sin(effTheta) * lateral - GRASS_BELOW_TRACK_METERS;
+      cy[i] + Math.tan(effTheta) * lateral - GRASS_BELOW_TRACK_METERS;
   }
 }
 

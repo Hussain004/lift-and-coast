@@ -53,13 +53,14 @@ describe("bankingAt", () => {
     expect(bankingAt("zandvoort", 780, L)).toBeCloseTo(-19 * DEG, 2);
   });
 
-  it("banks Madring's fast corners and returns to flat on its straights", () => {
+  it("banks Madring's T12 La Monumental at the measured 24% slope", () => {
     const track = getTrack("madrid");
     const L = track.lengthMeters;
-    expect(Math.abs(bankingAt("madrid", 250, L))).toBeGreaterThan(2 * DEG);
-    expect(Math.abs(bankingAt("madrid", 1320, L))).toBeGreaterThan(2 * DEG);
-    expect(Math.abs(bankingAt("madrid", 2500, L))).toBeGreaterThan(2 * DEG);
-    for (const s of [0, 700, 1700, 3000, 4200, 5400]) {
+    const banked = Math.atan(0.24);
+    expect(bankingAt("madrid", 3060, L)).toBeCloseTo(banked, 5);
+    expect(bankingAt("madrid", 3300, L)).toBeCloseTo(banked, 5);
+    expect(bankingAt("madrid", 3510, L)).toBeCloseTo(banked, 5);
+    for (const s of [0, 1200, 2500, 2900, 3800, 5000]) {
       expect(Math.abs(bankingAt("madrid", s, L))).toBeLessThan(0.5 * DEG);
     }
   });
@@ -85,6 +86,13 @@ describe("bankingAt", () => {
     expect(bankingAt("zandvoort", L, L)).toBeCloseTo(bankingAt("zandvoort", 0, L), 9);
     // Mid-ramp: cosine interpolation lands halfway between keyframes.
     expect(bankingAt("zandvoort", 695, L)).toBeCloseTo(-9.5 * DEG, 1);
+  });
+
+  it("lifts Madring T12's outside edge for its left-hand bend", () => {
+    const track = getTrack("madrid");
+    const L = track.lengthMeters;
+    expect(turnAt("madrid", 3150)).toBeLessThan(0);
+    expect(bankingAt("madrid", 3150, L)).toBeGreaterThan(0);
   });
 
   it("lifts the outside edge: the banked corner is a right-hander", () => {
@@ -116,11 +124,11 @@ describe("banked geometry", () => {
     const track = getTrack("zandvoort");
     const n = track.centerline.length;
     const ribbon = buildRibbonGeometry(track);
-    // Station ~780 (T3): left edge up by sin(19deg)*halfWidth.
+    // Station ~780 (T3): left edge up by tan(19deg)*halfWidth.
     const i = Math.round((780 / track.lengthMeters) * n) % n;
     const y = track.centerline[i][1];
     const halfW = track.width[i] / 2;
-    const expect_ = Math.sin(19 * DEG) * halfW;
+    const expect_ = Math.tan(19 * DEG) * halfW;
     expect(ribbon.positions[i * 6 + 1]).toBeCloseTo(y + expect_, 6);
     expect(ribbon.positions[i * 6 + 4]).toBeCloseTo(y - expect_, 6);
     expect(expect_).toBeGreaterThan(1);

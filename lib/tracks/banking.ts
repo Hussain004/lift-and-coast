@@ -6,12 +6,14 @@
 // against the turn direction computed from the centerline itself (see
 // tests/banking.test.ts), not a second piece of hand-authored data.
 //
-// Zandvoort keeps its published 19-degree Hugenholtzbocht. Madring has
-// several fast, elevation-changing turns where a modest crown makes the
-// asphalt read as a real circuit rather than a flat ribbon; those sections
-// are deliberately gentler than Zandvoort's flat-out banking and are kept
-// in the same data path so mesh, kerbs, terrain, and the AI line all move
-// together.
+// Zandvoort keeps its published 19-degree Hugenholtzbocht. Madring's
+// identity feature is the T12 "La Monumental" bank: the real circuit's
+// approximately 24% cross-slope is represented as atan(0.24) = 13.5°,
+// rather than the old speculative 3.5° crowns at unrelated corners. The
+// 3.0-3.6km placement follows the built centerline's T12 sweep.
+const MADRID_T12_SLOPE = 0.24;
+const MADRID_T12_BANK_DEG = (Math.atan(MADRID_T12_SLOPE) * 180) / Math.PI;
+
 const BANKING_KEYFRAMES_DEG: Record<string, [number, number][]> = {
   zandvoort: [
     [660, 0],
@@ -21,20 +23,10 @@ const BANKING_KEYFRAMES_DEG: Record<string, [number, number][]> = {
   ],
   madrid: [
     [0, 0],
-    [120, 0],
-    [220, 3.5],
-    [340, 3.5],
-    [480, 0],
-    [1180, 0],
-    [1300, 3.5],
-    [1450, 0],
-    [2300, 0],
-    [2470, -3.5],
-    [2800, 0],
-    [4550, 0],
-    [4720, -3.5],
-    [5120, -3.5],
-    [5280, 0],
+    [3000, 0],
+    [3060, MADRID_T12_BANK_DEG],
+    [3510, MADRID_T12_BANK_DEG],
+    [3600, 0],
   ],
 };
 
@@ -89,5 +81,9 @@ export function bankedHeight(
   centerY: number,
   lateralMeters: number
 ): number {
-  return centerY + Math.sin(bankingAt(trackId, stationMeters, lengthMeters)) * lateralMeters;
+  // Lateral offsets are horizontal distances. A bank angle is therefore a
+  // rise/run slope, so tan(theta) is the physically correct vertical rise -
+  // sin(theta) would be correct only if `lateralMeters` were measured along
+  // the banked surface itself.
+  return centerY + Math.tan(bankingAt(trackId, stationMeters, lengthMeters)) * lateralMeters;
 }

@@ -79,10 +79,12 @@ export function buildRibbonGeometry(track: TrackData): RibbonGeometry {
     const leftIdx = i * 2 * 3;
     const rightIdx = leftIdx + 3;
     // Cross-slope (see lib/tracks/banking.ts): the left edge drops and the
-    // right edge rises by sin(theta)*halfWidth. Exactly centerline y where
-    // the circuit is unbanked, so flat tracks build bit-identically.
+    // right edge rises by tan(theta)*halfWidth. The lateral offset is a
+    // horizontal run, not a distance along the banked surface. Exactly
+    // centerline y where the circuit is unbanked, so flat tracks build
+    // bit-identically.
     const theta = bankingAt(track.id, stationOf(i, n, track.lengthMeters), track.lengthMeters);
-    const slope = Math.sin(theta) * halfWidth;
+    const slope = Math.tan(theta) * halfWidth;
 
     positions[leftIdx] = x - rightX * halfWidth;
     positions[leftIdx + 1] = y - slope;
