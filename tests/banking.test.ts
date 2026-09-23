@@ -32,9 +32,9 @@ function turnAt(trackId: string, stationM: number): number {
 }
 
 describe("bankingAt", () => {
-  it("reads exactly zero for every circuit but Zandvoort", () => {
+  it("reads exactly zero for every circuit without an authored bank", () => {
     for (const entry of TRACKS) {
-      if (entry.id === "zandvoort") continue;
+      if (entry.id === "zandvoort" || entry.id === "madrid") continue;
       const track = getTrack(entry.id);
       for (let s = 0; s < track.lengthMeters; s += 50) {
         expect(bankingAt(entry.id, s, track.lengthMeters)).toBe(0);
@@ -51,6 +51,17 @@ describe("bankingAt", () => {
     const track = getTrack("zandvoort");
     const L = track.lengthMeters;
     expect(bankingAt("zandvoort", 780, L)).toBeCloseTo(-19 * DEG, 2);
+  });
+
+  it("banks Madring's fast corners and returns to flat on its straights", () => {
+    const track = getTrack("madrid");
+    const L = track.lengthMeters;
+    expect(Math.abs(bankingAt("madrid", 250, L))).toBeGreaterThan(2 * DEG);
+    expect(Math.abs(bankingAt("madrid", 1320, L))).toBeGreaterThan(2 * DEG);
+    expect(Math.abs(bankingAt("madrid", 2500, L))).toBeGreaterThan(2 * DEG);
+    for (const s of [0, 700, 1700, 3000, 4200, 5400]) {
+      expect(Math.abs(bankingAt("madrid", s, L))).toBeLessThan(0.5 * DEG);
+    }
   });
 
   it("leaves the final corner flat (deferred - see banking.ts)", () => {

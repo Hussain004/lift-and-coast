@@ -1,30 +1,17 @@
-// Plan section 4 (circuit detail): banked corners. The ribbon mesh is
-// built flat across its width (see buildRibbonGeometry in mesh.ts) except
-// where this module carries real cross-slope data - currently exactly one
-// circuit on the roster: Zandvoort's 2020 resurfacing banked the
-// Hugenholtzbocht (T3) to ~19 degrees and the final Arie Luyendijkbocht to
-// ~18 degrees, both flat-out corners where the banking is the whole point
-// of the corner. No other roster circuit has meaningful banking, so every
-// other track reads 0 everywhere and its built bytes never move.
-//
-// Authored as [stationMeters, degrees] keyframes in lap stations from the
-// start line (the same convention as build-track.mts's manual tables),
+// Plan section 4 (circuit detail): banked corners. Banking is authored as
+// [stationMeters, degrees] keyframes in lap stations from the start line,
 // cosine-interpolated cyclically so transitions in and out of the banking
-// are smooth. Sign: positive raises the RIGHT edge (negative the left) -
-// a banked corner always lifts its outside edge, so the sign is checkable
+// are smooth. Sign: positive raises the RIGHT edge (negative the left) - a
+// banked corner always lifts its outside edge, so the sign is checkable
 // against the turn direction computed from the centerline itself (see
 // tests/banking.test.ts), not a second piece of hand-authored data.
 //
-// Stations were located from the built centerline's own curvature (corner
-// spans T3 ~730-816m, final ~3722-3978m of the 4268m lap); magnitudes are
-// the widely published 19/18-degree figures. Only T3 is banked: the final
-// corner is a fast banked sweeper that defeats this generation of the
-// pursuit controller (measured: 2m downhill slide onto the inside grass at
-// 40 m/s, rejoining sideways into a snap spin - and both attempted fixes,
-// a raised speed cap and a steering feedforward, moved the failure to
-// another corner instead of removing it, the controller's documented
-// whack-a-mole). Banking it is one keyframe row, reserved for the
-// racecraft/controller work that can actually drive it.
+// Zandvoort keeps its published 19-degree Hugenholtzbocht. Madring has
+// several fast, elevation-changing turns where a modest crown makes the
+// asphalt read as a real circuit rather than a flat ribbon; those sections
+// are deliberately gentler than Zandvoort's flat-out banking and are kept
+// in the same data path so mesh, kerbs, terrain, and the AI line all move
+// together.
 const BANKING_KEYFRAMES_DEG: Record<string, [number, number][]> = {
   zandvoort: [
     [660, 0],
@@ -32,15 +19,32 @@ const BANKING_KEYFRAMES_DEG: Record<string, [number, number][]> = {
     [845, -19],
     [915, 0],
   ],
+  madrid: [
+    [0, 0],
+    [120, 0],
+    [220, 3.5],
+    [340, 3.5],
+    [480, 0],
+    [1180, 0],
+    [1300, 3.5],
+    [1450, 0],
+    [2300, 0],
+    [2470, -3.5],
+    [2800, 0],
+    [4550, 0],
+    [4720, -3.5],
+    [5120, -3.5],
+    [5280, 0],
+  ],
 };
 
 const DEG_TO_RAD = Math.PI / 180;
 
 /**
  * Cross-slope angle in radians at a lap station: positive lifts the right
- * edge, negative the left. Unknown tracks (everything but Zandvoort) read
- * exactly 0, so their geometry builds bit-identically with or without this
- * module in the loop.
+ * edge, negative the left. Unknown tracks (everything without an authored
+ * keyframe set) read exactly 0, so their geometry builds bit-identically with
+ * or without this module in the loop.
  */
 export function bankingAt(
   trackId: string,

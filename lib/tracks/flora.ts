@@ -923,6 +923,9 @@ export function buildFlora(track: TrackData): FloraBuild[] {
     }
     if (insideKeepOut) continue;
     // On gravel, not grass - skip (checked against the terrain paint).
+    // Street circuits still keep their mapped/landscaped planting; the
+    // paved runoff color is about the surface itself, not a ban on every
+    // tree beyond the barriers.
     const column = Math.round((x - terrain.originX) / terrain.cellMeters);
     const row = Math.round((z - terrain.originZ) / terrain.cellMeters);
     const vi = (row * terrain.columns + column) * 3;

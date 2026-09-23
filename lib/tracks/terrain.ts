@@ -2,10 +2,10 @@ import type { TrackData } from "./types";
 import {
   buildRibbonGeometry,
   GRASS_BELOW_TRACK_METERS,
-  GRASS_COLOR,
   GRAVEL_COLOR,
   hexToLinearRgb,
 } from "./mesh";
+import { runoffColorForTrack } from "./environment";
 import {
   GRAVEL_WIDTH_METERS,
   KERB_WIDTH_METERS,
@@ -230,10 +230,9 @@ function computeTerrain(track: TrackData): TerrainGeometry {
 }
 
 /**
- * Per-vertex runoff colors: grass green everywhere except where the nearest
- * centerline point carries a gravel zone on the vertex's own side, within
- * the kerb + gravel band - those vertices go tan, so the physics gravel
- * traps (see surfaces.ts) read as gravel instead of grass. Vertices under
+ * Per-vertex runoff colors: the circuit's environment chooses the base
+ * color (grass, paved, or desert gravel), then the derived corner-specific
+ * gravel zones override it inside the kerb + gravel band. Vertices under
  * the ribbon itself are colored by the same rule; the ribbon hides them.
  *
  * Deliberately coarse like everything else about this field: at 12.5m
@@ -252,7 +251,7 @@ function paintSurfaceColors(
 ): Float32Array {
   const count = track.centerline.length;
   const zones = surfaceZones(track);
-  const [gr, gg, gb] = hexToLinearRgb(GRASS_COLOR);
+  const [gr, gg, gb] = hexToLinearRgb(runoffColorForTrack(track.id));
   const [tr, tg, tb] = hexToLinearRgb(GRAVEL_COLOR);
   const reach = KERB_WIDTH_METERS + GRAVEL_WIDTH_METERS;
   const colors = new Float32Array(columns * rows * 3);

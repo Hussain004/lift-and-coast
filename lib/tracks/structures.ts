@@ -1,6 +1,7 @@
 import type { TrackData } from "./types";
 import { buildTerrainGeometry } from "./terrain";
 import { hexToLinearRgb } from "./mesh";
+import { isPavedRunoff } from "./environment";
 import silverstone from "../../data/tracks/structures/silverstone.json";
 import monza from "../../data/tracks/structures/monza.json";
 import spa from "../../data/tracks/structures/spa.json";
@@ -34,9 +35,10 @@ import lusail from "../../data/tracks/structures/lusail.json";
  * grandstands, walls and landmarks, placed from mapped data -
  * see scripts/fetch-structures.mts for how data/tracks/structures/*.json
  * is vendored from OpenStreetMap (building=grandstand footprints with real
- * names, pit lanes traced as raceways, named pit buildings). Nothing here
- * is invented: unmapped features (Monaco's temporary tribunes, trees)
- * are omitted rather than fabricated.
+ * names, pit lanes traced as raceways, named pit buildings). Mapped pieces
+ * are used where available; the safety rail itself is completed from the
+ * circuit ribbon below because a weekend circuit has a continuous barrier
+ * even when the upstream map contains only fragments.
  *
  * Rendering is low-poly massing (boxes, one torus) merged into solid
  * (grandstands, buildings, walls, landmarks) and visual-only (tunnel roofs
@@ -208,6 +210,9 @@ const WALL = hexToLinearRgb("#C8C8C8");
 const WHEEL_WHITE = hexToLinearRgb("#E8E8E8");
 const CABIN = hexToLinearRgb("#C0392B");
 const TUNNEL_ROOF = hexToLinearRgb("#3A3D42");
+const BARRIER_POST = hexToLinearRgb("#555B63");
+const BARRIER_RAIL = hexToLinearRgb("#D7D9DC");
+const BARRIER_PANEL = hexToLinearRgb("#D51F2A");
 
 export interface StructureGeometry {
   positions: Float32Array;
@@ -477,6 +482,125 @@ function emitWallRun(
       yaw: Math.atan2(-dz, dx),
       color,
     });
+  }
+}
+
+/**
+ * Continuous circuit-side protection generated from the same ribbon every
+ * track already uses. OSM supplies useful grandstands and occasional barrier
+ * fragments, but it is not a complete race-weekend safety map (Las Vegas and
+ * Singapore are the obvious examples). This low-poly armco/concrete system
+ * fills those gaps procedurally: a low wall, bright top rail, support posts,
+ * and occasional sponsor panels. It remains visual-only like the other
+ * structures, so adding a barrier never turns an existing AI stability test
+ * into an unseen wall collision.
+ */
+function emitCircuitBarriers(
+  emitter: Emitter,
+  track: TrackData,
+  terrain: ReturnType<typeof buildTerrainGeometry>
+): void {
+  const n = track.centerline.length;
+  const street = isPavedRunoff(track.id);
+  const segmentPoints = 4;
+  const offset = (halfWidth: number): number => halfWidth + (street ? 5.0 : 5.5);
+  const wallColor = street ? CONCRETE : CONCRETE_DARK;
+  const postEvery = street ? 3 : 5;
+  const panelEvery = street ? 5 : 9;
+
+  for (let i = 0; i < n; i += segmentPoints) {
+    const j = (i + segmentPoints) % n;
+    const p = track.centerline[i];
+    const q = track.centerline[j];
+    const before = track.centerline[(i - 1 + n) % n];
+    const after = track.centerline[(j + 1) % n];
+    const tx = after[0] - before[0];
+    const tz = after[2] - before[2];
+    const tangentLength = Math.hypot(tx, tz) || 1;
+    const rightX = -tz / tangentLength;
+    const rightZ = tx / tangentLength;
+    const segmentLength = Math.hypot(q[0] - p[0], q[2] - p[2]) || 1;
+    const yaw = Math.atan2(-(q[2] - p[2]) / segmentLength, (q[0] - p[0]) / segmentLength);
+
+    for (const side of [-1, 1] as const) {
+      const pa = offset(track.width[i] / 2) * side;
+      const pb = offset(track.width[j] / 2) * side;
+      const ax = p[0] + rightX * pa;
+      const az = p[2] + rightZ * pa;
+      const bx = q[0] + rightX * pb;
+      const bz = q[2] + rightZ * pb;
+      const dx = bx - ax;
+      const dz = bz - az;
+      const length = Math.hypot(dx, dz);
+      if (length < 1e-6) continue;
+      const mx = (ax + bx) / 2;
+      const mz = (az + bz) / 2;
+      // A straight ribbon offset can still cut across the inside of a very
+      // tight hairpin. Check the whole segment's conservative bounding
+      // circle against the nearest track arm before emitting it; a short
+      // visual gap at a hairpin is preferable to placing a barrier vertex
+      // on the racing surface (and keeps the existing structure invariant
+      // true for every circuit).
+      const clearOfRibbon = (x: number, z: number, margin: number): boolean => {
+        const near = nearestTrack(track, x, z);
+        return Math.abs(near.lateral) >= near.halfW + margin;
+      };
+      const boundingMargin = Math.max(0.8, length / 2 + 0.6);
+      if (
+        !clearOfRibbon(mx, mz, boundingMargin) ||
+        !clearOfRibbon(ax, az, 0.8) ||
+        !clearOfRibbon(bx, bz, 0.8)
+      ) {
+        continue;
+      }
+      // groundY intentionally sinks structures by one metre; add it back for
+      // a barrier whose base should sit on the visible terrain surface.
+      const surfaceY = groundY(terrain, mx, mz) + 1;
+      emitBox(emitter, {
+        cx: mx,
+        yBase: surfaceY,
+        cz: mz,
+        sx: length + 0.35,
+        sy: street ? 0.95 : 0.78,
+        sz: street ? 0.48 : 0.34,
+        yaw,
+        color: wallColor,
+      });
+      emitBox(emitter, {
+        cx: mx,
+        yBase: surfaceY + (street ? 0.95 : 0.78),
+        cz: mz,
+        sx: length + 0.2,
+        sy: 0.16,
+        sz: street ? 0.62 : 0.46,
+        yaw,
+        color: BARRIER_RAIL,
+      });
+      if (i % postEvery === 0) {
+        emitBox(emitter, {
+          cx: ax,
+          yBase: surfaceY,
+          cz: az,
+          sx: 0.18,
+          sy: street ? 1.35 : 1.12,
+          sz: 0.18,
+          yaw,
+          color: BARRIER_POST,
+        });
+      }
+      if (i % panelEvery === 0) {
+        emitBox(emitter, {
+          cx: mx,
+          yBase: surfaceY + 0.25,
+          cz: mz,
+          sx: Math.max(1.5, length * 0.82),
+          sy: 0.42,
+          sz: 0.07,
+          yaw,
+          color: BARRIER_PANEL,
+        });
+      }
+    }
   }
 }
 
@@ -1030,6 +1154,11 @@ export function buildStructureGeometry(track: TrackData): StructuresBuild {
     }
     if (runPts.length >= 2) emitWallRun(solid, runPts, 1.0, 0.5, WALL);
   }
+
+  // Fill the gaps in the mapped safety furniture with a continuous,
+  // ribbon-derived circuit barrier. This is deliberately after the OSM
+  // structures so mapped buildings/pit walls keep their authored placement.
+  emitCircuitBarriers(solid, track, terrain);
 
   // Tunnel roofs: only tunnels running ALONG the track (station span 40m+,
   // i.e. the car actually travels inside them - Monaco's tunnel). Short

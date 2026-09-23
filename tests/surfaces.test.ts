@@ -346,10 +346,10 @@ describe("derived zones (real circuits)", () => {
         return -1;
       })();
       expect(straightIdx, `${meta.id} has a straight to compare grass against`).toBeGreaterThanOrEqual(0);
-      const grass = sampleSide(track, straightIdx, "right", 5);
-      expect(grass.surface).toBe("grass");
-      expect(gravel.dragCoefficient).toBeGreaterThan(grass.dragCoefficient);
-      expect(gravel.gripMultiplier).toBeLessThan(grass.gripMultiplier);
+      const runoff = sampleSide(track, straightIdx, "right", 5);
+      expect(["grass", "paved", "gravel"]).toContain(runoff.surface);
+      expect(gravel.dragCoefficient).toBeGreaterThan(runoff.dragCoefficient);
+      expect(gravel.gripMultiplier).toBeLessThan(runoff.gripMultiplier);
     }
   });
 

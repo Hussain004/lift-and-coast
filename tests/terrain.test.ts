@@ -4,7 +4,8 @@ import {
   TERRAIN_OUTER_MARGIN_METERS,
   buildTerrainGeometry,
 } from "../lib/tracks/terrain";
-import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS, GRAVEL_COLOR, GRASS_COLOR, hexToLinearRgb } from "../lib/tracks/mesh";
+import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS, GRAVEL_COLOR, hexToLinearRgb } from "../lib/tracks/mesh";
+import { runoffColorForTrack } from "../lib/tracks/environment";
 import { bankedHeight, stationOf } from "../lib/tracks/banking";
 import { surfaceZones } from "../lib/tracks/surfaces";
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
@@ -198,12 +199,12 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
 
 describe("buildTerrainGeometry (real circuits)", () => {
   for (const entry of TRACKS) {
-    it(`${entry.id} paints grass everywhere and gravel at the traps`, () => {
+    it(`${entry.id} paints its environment runoff and gravel at the traps`, () => {
       const track = getTrack(entry.id);
       const terrain = buildTerrainGeometry(track);
       const verts = terrain.columns * terrain.rows;
       expect(terrain.colors.length).toBe(terrain.positions.length);
-      const [gr, gg, gb] = hexToLinearRgb(GRASS_COLOR);
+      const [gr, gg, gb] = hexToLinearRgb(runoffColorForTrack(entry.id));
       const [tr, tg, tb] = hexToLinearRgb(GRAVEL_COLOR);
       const match = (v: number, r: number, g: number, b: number) =>
         Math.abs(terrain.colors[v * 3] - r) < 1e-6 &&
@@ -225,8 +226,8 @@ describe("buildTerrainGeometry (real circuits)", () => {
         else if (match(v, gr, gg, gb)) grass++;
         else throw new Error(`${entry.id}: vertex ${v} has an unpainted color`);
       }
-      // Runoff is overwhelmingly grass; every track with gravel zones
-      // paints a visible share of traps.
+      // The base runoff is overwhelmingly the selected environment color;
+      // every track with gravel zones paints a visible share of traps.
       expect(grass).toBeGreaterThan(gravel);
       const zones = surfaceZones(track);
       const hasGravel = zones.some((z) => z.gravelLeft || z.gravelRight);

@@ -6,6 +6,7 @@ import * as THREE from "three";
 
 let grass: THREE.Texture | null = null;
 let asphalt: THREE.Texture | null = null;
+let gravel: THREE.Texture | null = null;
 
 /** Seeded so every visit (and every player in a net room) sees the same field. */
 function rng(seed: number): () => number {
@@ -60,6 +61,15 @@ export function asphaltTexture(): THREE.Texture {
   return (asphalt ??= greyTexture(128, (_x, _y, random) => {
     const speck = random() < 0.06 ? -0.12 : 0;
     return 0.95 + (random() - 0.5) * 0.12 + speck;
+  }));
+}
+
+/** Coarse aggregate for desert runoff; still a multiplier over the terrain
+ * vertex color, so the palette remains controlled by the track environment. */
+export function gravelTexture(): THREE.Texture {
+  return (gravel ??= greyTexture(128, (_x, _y, random) => {
+    const pebble = random() < 0.18 ? -0.1 : 0;
+    return 0.92 + (random() - 0.5) * 0.2 + pebble;
   }));
 }
 

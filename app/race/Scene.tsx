@@ -45,7 +45,8 @@ import {
 } from "@/lib/render/quality";
 import { FrameRateGovernor, QualityContext, SurfaceMaterial, Sun } from "./renderQuality";
 import { SkyDome } from "./Sky";
-import { grassTexture, planarUvs } from "@/lib/render/textures";
+import { asphaltTexture, grassTexture, gravelTexture, planarUvs } from "@/lib/render/textures";
+import { runoffKindForTrack } from "@/lib/tracks/environment";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -150,12 +151,18 @@ function Ground({ track }: { track: TrackData }) {
     geometry.computeVertexNormals();
     return { positions, indices, geometry };
   }, [track]);
+  const runoffTexture =
+    runoffKindForTrack(track.id) === "grass"
+      ? grassTexture()
+      : runoffKindForTrack(track.id) === "gravel"
+        ? gravelTexture()
+        : asphaltTexture();
 
   return (
     <RigidBody type="fixed" colliders={false} friction={0.6}>
       <TrimeshCollider args={[positions, indices]} />
       <mesh geometry={geometry} receiveShadow>
-        <SurfaceMaterial vertexColors map={grassTexture()} />
+        <SurfaceMaterial vertexColors map={runoffTexture} />
       </mesh>
     </RigidBody>
   );

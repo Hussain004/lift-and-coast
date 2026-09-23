@@ -4,6 +4,7 @@ import {
   computeSurfaceGripMultiplier,
   type TrackLimitStatus,
 } from "./trackLimits";
+import { runoffKindForTrack } from "./environment";
 
 // Plan section 4 point 7 (surface zones) and section 5 depth feature 6
 // (kerb & surface interaction). This project has no authored per-corner kerb
@@ -25,7 +26,7 @@ import {
 // in lib/tracks/mesh.ts (buildKerbGeometry).
 
 /** What a wheel is standing on. */
-export type SurfaceKind = "asphalt" | "kerb" | "grass" | "gravel";
+export type SurfaceKind = "asphalt" | "kerb" | "grass" | "gravel" | "paved";
 
 /**
  * Plan section 4 point 6's three kerb types. Real circuits pick per corner:
@@ -179,6 +180,17 @@ const GRAVEL_DRAG_N_PER_MS = 45;
 // Deliberately far above gravel: a wide exit stays drivable, gravel is the
 // trap.
 const GRASS_DRAG_N_PER_MS = 8;
+
+// Street-circuit runoff is sealed rather than grass: it still has less grip
+// than the racing ribbon and a little more drag, but it must not be reported
+// to the player/audio/surface systems as a soft green verge. The values stay
+// conservative so a light wall-scrape remains recoverable.
+const PAVED_RUNOFF_GRIP = 0.78;
+const PAVED_RUNOFF_DRAG_N_PER_MS = 2.5;
+// Desert runoff is visually and physically sand/gravel even when the
+// curvature-derived corner zone did not mark a formal trap.
+const DESERT_RUNOFF_GRIP = 0.42;
+const DESERT_RUNOFF_DRAG_N_PER_MS = 30;
 
 // ---------------------------------------------------------------------------
 // Derivation
@@ -459,6 +471,31 @@ export function classifySurface(track: TrackData, status: TrackLimitStatus): Sur
       kerbType: null,
       gripMultiplier: GRAVEL_GRIP,
       dragCoefficient: GRAVEL_DRAG_N_PER_MS,
+      kerbRiseMeters: 0,
+    };
+  }
+
+  // Beyond the kerb/gravel bands, the runoff kind follows the circuit's
+  // environment table. This keeps the visual terrain, flora placement, and
+  // wheel physics on the same page for street and desert circuits.
+  const runoffKind = runoffKindForTrack(track.id);
+  if (runoffKind === "paved") {
+    return {
+      ...base,
+      surface: "paved",
+      kerbType: null,
+      gripMultiplier: PAVED_RUNOFF_GRIP,
+      dragCoefficient: PAVED_RUNOFF_DRAG_N_PER_MS,
+      kerbRiseMeters: 0,
+    };
+  }
+  if (runoffKind === "gravel") {
+    return {
+      ...base,
+      surface: "gravel",
+      kerbType: null,
+      gripMultiplier: DESERT_RUNOFF_GRIP,
+      dragCoefficient: DESERT_RUNOFF_DRAG_N_PER_MS,
       kerbRiseMeters: 0,
     };
   }
