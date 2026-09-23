@@ -46,6 +46,10 @@ import { getLineRoom, getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
 import { computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
 import { createEnergySystem } from "@/lib/physics/energy";
+import { createDrsSystem, DRS_DRAG_SCALE } from "@/lib/physics/drs";
+import { createStrategySystem } from "@/lib/race/strategy";
+import { createWeatherSystem } from "@/lib/physics/weather";
+import type { WeatherHandle } from "@/lib/race/raceOps";
 import {
   difficultyAggressionShift,
   difficultyMistakeScale,
@@ -176,6 +180,8 @@ export function AICar({
   carPosesRef,
   bodyColor = "#ff5a3c",
   audioRef,
+  weatherRef,
+  sessionMode = "race",
 }: {
   track: TrackData;
   raceRef?: React.RefObject<RaceState>;
@@ -261,6 +267,8 @@ export function AICar({
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
    * car fills in its own opponent slot every render frame. */
   audioRef?: React.RefObject<AudioSnapshot>;
+  weatherRef?: React.RefObject<WeatherHandle>;
+  sessionMode?: "practice" | "qualifying" | "race";
 }) {
   const { world, rapier } = useRapier();
   const chassisRef = useRef<RapierRigidBody>(null);
@@ -305,8 +313,12 @@ export function AICar({
   // plan's 2026 rules. boostEligible rides one tick behind (same pattern
   // as zoneRef above) - one tick of lag at 60Hz is nothing next to a
   // multi-second deploy.
-  const energyRef = useRef(createEnergySystem());
+  const energyRef = useRef(createEnergySystem(1, difficulty === "ace" ? "attack" : "balanced"));
   const batteryRef = useRef(1);
+  const strategyRef = useRef(createStrategySystem({ mode: difficulty === "ace" ? "push" : "balanced" }));
+  const drsSystem = useMemo(() => createDrsSystem(track), [track]);
+  const localWeatherRef = useRef<WeatherHandle>(createWeatherSystem("clear"));
+  const effectiveWeatherRef = weatherRef ?? localWeatherRef;
   const boostEligibleRef = useRef(false);
   const aiCursorRef = useRef(0);
   const aiWasRewindingRef = useRef(false);
@@ -539,6 +551,10 @@ export function AICar({
     // sets it: a guest-driven car has no battery wiring over the wire, so
     // it keeps the legacy flat 1.
     let boostMultiplier = 1;
+    let drsState = drsSystem.snapshot();
+    let strategyState = strategyRef.current.snapshot();
+    const weatherState = effectiveWeatherRef.current.snapshot();
+    drsSystem.setRequested(false);
     if (netFresh && netInput) {
       // A remotely driven car has no wing telemetry/strategy; keep the safe
       // high-downforce mode rather than carrying a previous AI straight
@@ -635,7 +651,7 @@ export function AICar({
       });
       aeroModeRef.current = step.aeroMode;
       paceMult = step.paceMult;
-      const willDeploy = step.deploy;
+      const willDeploy = sessionMode === "race" ? step.deploy : false;
       // Beached, wedged or upside down (see lib/ai/recovery.ts): back onto
       // the line at its own progress once the road there is clear.
       const up = body.rotation();
@@ -682,11 +698,31 @@ export function AICar({
       zoneRef.current = aiControls.zone;
       boostEligibleRef.current = aiControls.boostEligible;
       const energyStatus = energyRef.current.update(
-        { brakeAmount: aiControls.brake, deployRequested: willDeploy, overrideActive: step.override },
+        {
+          brakeAmount: aiControls.brake,
+          deployRequested: willDeploy,
+          overrideActive: sessionMode === "race" && step.override,
+          lap: myEntry?.lapCount ?? 0,
+          raceStarted: raceStartRef?.current ?? true,
+        },
         world.timestep
       );
       batteryRef.current = energyStatus.batteryFraction;
       boostMultiplier = energyStatus.engineForceMultiplier;
+      drsSystem.setRequested(speedMs > 30 && aiControls.brake < 0.2);
+      drsState = drsSystem.update(trackedProgress, speedMs);
+      strategyState = strategyRef.current.update({
+         dt: world.timestep,
+         speedMs,
+         throttle: aiControls.throttle,
+         brake: aiControls.brake,
+         progressMeters: trackedProgress,
+         trackLengthMeters: track.lengthMeters,
+         lap: myEntry?.lapCount ?? 0,
+         racing: sessionMode === "race" && (raceStartRef?.current ?? true),
+         airTemperatureC: weatherState.airTemperatureC,
+         trackTemperatureC: weatherState.trackTemperatureC,
+       });
       controls = aiControls;
     }
 
@@ -703,7 +739,7 @@ export function AICar({
       controller,
       gatedControls,
       DEFAULT_ENGINE_FORCE,
-      boostMultiplier,
+      boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier,
       DEFAULT_BRAKE_FORCE,
       speedMs,
       true,
@@ -724,7 +760,7 @@ export function AICar({
     applyLoadSensitiveFriction(
       controller,
       aeroModeRef.current,
-      1,
+      strategyState.compoundGripMultiplier * weatherState.gripMultiplier,
       wheelSurfaceGrips(surfaceSamples)
     );
     controller.updateVehicle(world.timestep);
@@ -749,7 +785,12 @@ export function AICar({
           Object.entries(traffic).flatMap(([key, at]) => (key === trafficKey ? [] : [at]))
         )
       : 1;
-    applyDragImpulse(body, aeroModeRef.current, world.timestep, towDrag);
+    applyDragImpulse(
+      body,
+      aeroModeRef.current,
+      world.timestep,
+      towDrag * weatherState.dragMultiplier * (drsState.active ? DRS_DRAG_SCALE : 1)
+    );
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
     aiBufferRef.current.push(snapshotOf(body));
     if (trafficRef && trafficKey !== undefined) {

@@ -11,6 +11,7 @@ import {
   DEFAULT_DIFFICULTY,
   type AIDifficulty,
 } from "../ai/personalities";
+import { isWeatherPreset, type WeatherPreset } from "../physics/weather";
 
 export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
@@ -84,6 +85,7 @@ export interface RaceUrlParams {
   team?: string;
   driver?: string;
   tod?: TimeOfDay;
+  weather?: WeatherPreset;
   champ?: number | null;
   grid?: number | null;
   qformat?: QualifyingFormat;
@@ -141,6 +143,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.team !== undefined) query.set("team", params.team);
   if (params.driver !== undefined) query.set("driver", params.driver);
   if (params.tod !== undefined) query.set("tod", params.tod);
+  if (params.weather !== undefined) query.set("weather", params.weather);
   if (params.champ !== undefined && params.champ !== null) query.set("champ", String(params.champ));
   if (params.grid !== undefined && params.grid !== null) query.set("grid", String(params.grid));
   if (params.qformat !== undefined) query.set("qformat", params.qformat);
@@ -183,6 +186,7 @@ export interface SessionSetupPrefs {
   raceLaps: number;
   trackId: string;
   timeOfDay: TimeOfDay;
+  weather: WeatherPreset;
   rivals: number;
   difficulty: AIDifficulty;
 }
@@ -203,6 +207,10 @@ function clampTrackId(raw: unknown): string {
 
 function clampTimeOfDay(raw: unknown): TimeOfDay {
   return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
+}
+
+function clampWeather(raw: unknown): WeatherPreset {
+  return isWeatherPreset(raw) ? raw : "clear";
 }
 
 function clampDifficulty(raw: unknown): AIDifficulty {
@@ -226,6 +234,7 @@ export function loadSessionSetupPrefs(
     raceLaps: DEFAULT_RACE_LAPS,
     trackId: DEFAULT_TRACK_ID,
     timeOfDay: DEFAULT_TIME_OF_DAY,
+    weather: "clear",
     rivals: DEFAULT_RIVALS,
     difficulty: DEFAULT_DIFFICULTY,
   };
@@ -233,11 +242,12 @@ export function loadSessionSetupPrefs(
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; rivals?: unknown; difficulty?: unknown };
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; weather?: unknown; rivals?: unknown; difficulty?: unknown };
     return {
       raceLaps: clampLaps(parsed.raceLaps),
       trackId: clampTrackId(parsed.trackId),
       timeOfDay: clampTimeOfDay(parsed.timeOfDay),
+      weather: clampWeather(parsed.weather),
       rivals: clampRivals(parsed.rivals),
       difficulty: clampDifficulty(parsed.difficulty),
     };
@@ -258,6 +268,7 @@ export function saveSessionSetupPrefs(
         raceLaps: clampLaps(prefs.raceLaps),
         trackId: clampTrackId(prefs.trackId),
         timeOfDay: clampTimeOfDay(prefs.timeOfDay),
+        weather: clampWeather(prefs.weather),
         rivals: clampRivals(prefs.rivals),
         difficulty: clampDifficulty(prefs.difficulty),
       })

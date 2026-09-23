@@ -7,6 +7,8 @@ import {
   Physics,
   RigidBody,
   TrimeshCollider,
+  useBeforePhysicsStep,
+  useRapier,
   type RapierRigidBody,
 } from "@react-three/rapier";
 import { Car } from "./Car";
@@ -48,6 +50,9 @@ import { FrameRateGovernor, QualityContext, SurfaceMaterial, Sun } from "./rende
 import { SkyDome } from "./Sky";
 import { asphaltTexture, grassTexture, gravelTexture, planarUvs } from "@/lib/render/textures";
 import { runoffKindForTrack } from "@/lib/tracks/environment";
+import { createWeatherSystem, type WeatherPreset } from "@/lib/physics/weather";
+import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
+import { createRaceControlSystem } from "@/lib/race/raceControl";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -169,7 +174,59 @@ function Ground({ track }: { track: TrackData }) {
   );
 }
 
-// Chase: classic third-person, camera behind and above looking at the car
+function RaceOpsTicker({ weatherRef }: { weatherRef: React.RefObject<WeatherHandle> }) {
+  const { world } = useRapier();
+  useBeforePhysicsStep(() => {
+    weatherRef.current?.update(world.timestep);
+  });
+  return null;
+}
+
+function WeatherFX({ weatherRef, target, fogFar }: { weatherRef: React.RefObject<WeatherHandle>; target: React.RefObject<THREE.Object3D | null>; fogFar: number }) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const { scene } = useThree();
+  const geometry = useMemo(() => {
+    const positions = new Float32Array(900 * 3);
+    let seed = 0x51f15e;
+    const next = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+    for (let i = 0; i < 900; i++) {
+      positions[i * 3] = (next() - 0.5) * 260;
+      positions[i * 3 + 1] = next() * 70;
+      positions[i * 3 + 2] = (next() - 0.5) * 260;
+    }
+    const result = new THREE.BufferGeometry();
+    result.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    return result;
+  }, []);
+  useFrame(({ clock }) => {
+    const points = pointsRef.current;
+    if (!points) return;
+    const state = weatherRef.current.snapshot();
+    setWeatherFog(scene, state.visibilityMeters, fogFar);
+    points.visible = state.rainIntensity > 0.04;
+    points.position.y = (clock.elapsedTime * 22) % 12;
+    const anchor = target.current;
+    if (anchor) {
+      anchor.getWorldPosition(points.position);
+      points.position.y += (clock.elapsedTime * 22) % 12;
+    } else {
+      points.position.x = Math.sin(clock.elapsedTime * 0.7) * 4;
+    }
+    const material = points.material as THREE.PointsMaterial;
+    material.opacity = Math.min(0.72, state.rainIntensity * 0.7);
+    material.size = 0.14 + state.rainIntensity * 0.1;
+  });
+  return (
+    <points ref={pointsRef} geometry={geometry} frustumCulled={false}>
+      <pointsMaterial color="#b9d8ee" transparent opacity={0.5} size={0.18} sizeAttenuation depthWrite={false} />
+    </points>
+  );
+}
+
+
 // (plan section 9). Cockpit: camera near the driver's seat looking ahead
 // along the car's own heading, for the "steep FOV... speed sensation" feel
 // the plan calls for - a wider FOV than chase makes the same speed read as
@@ -253,6 +310,13 @@ function setPerspectiveFov(camera: THREE.Camera, fov: number) {
   if (camera instanceof THREE.PerspectiveCamera && camera.fov !== fov) {
     camera.fov = fov;
     camera.updateProjectionMatrix();
+  }
+}
+
+function setWeatherFog(scene: THREE.Scene, visibilityMeters: number, fogFar: number) {
+  if (scene.fog instanceof THREE.Fog) {
+    scene.fog.near = 30;
+    scene.fog.far = Math.min(fogFar, visibilityMeters);
   }
 }
 
@@ -527,6 +591,9 @@ export function Scene({
   playerAccentColor,
   audioRef,
   timeOfDay = "day",
+  weatherPreset = "clear",
+  raceCommandsRef,
+  raceOpsSnapshotRef,
   perfRef,
 }: {
   /** Optional performance readout (F key) - see FrameRateGovernor. */
@@ -567,6 +634,9 @@ export function Scene({
   raceLaps?: number;
   /** Lighting preset - see page.tsx's ?tod= URL param. */
   timeOfDay?: TimeOfDay;
+  weatherPreset?: WeatherPreset;
+  raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
+  raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
   /** Championship round index from ?champ=, or null for a one-off race. */
   champRound?: number | null;
   /** What kind of session this visit is - see ?mode= (default race). */
@@ -613,6 +683,8 @@ export function Scene({
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
+  const weatherRef = useRef<WeatherHandle>(createWeatherSystem(weatherPreset));
+  const raceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
   const raceStartRef = useRef(false);
   // Per-race mistake seed (see AICar's sessionSeedRef): a ref stamped in
   // an effect (never in render - the clock is impure), read live by each
@@ -738,7 +810,9 @@ export function Scene({
         intensity={lighting.sunIntensity}
         target={visualRef}
       />
+      <WeatherFX weatherRef={weatherRef} target={visualRef} fogFar={settings.fogFar} />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
+        <RaceOpsTicker weatherRef={weatherRef} />
         <Ground track={track} />
         <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
         <Car
@@ -789,6 +863,10 @@ export function Scene({
           track={track}
           bodyColor={playerBodyColor}
           accentColor={playerAccentColor}
+           weatherRef={weatherRef}
+           raceControlRef={raceControlRef}
+           raceCommandsRef={raceCommandsRef}
+           raceOpsSnapshotRef={raceOpsSnapshotRef}
           audioRef={audioRef}
         />
         {sessionMode !== "practice" &&
@@ -809,6 +887,8 @@ export function Scene({
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
                 driverCode={rival.code}
+                 weatherRef={weatherRef}
+                 sessionMode={sessionMode}
                 difficulty={difficulty}
                 sessionSeedRef={sessionSeedRef}
                 raceLaps={raceLaps}

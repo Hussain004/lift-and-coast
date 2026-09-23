@@ -11,6 +11,8 @@ import {
 } from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
+import { parseWeatherPreset } from "@/lib/physics/weather";
+import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
 import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
@@ -20,6 +22,7 @@ import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
+import { RaceOpsPanel } from "./RaceOpsPanel";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
@@ -189,6 +192,7 @@ function RaceContent() {
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
+  const weatherPreset = parseWeatherPreset(searchParams.get("weather"));
   // Resolved per-render from the selected track - only changes on a URL
   // change (this page is client-only with no other state), so the build
   // cost is paid once per session.
@@ -231,11 +235,13 @@ function RaceContent() {
   // pumps it into the synth voices - plain mutable data, never React state,
   // at audio-unrelated rates.
   const audioRef = useRef(defaultAudioSnapshot());
+  const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
+  const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
 
   return (
     <div className={styles.wrap}>
       <Scene
-        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
+        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${weatherPreset}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
         playerAccentColor={team.secondaryColor}
@@ -276,10 +282,20 @@ function RaceContent() {
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
         timeOfDay={timeOfDay}
+        weatherPreset={weatherPreset}
+        raceCommandsRef={raceCommandsRef}
+        raceOpsSnapshotRef={raceOpsSnapshotRef}
         perfRef={perfRef}
       />
+      <div className={styles.raceDataStrip}>
+        <div ref={lapRef} className={styles.raceDataLap}>LAP 1</div>
+        <div ref={positionRef} className={styles.raceDataPosition}>P1</div>
+        <div ref={deltaRef} className={styles.delta} />
+        <div ref={sectorsRef} className={styles.sectors} />
+      </div>
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
+      <RaceOpsPanel commandRef={raceCommandsRef} snapshotRef={raceOpsSnapshotRef} />
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}

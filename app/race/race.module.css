@@ -258,6 +258,13 @@
   :global(.tower-number) {
     display: none;
   }
+
+  .raceOpsPanel {
+    top: 180px;
+    right: 16px;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
 }
 
 .delta {
@@ -314,6 +321,44 @@
 
 .trackLimit:empty {
   display: none;
+}
+
+.raceDataStrip {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.raceDataLap,
+.raceDataPosition {
+  min-width: 90px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-align: center;
+}
+
+.raceDataPosition {
+  color: #39ff88;
+  font-size: 16px;
+  font-style: italic;
+}
+
+.raceDataStrip .delta,
+.raceDataStrip .sectors {
+  min-height: 30px;
+  margin: 0;
 }
 
 /* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
@@ -449,8 +494,154 @@
   pointer-events: none;
 }
 
-/* Key-binding reference docked under the minimap; the button keeps
-   pointer events while the rest of the HUD stays click-through. */
+.raceOpsPanel {
+  position: absolute;
+  top: 76px;
+  right: 230px;
+  width: 264px;
+  background: rgba(7, 10, 16, 0.88);
+  border: 1px solid rgba(107, 209, 255, 0.35);
+  border-radius: 6px;
+  color: #d8e0e8;
+  font-family: var(--font-geist-mono);
+  letter-spacing: 0.6px;
+  pointer-events: auto;
+  overflow: hidden;
+  z-index: 4;
+}
+
+.raceOpsHeader {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 0;
+  background: rgba(107, 209, 255, 0.1);
+  color: #6bd1ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.raceOpsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+.opsStatus,
+.opsGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.opsStatus {
+  color: #9daabb;
+}
+
+.opsStatus strong {
+  color: #6bd1ff;
+  font-size: 12px;
+}
+
+.opsLabel {
+  color: #768596;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+}
+
+.opsButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.opsButton,
+.opsButtonActive,
+.opsAction {
+  border: 1px solid #344150;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #aeb8c5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  padding: 5px 6px;
+}
+
+.opsButton:hover,
+.opsAction:hover,
+.opsButtonActive {
+  border-color: #6bd1ff;
+  color: #fff;
+  background: rgba(107, 209, 255, 0.14);
+}
+
+.opsButtonActive {
+  color: #6bd1ff;
+}
+
+.opsAction {
+  flex: 1;
+  color: #ffd23f;
+}
+
+.opsInputs {
+  display: grid;
+  gap: 3px;
+  color: #8794a4;
+  font-size: 8px;
+}
+
+.opsInputs span {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  align-items: center;
+  gap: 5px;
+}
+
+.opsInputs i {
+  display: block;
+  height: 4px;
+  min-width: 1px;
+  background: #6bd1ff;
+  border-radius: 2px;
+}
+
+.opsInputs span:nth-child(2) i {
+  background: #ff5d5d;
+}
+
+.opsInputs span:nth-child(3) i {
+  background: #ffd23f;
+}
+
+.opsSparkline {
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.opsSparklineEmpty {
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #667383;
+  font-size: 8px;
+}
+
+.opsHint {
+  color: #667383;
+  font-size: 8px;
+  line-height: 1.4;
+}
 .controlsPanel {
   position: absolute;
   top: 200px;

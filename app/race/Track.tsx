@@ -137,6 +137,43 @@ function RacingLine({
   );
 }
 
+function PitBoxMarker({ track }: { track: TrackData }) {
+  const geometry = useMemo(() => {
+    const n = track.centerline.length;
+    const center = track.centerline[0];
+    const before = track.centerline[n - 1];
+    const after = track.centerline[1];
+    const tx = after[0] - before[0];
+    const tz = after[2] - before[2];
+    const length = Math.hypot(tx, tz) || 1;
+    const rightX = -tz / length;
+    const rightZ = tx / length;
+    const halfWidth = track.width[0] / 2;
+    const lateral = Math.max(0, halfWidth - 1.7);
+    const along = 11;
+    const across = 1.25;
+    const x = center[0] + rightX * lateral;
+    const z = center[2] + rightZ * lateral;
+    const y = center[1] + 0.07;
+    const points = [
+      [x - (tx / length) * along - rightX * across, y, z - (tz / length) * along - rightZ * across],
+      [x + (tx / length) * along - rightX * across, y, z + (tz / length) * along - rightZ * across],
+      [x + (tx / length) * along + rightX * across, y, z + (tz / length) * along + rightZ * across],
+      [x - (tx / length) * along + rightX * across, y, z - (tz / length) * along + rightZ * across],
+    ];
+    const positions = new Float32Array(points.flat());
+    const result = new THREE.BufferGeometry();
+    result.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    result.setIndex([0, 1, 2, 0, 2, 3]);
+    return result;
+  }, [track]);
+  return (
+    <mesh geometry={geometry} position={[0, 0, 0]}>
+      <meshBasicMaterial color="#ffd23f" transparent opacity={0.75} toneMapped={false} />
+    </mesh>
+  );
+}
+
 export function Track({
   track,
   chassisRef,
@@ -203,6 +240,7 @@ export function Track({
         <meshBasicMaterial color="white" />
       </mesh>
       <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
+      <PitBoxMarker track={track} />
     </>
   );
 }

@@ -59,6 +59,8 @@ export interface NetSettings {
   laps: number;
   rivals: number;
   tod: string;
+  /** Optional weather preset; older rooms omit it and use clear conditions. */
+  weather?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,7 +95,8 @@ function isNetSettings(value: unknown): value is NetSettings {
     Number.isInteger(value.laps) &&
     typeof value.rivals === "number" &&
     Number.isInteger(value.rivals) &&
-    typeof value.tod === "string"
+    typeof value.tod === "string" &&
+    (value.weather === undefined || typeof value.weather === "string")
   );
 }
 

@@ -32,6 +32,12 @@ const BINDINGS: [string, string][] = [
   ["M", "mute"],
   ["K", "graphics"],
   ["F", "fps"],
+  ["X", "DRS"],
+  ["O", "pit request"],
+  ["P", "instant replay"],
+  ["I", "ERS mode"],
+  ["Y", "strategy mode"],
+  ["U", "weather cycle"],
 ];
 
 export function ControlsPanel() {

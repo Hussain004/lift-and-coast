@@ -33,6 +33,7 @@ export function useDriveUrl() {
     team: parseTeamId(teamId),
     driver: parseDriverCode(driverCode),
     tod: prefs.timeOfDay,
+    weather: prefs.weather,
     rivals: prefs.rivals,
     difficulty: prefs.difficulty,
   };

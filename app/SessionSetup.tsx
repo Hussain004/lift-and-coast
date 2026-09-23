@@ -25,6 +25,7 @@ import {
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
+import type { WeatherPreset } from "@/lib/physics/weather";
 import {
   GRAPHICS_OPTIONS,
   loadGraphicsPref,
@@ -37,6 +38,12 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "day", label: "Day" },
   { id: "sunset", label: "Sunset" },
   { id: "overcast", label: "Overcast" },
+];
+
+const WEATHER_OPTIONS: { id: WeatherPreset; label: string }[] = [
+  { id: "clear", label: "Clear" },
+  { id: "cloudy", label: "Cloudy" },
+  { id: "rain", label: "Rain" },
 ];
 
 const SESSION_MODES: { id: SessionMode; label: string }[] = [
@@ -66,6 +73,7 @@ export function SessionSetup() {
   const [difficulty, setDifficulty] = useState<AIDifficulty>(initial.difficulty);
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
+  const [weather, setWeather] = useState<WeatherPreset>(initial.weather);
   const { trackId, timeOfDay } = useSessionSetupPrefs();
   // Live roster pick from the team/driver panel above - carried on the Drive
   // link so the race grid dresses both cars (see lib/race/roster.ts).
@@ -85,6 +93,7 @@ export function SessionSetup() {
       team: parseTeamId(teamId),
       driver: parseDriverCode(driverCode),
       tod: timeOfDay,
+      weather,
       qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
       rivals: sessionMode === "practice" ? undefined : rivals,
       difficulty: sessionMode === "practice" ? undefined : difficulty,
@@ -99,10 +108,11 @@ export function SessionSetup() {
     laps: number,
     id: string,
     tod: TimeOfDay,
+    weatherPreset: WeatherPreset = weather,
     rivalCount: number = rivals,
     diff: AIDifficulty = difficulty
   ) => {
-    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, rivals: rivalCount, difficulty: diff });
+    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, weather: weatherPreset, rivals: rivalCount, difficulty: diff });
   };
 
   return (
@@ -134,6 +144,24 @@ export function SessionSetup() {
             aria-checked={timeOfDay === option.id}
             onClick={() => persist(raceLaps, trackId, option.id)}
             className={timeOfDay === option.id ? styles.presetActive : styles.preset}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className={styles.label}>WEATHER</div>
+      <div className={styles.presets} role="radiogroup" aria-label="Weather">
+        {WEATHER_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={weather === option.id}
+            onClick={() => {
+              setWeather(option.id);
+              persist(raceLaps, trackId, timeOfDay, option.id);
+            }}
+            className={weather === option.id ? styles.presetActive : styles.preset}
           >
             {option.label}
           </button>
@@ -221,7 +249,7 @@ export function SessionSetup() {
                 ? Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, count))
                 : DEFAULT_RIVALS;
               setRivals(clamped);
-              persist(raceLaps, trackId, timeOfDay, clamped);
+              persist(raceLaps, trackId, timeOfDay, weather, clamped);
             }}
             className={styles.slider}
             aria-label="Rival count"
@@ -243,7 +271,7 @@ export function SessionSetup() {
                 title={option.blurb}
                 onClick={() => {
                   setDifficulty(option.id);
-                  persist(raceLaps, trackId, timeOfDay, rivals, option.id);
+                  persist(raceLaps, trackId, timeOfDay, weather, rivals, option.id);
                 }}
                 className={difficulty === option.id ? styles.presetActive : styles.preset}
               >

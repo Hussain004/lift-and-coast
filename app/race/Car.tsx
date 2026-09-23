@@ -34,7 +34,8 @@ import {
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
-import { createEnergySystem, overrideModeActive } from "@/lib/physics/energy";
+import { createEnergySystem, overrideModeActive, type EnergyMode } from "@/lib/physics/energy";
+import { createWeatherSystem } from "@/lib/physics/weather";
 import { unwrapGap } from "@/lib/ai/racecraft";
 import {
   createGearboxState,
@@ -46,8 +47,7 @@ import {
   SHIFT_UP_RPM,
 } from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
-import { TIRE_COMPOUNDS, computeCompoundGripMultiplier, type TireCompoundId } from "@/lib/physics/tireModel";
-import { useDriveInput, type CameraMode } from "@/lib/input/useDriveInput";
+import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
@@ -82,6 +82,12 @@ import {
 } from "@/lib/tracks/surfaces";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
+import { createDrsSystem, DRS_DRAG_SCALE } from "@/lib/physics/drs";
+import { createStrategySystem } from "@/lib/race/strategy";
+import { createReplayController, type TelemetryFrame } from "@/lib/race/replay";
+import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
+import { createRaceControlSystem } from "@/lib/race/raceControl";
+import { weatherLabel } from "@/lib/physics/weather";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { F1CarBody } from "./F1CarBody";
@@ -157,6 +163,10 @@ export function Car({
   bodyColor = "#39ff88",
   accentColor,
   audioRef,
+  weatherRef,
+  raceControlRef,
+  raceCommandsRef,
+  raceOpsSnapshotRef,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
@@ -283,6 +293,10 @@ export function Car({
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
    * car fills in the player half every render frame from live telemetry. */
   audioRef?: React.RefObject<AudioSnapshot>;
+  weatherRef?: React.RefObject<WeatherHandle>;
+  raceControlRef?: React.RefObject<RaceControlHandle>;
+  raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
+  raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
 }) {
   const { startPos } = track;
   // Grid slot for this car (see grid.ts) - pole at the line, everyone
@@ -369,25 +383,6 @@ export function Car({
   const ghostGroupRef = useRef<THREE.Group>(null);
   const ghostSteerRefs = useRef<(THREE.Group | null)[]>([]);
   const ghostSpinRefs = useRef<(THREE.Group | null)[]>([]);
-  // Distance driven (odometer-style, direction-independent) since the
-  // current compound was fitted - see computeCompoundGripMultiplier in
-  // tireModel.ts. Not lap-scoped: real tire wear accumulates across a
-  // whole stint, not per lap, and this project has no pit-stop system yet
-  // to force a reset - switching compounds (the 1/2/3 keys, owned by
-  // useDriveInput) is the only reset trigger, standing in for fitting a
-  // fresh set. Deliberately NOT touched by rewind or the off-track
-  // teleport reset - both roll back POSITION/TIME, but the tires
-  // physically experienced those meters regardless, same as a real
-  // rewind not un-scrubbing tire wear. Pressing the SAME compound's key
-  // again while already on it is a no-op (change-detected below, not
-  // event-detected) - there's no way to "re-fit an identical fresh set"
-  // without switching away and back, a known, minor limitation.
-  const tireWornMetersRef = useRef(0);
-  // Last compound seen, to detect a change made via the 1/2/3 keys (owned
-  // by useDriveInput, see tireCompound above) and reset wear on switch -
-  // the wear tracking itself lives here rather than in useDriveInput
-  // since it needs per-frame speed/distance data that hook doesn't have.
-  const prevTireCompoundRef = useRef<TireCompoundId>(tireCompound.current);
   // Share of wheels on a kerb this physics tick, for the audio rumble.
   const kerbContactRef = useRef(0);
   // Within a second of the car ahead this tick (Manual Override Mode).
@@ -423,6 +418,21 @@ export function Car({
 
   const energySystemRef = useRef(createEnergySystem());
   const batteryFractionRef = useRef(1);
+  const ersModeRef = useRef<EnergyMode>("balanced");
+  const localWeatherRef = useRef<WeatherHandle>(createWeatherSystem("clear"));
+  const effectiveWeatherRef = weatherRef ?? localWeatherRef;
+  const localRaceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
+  const effectiveRaceControlRef = raceControlRef ?? localRaceControlRef;
+  const strategyRef = useRef(createStrategySystem());
+  const drsSystem = useMemo(() => createDrsSystem(track), [track]);
+  const replayRef = useRef(createReplayController(45, 1 / 60));
+  const replayActiveRef = useRef(false);
+  const replayCameraRestoreRef = useRef<CameraMode | null>(null);
+  const drsRequestedRef = useRef(false);
+  const energyStatusRef = useRef(energySystemRef.current.snapshot());
+  const strategyStateRef = useRef(strategyRef.current.snapshot());
+  const drsStateRef = useRef(drsSystem.snapshot());
+  const weatherStateRef = useRef(effectiveWeatherRef.current.snapshot());
   const startRotationRef = useRef(
     new THREE.Quaternion().setFromEuler(new THREE.Euler(0, gridSpot.headingRad, 0))
   );
@@ -559,11 +569,106 @@ export function Car({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world]);
 
+  function toggleReplay() {
+    replayActiveRef.current = replayRef.current.togglePlayback();
+    if (replayActiveRef.current) {
+      replayCameraRestoreRef.current = cameraMode.current;
+      cameraMode.current = "tv";
+    } else if (replayCameraRestoreRef.current) {
+      cameraMode.current = replayCameraRestoreRef.current;
+      replayCameraRestoreRef.current = null;
+    }
+  }
+
+  function consumeRaceOpsCommands(driveInput: DriveInput) {
+    if (driveInput.pitRequested) strategyRef.current.requestPit();
+    if (driveInput.replayToggle) {
+      toggleReplay();
+    }
+    if (driveInput.ersModeCycle) {
+      const modes: EnergyMode[] = ["harvest", "balanced", "attack"];
+      const next = modes[(modes.indexOf(ersModeRef.current) + 1) % modes.length];
+      ersModeRef.current = next;
+      energySystemRef.current.setMode(next);
+    }
+    if (driveInput.strategyModeCycle) {
+      const modes = ["save", "balanced", "push"] as const;
+      const current = strategyRef.current.snapshot().mode;
+      strategyRef.current.setMode(modes[(modes.indexOf(current) + 1) % modes.length]);
+    }
+    if (driveInput.weatherCycle) {
+      const presets = ["clear", "cloudy", "rain"] as const;
+      const current = effectiveWeatherRef.current.snapshot().preset;
+      effectiveWeatherRef.current.setPreset(presets[(presets.indexOf(current) + 1) % presets.length]);
+    }
+    const commands = raceCommandsRef?.current.splice(0) ?? [];
+    for (const command of commands) {
+      switch (command.type) {
+        case "set-weather":
+          effectiveWeatherRef.current.setPreset(command.preset);
+          break;
+        case "set-ers-mode":
+          ersModeRef.current = command.mode;
+          energySystemRef.current.setMode(command.mode);
+          break;
+        case "set-strategy-mode":
+          strategyRef.current.setMode(command.mode);
+          break;
+        case "set-compound":
+          tireCompound.current = command.compound;
+          strategyRef.current.setCompound(command.compound);
+          break;
+        case "request-pit":
+          strategyRef.current.requestPit();
+          break;
+        case "cancel-pit":
+          strategyRef.current.cancelPit();
+          break;
+        case "toggle-drs":
+          drsRequestedRef.current = !drsRequestedRef.current;
+          drsSystem.setRequested(drsRequestedRef.current);
+          break;
+        case "toggle-replay":
+          toggleReplay();
+          break;
+        case "stop-replay":
+          replayRef.current.stopPlayback();
+          replayActiveRef.current = false;
+          if (replayCameraRestoreRef.current) {
+            cameraMode.current = replayCameraRestoreRef.current;
+            replayCameraRestoreRef.current = null;
+          }
+          break;
+        case "seek-replay":
+          replayRef.current.seekRelative(command.seconds);
+          break;
+        case "report-unsafe-rejoin":
+          effectiveRaceControlRef.current.reportIncident("unsafe-rejoin", raceElapsedSecondsRef.current);
+          break;
+      }
+    }
+  }
+
   useBeforePhysicsStep(() => {
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
     const driveInput = update(world.timestep);
+    consumeRaceOpsCommands(driveInput);
+    if (replayActiveRef.current) {
+      replayRef.current.tick(world.timestep);
+      if (!replayRef.current.state().playback) {
+        replayActiveRef.current = false;
+        if (replayCameraRestoreRef.current) {
+          cameraMode.current = replayCameraRestoreRef.current;
+          replayCameraRestoreRef.current = null;
+        }
+      }
+      const replayFrame = replayRef.current.frameAtCursor();
+      if (replayFrame) applySnapshot(body, replayFrame, true);
+      isRewindingRef.current = true;
+      return;
+    }
     isRewindingRef.current = driveInput.rewind;
     if (sharedRewindActiveRef) sharedRewindActiveRef.current = driveInput.rewind;
 
@@ -666,9 +771,10 @@ export function Car({
     // car that rolls back past the line arms the lap timer for a bogus
     // lap the moment it drives forward again.
     const raceStarted = raceStartRef?.current ?? true;
-    const gatedDriveInput = raceStarted
-      ? driveInput
-      : { ...driveInput, throttle: 0, deploy: false, brake: 1 };
+    const disqualified = effectiveRaceControlRef.current.snapshot().disqualified;
+    const gatedDriveInput = !raceStarted || disqualified
+      ? { ...driveInput, throttle: 0, deploy: false, brake: 1 }
+      : driveInput;
 
     // Guest input upload reads the gated inputs actually applied (see
     // playerInputRef) - what the car does, not what the keys say.
@@ -699,11 +805,39 @@ export function Car({
     const overrideActive =
       sessionMode === "race" && overrideModeActive(gapAheadMeters, Math.abs(race?.player.speedMs ?? 0));
     overrideActiveRef.current = overrideActive;
+    const speedForOps = Math.abs(controller.currentVehicleSpeed());
+    drsSystem.setRequested(drsRequestedRef.current || driveInput.drs);
+    const drsState = drsSystem.update(limitStatus.progressMeters, speedForOps);
+    const strategyState = strategyRef.current.update({
+      dt: world.timestep,
+      speedMs: speedForOps,
+      throttle: gatedDriveInput.throttle,
+      brake: gatedDriveInput.brake,
+      progressMeters: limitStatus.progressMeters,
+      trackLengthMeters: track.lengthMeters,
+      lateralMeters: limitStatus.lateralMeters,
+      trackHalfWidthMeters: track.width[0] / 2,
+      lap: race?.player.lapCount ?? 0,
+      racing: raceStarted,
+      airTemperatureC: weatherStateRef.current.airTemperatureC,
+      trackTemperatureC: weatherStateRef.current.trackTemperatureC,
+    });
+    const weatherState = effectiveWeatherRef.current.snapshot();
     const energyStatus = energySystemRef.current.update(
-      { brakeAmount: gatedDriveInput.brake, deployRequested: gatedDriveInput.deploy, overrideActive },
+      {
+        brakeAmount: gatedDriveInput.brake,
+        deployRequested: gatedDriveInput.deploy,
+        overrideActive,
+        lap: race?.player.lapCount ?? 0,
+        raceStarted,
+      },
       world.timestep
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
+    energyStatusRef.current = energyStatus;
+    strategyStateRef.current = strategyState;
+    drsStateRef.current = drsState;
+    weatherStateRef.current = weatherState;
 
     // Sync the gearbox's assist mode to the live toggle (useDriveInput
     // owns the G key, Car.tsx owns the gear state) before the drive model
@@ -714,7 +848,7 @@ export function Car({
       controller,
       gatedDriveInput,
       DEFAULT_ENGINE_FORCE,
-      energyStatus.engineForceMultiplier,
+      energyStatus.engineForceMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier,
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed(),
       tractionControlEnabled.current,
@@ -726,22 +860,13 @@ export function Car({
     );
     if (gearboxRef.current.gear > gearBeforeControls) shiftSerialRef.current += 1;
 
-    // A fresh set is fitted the instant the player switches compounds
-    // (1/2/3 keys, owned by useDriveInput) - see tireWornMetersRef's own
-    // comment for why that's the only reset trigger this project has
-    // right now.
-    if (tireCompound.current !== prevTireCompoundRef.current) {
-      prevTireCompoundRef.current = tireCompound.current;
-      tireWornMetersRef.current = 0;
+    // The strategy system owns compound life now; keyboard tire selection is
+    // still a quick practice-mode fitting shortcut, while a race pit request
+    // refits through the same system.
+    if (tireCompound.current !== strategyState.compound) {
+      strategyRef.current.setCompound(tireCompound.current);
     }
-    // Odometer-style accumulation using this step's pre-update speed - a
-    // one-step lag against the exact instantaneous speed, immaterial at
-    // 60Hz for a quantity that only meaningfully changes over many meters.
-    tireWornMetersRef.current += Math.abs(controller.currentVehicleSpeed()) * world.timestep;
-    const compoundGripMultiplier = computeCompoundGripMultiplier(
-      TIRE_COMPOUNDS[tireCompound.current],
-      tireWornMetersRef.current
-    );
+    const compoundGripMultiplier = strategyState.compoundGripMultiplier;
     // Per-wheel surfaces (plan section 4 point 7 / section 5 depth feature 6),
     // replacing the old single chassis-center distanceFromEdgeMeters
     // approximation: each wheel is classified separately, so clipping an apex
@@ -760,7 +885,7 @@ export function Car({
     applyLoadSensitiveFriction(
       controller,
       aeroMode.current,
-      compoundGripMultiplier,
+      compoundGripMultiplier * weatherState.gripMultiplier,
       wheelSurfaceGrips(surfaceSamples),
       damageGripMultiplierRef.current
     );
@@ -785,13 +910,35 @@ export function Car({
           Object.entries(towTraffic).flatMap(([key, at]) => (key === trafficKey ? [] : [at]))
         )
       : 1;
-    applyDragImpulse(body, aeroMode.current, world.timestep, towDrag);
+    applyDragImpulse(
+      body,
+      aeroMode.current,
+      world.timestep,
+      towDrag * weatherState.dragMultiplier * (drsState.active ? DRS_DRAG_SCALE : 1)
+    );
     // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
     // above - a wide moment costs time, and a gravel trap takes the car off
     // the driver's hands entirely rather than merely slowing it.
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
 
-    rewindBufferRef.current.push(snapshotOf(body));
+    const replaySample = snapshotOf(body);
+    rewindBufferRef.current.push(replaySample);
+    replayRef.current.record({
+      ...replaySample,
+      telemetry: {
+        elapsedSeconds: raceElapsedSecondsRef.current,
+        speedMs: speedForOps,
+        throttle: gatedDriveInput.throttle,
+        brake: gatedDriveInput.brake,
+        steer: gatedDriveInput.steer,
+        gear: gearboxRef.current.gear,
+        rpm: rpmForGear(gearboxSpeedMs(gearboxRef.current, speedForOps), gearboxRef.current.gear),
+        batteryFraction: energyStatus.batteryFraction,
+        tireGrip: strategyState.compoundGripMultiplier * weatherState.gripMultiplier,
+        drsActive: drsState.active,
+        weather: weatherLabel(weatherState.preset),
+      } satisfies TelemetryFrame,
+    });
     if (trafficRef && trafficKey !== undefined) {
       const tp = body.translation();
       trafficRef.current[trafficKey] = { x: tp.x, z: tp.z };
@@ -855,6 +1002,7 @@ export function Car({
     if (aeroModeRef?.current) {
       aeroModeRef.current.textContent =
         (aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE") +
+        (drsStateRef.current.active ? " · DRS" : "") +
         (overrideActiveRef.current ? " · OVERRIDE" : "");
     }
     // Active-aero flap (plan section 5): the rear-wing top element rotates
@@ -866,10 +1014,9 @@ export function Car({
     }
     if (tireRef?.current) {
       const gripPercent = Math.round(
-        computeCompoundGripMultiplier(TIRE_COMPOUNDS[tireCompound.current], tireWornMetersRef.current) *
-          100
+        strategyStateRef.current.compoundGripMultiplier * weatherStateRef.current.gripMultiplier * 100
       );
-      tireRef.current.textContent = `${tireCompound.current.toUpperCase()} ${gripPercent}%`;
+      tireRef.current.textContent = `${strategyStateRef.current.compound.toUpperCase()} ${gripPercent}%`;
     }
     if (assistsRef?.current) {
       assistsRef.current.textContent =
@@ -1071,6 +1218,12 @@ export function Car({
         // shared driver codes can't collide.
         const netPositions = netActive ? netResultRef?.current?.positions ?? null : null;
         const shownPosition = netPositions?.[String(netSlot)] ?? finalPosition;
+        const control = effectiveRaceControlRef.current.snapshot();
+        const controlSuffix = control.disqualified
+          ? "  //  DSQ"
+          : control.penaltySeconds > 0
+            ? `  //  PENALTY +${control.penaltySeconds}s`
+            : "";
         let championshipSuffix = "";
         if (champRound !== null && !netActive) {
           championshipSuffix =
@@ -1082,6 +1235,7 @@ export function Car({
         raceResultRef.current.textContent =
           `P${shownPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
           championshipSuffix +
+          controlSuffix +
           `  //  PRESS ENTER TO RESTART`;
       }
       if (sessionMode === "practice" && !raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
@@ -1152,9 +1306,16 @@ export function Car({
       allFourWheelsOff,
       dt
     );
+    if (allFourWheelsOff && !lapInvalidRef.current) {
+      lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+      lapInvalidRef.current = true;
+    }
     if (limitUpdate.penaltyJustApplied) {
       if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
       lapInvalidRef.current = true;
+      effectiveRaceControlRef.current.reportIncident("track-limits", raceElapsedSecondsRef.current, {
+        penaltySeconds: TRACK_LIMIT_PENALTY_SECONDS,
+      });
       if (!raceFinishedRef.current) {
         raceElapsedSecondsRef.current += TRACK_LIMIT_PENALTY_SECONDS;
         if (penaltyToastRef?.current) {
@@ -1260,6 +1421,20 @@ export function Car({
       } else {
         ghostGroupRef.current.visible = false;
       }
+    }
+
+    if (raceOpsSnapshotRef) {
+      raceOpsSnapshotRef.current = {
+        weather: weatherStateRef.current,
+        strategy: strategyStateRef.current,
+        energyMode: energyStatusRef.current.mode,
+        batteryFraction: energyStatusRef.current.batteryFraction,
+        deploymentBudgetFraction: energyStatusRef.current.deploymentBudgetFraction,
+        drs: drsStateRef.current,
+        raceControl: effectiveRaceControlRef.current.snapshot(),
+        replay: replayRef.current.state(),
+        telemetry: replayRef.current.telemetryTrace(80),
+      };
     }
 
     if (trackLimitRef?.current) {

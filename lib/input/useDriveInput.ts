@@ -61,6 +61,18 @@ export interface DriveInput {
   steer: number;
   rewind: boolean;
   deploy: boolean;
+  /** Hold to request an available DRS zone. */
+  drs: boolean;
+  /** Edge-triggered pit request. */
+  pitRequested: boolean;
+  /** Edge-triggered instant replay toggle. */
+  replayToggle: boolean;
+  /** Edge-triggered ERS mode cycle. */
+  ersModeCycle: boolean;
+  /** Edge-triggered strategy mode cycle. */
+  strategyModeCycle: boolean;
+  /** Edge-triggered weather preset cycle. */
+  weatherCycle: boolean;
   /**
    * Edge-triggered shift requests (manual gear mode only), latched in
    * keydown and consumed exactly once by the update() call that follows -
@@ -117,6 +129,12 @@ const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
 const ABS_TOGGLE_KEY = "KeyB";
 const RACING_LINE_TOGGLE_KEY = "KeyL";
 const AUTO_GEAR_TOGGLE_KEY = "KeyG";
+const DRS_KEY = "KeyX";
+const PIT_REQUEST_KEY = "KeyO";
+const REPLAY_TOGGLE_KEY = "KeyP";
+const ERS_MODE_CYCLE_KEY = "KeyI";
+const STRATEGY_MODE_CYCLE_KEY = "KeyY";
+const WEATHER_CYCLE_KEY = "KeyU";
 
 const anyPressed = (keys: Set<string>, codes: string[]) =>
   codes.some((code) => keys.has(code));
@@ -147,6 +165,12 @@ export function useDriveInput(
     steer: 0,
     rewind: false,
     deploy: false,
+    drs: false,
+    pitRequested: false,
+    replayToggle: false,
+    ersModeCycle: false,
+    strategyModeCycle: false,
+    weatherCycle: false,
     shiftUp: false,
     shiftDown: false,
   });
@@ -208,6 +232,21 @@ export function useDriveInput(
       if (e.code === AUTO_GEAR_TOGGLE_KEY && !keys.current.has(e.code)) {
         autoGear.current = !autoGear.current;
       }
+      if (e.code === PIT_REQUEST_KEY && !keys.current.has(e.code)) {
+        input.current.pitRequested = true;
+      }
+      if (e.code === REPLAY_TOGGLE_KEY && !keys.current.has(e.code)) {
+        input.current.replayToggle = true;
+      }
+      if (e.code === ERS_MODE_CYCLE_KEY && !keys.current.has(e.code)) {
+        input.current.ersModeCycle = true;
+      }
+      if (e.code === STRATEGY_MODE_CYCLE_KEY && !keys.current.has(e.code)) {
+        input.current.strategyModeCycle = true;
+      }
+      if (e.code === WEATHER_CYCLE_KEY && !keys.current.has(e.code)) {
+        input.current.weatherCycle = true;
+      }
       // Shift requests latch on the rising edge (no OS key-repeat, same
       // edge detection as the toggles above) and are consumed by the next
       // update() - see the copy/clear/restore in update() below.
@@ -252,8 +291,18 @@ export function useDriveInput(
       // (applyCarControls' gearbox handling).
       const shiftUp = input.current.shiftUp;
       const shiftDown = input.current.shiftDown;
+      const pitRequested = input.current.pitRequested;
+      const replayToggle = input.current.replayToggle;
+      const ersModeCycle = input.current.ersModeCycle;
+      const strategyModeCycle = input.current.strategyModeCycle;
+      const weatherCycle = input.current.weatherCycle;
       input.current.shiftUp = false;
       input.current.shiftDown = false;
+      input.current.pitRequested = false;
+      input.current.replayToggle = false;
+      input.current.ersModeCycle = false;
+      input.current.strategyModeCycle = false;
+      input.current.weatherCycle = false;
       const steerTarget =
         (anyPressed(pressed, LEFT_KEYS) ? 1 : 0) -
         (anyPressed(pressed, RIGHT_KEYS) ? 1 : 0);
@@ -308,6 +357,12 @@ export function useDriveInput(
             : brakeTarget;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
+      input.current.drs = anyPressed(pressed, [DRS_KEY]);
+      input.current.pitRequested = pitRequested;
+      input.current.replayToggle = replayToggle;
+      input.current.ersModeCycle = ersModeCycle;
+      input.current.strategyModeCycle = strategyModeCycle;
+      input.current.weatherCycle = weatherCycle;
       input.current.shiftUp = shiftUp;
       input.current.shiftDown = shiftDown;
       return input.current;

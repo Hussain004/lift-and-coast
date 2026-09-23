@@ -48,6 +48,7 @@ function liveSettings(): NetSettings {
     laps: prefs.raceLaps,
     rivals: prefs.rivals,
     tod: prefs.timeOfDay,
+    weather: prefs.weather,
   };
 }
 
@@ -57,6 +58,7 @@ function raceUrl(settings: NetSettings, room: string, role: "host" | "guest", sl
   query.set("mode", "race");
   query.set("laps", String(settings.laps));
   query.set("tod", settings.tod);
+  if (settings.weather) query.set("weather", settings.weather);
   query.set("rivals", String(settings.rivals));
   query.set("team", teamId);
   query.set("driver", driverCode);

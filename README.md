@@ -2,7 +2,7 @@
 
 A serverless, browser-based formula racing game for the 2026 regulation era.
 
-Real circuit layouts, a living racing line, skill-based driving physics, energy management, wheel-to-wheel AI, and a retro-modern art style. No database, no DRS, and no mystery buttons that do not belong on a racing car.
+Real circuit layouts, a living racing line, skill-based driving physics, energy management, wheel-to-wheel AI, and a retro-modern art style. No database or server backend, and no mystery buttons that do not belong on a racing car.
 
 **Save the juice. Send the apex.**
 
@@ -13,12 +13,17 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - A readable racing-line overlay with a thicker broadcast-style ribbon
 - AI difficulty tiers from Rookie to Ace, with personality, mistakes, tire curves, traffic, overtakes, and active racing
 - Seven-speed sequential manual gears with an auto-gear assist
-- Energy harvesting and one-shot Push-to-Pass deployment
+- Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
+- Dynamic clear, cloudy, and rain weather with changing grip, drag, visibility, and track temperature
+- Race strategy with fuel burn, tire age, tire temperature, blankets, compound selection, and pit service
+- Track-derived DRS zones with manual arming and a real drag-reduction state
+- Race Ops telemetry, steward decisions, penalties, invalid laps, and disqualification status
+- Rolling instant replay with a synchronized TV camera, seek controls, and a speed trace
 - Active Aero with high-downforce and low-drag modes
 - Tire compounds, wear, grip changes, damage, and per-wheel surface effects
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, and wheel input with shaped steering and braking
-- Chase, cockpit, T-cam, TV broadcast, orbit, and rewind cameras
+- Chase, cockpit, T-cam, TV broadcast, orbit, replay, and rewind cameras
 - Practice, qualifying, quick races, and full championship weekends
 - Multiplayer rooms with synchronized timing and race-control telemetry
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
@@ -45,6 +50,14 @@ npm run diagnose:line
 
 That command runs the quality gates and hot-laps every registered circuit with the solo AI controller before racecraft is enabled. It reports the theoretical line lap, measured AI lap, off-track distance, and maximum tilt. The normal test suite still runs the fast analytic checks and the multi-car stability gates.
 
+## Race Ops
+
+Open the Race Ops panel during a session to change weather, ERS mode, strategy mode, and compound. Request a pit service with `O`, arm DRS with `X`, and toggle instant replay with `P`. The panel shows fuel, tire temperature, grip, DRS state, steward decisions, penalties, and a rolling speed trace.
+
+Weather is shared by the track, player, and AI. Rain reduces grip and increases drag while the scene adds rain particles, lower visibility, and a darker atmospheric feel. DRS zones are derived from long, low-curvature sections of each circuit, so the same zone system works on every registered track without hand-authored coordinates.
+
+Pit service currently uses the marked start-finish service window as a playable vertical slice. A full drivable pit-lane route and route-aware championship classification are the next simulation milestone.
+
 ## Controls
 
 | Action | Keyboard | Gamepad or wheel |
@@ -64,6 +77,12 @@ That command runs the quality gates and hot-laps every registered circuit with t
 | Camera | `C` | Assign as a button if supported |
 | Tires | `1` / `2` / `3` | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
+| DRS arm | Hold `X` | Assign as a button if supported |
+| Pit request | `O` | Race Ops button |
+| Instant replay | `P` | Race Ops button |
+| ERS mode | `I` | Race Ops button |
+| Strategy mode | `Y` | Race Ops button |
+| Weather cycle | `U` | Race Ops button |
 
 ABS and traction control are assists, not driving eras. Turn them off when you want to feel the consequences.
 
@@ -76,7 +95,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`, choose a circuit and session, and press Drive. The home screen stores garage choices, race settings, and lighting preferences locally.
+Open `http://localhost:3000`, choose a circuit and session, and press Drive. The home screen stores garage choices, race settings, weather, and lighting preferences locally.
 
 Run the normal checks with:
 
@@ -94,11 +113,11 @@ npm run diagnose:ai
 npm run diagnose:line
 ```
 
-`diagnose:ai` prints per-wheel contact, suspension, and impulse data around excursions. `diagnose:line` measures the generated line first, then measures clean solo AI laps. The multi-car tests then cover launches, traffic, overtakes, parked cars, andSuzuka's bridge after the solo line is stable.
+`diagnose:ai` prints per-wheel contact, suspension, and impulse data around excursions. `diagnose:line` measures the generated line first, then measures clean solo AI laps. The multi-car tests then cover launches, traffic, overtakes, parked cars, and Suzuka's bridge after the solo line is stable.
 
 ## Track data
 
-Circuit geometry comes from the `bacinger/f1-circuits` dataset under the MIT license. Raw polylives live in `data/tracks/raw/`. The processed files in `data/tracks/*.json` are built by projecting the source lon/lat path into a local meter plane, fitting a centripetal Catmull-Rom spline, and resampling it at a fixed arc-length interval.
+Circuit geometry comes from the `bacinger/f1-circuits` dataset under the MIT license. Raw polylines live in `data/tracks/raw/`. The processed files in `data/tracks/*.json` are built by projecting the source lon/lat path into a local meter plane, fitting a centripetal Catmull-Rom spline, and resampling it at a fixed arc-length interval.
 
 Track widths come from the vendored `TUMFTM/racetrack-database` files. The build aligns the width frame to the processed centerline with a deterministic ICP fit, then transfers the real per-point width. Monaco's narrow street sections use authored width ranges where no satellite width file exists.
 

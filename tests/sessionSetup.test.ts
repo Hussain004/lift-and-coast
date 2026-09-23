@@ -79,6 +79,7 @@ describe("loadSessionSetupPrefs", () => {
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
+      weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
     });
@@ -89,6 +90,7 @@ describe("loadSessionSetupPrefs", () => {
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
+      weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
     });
@@ -106,6 +108,7 @@ describe("loadSessionSetupPrefs", () => {
       raceLaps: 7,
       trackId: "spa",
       timeOfDay: "day",
+      weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
     });
@@ -143,6 +146,7 @@ describe("loadSessionSetupPrefs", () => {
       raceLaps: DEFAULT_RACE_LAPS,
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
+      weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
     });
@@ -167,43 +171,44 @@ describe("loadSessionSetupPrefs", () => {
 describe("saveSessionSetupPrefs", () => {
   it("persists the clamped values", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5, difficulty: "ace" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", weather: "rain", rivals: 5, difficulty: "ace" }, storage);
     expect(loadSessionSetupPrefs(storage)).toEqual({
       raceLaps: 9,
       trackId: "monza",
       timeOfDay: "overcast",
+      weather: "rain",
       rivals: 5,
       difficulty: "ace",
     });
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", rivals: 5, difficulty: "ace" })
+      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", weather: "rain", rivals: 5, difficulty: "ace" })
     );
   });
 
   it("clamps and rounds before saving", () => {
     const { storage, dump } = fakeStorage();
-    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka", timeOfDay: "day", rivals: 1, difficulty: "pro" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 4.6, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: 1, difficulty: "pro" }, storage);
     expect(loadSessionSetupPrefs(storage).raceLaps).toBe(5);
-    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day", rivals: 99, difficulty: "club" }, storage);
+    saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: 99, difficulty: "club" }, storage);
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", rivals: MAX_RIVALS, difficulty: "club" })
+      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: MAX_RIVALS, difficulty: "club" })
     );
   });
 
   it("clamps an unknown track id to the default before saving", () => {
     const { storage, dump } = fakeStorage();
     saveSessionSetupPrefs(
-      { raceLaps: 3, trackId: "not-a-registered-track", timeOfDay: "day", rivals: 2, difficulty: "rookie" },
+      { raceLaps: 3, trackId: "not-a-registered-track", timeOfDay: "day", weather: "clear", rivals: 2, difficulty: "rookie" },
       storage
     );
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", rivals: 2, difficulty: "rookie" })
+      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", weather: "clear", rivals: 2, difficulty: "rookie" })
     );
   });
 
   it("does nothing when storage is unavailable", () => {
     expect(() =>
-      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day", rivals: 1, difficulty: "pro" }, null)
+      saveSessionSetupPrefs({ raceLaps: 3, trackId: "spa", timeOfDay: "day", weather: "clear", rivals: 1, difficulty: "pro" }, null)
     ).not.toThrow();
   });
 });

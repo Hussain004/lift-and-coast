@@ -42,8 +42,8 @@ const CARD_OUTLINE_PX = 64;
 const TWEEN_MS = 420;
 
 function pick(id: string): void {
-  const { raceLaps, timeOfDay, rivals, difficulty } = loadSessionSetupPrefs();
-  saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay, rivals, difficulty });
+  const { raceLaps, timeOfDay, weather, rivals, difficulty } = loadSessionSetupPrefs();
+  saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay, weather, rivals, difficulty });
 }
 
 export function WorldMap() {

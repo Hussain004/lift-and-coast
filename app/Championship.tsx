@@ -32,7 +32,7 @@ export function Championship() {
   // Same live roster pick as SessionSetup's Drive link - championship rounds
   // grid the same two cars.
   const { teamId, driverCode } = useRosterSelection();
-  const { timeOfDay } = useSessionSetupPrefs();
+  const { timeOfDay, weather } = useSessionSetupPrefs();
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +161,7 @@ export function Championship() {
             team: parseTeamId(teamId),
             driver: parseDriverCode(driverCode),
             tod: timeOfDay,
+            weather,
             champ: next,
             rivals: MAX_RIVALS,
           };
