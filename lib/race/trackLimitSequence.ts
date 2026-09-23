@@ -1,35 +1,33 @@
 /**
- * Race-control progression for a track-limits excursion.
+ * Race-control progression for track-limits excursions.
  *
- * A momentary wide moment is not an instant +5s in the rules-inspired
- * presentation: the driver first sees a warning, a sustained or repeated
- * offense raises the black-and-white flag, and the penalty is applied only
- * after that stage. The state is deliberately small and pure so the same
- * sequence can be tested without a browser or a physics world.
+ * The important unit is one *excursion*: all four wheels leave, then the car
+ * actually rejoins. A long slide is not allowed to silently walk through
+ * every stage or charge the penalty repeatedly. The next warning/flag is
+ * earned only after a clean re-entry, which matches the way a driver expects
+ * race-control messages to behave in a broadcast race.
  */
 
 export type TrackLimitStage = "clear" | "warning" | "black-white" | "penalty";
 
-export const TRACK_LIMIT_WARNING_SECONDS = 0.55;
-export const TRACK_LIMIT_BLACK_WHITE_SECONDS = 1.35;
 export const TRACK_LIMIT_PENALTY_SECONDS = 5;
 
 export interface TrackLimitSequence {
   stage: TrackLimitStage;
-  /** Whether the car is currently outside all four wheels' legal surface. */
+  /** Whether the car is currently in one continuous all-four-wheels-off episode. */
   active: boolean;
-  /** Seconds spent in the current continuous excursion. */
-  episodeSeconds: number;
-  /** Completed excursions without a penalty, used to escalate on a re-entry. */
+  /** Completed warning/flag episodes since the last penalty. */
   offenses: number;
-  /** A penalty can be applied only once per race until the next race. */
+  /** Number of distinct penalty episodes awarded in this race. */
+  penaltyCount: number;
+  /** True only while the current episode has already been penalized. */
   penaltyApplied: boolean;
 }
 
 export interface TrackLimitUpdate {
   stage: TrackLimitStage;
   stageChanged: boolean;
-  /** True only on the tick which applies the race-time penalty. */
+  /** True only on the entry tick of a distinct penalty episode. */
   penaltyJustApplied: boolean;
 }
 
@@ -37,19 +35,18 @@ export function createTrackLimitSequence(): TrackLimitSequence {
   return {
     stage: "clear",
     active: false,
-    episodeSeconds: 0,
     offenses: 0,
+    penaltyCount: 0,
     penaltyApplied: false,
   };
 }
 
-/** Reset the per-lap warning history while retaining whether a penalty was
- * already awarded in this race. */
+/** Reset the per-lap warning history while retaining race-level penalties. */
 export function resetTrackLimitLap(state: TrackLimitSequence): void {
   state.stage = "clear";
   state.active = false;
-  state.episodeSeconds = 0;
   state.offenses = 0;
+  state.penaltyApplied = false;
 }
 
 /** Reset everything for a new race attempt. */
@@ -60,40 +57,30 @@ export function resetTrackLimitSequence(state: TrackLimitSequence): void {
 export function updateTrackLimitSequence(
   state: TrackLimitSequence,
   allFourWheelsOff: boolean,
-  dt: number
+  _dt: number
 ): TrackLimitUpdate {
+  void _dt;
   const previousStage = state.stage;
   let penaltyJustApplied = false;
 
-  if (allFourWheelsOff) {
-    if (!state.active) {
-      state.active = true;
-      state.episodeSeconds = 0;
-      // A first offense starts at warning; a second starts at black/white;
-      // a third starts at the penalty stage. The short dwell before the
-      // penalty prevents a single render-frame glitch from costing time.
-      state.stage = state.offenses === 0 ? "warning" : state.offenses === 1 ? "black-white" : "penalty";
-    }
-    state.episodeSeconds += Math.max(0, dt);
-
-    if (state.stage === "warning" && state.episodeSeconds >= TRACK_LIMIT_WARNING_SECONDS) {
-      state.stage = "black-white";
-    }
-    if (state.stage === "black-white" && state.episodeSeconds >= TRACK_LIMIT_BLACK_WHITE_SECONDS) {
-      state.stage = "penalty";
-    }
-    if (state.stage === "penalty" && !state.penaltyApplied && state.episodeSeconds >= 0.35) {
+  if (allFourWheelsOff && !state.active) {
+    // A new episode starts. The stage is chosen from completed prior
+    // episodes, never from how long this one lasts.
+    state.active = true;
+    state.stage = state.offenses === 0 ? "warning" : state.offenses === 1 ? "black-white" : "penalty";
+    if (state.stage === "penalty") {
+      state.penaltyCount += 1;
       state.penaltyApplied = true;
       penaltyJustApplied = true;
     }
-  } else if (state.active) {
-    // Returning to the track completes the episode. A warning/black-white
-    // offense is remembered for escalation on the next excursion; a penalty
-    // is not counted twice.
-    if (!state.penaltyApplied) state.offenses += 1;
+  } else if (!allFourWheelsOff && state.active) {
+    // Rejoining completes exactly one episode. A penalty episode resets the
+    // warning ladder; otherwise it advances it by one.
     state.active = false;
-    state.episodeSeconds = 0;
-    if (!state.penaltyApplied) state.stage = "clear";
+    if (state.penaltyApplied) state.offenses = 0;
+    else state.offenses += 1;
+    state.penaltyApplied = false;
+    state.stage = "clear";
   }
 
   return {
