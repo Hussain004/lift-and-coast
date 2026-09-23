@@ -562,6 +562,9 @@ export function Scene({
   damageRef,
   gearRef,
   rpmRef,
+  throttleRef,
+  brakeRef,
+  steerMarkerRef,
   minimapGroupRef,
   minimapMarkerRef,
   aiMarkerEls,
@@ -619,6 +622,9 @@ export function Scene({
   damageRef: React.RefObject<HTMLDivElement | null>;
   gearRef: React.RefObject<HTMLDivElement | null>;
   rpmRef: React.RefObject<HTMLDivElement | null>;
+  throttleRef: React.RefObject<HTMLDivElement | null>;
+  brakeRef: React.RefObject<HTMLDivElement | null>;
+  steerMarkerRef: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef: React.RefObject<SVGGElement | null>;
   minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
   /**
@@ -832,6 +838,9 @@ export function Scene({
           damageRef={damageRef}
           gearRef={gearRef}
           rpmRef={rpmRef}
+          throttleRef={throttleRef}
+          brakeRef={brakeRef}
+          steerMarkerRef={steerMarkerRef}
           minimapGroupRef={minimapGroupRef}
           minimapMarkerRef={minimapMarkerRef}
           positionRef={positionRef}

@@ -136,7 +136,7 @@ export function RaceOpsPanel({
             <span>{snapshot.replay.playback ? `REPLAY ${snapshot.replay.cursorSeconds.toFixed(1)}s` : "REPLAY READY"}</span>
           </div>
           <TelemetryInputs sample={latestTelemetry} />
-          <Sparkline values={speedTrace} color="#6bd1ff" />
+          <Sparkline values={speedTrace} color="#f2f4f7" />
           <div className={styles.opsHint}>X DRS · O PIT · P REPLAY · SHIFT ERS DEPLOY</div>
         </div>
       )}

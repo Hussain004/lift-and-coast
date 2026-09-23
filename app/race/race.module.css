@@ -265,6 +265,34 @@
     max-height: 42vh;
     overflow-y: auto;
   }
+
+  .bottomBar {
+    width: calc(100vw - 12px);
+    grid-template-columns: 64px 1fr 0.8fr;
+  }
+
+  .gearCluster,
+  .speedCluster,
+  .inputCluster,
+  .hudStatus {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+
+  .gear {
+    font-size: 44px;
+  }
+
+  .speed {
+    font-size: 32px;
+  }
+
+  .hudStatus {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid rgba(255, 255, 255, 0.13);
+    border-right: 0;
+  }
 }
 
 .delta {
@@ -305,7 +333,7 @@
 
 .trackLimit {
   position: absolute;
-  top: 16px;
+  top: 66px;
   left: 50%;
   transform: translateX(-50%);
   color: #ff3b3b;
@@ -325,7 +353,7 @@
 
 .raceDataStrip {
   position: absolute;
-  top: 16px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -361,129 +389,296 @@
   margin: 0;
 }
 
-/* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
-   tires, aero and flags in one dark strip with an F1-red top edge. */
+/* Bottom telemetry bar: a compact F1 broadcast strip with a strong
+   speed/gear hierarchy, segmented power bars, inputs, and car status. */
 .bottomBar {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 16px;
-  display: flex;
-  align-items: stretch;
-  background: rgba(10, 10, 14, 0.72);
-  border-top: 2px solid #e10600;
-  border-radius: 6px;
-  font-family: var(--font-geist-mono);
-  letter-spacing: 1px;
+  bottom: 12px;
+  width: min(820px, calc(100vw - 24px));
+  min-height: 108px;
+  display: grid;
+  grid-template-columns: 86px minmax(210px, 1.15fr) minmax(145px, 0.72fr) minmax(190px, 1fr);
+  background: linear-gradient(112deg, rgba(7, 9, 13, 0.97), rgba(17, 20, 26, 0.95));
+  border: 1px solid #343a45;
+  border-top: 3px solid #e10600;
+  border-radius: 3px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-family: var(--font-geist-sans);
+  letter-spacing: 0.4px;
   pointer-events: none;
   overflow: hidden;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+}
+
+.hudTopLine {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #e10600 0 32%, #ff8a00 32% 42%, rgba(255, 255, 255, 0.12) 42%);
+}
+
+.gearCluster,
+.speedCluster,
+.inputCluster,
+.hudStatus {
+  min-width: 0;
+  padding: 12px 14px 10px;
+}
+
+.gearCluster {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  background: linear-gradient(145deg, #e10600, #a90000);
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.clusterLabel,
+.barLabel,
+.pedalRow > span,
+.steerRow > span,
+.statusCard > span {
+  color: #aeb7c4;
+  font-family: var(--font-geist-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.gearCluster .clusterLabel {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .gear {
   color: #fff;
-  font-size: 44px;
+  font-family: var(--font-display);
+  font-size: 56px;
   font-style: italic;
-  font-weight: 700;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  padding: 8px 18px;
-  border-right: 1px solid #333;
+  font-weight: 900;
+  letter-spacing: -3px;
+  line-height: 0.9;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.22);
 }
 
-.bbCenter {
+.speedCluster,
+.inputCluster,
+.hudStatus {
+  border-right: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.speedCluster {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 18px;
-  border-right: 1px solid #333;
+  gap: 9px;
+}
+
+.speedReadout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .speed {
   color: #fff;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 0.9;
+  white-space: nowrap;
 }
 
-/* Manual gears readout lives in the bottom bar now (plan section 13):
-   the rpm bar above the energy bar, gear big at the bar's left edge. */
-.rpmTrack {
-  width: 180px;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
+.speedUnit {
+  color: #e10600;
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.rpmStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.barLabel {
+  display: flex;
+  justify-content: space-between;
+  color: #7f8a99;
+  font-size: 7px;
+}
+
+.rpmTrack,
+.energyTrack,
+.pedalTrack,
+.steerTrack {
+  position: relative;
   overflow: hidden;
+  background: #202630;
+  border: 1px solid #3a424e;
+}
+
+.rpmTrack {
+  width: 100%;
+  height: 11px;
+  background-image: repeating-linear-gradient(90deg, transparent 0 14px, rgba(255, 255, 255, 0.12) 14px 15px);
 }
 
 .rpmFill {
   height: 100%;
   width: 0%;
-  background: #ffd23f;
+  background: linear-gradient(90deg, #39ff88 0 55%, #ffd23f 55% 82%, #ff3b3b 82%);
   transition: width 0.05s linear;
 }
 
 .energyTrack {
-  width: 180px;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  overflow: hidden;
+  width: 100%;
+  height: 5px;
+  background: #202630;
 }
 
 .energyFill {
   height: 100%;
   width: 100%;
-  background: #ffd23f;
+  background: #f0f0f0;
   transition: width 0.1s linear;
 }
 
-.bbRight {
+.inputCluster {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  padding: 10px 18px;
+  gap: 8px;
+}
+
+.pedalRow,
+.steerRow {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 7px;
+}
+
+.pedalTrack {
+  height: 8px;
+}
+
+.pedalFillThrottle,
+.pedalFillBrake {
+  height: 100%;
+  width: 0%;
+  transition: width 0.05s linear;
+}
+
+.pedalFillThrottle {
+  background: #39ff88;
+}
+
+.pedalFillBrake {
+  background: #ff3b3b;
+}
+
+.steerTrack {
+  height: 8px;
+  background: linear-gradient(90deg, #202630 0 48%, #697586 48% 52%, #202630 52%);
+}
+
+.steerMarker {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffd23f;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, 0.18);
+  transform: translateX(-50%);
+  transition: left 0.05s linear;
+}
+
+.hudStatus {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: center;
+  gap: 7px 10px;
+  border-right: 0;
+}
+
+.statusCard {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 8px;
+  border-left: 2px solid #4b5563;
+}
+
+.statusCard > span {
+  color: #7f8a99;
+  font-size: 7px;
+}
+
+.aeroMode,
+.tire,
+.assists {
+  overflow: hidden;
+  color: #f2f4f7;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .aeroMode {
   color: #6bd1ff;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .tire {
   color: #ff9f4a;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .assists {
-  color: #aaaaaa;
-  font-size: 11px;
-  font-weight: 700;
+  color: #aeb7c4;
+  font-size: 8px;
+}
+
+.statusFooter {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  min-height: 12px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.damage,
+.mute {
+  color: #aeb7c4;
+  font-family: var(--font-geist-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
 }
 
 .damage {
   color: #ff6b6b;
-  font-size: 11px;
-  font-weight: 700;
 }
 
-.damage:empty {
-  display: none;
-}
-
-.mute {
-  color: #aaaaaa;
-  font-size: 11px;
-  font-weight: 700;
-}
-
+.damage:empty,
 .mute:empty {
   display: none;
 }
+
 
 .minimap {
   position: absolute;
@@ -498,38 +693,52 @@
   position: absolute;
   top: 76px;
   right: 230px;
-  width: 264px;
-  background: rgba(7, 10, 16, 0.88);
-  border: 1px solid rgba(107, 209, 255, 0.35);
-  border-radius: 6px;
-  color: #d8e0e8;
-  font-family: var(--font-geist-mono);
-  letter-spacing: 0.6px;
+  width: 286px;
+  background: linear-gradient(145deg, rgba(7, 9, 13, 0.97), rgba(20, 23, 29, 0.95));
+  border: 1px solid #3a414d;
+  border-top: 3px solid #e10600;
+  border-radius: 3px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e8ebef;
+  font-family: var(--font-geist-sans);
+  letter-spacing: 0.2px;
   pointer-events: auto;
   overflow: hidden;
   z-index: 4;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px));
 }
 
 .raceOpsHeader {
   width: 100%;
   display: flex;
   justify-content: space-between;
-  padding: 8px 10px;
+  align-items: center;
+  padding: 9px 11px 8px;
   border: 0;
-  background: rgba(107, 209, 255, 0.1);
-  color: #6bd1ff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(90deg, rgba(225, 6, 0, 0.28), rgba(225, 6, 0, 0.04));
+  color: #fff;
   cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 1.4px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-align: left;
+}
+
+.raceOpsHeader span:last-child {
+  color: #ffb3a7;
+  font-family: var(--font-geist-mono);
+  font-size: 15px;
+  font-style: normal;
 }
 
 .raceOpsBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px 10px;
+  gap: 9px;
+  padding: 10px 11px 12px;
 }
 
 .opsStatus,
@@ -541,18 +750,35 @@
 }
 
 .opsStatus {
-  color: #9daabb;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  padding: 8px 9px;
+  color: #aeb7c4;
+  background: rgba(255, 255, 255, 0.045);
+  border-left: 2px solid #e10600;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  line-height: 1.2;
 }
 
 .opsStatus strong {
-  color: #6bd1ff;
-  font-size: 12px;
+  grid-column: 1 / -1;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.7px;
 }
 
 .opsLabel {
-  color: #768596;
+  color: #8e99a8;
+  font-family: var(--font-geist-sans);
   font-size: 9px;
-  letter-spacing: 0.8px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
 }
 
 .opsButtons {
@@ -564,26 +790,30 @@
 .opsButton,
 .opsButtonActive,
 .opsAction {
-  border: 1px solid #344150;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #aeb8c5;
+  border: 1px solid #3b4451;
+  border-radius: 2px;
+  background: #171b22;
+  color: #c4cbd4;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--font-geist-mono);
   font-size: 9px;
-  padding: 5px 6px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 5px 7px;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .opsButton:hover,
 .opsAction:hover,
 .opsButtonActive {
-  border-color: #6bd1ff;
+  border-color: #ff7868;
   color: #fff;
-  background: rgba(107, 209, 255, 0.14);
+  background: rgba(225, 6, 0, 0.2);
 }
 
 .opsButtonActive {
-  color: #6bd1ff;
+  color: #fff;
+  box-shadow: inset 0 -2px 0 #e10600;
 }
 
 .opsAction {
@@ -593,8 +823,10 @@
 
 .opsInputs {
   display: grid;
-  gap: 3px;
-  color: #8794a4;
+  gap: 4px;
+  padding-top: 2px;
+  color: #8e99a8;
+  font-family: var(--font-geist-mono);
   font-size: 8px;
 }
 
@@ -609,12 +841,12 @@
   display: block;
   height: 4px;
   min-width: 1px;
-  background: #6bd1ff;
-  border-radius: 2px;
+  background: #39ff88;
+  border-radius: 0;
 }
 
 .opsInputs span:nth-child(2) i {
-  background: #ff5d5d;
+  background: #ff3b3b;
 }
 
 .opsInputs span:nth-child(3) i {
@@ -624,21 +856,23 @@
 .opsSparkline {
   width: 100%;
   height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #3b4451;
+  background: #11151b;
 }
 
 .opsSparklineEmpty {
   height: 30px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #667383;
+  border: 1px solid #3b4451;
+  color: #697586;
+  font-family: var(--font-geist-mono);
   font-size: 8px;
 }
 
 .opsHint {
-  color: #667383;
+  color: #697586;
+  font-family: var(--font-geist-mono);
   font-size: 8px;
   line-height: 1.4;
 }
@@ -715,7 +949,7 @@
 
 .qualifying {
   position: absolute;
-  top: 60px;
+  top: 150px;
   left: 50%;
   transform: translateX(-50%);
   color: #b967ff;
@@ -735,7 +969,7 @@
 
 .penaltyToast {
   position: absolute;
-  top: 104px;
+  top: 108px;
   left: 50%;
   transform: translateX(-50%);
   color: #ff3b3b;

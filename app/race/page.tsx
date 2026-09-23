@@ -216,6 +216,9 @@ function RaceContent() {
   const damageRef = useRef<HTMLDivElement>(null);
   const gearRef = useRef<HTMLDivElement>(null);
   const rpmRef = useRef<HTMLDivElement>(null);
+  const throttleRef = useRef<HTMLDivElement>(null);
+  const brakeRef = useRef<HTMLDivElement>(null);
+  const steerMarkerRef = useRef<HTMLDivElement>(null);
   const minimapGroupRef = useRef<SVGGElement>(null);
   const minimapMarkerRef = useRef<SVGPolygonElement>(null);
   // One dot element per rival, written by aiIndex (see AICar.tsx) -
@@ -262,6 +265,9 @@ function RaceContent() {
         damageRef={damageRef}
         gearRef={gearRef}
         rpmRef={rpmRef}
+         throttleRef={throttleRef}
+         brakeRef={brakeRef}
+         steerMarkerRef={steerMarkerRef}
         minimapGroupRef={minimapGroupRef}
         minimapMarkerRef={minimapMarkerRef}
         aiMarkerEls={aiMarkerEls}
@@ -326,29 +332,40 @@ function RaceContent() {
           ))}
         </div>
       </div>
-      {/* Bottom telemetry bar, broadcast style: gear, speed, revs, energy,
-          tires, aero and assist flags. */}
+      {/* F1-style broadcast telemetry: a compact carbon strip with the
+          gear and speed hierarchy first, then driver inputs and car state. */}
       <div className={styles.bottomBar}>
-        <div className={styles.gear} ref={gearRef}>
-          1
+        <div className={styles.hudTopLine} />
+        <div className={styles.gearCluster}>
+          <span className={styles.clusterLabel}>GEAR</span>
+          <div className={styles.gear} ref={gearRef}>1</div>
         </div>
-        <div className={styles.bbCenter}>
-          <div className={styles.speed} ref={speedRef}>
-            0 km/h
+        <div className={styles.speedCluster}>
+          <div className={styles.speedReadout}>
+            <div className={styles.speed} ref={speedRef}>0</div>
+            <span className={styles.speedUnit}>KM/H</span>
           </div>
-          <div className={styles.rpmTrack}>
-            <div className={styles.rpmFill} ref={rpmRef} />
-          </div>
-          <div className={styles.energyTrack}>
-            <div className={styles.energyFill} ref={energyRef} />
+          <div className={styles.rpmStack}>
+            <div className={styles.barLabel}><span>RPM</span><span>POWER UNIT</span></div>
+            <div className={styles.rpmTrack}>
+              <div className={styles.rpmFill} ref={rpmRef} />
+            </div>
+            <div className={styles.energyTrack}>
+              <div className={styles.energyFill} ref={energyRef} />
+            </div>
+            <div className={styles.barLabel}><span>ERS</span><span>DEPLOYMENT</span></div>
           </div>
         </div>
-        <div className={styles.bbRight}>
-          <div className={styles.tire} ref={tireRef} />
-          <div className={styles.aeroMode} ref={aeroModeRef} />
-          <div className={styles.assists} ref={assistsRef} />
-          <div className={styles.damage} ref={damageRef} />
-          <div className={styles.mute} ref={muteRef} />
+        <div className={styles.inputCluster}>
+          <div className={styles.pedalRow}><span>THR</span><div className={styles.pedalTrack}><div className={styles.pedalFillThrottle} ref={throttleRef} /></div></div>
+          <div className={styles.pedalRow}><span>BRK</span><div className={styles.pedalTrack}><div className={styles.pedalFillBrake} ref={brakeRef} /></div></div>
+          <div className={styles.steerRow}><span>STR</span><div className={styles.steerTrack}><div className={styles.steerMarker} ref={steerMarkerRef} /></div></div>
+        </div>
+        <div className={styles.hudStatus}>
+          <div className={styles.statusCard}><span>TYRE</span><div className={styles.tire} ref={tireRef} /></div>
+          <div className={styles.statusCard}><span>AERO</span><div className={styles.aeroMode} ref={aeroModeRef} /></div>
+          <div className={styles.statusCard}><span>ASSISTS</span><div className={styles.assists} ref={assistsRef} /></div>
+          <div className={styles.statusFooter}><span className={styles.damage} ref={damageRef} /><span className={styles.mute} ref={muteRef} /></div>
         </div>
       </div>
       <div className={styles.raceResult} ref={raceResultRef} />

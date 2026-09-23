@@ -131,6 +131,9 @@ export function Car({
   damageRef,
   gearRef,
   rpmRef,
+  throttleRef,
+  brakeRef,
+  steerMarkerRef,
   minimapGroupRef,
   minimapMarkerRef,
   positionRef,
@@ -196,6 +199,9 @@ export function Car({
   damageRef?: React.RefObject<HTMLDivElement | null>;
   gearRef?: React.RefObject<HTMLDivElement | null>;
   rpmRef?: React.RefObject<HTMLDivElement | null>;
+  throttleRef?: React.RefObject<HTMLDivElement | null>;
+  brakeRef?: React.RefObject<HTMLDivElement | null>;
+  steerMarkerRef?: React.RefObject<HTMLDivElement | null>;
   minimapGroupRef?: React.RefObject<SVGGElement | null>;
   minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
   positionRef?: React.RefObject<HTMLDivElement | null>;
@@ -1041,6 +1047,14 @@ export function Car({
         rpmRef.current.style.background =
           rpm >= SHIFT_UP_RPM ? "#ff3b3b" : engineTorqueMultiplier(rpm) >= 0.99 ? "#39ff88" : "#ffd23f";
       }
+    }
+    if (throttleRef?.current || brakeRef?.current || steerMarkerRef?.current) {
+      const throttle = Math.min(1, Math.max(0, input.current.throttle));
+      const brake = Math.min(1, Math.max(0, input.current.brake));
+      const steer = Math.min(1, Math.max(-1, input.current.steer));
+      if (throttleRef?.current) throttleRef.current.style.width = `${(throttle * 100).toFixed(1)}%`;
+      if (brakeRef?.current) brakeRef.current.style.width = `${(brake * 100).toFixed(1)}%`;
+      if (steerMarkerRef?.current) steerMarkerRef.current.style.left = `${(50 + steer * 45).toFixed(1)}%`;
     }
     if (damageRef?.current) {
       const damagePercent = Math.round(damageGripMultiplierRef.current * 100);
