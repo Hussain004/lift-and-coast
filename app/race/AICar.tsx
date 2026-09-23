@@ -259,7 +259,7 @@ export function AICar({
   /** Garage pick (see lib/race/roster.ts) - this rival's own team livery. */
   bodyColor?: string;
   /** Shared with the race audio rig (see app/race/RaceAudioRig.tsx) - this
-   * car fills in the opponent half every render frame from live telemetry. */
+   * car fills in its own opponent slot every render frame. */
   audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { world, rapier } = useRapier();
@@ -760,23 +760,26 @@ export function AICar({
       marker.setAttribute("cx", pos.x.toFixed(1));
       marker.setAttribute("cy", pos.z.toFixed(1));
     }
-    // Opponent half of the race audio snapshot (see
-    // app/race/RaceAudioRig.tsx) - same rpm policy as the player's own
-    // shift bar, so the two engines read as the same machinery. Only the
-    // first rival drives the voice: mixing nineteen engines would be mud,
-    // and positional panning needs exactly one source.
-    if (audioRef && pos && aiIndex === 0) {
+    // This car's slot in the race audio snapshot (see
+    // app/race/RaceAudioRig.tsx): every rival reports, and the synth voices
+    // the three nearest - same rpm policy as the player's own shift bar, so
+    // the engines read as the same machinery.
+    if (audioRef && pos) {
       const c = lastControlsRef.current;
       // Same forward/right convention as Car.tsx's own snapshot.
       const forwardMs = c.lvx * -Math.sin(c.yaw) + c.lvz * -Math.cos(c.yaw);
       const lateralMs = c.lvx * Math.cos(c.yaw) - c.lvz * Math.sin(c.yaw);
-      audioRef.current.opponent = {
+      audioRef.current.opponents[aiIndex] = {
         rpm01: rpmTo01(rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear)),
         throttle01: Math.min(1, Math.max(0, c.throttle)),
         skid01: skidAmount01(lateralMs, forwardMs),
         x: pos.x,
         z: pos.z,
         yawRad: c.yaw,
+        vx: c.lvx,
+        vz: c.lvz,
+        gear: gearboxRef.current.gear,
+        kerb01: 0,
       };
     }
     CAR_WHEELS.forEach((wheel, i) => {

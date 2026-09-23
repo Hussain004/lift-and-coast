@@ -2,17 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   clamp01,
   createRaceAudio,
+  defaultCarSnapshot,
+  dopplerFactor,
   engineCutoffHz,
   engineFrequencyHz,
   engineGain01,
   impactGain01,
+  kerbRumbleHz,
   loadMuted,
   opponentGain01,
   opponentPanLR,
+  pickVoicedOpponents,
   rpmTo01,
   saveMuted,
   skidAmount01,
   skidGain01,
+  windGain01,
 } from "../lib/audio/raceAudio";
 import { IDLE_RPM, REDLINE_RPM } from "../lib/physics/gearbox";
 
@@ -57,6 +62,34 @@ describe("race audio mappings", () => {
     expect(opponentPanLR(-10, 0, 0)).toBe(-1);
     expect(opponentPanLR(0, -10, 0)).toBe(0);
     expect(opponentPanLR(0, 0, 0)).toBe(0);
+  });
+
+  it("pitches rivals up approaching and down receding", () => {
+    expect(dopplerFactor(0)).toBe(1);
+    expect(dopplerFactor(-30)).toBeGreaterThan(1);
+    expect(dopplerFactor(30)).toBeLessThan(1);
+    // Bounded even for absurd closing speeds.
+    expect(dopplerFactor(-10000)).toBeLessThan(2.5);
+  });
+
+  it("voices the nearest rivals, and holds a voice through a near tie", () => {
+    const at = (x: number) => ({ ...defaultCarSnapshot(), x });
+    const player = { x: 0, z: 0 };
+    const field = [at(50), at(10), null, at(30), at(20), at(500)];
+    expect(pickVoicedOpponents(player, field, [], 3)).toEqual([1, 4, 3]);
+    // Car 0 is voiced and only a little further than car 3: it keeps it.
+    expect(pickVoicedOpponents(player, [at(40), at(10), at(20), at(35)], [0, 1, 2], 3)).toEqual([1, 2, 0]);
+    // Out of earshot is silent.
+    expect(pickVoicedOpponents(player, [at(400)], [], 3)).toEqual([]);
+  });
+
+  it("rises wind with speed and keeps the kerb rumble in the thump band", () => {
+    expect(windGain01(0)).toBe(0);
+    expect(windGain01(40)).toBeLessThan(windGain01(80));
+    expect(windGain01(200)).toBeCloseTo(windGain01(85), 9);
+    expect(kerbRumbleHz(0)).toBeGreaterThanOrEqual(14);
+    expect(kerbRumbleHz(40)).toBeGreaterThan(kerbRumbleHz(20));
+    expect(kerbRumbleHz(90)).toBeLessThanOrEqual(95);
   });
 
   it("gates impacts from wheel taps to chassis hits", () => {

@@ -370,6 +370,8 @@ export function Car({
   // the wear tracking itself lives here rather than in useDriveInput
   // since it needs per-frame speed/distance data that hook doesn't have.
   const prevTireCompoundRef = useRef<TireCompoundId>(tireCompound.current);
+  // Share of wheels on a kerb this physics tick, for the audio rumble.
+  const kerbContactRef = useRef(0);
   // Grip lost to impact damage (1 = undamaged) - see applyImpactDamage's own
   // comment. Reset on the same "fresh attempt" triggers as the lap-scoped
   // state below: a new lap starting, or the off-track/world-edge teleport
@@ -712,6 +714,8 @@ export function Car({
     const surfaceSamples = wheelGroundPositions(body).map((wheel) =>
       sampleSurface(track, wheel.x, wheel.z)
     );
+    kerbContactRef.current =
+      surfaceSamples.filter((sample) => sample.kerbRiseMeters > 0).length / surfaceSamples.length;
     applyKerbRideHeights(
       controller,
       surfaceSamples.map((sample) => sample.kerbRiseMeters)
@@ -866,6 +870,10 @@ export function Car({
         x: p.x,
         z: p.z,
         yawRad: yaw,
+        vx: lv.x,
+        vz: lv.z,
+        gear: gearboxRef.current.gear,
+        kerb01: kerbContactRef.current,
       };
     }
 
