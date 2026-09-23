@@ -36,6 +36,7 @@ import { createEnergySystem } from "../../lib/physics/energy";
 import { computeAIControls, nearestLineIndex } from "../../lib/ai/pathFollower";
 import {
   difficultyAggressionShift,
+  difficultyEngineForceScale,
   difficultyPaceScale,
   tireCurveMultiplier,
   traitsForDriver,
@@ -435,7 +436,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       applyCarControls(
         car.controller,
         controls,
-        DEFAULT_ENGINE_FORCE,
+        DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty),
         boostMultiplier,
         DEFAULT_BRAKE_FORCE,
         car.speedMs,

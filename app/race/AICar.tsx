@@ -52,6 +52,7 @@ import { createWeatherSystem } from "@/lib/physics/weather";
 import type { WeatherHandle } from "@/lib/race/raceOps";
 import {
   difficultyAggressionShift,
+  difficultyEngineForceScale,
   difficultyMistakeScale,
   difficultyPaceScale,
   hashDriverCode,
@@ -738,7 +739,7 @@ export function AICar({
     applyCarControls(
       controller,
       gatedControls,
-      DEFAULT_ENGINE_FORCE,
+      DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty),
       boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier,
       DEFAULT_BRAKE_FORCE,
       speedMs,

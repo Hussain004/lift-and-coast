@@ -18,7 +18,7 @@ export const DIFFICULTY_OPTIONS: { id: AIDifficulty; label: string; blurb: strin
   { id: "rookie", label: "Rookie", blurb: "Gentle field, generous mistakes" },
   { id: "club", label: "Club", blurb: "Lively midfield, occasional errors" },
   { id: "pro", label: "Pro", blurb: "The reference pace" },
-  { id: "ace", label: "Ace", blurb: "Faster, braver, rarer mistakes" },
+  { id: "ace", label: "Ace", blurb: "Fastest launches, strongest pace, rare mistakes" },
 ];
 
 export const DEFAULT_DIFFICULTY: AIDifficulty = "pro";
@@ -41,6 +41,25 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
       return 1.0;
     case "ace":
       return 1.18;
+  }
+}
+
+/**
+ * Engine-force multiplier for the AI field. Pace scale changes the target
+ * speed envelope; this changes how quickly the car can actually get there.
+ * Ace gets a real acceleration advantage while Pro remains the reference
+ * physics baseline. The boost cap in vehicle.ts still applies afterward.
+ */
+export function difficultyEngineForceScale(difficulty: AIDifficulty): number {
+  switch (difficulty) {
+    case "rookie":
+      return 0.94;
+    case "club":
+      return 0.98;
+    case "pro":
+      return 1.0;
+    case "ace":
+      return 1.1;
   }
 }
 

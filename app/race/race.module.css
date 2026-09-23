@@ -363,24 +363,34 @@
   z-index: 3;
 }
 
+.raceDataLap {
+  min-width: 250px;
+}
+
 .raceDataLap,
 .raceDataPosition {
-  min-width: 90px;
   padding: 6px 10px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  background: rgba(7, 9, 13, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #fff;
   font-family: var(--font-geist-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.7px;
-  text-align: center;
+  letter-spacing: 0.5px;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .raceDataPosition {
+  min-width: 62px;
   color: #39ff88;
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 18px;
   font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-align: center;
 }
 
 .raceDataStrip .delta,

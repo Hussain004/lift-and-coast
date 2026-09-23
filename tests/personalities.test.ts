@@ -5,6 +5,7 @@ import {
   difficultyMistakeScale,
   DIFFICULTY_OPTIONS,
   difficultyAggressionShift,
+  difficultyEngineForceScale,
   difficultyPaceScale,
   hashDriverCode,
   mulberry32,
@@ -31,6 +32,13 @@ describe("difficulty scales", () => {
     expect(difficultyPaceScale("pro")).toBe(1);
     expect(difficultyPaceScale("ace")).toBeGreaterThan(1.02);
     expect(difficultyPaceScale("rookie")).toBeLessThan(0.97);
+  });
+
+  it("gives Ace a real acceleration advantage without changing Pro", () => {
+    expect(difficultyEngineForceScale("ace")).toBeGreaterThan(1.05);
+    expect(difficultyEngineForceScale("pro")).toBe(1);
+    expect(difficultyEngineForceScale("club")).toBeLessThan(1);
+    expect(difficultyEngineForceScale("rookie")).toBeLessThan(difficultyEngineForceScale("club"));
   });
 
   it("scales mistakes down with tier", () => {

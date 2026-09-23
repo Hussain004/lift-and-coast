@@ -29,9 +29,9 @@ const RACING_LINE_HEIGHT_OFFSET = 0.05;
 // line sweeps across an edge the throttle-map colors must win, and a 1cm
 // separation is plenty for the depth buffer this close to the camera.
 const EDGE_LINE_HEIGHT_OFFSET = 0.035;
-// Wide colored stripe (like an F1 game's throttle map), not a thin wire.
-// 0.8m each side gives a readable 1.6m ribbon without hiding the track edge.
-const RACING_LINE_HALF_WIDTH_METERS = 0.8;
+// Compact broadcast stripe: 0.6m each side keeps the ideal line readable
+// without covering the racing surface or competing with the track edge.
+const RACING_LINE_HALF_WIDTH_METERS = 0.6;
 
 // Restrained broadcast-style shades: cool green for throttle, amber for a
 // lift, orange for trail braking, and a deep red for a genuine hard-braking

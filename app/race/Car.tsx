@@ -1000,7 +1000,7 @@ export function Car({
     });
     if (speedRef?.current) {
       const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
-      speedRef.current.textContent = `${Math.round(kmh)} km/h`;
+      speedRef.current.textContent = `${Math.round(kmh)}`;
     }
     if (energyRef?.current) {
       energyRef.current.style.width = `${(batteryFractionRef.current * 100).toFixed(1)}%`;

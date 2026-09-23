@@ -35,7 +35,7 @@ import type { TrackData } from "./types";
 // ~28 over the whole lap, in line with the track's real corner count.
 const CURVATURE_LOOKAHEAD_POINTS = 20;
 const CURVATURE_OFFSET_GAIN = 40;
-const MAX_OFFSET_FRACTION_OF_HALF_WIDTH = 0.75;
+const MAX_OFFSET_FRACTION_OF_HALF_WIDTH = 0.76;
 // An inside offset larger than the local corner radius folds the line through
 // itself at hairpins. The old fixed 75%-of-half-width cap ignored that
 // constraint and produced near-zero-length segments at COTA, Bahrain and
