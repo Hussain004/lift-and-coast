@@ -279,7 +279,7 @@ function JoinByCode({ teamId, driverCode }: { teamId: string; driverCode: string
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         placeholder="CODE"
         maxLength={6}
-        style={{ width: "7em", textAlign: "center" }}
+        className={styles.codeInput}
       />
       <button
         type="button"

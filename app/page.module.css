@@ -964,3 +964,29 @@
 
 
 
+
+/* Room code field: same glass-and-mono vocabulary as the buttons beside it. */
+.codeInput {
+  width: 8.5em;
+  padding: 10px 12px;
+  border: 1px solid rgba(246, 243, 236, 0.16);
+  border-radius: 10px;
+  background: rgba(8, 9, 13, 0.6);
+  color: #f6f3ec;
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+  letter-spacing: 4px;
+  text-align: center;
+  text-transform: uppercase;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.codeInput::placeholder {
+  color: #5b616c;
+}
+
+.codeInput:focus {
+  outline: none;
+  border-color: #e10600;
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.18);
+}

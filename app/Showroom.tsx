@@ -1,53 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Sparkles } from "@react-three/drei";
-import { computeDriverFigure, type FigureColor } from "@/lib/race/driverFigure";
 import { CarBodyShell, CarWheels } from "./race/CarBodyMesh";
 import {
   resolveRosterSelection,
   useRosterSelection,
-  type RosterDriver,
   type RosterTeam,
 } from "@/lib/race/roster";
 
-// Garage showroom hero: the selected car in full livery next to its driver,
-// on a slow turntable under studio lights. Drag sideways to spin it by
+// Garage showroom hero: the selected car in full livery on a slow turntable under studio lights. Drag sideways to spin it by
 // hand; auto-rotate resumes a couple of seconds after release. Pure menu
 // scenery - no physics, no colliders, shadows off for a cheap frame.
 const AUTO_SPEED_RAD_S = 0.45;
 const RESUME_DELAY_S = 2.5;
 
-function figureColor(
-  color: FigureColor,
-  team: RosterTeam,
-  driver: RosterDriver
-): string {
-  switch (color) {
-    case "suit":
-      return team.primaryColor;
-    case "trim":
-      return team.secondaryColor;
-    case "helmet":
-      return driver.helmet;
-    case "visor":
-      return driver.visor;
-    case "carbon":
-      return "#161616";
-  }
-}
-
-function Turntable({
-  team,
-  driver,
-  reduced,
-}: {
-  team: RosterTeam;
-  driver: RosterDriver;
-  reduced: boolean;
-}) {
+function Turntable({ team, reduced }: { team: RosterTeam; reduced: boolean }) {
   const group = useRef<THREE.Group>(null);
   // Accumulated spin so a hand drag can hand off momentum: the drag writes
   // rot + a velocity, and the release lets it decay before auto-rotate
@@ -58,8 +28,6 @@ function Turntable({
   const lx = useRef(0);
   const lastInput = useRef(RESUME_DELAY_S);
   const float = useRef(0);
-
-  const figure = useMemo(() => computeDriverFigure(), []);
 
   useFrame((_, dt) => {
     const g = group.current;
@@ -126,20 +94,6 @@ function Turntable({
         studio
       />
       <CarWheels studio />
-      {/* Driver figure at the car's left flank, feet on the plinth.
-          Wheel bottoms sit at y=-0.69 in body frame, so that is ground. */}
-      <group position={[-1.7, -0.69, 0.2]}>
-        {figure.panels.map((panel, i) => (
-          <mesh key={`fig-${i}`} position={panel.position}>
-            <boxGeometry args={panel.size} />
-            <meshStandardMaterial color={figureColor(panel.color, team, driver)} roughness={0.6} />
-          </mesh>
-        ))}
-        <mesh position={figure.helmet.position}>
-          <sphereGeometry args={[figure.helmet.radius, 16, 12]} />
-          <meshStandardMaterial color={figureColor("helmet", team, driver)} roughness={0.35} metalness={0.15} />
-        </mesh>
-      </group>
       {/* Plinth disc with a team-color ring + faint outer rim, plus a
           team-colored underglow pooling beneath the car. */}
       <mesh position={[0, -0.69, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -171,21 +125,19 @@ function CameraRig() {
   const { camera, pointer } = useThree();
   const target = useRef(new THREE.Vector3());
   useFrame(() => {
-    target.current.set(4.6 + pointer.x * 0.7, 2.1 + pointer.y * 0.4, 6.4);
+    target.current.set(3.7 + pointer.x * 0.6, 1.45 + pointer.y * 0.3, 4.8);
     camera.position.lerp(target.current, 0.045);
-    camera.lookAt(0, 0.15, 0);
+    camera.lookAt(0, -0.12, 0);
   });
   return null;
 }
 
 export function Showroom({
   team,
-  driver,
   visible = true,
   reduced = false,
 }: {
   team: RosterTeam;
-  driver: RosterDriver;
   /** Frame loop gate - false pauses all rendering (offscreen saving). */
   visible?: boolean;
   reduced?: boolean;
@@ -194,10 +146,10 @@ export function Showroom({
     <Canvas
       frameloop={visible ? "always" : "never"}
       dpr={[1, 1.5]}
-      camera={{ position: [4.6, 2.1, 6.4], fov: 38 }}
+      camera={{ position: [3.7, 1.45, 4.8], fov: 36 }}
       gl={{ antialias: true, alpha: true }}
       style={{ touchAction: "pan-y" }}
-      onCreated={({ camera }) => camera.lookAt(0, 0.15, 0)}
+      onCreated={({ camera }) => camera.lookAt(0, -0.12, 0)}
     >
       {/* Three-point rig: warm key, cool rim, gold kicker from behind. */}
       <ambientLight intensity={0.35} />
@@ -223,7 +175,7 @@ export function Showroom({
         color="#d3ab63"
       />
       <CameraRig />
-      <Turntable team={team} driver={driver} reduced={reduced} />
+      <Turntable team={team} reduced={reduced} />
     </Canvas>
   );
 }
@@ -233,7 +185,7 @@ export function Showroom({
  * prerender, and wrapped so the loop pauses when scrolled away. */
 export function ShowroomPanel() {
   const { teamId, driverCode } = useRosterSelection();
-  const { team, driver } = resolveRosterSelection(teamId, driverCode);
+  const { team } = resolveRosterSelection(teamId, driverCode);
   const [visible, setVisible] = useState(true);
   const [reduced, setReduced] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -261,7 +213,7 @@ export function ShowroomPanel() {
 
   return (
     <div ref={ref} style={{ position: "absolute", inset: 0 }}>
-      <Showroom team={team} driver={driver} visible={visible} reduced={reduced} />
+      <Showroom team={team} visible={visible} reduced={reduced} />
     </div>
   );
 }
