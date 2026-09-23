@@ -34,6 +34,7 @@ import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifyi
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
 import type { AIDifficulty } from "@/lib/ai/personalities";
+import type { TowerDriver } from "@/lib/race/racePosition";
 import {
   QUALITY_SETTINGS,
   loadGraphicsPref,
@@ -509,6 +510,9 @@ export function Scene({
   qualiFormat = "timed",
   playerGridSpot = null,
   playerCode = "YOU",
+  playerName = "YOU",
+  playerNumber,
+  playerTeamId,
   rivals = [],
   /** Meeting AI difficulty (see lib/ai/personalities.ts) - host-owned in
    * net rooms, since the host simulates the whole field. */
@@ -577,13 +581,17 @@ export function Scene({
   playerGridSpot?: number | null;
   /** The player's FIA code for the tower (see page.tsx's roster pick). */
   playerCode?: string;
+  /** Driver identity shown in the broadcast timing tower. */
+  playerName?: string;
+  playerNumber?: number;
+  playerTeamId?: string;
   /**
    * The rivals in field order (see resolveFieldRoster): code + livery per
    * car for the tower, minimap and bodies, and the count sizes the race
    * state, qualifying board and grid. Fixed per mount (page.tsx remounts
    * Scene when it changes, so every useRef below stays correct).
    */
-  rivals?: { code: string; color: string }[];
+  rivals?: TowerDriver[];
   /**
    * Meeting AI difficulty (see lib/ai/personalities.ts).
    */
@@ -762,6 +770,9 @@ export function Scene({
           qualiFormat={qualiFormat}
           playerGridSpot={playerGridSpot}
           playerCode={playerCode}
+          playerName={playerName}
+          playerNumber={playerNumber}
+          playerTeamId={playerTeamId}
           rivals={rivals}
           playerInputRef={playerInputRef}
           carPosesRef={carPosesRef}

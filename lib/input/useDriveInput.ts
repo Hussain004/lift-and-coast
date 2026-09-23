@@ -4,6 +4,7 @@ import {
   applyAxisDeadzone,
   engaged,
   findConnectedGamepad,
+  gamepadSteerToVehicle,
   readGamepadAxes,
   shapeAnalogAxis,
   splitPedalAxis,
@@ -271,7 +272,7 @@ export function useDriveInput(
       gamepadConnected.current = pad !== null;
       if (pad) {
         const raw = readGamepadAxes(pad);
-        if (engaged(raw.steer)) padSteer = shapeAnalogAxis(raw.steer);
+        if (engaged(raw.steer)) padSteer = gamepadSteerToVehicle(raw.steer);
         if (engaged(raw.pedalAxis)) {
           const split = splitPedalAxis(shapeAnalogAxis(raw.pedalAxis));
           padThrottle = Math.max(split.throttleTarget, applyAxisDeadzone(raw.triggerThrottle));

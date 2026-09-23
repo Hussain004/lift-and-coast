@@ -34,7 +34,7 @@ import {
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
-import { createGearboxState, rpmForGear } from "@/lib/physics/gearbox";
+import { createGearboxState, gearboxSpeedMs, rpmForGear } from "@/lib/physics/gearbox";
 import { F1CarBody } from "./F1CarBody";
 import { checkTrackLimits, allWheelsOffTrack, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
 import {
@@ -85,7 +85,7 @@ import {
 } from "@/lib/race/rewindBuffer";
 import { gridSlot } from "@/lib/race/grid";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
-import { rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
+import { limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
 import type { QualifyingTimes } from "@/lib/race/qualifying";
 import type { CarPose } from "@/lib/net/snapshots";
@@ -291,6 +291,7 @@ export function AICar({
   // that reaches back past the violation undo it, mirroring the player's
   // lapInvalidAtSecondsRef in Car.tsx.
   const aiLapInvalidAtSecondsRef = useRef<number | null>(null);
+  const aiBestLapRef = useRef<number | null>(null);
   // Flashback state (see sharedRewindActiveRef): same scrub/resume/lap-
   // rollback discipline as the player's own car in Car.tsx.
   const aiBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
@@ -475,6 +476,8 @@ export function AICar({
             body.linvel(),
             yawFromQuaternion(rotNow.x, rotNow.y, rotNow.z, rotNow.w)
           ),
+          lastLapSeconds: lap.lastLapSeconds,
+          bestLapSeconds: aiBestLapRef.current,
         };
       }
       // Playable Qualifying: the AI's best VALID lap, feeding the same
@@ -488,6 +491,9 @@ export function AICar({
         aiLapInvalidRef.current = true;
       }
       if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+        if (!aiLapInvalidRef.current && (aiBestLapRef.current === null || lap.lastLapSeconds < aiBestLapRef.current)) {
+          aiBestLapRef.current = lap.lastLapSeconds;
+        }
         if (qualifyingRef?.current && !aiLapInvalidRef.current) {
           const times = qualifyingRef.current.opponents;
           while (times.length <= aiIndex) times.push(null);
@@ -778,7 +784,18 @@ export function AICar({
       const forwardMs = c.lvx * -Math.sin(c.yaw) + c.lvz * -Math.cos(c.yaw);
       const lateralMs = c.lvx * Math.cos(c.yaw) - c.lvz * Math.sin(c.yaw);
       audioRef.current.opponents[aiIndex] = {
-        rpm01: rpmTo01(rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear)),
+        rpm01: rpmTo01(
+          rpmForGear(
+            gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
+            gearboxRef.current.gear
+          )
+        ),
+        limiter01: limiterAmount(
+          rpmForGear(
+            gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
+            gearboxRef.current.gear
+          )
+        ),
         throttle01: Math.min(1, Math.max(0, c.throttle)),
         skid01: skidAmount01(lateralMs, forwardMs),
         x: pos.x,
@@ -788,6 +805,7 @@ export function AICar({
         vz: c.lvz,
         gear: gearboxRef.current.gear,
         kerb01: 0,
+        shiftSerial: 0,
       };
     }
     CAR_WHEELS.forEach((wheel, i) => {

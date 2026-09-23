@@ -96,6 +96,46 @@ describe("buildTowerEntries + renderTowerHtml", () => {
     expect(Number.isFinite(entries[1].gapSeconds)).toBe(true);
   });
 
+  it("renders driver identity, lap fields, intervals, and race-control status", () => {
+    const entries = buildTowerEntries(
+      {
+        code: "YOU",
+        name: "Alex Runner",
+        number: 44,
+        teamId: "ferrari",
+        color: "#ffffff",
+        progress: {
+          lapCount: 2,
+          progressMeters: 1200,
+          speedMs: 40,
+          lastLapSeconds: 83.125,
+          bestLapSeconds: 82.9,
+          trackLimitStage: "warning",
+          trackLimitWarningNumber: 2,
+        },
+      },
+      [
+        {
+          code: "RIV",
+          name: "Rival Driver",
+          number: 1,
+          teamId: "red-bull",
+          color: "#ff0000",
+          progress: { lapCount: 2, progressMeters: 1000, speedMs: 40, bestLapSeconds: 84.2 },
+        },
+      ],
+      L
+    );
+    const html = renderTowerHtml(entries);
+    expect(html).toContain("Alex Runner");
+    expect(html).toContain("#44");
+    expect(html).toContain("1:23.125");
+    expect(html).toContain("1:22.900");
+    expect(html).toContain("+5.0");
+    expect(html).toContain("W2/3");
+    expect(html).toContain("tower-status-warning");
+  });
+
   it("escapes hostile codes", () => {
     const entries = buildTowerEntries(
       { code: "<b>", color: "#fff", progress: { lapCount: 2, progressMeters: 0, speedMs: 1 } },

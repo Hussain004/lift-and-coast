@@ -1,13 +1,21 @@
+import type { TrackLimitStage } from "./trackLimitSequence";
+
 export interface RaceProgress {
   lapCount: number;
   /** Arc-length distance from the start/finish line, meters - resets to ~0 each lap. */
   progressMeters: number;
-  /**
-   * Signed forward speed when this snapshot was written, m/s - feeds the
+  /** Signed forward speed when this snapshot was written, m/s - feeds the
    * timing tower's gap seconds (see renderTowerHtml). Optional so older
-   * callers and tests keep compiling; missing reads as stopped.
-   */
+   * callers and tests keep compiling; missing reads as stopped. */
   speedMs?: number;
+  /** Last completed lap, when one exists. */
+  lastLapSeconds?: number | null;
+  /** Best completed lap, when one exists. */
+  bestLapSeconds?: number | null;
+  /** Current race-control track-limits stage, if any. */
+  trackLimitStage?: TrackLimitStage;
+  /** One-based warning episode while `trackLimitStage` is "warning". */
+  trackLimitWarningNumber?: number | null;
 }
 
 /**
@@ -66,29 +74,35 @@ export function computeRacePositions(
   return positions;
 }
 
-export interface TowerEntry {
-  /** FIA-style code shown on the chip. */
+export interface TowerDriver {
   code: string;
-  /** Livery color for the chip and minimap dot. */
   color: string;
-  /** Finishing position (1-based), from computeRacePositions. */
+  number?: number | null;
+  name?: string | null;
+  teamId?: string | null;
+}
+
+export interface TowerEntry extends TowerDriver {
+  /** Finishing/live position (1-based), from computeRacePositions. */
   position: number;
-  /**
-   * Seconds behind the leader (interval-style gap), or null for the
-   * leader itself.
-   */
+  /** Seconds behind the leader, or null for the leader itself. */
   gapSeconds: number | null;
-  /**
-   * Full laps behind the leader (from distance, not pace, so a slow car
-   * can't read extra laps down). Lapped cars read "+N LAP" instead of a
-   * seconds gap - timing screens never show "+90.0" for a lapped car.
-   */
+  /** Seconds behind the car immediately ahead, or null for the leader. */
+  intervalSeconds: number | null;
+  /** Full laps behind the leader (from distance, not pace). */
   lapsDown: number;
+  /** Full laps between this car and the car immediately ahead. */
+  intervalLapsDown: number;
+  lastLapSeconds: number | null;
+  bestLapSeconds: number | null;
+  isFastestLap: boolean;
+  trackLimitStage: TrackLimitStage | null;
+  trackLimitWarningNumber: number | null;
   isPlayer: boolean;
 }
 
 /**
- * Orders tower entries the F1 broadcast way: by finishing position, the
+ * Orders tower entries the broadcast way: by finishing position, the
  * leader first. Pure over data (no DOM) so the tower is unit-testable;
  * the race loop renders the returned order into tower HTML.
  */
@@ -97,34 +111,76 @@ export function orderTowerEntries(entries: readonly TowerEntry[]): TowerEntry[] 
 }
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function safeColor(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#888888";
+}
+
+function towerTime(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) return "--.---";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds - minutes * 60;
+  return `${minutes}:${remainder.toFixed(3).padStart(6, "0")}`;
+}
+
+function trackLimitStatus(stage: TrackLimitStage | null, warningNumber = 1): string {
+  if (stage === null || stage === "clear") return "RUN";
+  if (stage === "warning") return `W${Math.min(3, Math.max(1, warningNumber))}/3`;
+  if (stage === "black-white") return "B/W";
+  return "+5s";
 }
 
 /**
- * Renders an F1-style timing tower (position, code chip, gap) as HTML - one
- * row per entry, in the order orderTowerEntries returns. Gap seconds come
- * from each follower's own speed (distance gap / follower speed, floored at
- * a crawl so a stationary car reads a large but finite gap): an
- * approximation of timing-loop gaps, documented as such, and only ever
- * displayed - positions always come from distance. Codes are escaped;
- * colors are validated hex from the roster before they get here.
+ * Renders a broadcast-style timing row. The leader's first timing column is
+ * LEADER; followers show interval to the car ahead, while the separate gap
+ * column remains leader-relative. Last/best laps and race-control status
+ * are display-only and never affect position.
  */
 export function renderTowerHtml(entries: readonly TowerEntry[]): string {
   return orderTowerEntries(entries)
     .map((entry) => {
-      let gap: string;
-      if (entry.gapSeconds === null) {
-        gap = "LEADER";
-      } else if (entry.lapsDown >= 1) {
-        gap = entry.lapsDown === 1 ? "+1 LAP" : `+${entry.lapsDown} LAPS`;
-      } else {
-        gap = `+${entry.gapSeconds.toFixed(1)}`;
-      }
+      const gap =
+        entry.gapSeconds === null
+          ? "LEADER"
+          : entry.lapsDown >= 1
+            ? entry.lapsDown === 1
+              ? "+1 LAP"
+              : `+${entry.lapsDown} LAPS`
+            : `+${entry.gapSeconds.toFixed(1)}`;
+      const interval =
+        entry.intervalSeconds === null
+          ? "LEADER"
+          : entry.intervalLapsDown >= 1
+            ? entry.intervalLapsDown === 1
+              ? "+1 LAP"
+              : `+${entry.intervalLapsDown} LAPS`
+            : `+${entry.intervalSeconds.toFixed(1)}`;
+      const code = escapeHtml(entry.code);
+      const name = escapeHtml(entry.name || entry.code);
+      const number = entry.number ? `#${entry.number}` : "--";
+      const team = entry.teamId ? escapeHtml(entry.teamId) : "";
+      const status = trackLimitStatus(entry.trackLimitStage, entry.trackLimitWarningNumber ?? 1);
+      const statusClass =
+        entry.trackLimitStage === "warning"
+          ? " tower-status-warning"
+          : entry.trackLimitStage === "black-white"
+            ? " tower-status-black-white"
+            : entry.trackLimitStage === "penalty"
+              ? " tower-status-penalty"
+              : "";
       return (
-        `<div class="tower-row${entry.isPlayer ? " tower-row-you" : ""}">` +
+        `<div class="tower-row${entry.isPlayer ? " tower-row-you" : ""}${entry.isFastestLap ? " tower-fastest" : ""}" data-code="${code}">` +
         `<span class="tower-pos">P${entry.position}</span>` +
-        `<span class="code-chip" style="background:${entry.color}">${escapeHtml(entry.code)}</span>` +
-        `<span class="tower-gap">${gap}</span></div>`
+        `<span class="tower-driver"><span class="tower-number">${number}</span>` +
+        `<span class="code-chip" style="background:${safeColor(entry.color)}">${code}</span>` +
+        `<span class="tower-name">${name}</span>${team ? `<span class="tower-team">${team}</span>` : ""}</span>` +
+        `<span class="tower-interval">${interval}</span>` +
+        `<span class="tower-gap">${gap}</span>` +
+        `<span class="tower-last">${towerTime(entry.lastLapSeconds)}</span>` +
+        `<span class="tower-best">${towerTime(entry.bestLapSeconds)}</span>` +
+        `<span class="tower-status${statusClass}">${status}</span></div>`
       );
     })
     .join("");
@@ -133,57 +189,91 @@ export function renderTowerHtml(entries: readonly TowerEntry[]): string {
 /**
  * Pairs each rival with its live progress for the tower builders below -
  * shared by Car.tsx (live HUD) and NetHost (broadcast), so both rank the
- * same field the same way. Missing progress (a car that has not ticked
- * yet) reads as a stopped car at the line, never as absent.
+ * same field the same way. Optional driver metadata is only copied when a
+ * caller supplied it, preserving the compact shape used by older callers.
  */
+export type TowerOpponent = TowerDriver & { progress: RaceProgress };
+
 export function towerOpponents(
-  rivals: readonly { code: string; color: string }[],
+  rivals: readonly TowerDriver[],
   opponents: readonly (RaceProgress | undefined)[]
-): { code: string; color: string; progress: RaceProgress }[] {
-  return rivals.map((rival, k) => ({
-    code: rival.code,
-    color: rival.color,
-    progress: opponents[k] ?? { lapCount: 0, progressMeters: 0 },
-  }));
+): TowerOpponent[] {
+  return rivals.map((rival, k) => {
+    const entry: TowerDriver & { progress: RaceProgress } = {
+      code: rival.code,
+      color: rival.color,
+      progress: opponents[k] ?? { lapCount: 0, progressMeters: 0 },
+    };
+    if (rival.number !== undefined) entry.number = rival.number;
+    if (rival.name !== undefined) entry.name = rival.name;
+    if (rival.teamId !== undefined) entry.teamId = rival.teamId;
+    return entry;
+  });
 }
 
 /**
- * Builds tower entries (positions + gaps) for the player plus every
- * opponent from live progress. Gap meters convert with the follower's own
- * speed (see renderTowerHtml); a stopped follower floors at a crawl so
- * the tower never divides by zero or shows infinity.
+ * Builds tower entries (positions, intervals/gaps, lap fields, fastest-lap
+ * highlight, and race-control status) for the player plus every opponent
+ * from live progress. Gap/interval are display estimates based on the
+ * relevant cars' speeds; positions always come from distance.
  */
 export function buildTowerEntries(
-  player: { code: string; color: string; progress: RaceProgress },
-  opponents: readonly { code: string; color: string; progress: RaceProgress }[],
+  player: TowerDriver & { progress: RaceProgress },
+  opponents: readonly (TowerDriver & { progress: RaceProgress })[],
   trackLengthMeters: number
 ): TowerEntry[] {
-  const progresses = [player.progress, ...opponents.map((o) => o.progress)];
-  const positions = computeRacePositions(progresses, trackLengthMeters);
-  const leaderTotal = Math.max(...progresses.map((p) => totalDistance(p, trackLengthMeters)));
-  const toEntry = (
-    code: string,
-    color: string,
-    progress: RaceProgress,
-    position: number,
-    isPlayer: boolean
-  ): TowerEntry => {
-    if (position === 1) {
-      return { code, color, position, gapSeconds: null, lapsDown: 0, isPlayer };
-    }
-    const gapMeters = leaderTotal - totalDistance(progress, trackLengthMeters);
-    const speedMs = Math.max(progress.speedMs ?? 0, 5);
+  const drivers = [player, ...opponents];
+  const progresses = drivers.map((entry) => entry.progress);
+  const safeTrackLength = Math.max(1, trackLengthMeters);
+  const positions = computeRacePositions(progresses, safeTrackLength);
+  const leaderTotal = Math.max(...progresses.map((p) => totalDistance(p, safeTrackLength)));
+  const bestLap = progresses.reduce<number | null>((best, progress) => {
+    const value = progress.bestLapSeconds;
+    return value !== null && value !== undefined && Number.isFinite(value) && (best === null || value < best)
+      ? value
+      : best;
+  }, null);
+
+  const entries = drivers.map((driver, index) => {
+    const progress = driver.progress;
+    const total = totalDistance(progress, safeTrackLength);
+    const position = positions[index];
+    const gapMeters = Math.max(0, leaderTotal - total);
+    const leaderSpeedMs = Math.max(5, Math.abs(progresses[positions.indexOf(1)]?.speedMs ?? 30));
+    const speedMs = Math.max(5, (Math.abs(progress.speedMs ?? 30) + leaderSpeedMs) / 2);
+    const isFastestLap = bestLap !== null && progress.bestLapSeconds === bestLap;
     return {
-      code,
-      color,
+      ...driver,
       position,
-      gapSeconds: gapMeters / speedMs,
-      lapsDown: Math.floor(gapMeters / trackLengthMeters),
-      isPlayer,
-    };
-  };
-  return [
-    toEntry(player.code, player.color, player.progress, positions[0], true),
-    ...opponents.map((o, k) => toEntry(o.code, o.color, o.progress, positions[k + 1], false)),
-  ];
+      gapSeconds: position === 1 ? null : gapMeters / speedMs,
+      intervalSeconds: null as number | null,
+      lapsDown: Math.floor(gapMeters / safeTrackLength),
+      intervalLapsDown: 0 as number,
+      lastLapSeconds: progress.lastLapSeconds ?? null,
+      bestLapSeconds: progress.bestLapSeconds ?? null,
+      isFastestLap,
+      trackLimitStage: progress.trackLimitStage ?? null,
+      trackLimitWarningNumber: progress.trackLimitWarningNumber ?? null,
+      isPlayer: index === 0,
+    } satisfies TowerEntry;
+  });
+
+  const ordered = entries.slice().sort((a, b) => a.position - b.position);
+  for (let i = 1; i < ordered.length; i++) {
+    const ahead = ordered[i - 1];
+    const entry = ordered[i];
+    const aheadProgress = progresses[entries.indexOf(ahead)];
+    const entryProgress = progresses[entries.indexOf(entry)];
+    const meters = Math.max(
+      0,
+      totalDistance(aheadProgress, safeTrackLength) - totalDistance(entryProgress, safeTrackLength)
+    );
+    const effectiveSpeed = Math.max(
+      5,
+      (Math.abs(aheadProgress.speedMs ?? 0) + Math.abs(entryProgress.speedMs ?? 0)) / 2
+    );
+    entry.intervalSeconds = meters / effectiveSpeed;
+    entry.intervalLapsDown = Math.floor(meters / safeTrackLength);
+  }
+  return ordered;
 }

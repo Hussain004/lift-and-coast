@@ -6,6 +6,7 @@ import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
   gearThrustFactor,
+  gearboxSpeedMs,
   rpmForGear,
   updateGearbox,
   type GearboxState,
@@ -630,7 +631,10 @@ export function applyCarControls(
       shiftUp: gearbox.shiftUp,
       shiftDown: gearbox.shiftDown,
     });
-    const rpm = rpmForGear(currentSpeedMs, gearbox.state.gear);
+    const rpm = rpmForGear(
+      gearboxSpeedMs(gearbox.state, currentSpeedMs),
+      gearbox.state.gear
+    );
     engineForce = Math.min(
       baseEngineForce * boostMultiplier * engineTorqueMultiplier(rpm) * gearThrustFactor(gearbox.state.gear),
       BOOSTED_ENGINE_FORCE_CAP

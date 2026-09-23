@@ -44,6 +44,18 @@ export function shapeAnalogAxis(value: number): number {
   return applySensitivityCurve(applyAxisDeadzone(value));
 }
 
+/**
+ * Convert the browser's physical stick convention into the vehicle's input
+ * convention. The Gamepad API reports a right push as +X, while the driving
+ * model (and the keyboard A/D path) uses positive steer for left. Keeping
+ * the inversion here makes the sign contract explicit and testable instead
+ * of relying on every consumer to remember it.
+ */
+export function gamepadSteerToVehicle(axis: number): number {
+  const shaped = shapeAnalogAxis(axis);
+  return shaped === 0 ? 0 : -shaped;
+}
+
 /** Split a combined -1..1 pedal axis into independent throttle/brake 0..1 targets. */
 export function splitPedalAxis(axis: number): { throttleTarget: number; brakeTarget: number } {
   return {

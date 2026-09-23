@@ -17,92 +17,246 @@
   letter-spacing: 2px;
 }
 
-/* Timing tower, broadcast style: event, live lap/position, both cars,
-   sectors, delta - one vertical stack at mid-left with an F1-red edge. */
+/* Broadcast timing tower: a compact live leaderboard rather than a
+   three-column debug list. Car.tsx owns the live rows, but page.tsx renders
+   the same grid structure immediately so the first frame is already useful. */
 .tower {
   position: absolute;
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
+  width: min(690px, calc(100vw - 32px));
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-left: 3px solid #e10600;
-  padding-left: 10px;
+  box-sizing: border-box;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 3px solid #e10600;
+  border-radius: 5px;
+  background: linear-gradient(105deg, rgba(7, 10, 16, 0.94), rgba(10, 15, 23, 0.82));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
   font-family: var(--font-geist-mono);
-  letter-spacing: 1px;
+  letter-spacing: 0.6px;
   pointer-events: none;
 }
 
 .towerEvent {
-  color: #39ff88;
+  color: #f2f5f8;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.towerHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #8d9aaa;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 5px;
+}
+
+.liveBadge {
+  color: #fff;
+  background: #e10600;
+  padding: 2px 5px;
+  letter-spacing: 1px;
+}
+
+.towerHeader span:last-child {
+  margin-left: auto;
 }
 
 .lap {
   color: #fff;
-  font-size: 15px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.34);
+  padding: 5px 9px;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 .position {
   color: #39ff88;
-  font-size: 30px;
+  font-size: 25px;
   font-style: italic;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 1px;
   line-height: 1;
+}
+
+.towerColumns,
+:global(.tower-row) {
+  display: grid;
+  grid-template-columns: 36px minmax(170px, 1fr) 58px 58px 74px 74px 42px;
+  align-items: center;
+  gap: 6px;
+}
+
+.towerColumns {
+  color: #748091;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 0 5px 3px;
+  text-align: right;
+}
+
+.towerColumns span:first-child,
+.towerColumns span:nth-child(2) {
+  text-align: left;
 }
 
 .towerRows {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  max-height: 52vh;
+  gap: 2px;
+  min-height: 24px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #394452 transparent;
 }
 
 /* Tower rows render from innerHTML (see renderTowerHtml), so these are
-   global classes, not module-scoped - F1 tower: position, code chip,
-   gap, with the player's own row edged in green. */
+   global classes, not module-scoped. */
 :global(.tower-row) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #aaa;
-  font-size: 12px;
-  letter-spacing: 1px;
-  border-left: 2px solid transparent;
-  padding-left: 6px;
+  min-height: 26px;
+  padding: 3px 5px;
+  color: #aeb8c5;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  border-left: 3px solid transparent;
+  background: rgba(255, 255, 255, 0.025);
 }
 
 :global(.tower-row-you) {
   border-left-color: #39ff88;
   color: #fff;
+  background: rgba(57, 255, 136, 0.09);
+}
+
+:global(.tower-fastest) {
+  box-shadow: inset 0 0 0 1px rgba(185, 103, 255, 0.45);
 }
 
 :global(.tower-pos) {
-  min-width: 26px;
   color: #fff;
-  font-weight: 700;
+  font-weight: 800;
+  text-align: left;
+}
+
+:global(.tower-driver) {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  overflow: hidden;
+}
+
+:global(.tower-number) {
+  min-width: 25px;
+  color: #8e9aaa;
+  font-size: 10px;
+  text-align: right;
+}
+
+:global(.tower-name) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.tower-team) {
+  color: #697687;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+:global(.tower-interval),
+:global(.tower-gap),
+:global(.tower-last),
+:global(.tower-best),
+:global(.tower-status) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+:global(.tower-interval) {
+  color: #d8e0e8;
 }
 
 :global(.tower-gap) {
-  color: #aaa;
-  margin-left: auto;
+  color: #9ca8b6;
+}
+
+:global(.tower-last),
+:global(.tower-best) {
+  color: #c2cbd5;
+  font-size: 10px;
+}
+
+:global(.tower-status) {
+  color: #667383;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+:global(.tower-status-warning) {
+  color: #ffd23f;
+}
+
+:global(.tower-status-black-white) {
+  color: #fff;
+  background: #151515;
+}
+
+:global(.tower-status-penalty) {
+  color: #ff5d5d;
 }
 
 :global(.code-chip) {
+  flex: 0 0 auto;
   color: #0a0a0a;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 1px;
-  padding: 2px 8px;
-  border-radius: 3px;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  padding: 2px 5px;
+  border-radius: 2px;
+}
+
+@media (max-width: 900px) {
+  .tower {
+    top: 12px;
+    transform: none;
+    width: calc(100vw - 24px);
+    max-height: 44vh;
+  }
+
+  .towerColumns,
+  :global(.tower-row) {
+    grid-template-columns: 30px minmax(112px, 1fr) 47px 47px 61px 61px 36px;
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  :global(.tower-team),
+  :global(.tower-number) {
+    display: none;
+  }
 }
 
 .delta {

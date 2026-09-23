@@ -102,7 +102,12 @@ function RaceContent() {
     ? soloRivals
     : (() => {
         const members = roomState?.members ?? [];
-        const humans = members.map((m) => ({ code: m.driver.code, color: m.driver.color }));
+        const humans = members.map((m) => ({
+          code: m.driver.code,
+          name: m.driver.name,
+          teamId: m.driver.teamId,
+          color: m.driver.color,
+        }));
         const totalCars = rivalCount + 1;
         const fill = resolveNetGridRoster(
           humans.map((h) => h.code),
@@ -157,6 +162,30 @@ function RaceContent() {
       : randomGrid === null
         ? baseRivals
         : randomGrid.filter((entry) => entry !== 0).map((entry) => soloRivals[entry - 1]);
+  // The live tower is written by Car.tsx, but the first paint must already
+  // show the real grid order - especially after a qualifying result or a
+  // seeded quick race. `rivals` is field order with the player removed, so
+  // reinsert the player at the resolved grid slot for the static fallback.
+  const initialTowerRows = [
+    {
+      code: driver.code,
+      name: driver.name,
+      number: driver.number,
+      teamId: team.id,
+      color: team.primaryColor,
+      grid: playerGridSpot,
+      isPlayer: true,
+    },
+    ...rivals.map((rival, index) => ({
+      code: rival.code,
+      name: rival.name,
+      number: "number" in rival ? rival.number : null,
+      teamId: "teamId" in rival ? rival.teamId : null,
+      color: rival.color,
+      grid: index < playerGridSpot - 1 ? index + 1 : index + 2,
+      isPlayer: false,
+    })),
+  ].sort((a, b) => a.grid - b.grid);
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
@@ -212,6 +241,9 @@ function RaceContent() {
         playerAccentColor={team.secondaryColor}
         rivals={rivals}
         playerCode={driver.code}
+        playerName={driver.name}
+        playerNumber={driver.number}
+        playerTeamId={team.id}
         speedRef={speedRef}
         lapRef={lapRef}
         deltaRef={deltaRef}
@@ -254,27 +286,47 @@ function RaceContent() {
           per car and never goes stale on first paint. */}
       <div className={styles.tower}>
         <div className={styles.towerEvent}>{trackName}</div>
+        <div className={styles.towerHeader}>
+          <span className={styles.liveBadge}>LIVE</span>
+          <span>GRAND PRIX</span>
+          <span>{rivals.length + 1} CARS</span>
+        </div>
         <div className={styles.lap} ref={lapRef}>
-          LAP 1 --:--.---  BEST --:--.---
+          LAP 1/{raceLaps} --:--.---  BEST --:--.---
         </div>
         <div className={styles.position} ref={positionRef}>
-          P1
+          P{playerGridSpot}
+        </div>
+        <div className={styles.towerColumns} aria-hidden="true">
+          <span>POS</span>
+          <span>DRIVER</span>
+          <span>INT</span>
+          <span>GAP</span>
+          <span>LAST</span>
+          <span>BEST</span>
+          <span>ST</span>
         </div>
         <div className={styles.towerRows} ref={towerRef}>
-          <div className="tower-row tower-row-you">
-            <span className="tower-pos">P1</span>
-            <span className="code-chip" style={{ background: team.primaryColor }}>
-              {driver.code}
-            </span>
-            <span className="tower-gap">LEADER</span>
-          </div>
-          {rivals.map((rival) => (
-            <div className="tower-row" key={rival.code}>
-              <span className="tower-pos">–</span>
-              <span className="code-chip" style={{ background: rival.color }}>
-                {rival.code}
+          {initialTowerRows.map((row) => (
+            <div
+              className={`tower-row${row.isPlayer ? " tower-row-you" : ""}`}
+              key={row.code}
+              data-code={row.code}
+            >
+              <span className="tower-pos">P{row.grid}</span>
+              <span className="tower-driver">
+                <span className="tower-number">{row.number ? `#${row.number}` : "--"}</span>
+                <span className="code-chip" style={{ background: row.color }}>
+                  {row.code}
+                </span>
+                <span className="tower-name">{row.name ?? row.code}</span>
+                {row.teamId ? <span className="tower-team">{row.teamId}</span> : null}
               </span>
-              <span className="tower-gap">…</span>
+              <span className="tower-interval">—</span>
+              <span className="tower-gap">GRID</span>
+              <span className="tower-last">--.---</span>
+              <span className="tower-best">--.---</span>
+              <span className="tower-status">GRID</span>
             </div>
           ))}
         </div>

@@ -9,6 +9,7 @@ import {
   SHIFT_UP_RPM,
   createGearboxState,
   engineTorqueMultiplier,
+  gearboxSpeedMs,
   gearThrustFactor,
   rpmForGear,
   updateGearbox,
@@ -132,12 +133,19 @@ describe("updateGearbox (auto-assist)", () => {
     expect(gb.gear).toBe(GEAR_COUNT);
   });
 
-  it("ignores manual shift requests while auto is on", () => {
+  it("does not chatter between top and second gear on a noisy speed sample", () => {
     const gb = createGearboxState(true);
-    // 10 m/s in 1st = 5700 rpm: no auto action, so any gear change would
-    // have to come from the (ignored) manual requests.
-    updateGearbox(gb, { speedMs: 10, shiftUp: true, shiftDown: true });
-    expect(gb.gear).toBe(1);
+    // Build to seventh through the normal policy.
+    for (let i = 0; i < 200; i++) updateGearbox(gb, { speedMs: 70, shiftUp: false, shiftDown: false });
+    expect(gb.gear).toBe(GEAR_COUNT);
+    const before = gb.gear;
+    // One bad low sample must not immediately drop the tall final gear.
+    updateGearbox(gb, { speedMs: 2, shiftUp: false, shiftDown: false });
+    expect(gb.gear).toBe(before);
+    // A genuinely sustained low-speed sample still gets the car downshifting.
+    for (let i = 0; i < 30; i++) updateGearbox(gb, { speedMs: 2, shiftUp: false, shiftDown: false });
+    expect(gb.gear).toBeLessThan(before);
+    expect(gearboxSpeedMs(gb, 2)).toBeGreaterThan(0);
   });
 });
 

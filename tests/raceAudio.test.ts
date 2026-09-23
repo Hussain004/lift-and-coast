@@ -9,19 +9,26 @@ import {
   engineGain01,
   impactGain01,
   kerbRumbleHz,
+  limiterAmount,
   loadMuted,
   opponentGain01,
   opponentPanLR,
   pickVoicedOpponents,
   rpmTo01,
   saveMuted,
+  smoothRpm01,
   skidAmount01,
   skidGain01,
   windGain01,
 } from "../lib/audio/raceAudio";
-import { IDLE_RPM, REDLINE_RPM } from "../lib/physics/gearbox";
+import { IDLE_RPM, REDLINE_RPM, REV_LIMITER_RPM } from "../lib/physics/gearbox";
 
 describe("race audio mappings", () => {
+  it("starts every audio source with explicit limiter and shift telemetry", () => {
+    const car = defaultCarSnapshot();
+    expect(car.limiter01).toBe(0);
+    expect(car.shiftSerial).toBe(0);
+  });
   it("stays silent without a browser audio stack", () => {
     expect(createRaceAudio()).toBeNull();
   });
@@ -35,6 +42,22 @@ describe("race audio mappings", () => {
     expect(engineFrequencyHz(0.5)).toBeGreaterThan(60);
   });
 
+  it("keeps limiter load smooth and the synth fundamental bounded", () => {
+    expect(limiterAmount(REDLINE_RPM)).toBe(0);
+    expect(limiterAmount(REV_LIMITER_RPM)).toBe(1);
+    expect(limiterAmount(REV_LIMITER_RPM + 5000)).toBe(1);
+    expect(limiterAmount(REDLINE_RPM + 400)).toBeGreaterThan(0);
+    expect(engineFrequencyHz(1)).toBeLessThanOrEqual(320);
+  });
+
+  it("smooths rpm toward a new target without overshooting", () => {
+    expect(smoothRpm01(0, 1, 0.18)).toBeCloseTo(0.18, 9);
+    expect(smoothRpm01(1, 0, 0.18)).toBeCloseTo(0.82, 9);
+    let value = 0;
+    for (let i = 0; i < 80; i++) value = smoothRpm01(value, 1);
+    expect(value).toBeCloseTo(1, 2);
+    expect(smoothRpm01(0.5, 2, 0.5)).toBe(0.75);
+  });
   it("opens the filter with throttle and keeps an idle bed", () => {
     expect(engineGain01(0)).toBeGreaterThan(0);
     expect(engineGain01(1)).toBeGreaterThan(engineGain01(0));

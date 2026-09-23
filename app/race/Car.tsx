@@ -39,6 +39,7 @@ import { unwrapGap } from "@/lib/ai/racecraft";
 import {
   createGearboxState,
   engineTorqueMultiplier,
+  gearboxSpeedMs,
   rpmForGear,
   IDLE_RPM,
   REDLINE_RPM,
@@ -82,9 +83,10 @@ import {
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
+import type { TowerDriver } from "@/lib/race/racePosition";
 import { F1CarBody } from "./F1CarBody";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
-import { impactGain01, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
+import { impactGain01, limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import { FLAP_OPEN_RAD, stepFlapAngle } from "@/lib/race/carBody";
 
 const SECTOR_COUNT = 3;
@@ -135,6 +137,9 @@ export function Car({
   qualiFormat = "timed",
   playerGridSpot = null,
   playerCode = "YOU",
+  playerName = "YOU",
+  playerNumber,
+  playerTeamId,
   rivals = [],
   playerInputRef,
   carPosesRef,
@@ -214,6 +219,10 @@ export function Car({
   playerGridSpot?: number | null;
   /** The player's FIA code for the tower (see page.tsx's roster pick). */
   playerCode?: string;
+  /** Driver identity shown in the broadcast timing tower. */
+  playerName?: string;
+  playerNumber?: number;
+  playerTeamId?: string;
   /**
    * Net-room telemetry taps (plan section 16) - all owned by Scene.tsx:
    * playerInputRef carries this car's gated inputs for the guest upload,
@@ -244,7 +253,7 @@ export function Car({
    * car for the tower, and the count sizes the qualifying session. Fixed
    * per mount (page.tsx remounts Scene when it changes).
    */
-  rivals?: { code: string; color: string }[];
+  rivals?: TowerDriver[];
   /**
    * Grid start (Scene.tsx's RaceStartCountdown) - throttle is locked out
    * while false. Undefined behaves as already-started (no countdown), so
@@ -298,6 +307,7 @@ export function Car({
   // per car. `auto` follows the autoGear toggle (synced each physics tick
   // below) so the HUD and drive model always agree with the assist state.
   const gearboxRef = useRef(createGearboxState(true));
+  const shiftSerialRef = useRef(0);
   const lapTimerRef = useRef(
     createLapTimer({
       startPos,
@@ -314,10 +324,9 @@ export function Car({
   // third flag.
   const qualiSessionRef = useRef(createQualifyingSession(qualiFormat, rivals.length));
   const qualiFinishedRef = useRef(false);
-  // Tower repaint throttle: the rows rebuild at ~10Hz (every 6th physics
-  // tick), not 60Hz - order and gaps don't move faster than that, and
-  // innerHTML churn every frame would trash layout for nothing.
-  const towerFrameRef = useRef(0);
+  // Tower repaint throttle: rows rebuild at a real ~10Hz. A frame counter
+  // would run faster on a 144Hz display, so keep an elapsed-time clock.
+  const towerClockRef = useRef(0);
   // Race clock timestamp (not lap-relative currentLapSeconds, which resets
   // every lap and could strand the toast if a penalty lands late in a lap)
   // to hide the penalty toast at.
@@ -706,6 +715,7 @@ export function Car({
     // owns the G key, Car.tsx owns the gear state) before the drive model
     // and HUD both read it this tick.
     gearboxRef.current.auto = autoGear.current;
+    const gearBeforeControls = gearboxRef.current.gear;
     applyCarControls(
       controller,
       gatedDriveInput,
@@ -720,6 +730,7 @@ export function Car({
         shiftDown: gatedDriveInput.shiftDown,
       }
     );
+    if (gearboxRef.current.gear > gearBeforeControls) shiftSerialRef.current += 1;
 
     // A fresh set is fitted the instant the player switches compounds
     // (1/2/3 keys, owned by useDriveInput) - see tireWornMetersRef's own
@@ -885,7 +896,7 @@ export function Car({
     // shift point - the "shift light" that teaches the auto-assist's
     // optimal band (the skill manual drivers learn by feel).
     if (gearRef?.current || rpmRef?.current) {
-      const rpm = rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear);
+      const rpm = rpmForGear(gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()), gearboxRef.current.gear);
       if (gearRef?.current) {
         gearRef.current.textContent = `${gearboxRef.current.gear}`;
       }
@@ -912,8 +923,13 @@ export function Car({
       // lib/tracks/minimap.ts): forward is (-sin yaw, -cos yaw).
       const forwardMs = lv.x * -Math.sin(yaw) + lv.z * -Math.cos(yaw);
       const lateralMs = lv.x * Math.cos(yaw) - lv.z * Math.sin(yaw);
+      const audioRpm = rpmForGear(
+        gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
+        gearboxRef.current.gear
+      );
       audioRef.current.player = {
-        rpm01: rpmTo01(rpmForGear(controller.currentVehicleSpeed(), gearboxRef.current.gear)),
+        rpm01: rpmTo01(audioRpm),
+        limiter01: limiterAmount(audioRpm),
         throttle01: Math.min(1, Math.max(0, input.current.throttle)),
         skid01: skidAmount01(lateralMs, forwardMs),
         x: p.x,
@@ -923,6 +939,7 @@ export function Car({
         vz: lv.z,
         gear: gearboxRef.current.gear,
         kerb01: kerbContactRef.current,
+        shiftSerial: shiftSerialRef.current,
       };
     }
 
@@ -955,6 +972,13 @@ export function Car({
         lapCount: standingsLapCount(lap, tracked.progressMeters, track.lengthMeters),
         progressMeters: tracked.progressMeters,
         speedMs: computeSignedForwardSpeed(body.linvel(), yawNow),
+        lastLapSeconds: lap.lastLapSeconds,
+        bestLapSeconds: bestLapRef.current,
+        trackLimitStage: trackLimitSequenceRef.current.stage,
+        trackLimitWarningNumber:
+          trackLimitSequenceRef.current.stage === "warning"
+            ? trackLimitSequenceRef.current.offenses + 1
+            : null,
       };
       const progresses = [raceRef.current.player, ...raceRef.current.opponents];
       const positions = computeRacePositions(progresses, track.lengthMeters);
@@ -962,11 +986,19 @@ export function Car({
         positionRef.current.textContent = `P${positions[0]}`;
       }
       // F1 timing tower (see buildTowerEntries/renderTowerHtml): rebuilt
-      // at ~10Hz, not per tick - order and gaps never move faster.
-      towerFrameRef.current += 1;
-      if (towerRef?.current && towerFrameRef.current % 6 === 0) {
+      // at a real ~10Hz, independent of display refresh rate.
+      towerClockRef.current += dt;
+      if (towerRef?.current && towerClockRef.current >= 0.1) {
+        towerClockRef.current %= 0.1;
         const entries = buildTowerEntries(
-          { code: playerCode, color: bodyColor, progress: raceRef.current.player },
+          {
+            code: playerCode,
+            name: playerName,
+            number: playerNumber,
+            teamId: playerTeamId,
+            color: bodyColor,
+            progress: raceRef.current.player,
+          },
           towerOpponents(rivals, raceRef.current.opponents),
           track.lengthMeters
         );
@@ -1244,7 +1276,10 @@ export function Car({
 
     if (trackLimitRef?.current) {
       trackLimitRef.current.textContent = allFourWheelsOff
-        ? trackLimitStageLabel(trackLimitSequenceRef.current.stage)
+        ? trackLimitStageLabel(
+            trackLimitSequenceRef.current.stage,
+            trackLimitSequenceRef.current.offenses + 1
+          )
         : "";
     }
 

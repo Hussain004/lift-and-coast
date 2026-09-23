@@ -17,6 +17,7 @@ import {
   towerOpponents,
   type RaceProgress,
   type RaceState,
+  type TowerDriver,
 } from "@/lib/race/racePosition";
 import type { NetCarSnapshot, NetMessage, NetTowerRow } from "@/lib/net/protocol";
 import type { TrackData } from "@/lib/tracks/types";
@@ -84,7 +85,7 @@ export function NetHost({
   playerColor: string;
   playerSlot: number;
   /** Non-player cars in raceRef.opponents order (see towerOpponents). */
-  rivals: { code: string; color: string }[];
+  rivals: TowerDriver[];
   /** Grid slot per rivals entry (see Scene.tsx). */
   aiSlots: number[];
   netResultRef: React.RefObject<NetResultState | null>;

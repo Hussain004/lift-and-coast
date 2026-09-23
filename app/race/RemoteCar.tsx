@@ -4,9 +4,9 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { F1CarBody } from "./F1CarBody";
-import { createGearboxState, rpmForGear, updateGearbox } from "@/lib/physics/gearbox";
+import { createGearboxState, gearboxSpeedMs, rpmForGear, updateGearbox } from "@/lib/physics/gearbox";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
-import { rpmTo01, type AudioSnapshot } from "@/lib/audio/raceAudio";
+import { limiterAmount, rpmTo01, type AudioSnapshot } from "@/lib/audio/raceAudio";
 import {
   bracketSnapshots,
   interpolatePose,
@@ -56,6 +56,7 @@ export function RemoteCar({
   const spinAngleRef = useRef(0);
   const lastFrameRef = useRef<TimedSnapshot<RemoteCarFrame> | null>(null);
   const gearboxRef = useRef(createGearboxState(true));
+  const gearboxClockRef = useRef(0);
   const lastSpeedRef = useRef(0);
 
   useFrame((_, dt) => {
@@ -101,13 +102,29 @@ export function RemoteCar({
     const speed = (frame ?? lastFrameRef.current)?.state.speedMs ?? 0;
     const shown = frame ?? lastFrameRef.current;
     if (audioRef && shown) {
-      const gearbox = updateGearbox(gearboxRef.current, { speedMs: Math.abs(speed), shiftUp: false, shiftDown: false });
+      // Remote snapshots arrive on the render clock, not the fixed physics
+      // clock. Advance the replicated gearbox at a capped 60Hz-equivalent
+      // so a 144Hz browser cannot make its top-gear audio hunt faster.
+      gearboxClockRef.current += Math.min(dt, 0.25);
+      let ticks = Math.floor(gearboxClockRef.current * 60);
+      if (ticks > 8) {
+        ticks = 8;
+        gearboxClockRef.current = ticks / 60;
+      }
+      while (ticks > 0) {
+        updateGearbox(gearboxRef.current, { speedMs: Math.abs(speed), shiftUp: false, shiftDown: false });
+        gearboxClockRef.current -= 1 / 60;
+        ticks -= 1;
+      }
+      const gearbox = gearboxRef.current;
+      const audioRpm = rpmForGear(gearboxSpeedMs(gearbox, speed), gearbox.gear);
       const [qx, qy, qz, qw] = shown.state.pose.rotation;
       const [vx, , vz] = shown.state.pose.linvel;
       // No inputs cross the wire: gaining speed reads as throttle.
       const accelerating = speed > lastSpeedRef.current + 0.01;
       audioRef.current.opponents[markerIndex] = {
-        rpm01: rpmTo01(rpmForGear(Math.abs(speed), gearbox.gear)),
+        rpm01: rpmTo01(audioRpm),
+        limiter01: limiterAmount(audioRpm),
         throttle01: accelerating ? 1 : 0.15,
         skid01: 0,
         x: group.position.x,
@@ -117,6 +134,7 @@ export function RemoteCar({
         vz,
         gear: gearbox.gear,
         kerb01: 0,
+        shiftSerial: 0,
       };
     }
     lastSpeedRef.current = speed;

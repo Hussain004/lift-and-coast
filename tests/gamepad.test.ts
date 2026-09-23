@@ -5,6 +5,7 @@ import {
   applyAxisDeadzone,
   applySensitivityCurve,
   engaged,
+  gamepadSteerToVehicle,
   readGamepadAxes,
   shapeAnalogAxis,
   splitPedalAxis,
@@ -78,6 +79,15 @@ describe("shapeAnalogAxis", () => {
     const shaped = shapeAnalogAxis(0.6);
     expect(shaped).toBeGreaterThan(0);
     expect(shaped).toBeLessThan(0.6);
+  });
+});
+
+describe("gamepadSteerToVehicle", () => {
+  it("inverts the browser's right-positive stick into the vehicle's left-positive steer", () => {
+    expect(gamepadSteerToVehicle(1)).toBe(-1);
+    expect(gamepadSteerToVehicle(-1)).toBe(1);
+    expect(gamepadSteerToVehicle(0)).toBe(0);
+    expect(gamepadSteerToVehicle(0.6)).toBeLessThan(0);
   });
 });
 

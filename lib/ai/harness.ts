@@ -25,7 +25,7 @@ import {
   wheelGroundPositions,
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
-import { createGearboxState, rpmForGear } from "../physics/gearbox";
+import { createGearboxState, gearboxSpeedMs, rpmForGear } from "../physics/gearbox";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { checkTrackLimits, worldEdgeResetMeters } from "../tracks/trackLimits";
@@ -501,7 +501,10 @@ export async function simulateDrive(
         brake: stepInput.brake,
         steer: stepInput.steer,
         gear: gearbox.gear,
-        rpm: rpmForGear(controller.currentVehicleSpeed(), gearbox.gear),
+        rpm: rpmForGear(
+          gearboxSpeedMs(gearbox, controller.currentVehicleSpeed()),
+          gearbox.gear
+        ),
         wheels,
         chassisContacts,
       });

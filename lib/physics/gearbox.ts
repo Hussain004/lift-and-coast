@@ -32,6 +32,12 @@ export interface GearboxState {
    * difficulty tier exists); the player toggles it off for manual gears.
    */
   auto: boolean;
+  /** Fixed-step filtered wheel speed used for auto shifts and engine rpm. */
+  filteredSpeedMs: number;
+  /** False until the first update seeds the filter from the real speed. */
+  speedInitialized: boolean;
+  /** Brief lockout after a shift, preventing an immediate 7-to-6 bounce. */
+  shiftCooldownTicks: number;
 }
 
 /** Per-tick driving input the gearbox reacts to. */
@@ -74,6 +80,12 @@ export const REV_LIMITER_RPM = 12200;
 // out of the useful band (lugging).
 export const SHIFT_UP_RPM = 11500;
 export const SHIFT_DOWN_RPM = 5500;
+// Auto downshifts wait below the normal lugging line. Without this small
+// hysteresis a single noisy top-speed sample could drop 7th to 6th and the
+// next normal sample immediately shift back again.
+const SHIFT_DOWN_HYSTERESIS_RPM = 250;
+const SHIFT_COOLDOWN_TICKS = 5;
+const SPEED_FILTER_ALPHA = 0.18;
 
 // Simple piecewise-linear torque curve (0..1 thrust multiplier over rpm).
 // Flat at 1.0 across the working band, steep cliff past the rev limiter.
@@ -83,7 +95,10 @@ const TORQUE_CURVE: ReadonlyArray<readonly [number, number]> = [
   [IDLE_RPM, 0.92],
   [7000, 1.0],
   [11000, 1.0],
-  [REDLINE_RPM, 0.93],
+  [11900, 0.98],
+  [REDLINE_RPM, 0.96],
+  [12080, 0.82],
+  [12140, 0.62],
   [REV_LIMITER_RPM, 0.4],
   [15000, 0.35],
 ];
@@ -102,7 +117,21 @@ export function gearThrustFactor(gear: number): number {
 }
 
 export function createGearboxState(auto = true): GearboxState {
-  return { gear: 1, auto };
+  return {
+    gear: 1,
+    auto,
+    filteredSpeedMs: 0,
+    speedInitialized: false,
+    shiftCooldownTicks: 0,
+  };
+}
+
+/** Stable wheel speed for drivetrain consumers (gearbox, HUD, and audio).
+ * The first sample seeds the filter so a standing start does not spend the
+ * opening ticks lugging; subsequent samples reject single-frame speed
+ * spikes from the raycast controller. */
+export function gearboxSpeedMs(state: GearboxState, fallbackMs = 0): number {
+  return state.speedInitialized ? state.filteredSpeedMs : Math.abs(fallbackMs);
 }
 
 /**
@@ -112,16 +141,36 @@ export function createGearboxState(auto = true): GearboxState {
  * survives across ticks.
  */
 export function updateGearbox(state: GearboxState, input: GearboxDriverInput): GearboxState {
-  const rpm = rpmForGear(input.speedMs, state.gear);
-  if (state.auto) {
-    if (rpm >= SHIFT_UP_RPM && state.gear < GEAR_COUNT) {
-      state.gear += 1;
-    } else if (rpm < SHIFT_DOWN_RPM && state.gear > 1) {
-      state.gear -= 1;
-    }
+  const rawSpeed = Math.abs(input.speedMs);
+  if (!Number.isFinite(rawSpeed)) return state;
+  if (!state.speedInitialized) {
+    state.filteredSpeedMs = rawSpeed;
+    state.speedInitialized = true;
   } else {
+    state.filteredSpeedMs += (rawSpeed - state.filteredSpeedMs) * SPEED_FILTER_ALPHA;
+  }
+
+  if (!state.auto) {
+    // Manual mode remains edge-triggered and deliberately bypasses the
+    // automatic hysteresis/cooldown: a paddle request is the driver's
+    // decision, not a noisy sensor sample.
     if (input.shiftUp && state.gear < GEAR_COUNT) state.gear += 1;
     if (input.shiftDown && state.gear > 1) state.gear -= 1;
+    return state;
+  }
+
+  if (state.shiftCooldownTicks > 0) {
+    state.shiftCooldownTicks -= 1;
+    return state;
+  }
+
+  const rpm = rpmForGear(state.filteredSpeedMs, state.gear);
+  if (rpm >= SHIFT_UP_RPM && state.gear < GEAR_COUNT) {
+    state.gear += 1;
+    state.shiftCooldownTicks = SHIFT_COOLDOWN_TICKS;
+  } else if (rpm < SHIFT_DOWN_RPM - SHIFT_DOWN_HYSTERESIS_RPM && state.gear > 1) {
+    state.gear -= 1;
+    state.shiftCooldownTicks = SHIFT_COOLDOWN_TICKS;
   }
   return state;
 }

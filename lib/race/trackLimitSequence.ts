@@ -1,15 +1,17 @@
 /**
  * Race-control progression for track-limits excursions.
  *
- * The important unit is one *excursion*: all four wheels leave, then the car
- * actually rejoins. A long slide is not allowed to silently walk through
- * every stage or charge the penalty repeatedly. The next warning/flag is
- * earned only after a clean re-entry, which matches the way a driver expects
- * race-control messages to behave in a broadcast race.
+ * The unit is one *excursion*: all four wheels leave, then the car actually
+ * rejoins. A long slide is not allowed to silently walk through every stage
+ * or charge the penalty repeatedly. The sequence follows the race-control
+ * behavior requested for this game: three separate warnings, then black and
+ * white on the next separate excursion, then a single five-second penalty on
+ * the following one.
  */
 
 export type TrackLimitStage = "clear" | "warning" | "black-white" | "penalty";
 
+export const TRACK_LIMIT_WARNING_COUNT = 3;
 export const TRACK_LIMIT_PENALTY_SECONDS = 5;
 
 export interface TrackLimitSequence {
@@ -67,8 +69,12 @@ export function updateTrackLimitSequence(
     // A new episode starts. The stage is chosen from completed prior
     // episodes, never from how long this one lasts.
     state.active = true;
-    state.stage = state.offenses === 0 ? "warning" : state.offenses === 1 ? "black-white" : "penalty";
-    if (state.stage === "penalty") {
+    if (state.offenses < TRACK_LIMIT_WARNING_COUNT) {
+      state.stage = "warning";
+    } else if (state.offenses === TRACK_LIMIT_WARNING_COUNT) {
+      state.stage = "black-white";
+    } else {
+      state.stage = "penalty";
       state.penaltyCount += 1;
       state.penaltyApplied = true;
       penaltyJustApplied = true;
@@ -90,10 +96,16 @@ export function updateTrackLimitSequence(
   };
 }
 
-export function trackLimitStageLabel(stage: TrackLimitStage): string {
+export function trackLimitStageLabel(
+  stage: TrackLimitStage,
+  warningNumber = 1
+): string {
   switch (stage) {
     case "warning":
-      return "TRACK LIMITS WARNING";
+      return `TRACK LIMITS WARNING ${Math.min(
+        TRACK_LIMIT_WARNING_COUNT,
+        Math.max(1, warningNumber)
+      )}/${TRACK_LIMIT_WARNING_COUNT}`;
     case "black-white":
       return "BLACK + WHITE FLAG";
     case "penalty":

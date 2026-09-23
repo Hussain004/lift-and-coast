@@ -13,7 +13,7 @@
 //   signal - see skidAmount01).
 // - Rivals: the three nearest cars each get an engine voice with distance
 //   fade, stereo pan and Doppler.
-import { IDLE_RPM, REDLINE_RPM } from "../physics/gearbox";
+import { IDLE_RPM, REDLINE_RPM, REV_LIMITER_RPM } from "../physics/gearbox";
 
 export interface AudioCarSnapshot {
   /** 0-1 across the idle..redline band. */
@@ -31,6 +31,12 @@ export interface AudioCarSnapshot {
   gear: number;
   /** Fraction of wheels on kerbs, 0-1. */
   kerb01: number;
+  /** 0..1 limiter/load state derived from raw rpm; keeps the top gear from
+   * sounding like a permanently flat, full-throttle tone. */
+  limiter01: number;
+  /** Monotonic player shift event counter, so audio never guesses from a
+   * render-sampled gear delta. Remote/AI sources may leave this at zero. */
+  shiftSerial: number;
 }
 
 export interface AudioSnapshot {
@@ -42,7 +48,20 @@ export interface AudioSnapshot {
 }
 
 export function defaultCarSnapshot(): AudioCarSnapshot {
-  return { rpm01: 0, throttle01: 0, skid01: 0, x: 0, z: 0, yawRad: 0, vx: 0, vz: 0, gear: 1, kerb01: 0 };
+  return {
+    rpm01: 0,
+    throttle01: 0,
+    skid01: 0,
+    x: 0,
+    z: 0,
+    yawRad: 0,
+    vx: 0,
+    vz: 0,
+    gear: 1,
+    kerb01: 0,
+    limiter01: 0,
+    shiftSerial: 0,
+  };
 }
 
 export function defaultAudioSnapshot(): AudioSnapshot {
@@ -56,6 +75,24 @@ export function clamp01(v: number): number {
 /** Engine rpm into the idle..redline 0-1 band the synth voices read. */
 export function rpmTo01(rpm: number): number {
   return clamp01((rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM));
+}
+
+/** Raw-rpm limiter/load amount. At redline this is zero; beyond it the
+ * limiter rises smoothly instead of feeding the synth a hard-clipped,
+ * full-gain tone. */
+export function limiterAmount(rpm: number): number {
+  if (rpm <= REDLINE_RPM) return 0;
+  return clamp01((rpm - REDLINE_RPM) / (REV_LIMITER_RPM - REDLINE_RPM));
+}
+
+/** One-pole RPM smoothing for audio-rate control. The drivetrain already
+ * filters shift decisions; this second, gentler filter removes render-rate
+ * stair-steps and the last bit of top-gear beating without adding lag to a
+ * genuine upshift (the target is allowed to rise quickly). */
+export function smoothRpm01(current: number, target: number, alpha = 0.18): number {
+  const t = clamp01(target);
+  const c = clamp01(current);
+  return c + (t - c) * clamp01(alpha);
 }
 
 /**
@@ -74,7 +111,9 @@ export function skidAmount01(lateralMs: number, forwardMs: number): number {
  * (rpm/60 x 1.5), 75 Hz at idle to 300 Hz at the limiter. */
 export function engineFrequencyHz(rpm01: number): number {
   const rpm = IDLE_RPM + clamp01(rpm01) * (REDLINE_RPM - IDLE_RPM);
-  return (rpm / 60) * 1.5;
+  // Keep the fundamental in a musical, non-aliasing band even if a remote
+  // snapshot reports a nonsensical normalized rpm.
+  return Math.min(320, (rpm / 60) * 1.5);
 }
 
 /** Throttle opens the lowpass: coasting muted and dark, full power bright. */
@@ -195,7 +234,15 @@ function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
 
 interface EngineVoice {
   /** holdGain leaves the output gain alone (a scheduled shift cut owns it). */
-  setState(rpm01: number, throttle01: number, gainScale: number, pitch: number, when: number, holdGain?: boolean): void;
+  setState(
+    rpm01: number,
+    throttle01: number,
+    gainScale: number,
+    pitch: number,
+    when: number,
+    limiter01?: number,
+    holdGain?: boolean
+  ): void;
   output: GainNode;
 }
 
@@ -211,7 +258,7 @@ function makeEngineVoice(
   // A second, slightly detuned copy thickens the tone like the two banks.
   const bank = context.createOscillator();
   bank.setPeriodicWave(wave);
-  bank.detune.value = 9;
+  bank.detune.value = 3;
   const shaper = context.createWaveShaper();
   shaper.curve = softClipCurve(2.2);
   const filter = context.createBiquadFilter();
@@ -227,6 +274,7 @@ function makeEngineVoice(
   osc.start();
   bank.start();
 
+  let smoothedRpm01 = 0;
   // Combustion roar: noise banded around the firing frequency.
   let roarFilter: BiquadFilterNode | null = null;
   let roarGain: GainNode | null = null;
@@ -251,25 +299,38 @@ function makeEngineVoice(
     whineGain = context.createGain();
     whineGain.gain.value = 0;
     whine.connect(whineGain);
-    whineGain.connect(destination);
+    whineGain.connect(gain);
     whine.start();
   }
 
   return {
     output: gain,
-    setState(rpm01, throttle01, gainScale, pitch, when, holdGain = false) {
-      const freq = engineFrequencyHz(rpm01) * pitch;
+    setState(rpm01, throttle01, gainScale, pitch, when, limiter01 = 0, holdGain = false) {
+      smoothedRpm01 = smoothRpm01(smoothedRpm01, rpm01);
+      const limiter = clamp01(limiter01);
+      const freq = engineFrequencyHz(smoothedRpm01) * pitch;
       osc.frequency.setTargetAtTime(freq, when, 0.03);
       bank.frequency.setTargetAtTime(freq, when, 0.03);
-      filter.frequency.setTargetAtTime(engineCutoffHz(rpm01, throttle01), when, 0.05);
-      if (!holdGain) gain.gain.setTargetAtTime(engineGain01(throttle01) * gainScale, when, 0.05);
+      filter.frequency.setTargetAtTime(engineCutoffHz(smoothedRpm01, throttle01), when, 0.05);
+      if (!holdGain) {
+        const limiterCut = 1 - 0.2 * limiter;
+        gain.gain.setTargetAtTime(engineGain01(throttle01) * gainScale * limiterCut, when, 0.05);
+      }
       if (roarFilter && roarGain) {
         roarFilter.frequency.setTargetAtTime(freq * 2, when, 0.04);
-        roarGain.gain.setTargetAtTime(0.9 * clamp01(throttle01) * (0.3 + rpm01), when, 0.06);
+        roarGain.gain.setTargetAtTime(
+          0.9 * clamp01(throttle01) * (0.3 + smoothedRpm01) * (1 - 0.25 * limiter),
+          when,
+          0.06
+        );
       }
       if (whine && whineGain) {
-        whine.frequency.setTargetAtTime((2400 + 2600 * clamp01(rpm01)) * pitch, when, 0.05);
-        whineGain.gain.setTargetAtTime(0.006 * gainScale * (0.3 + clamp01(throttle01)), when, 0.08);
+        whine.frequency.setTargetAtTime((2400 + 2600 * smoothedRpm01) * pitch, when, 0.05);
+        whineGain.gain.setTargetAtTime(
+          0.006 * gainScale * (0.3 + clamp01(throttle01)) * (1 - 0.35 * limiter),
+          when,
+          0.08
+        );
       }
     },
   };
@@ -350,7 +411,7 @@ export function createRaceAudio(): RaceAudioEngine | null {
 
   let muted = false;
   let lastImpactAt = -Infinity;
-  let lastGear = 1;
+  let lastShiftSerial = 0;
   let lastPopAt = 0;
   let shiftCutUntil = 0;
 
@@ -382,7 +443,7 @@ export function createRaceAudio(): RaceAudioEngine | null {
 
       // Upshift: the ignition cut dips the engine for a few hundredths and
       // the exhaust cracks.
-      if (p.gear > lastGear && p.throttle01 > 0.3) {
+      if (p.shiftSerial > lastShiftSerial && p.throttle01 > 0.3) {
         const g = playerVoice.output.gain;
         g.cancelScheduledValues(when);
         g.setValueAtTime(g.value, when);
@@ -391,8 +452,16 @@ export function createRaceAudio(): RaceAudioEngine | null {
         shiftCutUntil = when + 0.09;
         burst(0.22, 2200, 0.08, 1.1);
       }
-      lastGear = p.gear;
-      playerVoice.setState(p.rpm01, p.throttle01, 1, 1, when, when < shiftCutUntil);
+      lastShiftSerial = Math.max(lastShiftSerial, p.shiftSerial);
+      playerVoice.setState(
+        p.rpm01,
+        p.throttle01,
+        1,
+        1,
+        when,
+        p.limiter01,
+        when < shiftCutUntil
+      );
 
       // Overrun: off the throttle at high revs the exhaust pops and bangs.
       if (p.throttle01 < 0.08 && p.rpm01 > 0.45 && speed > 20 && when - lastPopAt > 0.07 && Math.random() < 0.18) {
@@ -425,7 +494,14 @@ export function createRaceAudio(): RaceAudioEngine | null {
         const settle = slot.car === index ? 0.08 : 0.25;
         slot.car = index;
         slot.pan.pan.setTargetAtTime(opponentPanLR(dx, dz, p.yawRad), when, settle);
-        slot.voice.setState(o.rpm01, o.throttle01, opponentGain01(dist) / FULL_ENGINE_GAIN, dopplerFactor(radial), when);
+        slot.voice.setState(
+          o.rpm01,
+          o.throttle01,
+          opponentGain01(dist) / FULL_ENGINE_GAIN,
+          dopplerFactor(radial),
+          when,
+          o.limiter01
+        );
       });
 
       if (snapshot.impact && snapshot.impact.atMs > lastImpactAt) {
