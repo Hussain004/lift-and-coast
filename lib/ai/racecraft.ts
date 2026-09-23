@@ -20,6 +20,7 @@
 // - Pick passing sides from the road: room to each edge (see LineRoom), the
 //   inside of the next corner, and who is already there.
 import { cornerAheadMeters } from "./pathFollower";
+import { overrideModeActive } from "../physics/energy";
 import { maxLateralAccelMs2, type RacingLinePoint, type ThrottleZone } from "../tracks/racingLine";
 import type { LineRoom } from "../tracks/racingLineCache";
 
@@ -199,7 +200,7 @@ export function followGapMeters(
   // Behind a stationary car, stop with room to steer round it - a car
   // can't move sideways without rolling forward.
   const standoff = leaderSpeedMs < 1 ? 12 : 5.5;
-  return standoff + (0.16 - 0.08 * clamp01(aggression)) * v;
+  return standoff + (0.12 - 0.09 * clamp01(aggression)) * v;
 }
 
 /**
@@ -383,6 +384,8 @@ export interface RacecraftOutput {
   /** The lateral offset to hand pathFollower this tick (the ramped offset,
    * stretched at walking pace when turning out round a stopped car). */
   steerOffsetMeters: number;
+  /** Within a second of the car ahead: Manual Override Mode (energy.ts). */
+  override: boolean;
 }
 
 function clamp01(v: number): number {
@@ -455,6 +458,12 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     }
     return best;
   };
+  // Out-braking: within a couple of car lengths, committed to the inside
+  // of the corner being braked for - the move carries through the braking
+  // zone. Between near-identical cars (the same power, the same top speed)
+  // the braking zone is where the faster driver's speed actually shows.
+  const diving = (gap: number): boolean =>
+    gap < 10 && state.attemptSide !== 0 && state.attemptSide === line.cornerSign;
   const dropAttack = (cooldown: boolean): void => {
     if (cooldown) {
       state.cooldownKey = state.attemptKey;
@@ -498,7 +507,7 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
         dropAttack(false);
       } else if (state.attemptSeconds > ATTACK_TIMEOUT_SECONDS) {
         dropAttack(true);
-      } else if (!line.throttleZone && !overlapped) {
+      } else if (!line.throttleZone && !overlapped && !diving(gap)) {
         // Reached the braking zone without a wheel in: tuck back in.
         dropAttack(true);
       } else if (!overlapped && state.attemptSide !== 0 && sideAim(target, state.attemptSide) === null) {
@@ -536,6 +545,28 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
           state.attemptSeconds = 0;
         }
       }
+    }
+  }
+  // ...or dive: reaching a braking zone right behind a car, with room on
+  // the inside of the corner, a brave driver goes for the gap.
+  if (
+    state.attemptKey === null &&
+    obstacle === undefined &&
+    racing &&
+    !line.throttleZone &&
+    aggression >= 0.45 &&
+    line.cornerSign !== 0 &&
+    own >= 20
+  ) {
+    for (const car of cars) {
+      if (car.gapMeters < OVERLAP_METERS - 1 || car.gapMeters > 9) continue;
+      if (car.key === state.cooldownKey || car.speedMs < 3 || own - car.speedMs < 0.3) continue;
+      if (car.lateralMeters !== null && Math.abs(car.lateralMeters - ownLat) > PASS_LANE_METERS) continue;
+      if (sideAim(car, line.cornerSign) === null) continue;
+      state.attemptKey = car.key;
+      state.attemptSide = line.cornerSign;
+      state.attemptSeconds = 0;
+      break;
     }
   }
   const target = find(state.attemptKey);
@@ -634,7 +665,7 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     input.basePace *
     (1 +
       slipstreamBonus({ gapMeters: slipGap, speedMs: own, throttleZone: line.throttleZone }) +
-      (attacking && line.throttleZone ? 0.02 + aggression * 0.02 : 0));
+      (attacking ? 0.02 + aggression * 0.02 : 0));
   // Sandwiched with no legal line (a hairpin two-wide, the road running out
   // on the exit): whoever is behind backs out; the car ahead keeps going.
   // Both lifting the same amount just keeps them side by side into contact.
@@ -694,13 +725,27 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   }
   pace = Math.max(0, pace);
 
+  // Dump the battery only on a move that can work: a real straight ahead
+  // and the target close. Spending it on every look out of a slow corner
+  // left attackers with an empty battery on the next straight, where the
+  // car they were chasing (banking its energy) simply drove away.
+  const winnable =
+    attacking &&
+    line.throttleZone &&
+    line.cornerAheadMeters >= 180 &&
+    target !== undefined &&
+    target.gapMeters <= 20;
+  let gapAhead = Infinity;
+  for (const car of cars) if (car.gapMeters > 0 && car.gapMeters < gapAhead) gapAhead = car.gapMeters;
+  const override = overrideModeActive(gapAhead, own);
+  // In the override window the energy is cheap: spend it chasing.
   const deploy =
     !input.mistakeActive &&
     shouldDeployBoost({
       boostEligible: input.boostEligible,
       batteryFraction: input.batteryFraction,
       aggression,
-      attemptingLunge: attacking && line.throttleZone,
+      attemptingLunge: winnable || (override && line.throttleZone),
     });
   // At walking pace the steering's long preview asks for only a few
   // degrees of lock; threading round a stationary car needs a real turn,
@@ -709,5 +754,5 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   if (obstacleAim !== null && own < 10) {
     steerOffsetMeters = ownLat + (obstacleAim - ownLat) * (1 + 3 * (1 - own / 10));
   }
-  return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters };
+  return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters, override };
 }

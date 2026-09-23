@@ -33,7 +33,7 @@ import {
   wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
-import { computeDownforceN } from "@/lib/physics/aero";
+import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
 import { createGearboxState, rpmForGear } from "@/lib/physics/gearbox";
 import { F1CarBody } from "./F1CarBody";
 import { checkTrackLimits, allWheelsOffTrack, worldEdgeResetMeters } from "@/lib/tracks/trackLimits";
@@ -668,7 +668,7 @@ export function AICar({
       zoneRef.current = aiControls.zone;
       boostEligibleRef.current = aiControls.boostEligible;
       const energyStatus = energyRef.current.update(
-        { brakeAmount: aiControls.brake, deployRequested: willDeploy },
+        { brakeAmount: aiControls.brake, deployRequested: willDeploy, overrideActive: step.override },
         world.timestep
       );
       batteryRef.current = energyStatus.batteryFraction;
@@ -733,7 +733,15 @@ export function AICar({
     }
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), "high-downforce");
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
-    applyDragImpulse(body, "high-downforce", world.timestep);
+    // Slipstream (see towDragScale): the same wake physics the player gets.
+    const traffic = trafficRef?.current;
+    const towDrag = traffic
+      ? towDragScale(
+          { x: pos.x, z: pos.z, yawRad: yaw, speedMs },
+          Object.entries(traffic).flatMap(([key, at]) => (key === trafficKey ? [] : [at]))
+        )
+      : 1;
+    applyDragImpulse(body, "high-downforce", world.timestep, towDrag);
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
     aiBufferRef.current.push(snapshotOf(body));
     if (trafficRef && trafficKey !== undefined) {

@@ -97,7 +97,7 @@ describe("following", () => {
     const cautious = followGapMeters(70, 0, false);
     const brave = followGapMeters(70, 1, false);
     expect(cautious).toBeGreaterThan(brave);
-    expect(brave).toBeGreaterThan(8);
+    expect(brave).toBeGreaterThan(7);
     // At the gap the cap is the leader's own speed; beyond it, faster.
     expect(followSpeedCapMs(brave, 60, brave)).toBeCloseTo(60, 6);
     expect(followSpeedCapMs(brave + 10, 60, brave)).toBeGreaterThan(61);
@@ -275,6 +275,46 @@ describe("stepRacecraft", () => {
     );
     expect(state.defendKey).toBe("chaser");
     expect(state.offset).toBeGreaterThan(1);
+  });
+
+  it("dives down the inside at the braking zone from close behind", () => {
+    const state = racingState();
+    stepRacecraft(
+      state,
+      input({
+        ownSpeedMs: 50,
+        aggression: 0.8,
+        line: line({ throttleZone: false, cornerSign: 1, cornerAheadMeters: 5 }),
+        cars: [{ key: "lead", gapMeters: 7, speedMs: 48, lateralMeters: 0 }],
+      })
+    );
+    expect(state.attemptKey).toBe("lead");
+    expect(state.attemptSide).toBe(1);
+    // A cautious driver, or one too far back, stays put.
+    const cautious = racingState();
+    stepRacecraft(
+      cautious,
+      input({
+        ownSpeedMs: 50,
+        aggression: 0.2,
+        line: line({ throttleZone: false, cornerSign: 1, cornerAheadMeters: 5 }),
+        cars: [{ key: "lead", gapMeters: 7, speedMs: 48, lateralMeters: 0 }],
+      })
+    );
+    expect(cautious.attemptKey).toBeNull();
+  });
+
+  it("flags Manual Override within a second of the car ahead", () => {
+    const close = stepRacecraft(
+      racingState(),
+      input({ ownSpeedMs: 60, cars: [{ key: "a", gapMeters: 40, speedMs: 60, lateralMeters: 0 }] })
+    );
+    expect(close.override).toBe(true);
+    const far = stepRacecraft(
+      racingState(),
+      input({ ownSpeedMs: 60, cars: [{ key: "a", gapMeters: 90, speedMs: 60, lateralMeters: 0 }] })
+    );
+    expect(far.override).toBe(false);
   });
 
   it("gives a lapping car the road", () => {

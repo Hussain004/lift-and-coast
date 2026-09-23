@@ -25,7 +25,7 @@ import {
   wheelGroundPositions,
   yawFromQuaternion,
 } from "../../lib/physics/vehicle";
-import { computeDownforceN } from "../../lib/physics/aero";
+import { computeDownforceN, towDragScale } from "../../lib/physics/aero";
 import { createGearboxState } from "../../lib/physics/gearbox";
 import { buildRibbonGeometry } from "../../lib/tracks/mesh";
 import { buildTerrainGeometry } from "../../lib/tracks/terrain";
@@ -61,7 +61,7 @@ import {
   updateRecovery,
   type RecoveryState,
 } from "../../lib/ai/recovery";
-import { createLapTimer } from "../../lib/race/lapTimer";
+import { createLapTimer, standingsLapCount } from "../../lib/race/lapTimer";
 import { gridSlot } from "../../lib/race/grid";
 import silverstone from "../../data/tracks/silverstone.json";
 import type { TrackData } from "../../lib/tracks/types";
@@ -114,7 +114,8 @@ export interface CarResult {
 
 export interface FieldMetrics {
   leadChanges: number;
-  swaps: number;
+  /** Completed overtakes: a pair's order flips and stays flipped for 3s. */
+  passes: number;
   firewallResets: number;
   /** Rising-edge car-to-car contact events. */
   contacts: number;
@@ -237,7 +238,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
   const totalOf = (car: SimCar): number => car.lapCount * track.lengthMeters + car.progressMeters;
   const field: FieldMetrics = {
     leadChanges: 0,
-    swaps: 0,
+    passes: 0,
     firewallResets: 0,
     contacts: 0,
     sideContacts: 0,
@@ -248,7 +249,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     recoveries: 0,
   };
   let lastLeader = 0;
-  let prevOrder: number[] | null = null;
+  const pairOrder = new Map<number, { sign: number; pending: number; held: number }>();
   // Last tick each pair was touching: one grinding contact flickers in and
   // out of the narrow phase, so a new event needs half a second apart.
   const lastTouch = new Map<string, number>();
@@ -277,7 +278,8 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       const p = car.chassis.translation();
       const status = checkTrackLimits(track, p.x, p.z, p.y);
       const lap = car.lapTimer.update({ x: p.x, z: p.z }, timestep);
-      car.lapCount = lap.lapCount;
+      // Same standings rule the game feeds racecraft (see standingsLapCount).
+      car.lapCount = standingsLapCount(lap, status.progressMeters, track.lengthMeters);
       car.progressMeters = status.progressMeters;
       const rot = car.chassis.rotation();
       const yaw = yawFromQuaternion(rot.x, rot.y, rot.z, rot.w);
@@ -292,18 +294,32 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     }
     if (i % 60 === 0) {
       const ranked = [...cars].sort((a, b) => totalOf(b) - totalOf(a));
-      const order = ranked.map((car) => cars.indexOf(car));
-      const leader = order[0];
+      const leader = cars.indexOf(ranked[0]);
       if (i > 0 && leader !== lastLeader) field.leadChanges++;
       lastLeader = leader;
-      if (prevOrder !== null) {
-        for (let a = 0; a < order.length; a++) {
-          for (let b = a + 1; b < order.length; b++) {
-            if (prevOrder.indexOf(order[a]) > prevOrder.indexOf(order[b])) field.swaps++;
+      // Pass events: per pair, the sign of who is ahead; a flip only counts
+      // once it has held for three consecutive one-second samples.
+      for (let a = 0; a < cars.length; a++) {
+        for (let b = a + 1; b < cars.length; b++) {
+          const key = a * cars.length + b;
+          const sign = totalOf(cars[a]) >= totalOf(cars[b]) ? 1 : -1;
+          const state = pairOrder.get(key);
+          if (!state) {
+            pairOrder.set(key, { sign, pending: sign, held: 0 });
+          } else if (sign === state.sign) {
+            state.pending = sign;
+            state.held = 0;
+          } else {
+            state.held = state.pending === sign ? state.held + 1 : 1;
+            state.pending = sign;
+            if (state.held >= 3) {
+              state.sign = sign;
+              state.held = 0;
+              field.passes++;
+            }
           }
         }
       }
-      prevOrder = order;
     }
     const held = i * timestep < holdSeconds;
     for (const car of cars) {
@@ -385,7 +401,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       const controls = parkedCar
         ? { throttle: 0, brake: 1, steer: 0, zone: car.zone, boostEligible: false }
         : held
-        ? { throttle: 0, brake: 0.4, steer: 0, zone: car.zone, boostEligible: false }
+        ? { throttle: 0, brake: 1, steer: 0, zone: car.zone, boostEligible: false }
         : computeAIControls(
             racingLine,
             p.x,
@@ -402,7 +418,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       let boostMultiplier = 1;
       if (!parkedCar && !held) {
         const energyStatus = car.energy.update(
-          { brakeAmount: controls.brake, deployRequested: deploying },
+          { brakeAmount: controls.brake, deployRequested: deploying, overrideActive: step.override },
           timestep
         );
         car.battery = energyStatus.batteryFraction;
@@ -512,7 +528,13 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         },
         true
       );
-      applyDragImpulse(car.chassis, "high-downforce", timestep);
+      const cp = car.chassis.translation();
+      const cv = car.chassis.linvel();
+      const towDrag = towDragScale(
+        { x: cp.x, z: cp.z, yawRad: yawFromQuaternion(rot.x, rot.y, rot.z, rot.w), speedMs: Math.hypot(cv.x, cv.z) },
+        cars.filter((other) => other !== car).map((other) => other.chassis.translation())
+      );
+      applyDragImpulse(car.chassis, "high-downforce", timestep, towDrag);
       applySurfaceDragImpulse(car.chassis, meanSurfaceDrag(samples), timestep);
       const bodyUp = new Vector3(0, 1, 0).applyQuaternion(new Quaternion(rot.x, rot.y, rot.z, rot.w));
       car.maxTilt = Math.max(car.maxTilt, bodyUp.angleTo(UP));

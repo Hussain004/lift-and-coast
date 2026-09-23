@@ -4,7 +4,7 @@
 // here, derived deterministically from the driver's FIA code, so the same
 // code always drives the same way on every visit and both sides of a net
 // room agree without a round-trip. Deterministic does not mean uniform:
-// the field spreads ~4% on raw pace (tiers plus per-driver jitter),
+// the field spreads ~6% on raw pace (tiers plus per-driver jitter),
 // overtakes, makes mistakes, and runs different tire curves - a train that
 // holds formation all race is gone.
 //
@@ -121,10 +121,10 @@ export const DRIVER_TIERS: Record<string, 1 | 2 | 3 | 4> = {
 };
 
 const TIER_PACE: Record<1 | 2 | 3 | 4, number> = {
-  1: 0.018,
-  2: 0.005,
-  3: -0.005,
-  4: -0.018,
+  1: 0.025,
+  2: 0.008,
+  3: -0.008,
+  4: -0.025,
 };
 
 const TIER_AGGRESSION: Record<1 | 2 | 3 | 4, [number, number]> = {

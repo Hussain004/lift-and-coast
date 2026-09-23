@@ -51,9 +51,10 @@ describe("traitsForDriver", () => {
     const codes = ["VER", "NOR", "LEC", "PIA", "RUS", "HAM", "ALO", "GAS"];
     const paces = codes.map((c) => traitsForDriver(c).pace);
     expect(new Set(paces).size).toBeGreaterThan(1);
+    // Tier spread +/-2.5% plus +/-0.5% per-driver jitter.
     for (const pace of paces) {
-      expect(pace).toBeGreaterThanOrEqual(0.98);
-      expect(pace).toBeLessThanOrEqual(1.02);
+      expect(pace).toBeGreaterThanOrEqual(0.97);
+      expect(pace).toBeLessThanOrEqual(1.03);
     }
     const aggro = codes.map((c) => traitsForDriver(c).aggression);
     for (const a of aggro) {

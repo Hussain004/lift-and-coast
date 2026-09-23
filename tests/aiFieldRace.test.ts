@@ -21,38 +21,48 @@ function upright(result: FieldResult): void {
 }
 
 describe("AI field race", () => {
-  it("slowest-from-pole is passed within 120s by genuine moves", async () => {
+  it("the fastest driver, starting last, takes the lead on most circuits", async () => {
+    // Slowest trait on pole, fastest last, 120s: passing is mandatory.
+    // Between near-identical cars this needs the whole toolkit - the tow,
+    // Manual Override Mode, out-braking - and it must be clean.
     const codes = ["VER", "NOR", "LEC", "PIA", "RUS", "HAM", "ALO", "GAS", "SAI", "STR"];
     const byPace = [...codes].sort((a, b) => traitsForDriver(a).pace - traitsForDriver(b).pace);
-    const result = await simulateField([byPace[0], byPace[5], byPace[byPace.length - 1]], { seconds: 120 });
-    upright(result);
-    for (const car of result.cars) expect(car.traveled).toBeGreaterThan(3600);
-    expect(result.field.leadChanges).toBeGreaterThanOrEqual(1);
-    // Passes come from attacks that move the car off the line, not luck.
-    expect(result.cars.reduce((sum, car) => sum + car.attemptTicks, 0)).toBeGreaterThan(60);
-    expect(Math.max(...result.cars.map((car) => car.maxOffset))).toBeGreaterThan(1);
-    expect(result.field.contacts).toBeLessThanOrEqual(2);
-  }, 180000);
+    const order = [byPace[0], byPace[5], byPace[byPace.length - 1]];
+    let tookLead = 0;
+    for (const trackId of ["silverstone", "monza", "spa", "bahrain", "suzuka"]) {
+      const result = await simulateField(order, { seconds: 120, track: getTrack(trackId) });
+      upright(result);
+      expect(result.field.contacts).toBeLessThanOrEqual(2);
+      expect(result.field.spins).toBe(0);
+      if (result.field.leadChanges >= 1) tookLead++;
+    }
+    // Observed 4 of 5 when the gate was set.
+    expect(tookLead).toBeGreaterThanOrEqual(3);
+  }, 300000);
 
-  // Ten cars, 150s (a lap and a bit) on four very different circuits: the
-  // field must keep swapping places while staying off each other. Observed
-  // with the lane-aware racecraft: 4-8 contacts (almost all lap-one
-  // hairpin bumps under 5 m/s), 0 spins, 66-70 swaps per run.
-  for (const trackId of ["silverstone", "monza", "spa", "bahrain"]) {
-    it(`a ten-car field races clean at ${trackId}`, async () => {
+  // Ten cars, 150s (a lap and a bit), grid order with the quick drivers at
+  // the back. "passes" counts completed overtakes (a pair's order flips
+  // and holds 3s). Observed when set: 2/3/10/8 passes, 0-7 contacts (mostly
+  // lap-one hairpin bumps under 5 m/s), 0 spins, 0 recoveries. The previous
+  // generation measured 48-132 contacts and 3-5 spins on these same runs.
+  it("a ten-car field races clean and keeps passing", async () => {
+    let passes = 0;
+    for (const trackId of ["silverstone", "monza", "spa", "bahrain"]) {
       const result = await simulateField(FIELD, { seconds: 150, track: getTrack(trackId) });
       upright(result);
       const { field } = result;
-      expect(field.swaps).toBeGreaterThanOrEqual(40);
-      expect(field.contacts).toBeLessThanOrEqual(12);
-      expect(field.hardContacts).toBeLessThanOrEqual(4);
-      expect(field.spins).toBeLessThanOrEqual(1);
-      expect(field.recoveries).toBe(0);
+      expect(field.passes, trackId).toBeGreaterThanOrEqual(1);
+      expect(field.contacts, trackId).toBeLessThanOrEqual(12);
+      expect(field.hardContacts, trackId).toBeLessThanOrEqual(4);
+      expect(field.spins, trackId).toBeLessThanOrEqual(1);
+      expect(field.recoveries, trackId).toBe(0);
       // Nobody wrecked or beached: the old generation left cars parked at
-      // 1,174m after a 33 m/s shunt on this very run.
-      for (const car of result.cars) expect(car.traveled).toBeGreaterThan(3800);
-    }, 240000);
-  }
+      // 1,174m after a 33 m/s shunt on the Spa run.
+      for (const car of result.cars) expect(car.traveled, trackId).toBeGreaterThan(3800);
+      passes += field.passes;
+    }
+    expect(passes).toBeGreaterThanOrEqual(12);
+  }, 480000);
 
   it("an Ace field is measurably faster than a Pro field and stays upright", async () => {
     const codes = ["VER", "HAM", "ALO", "HUL", "STR", "COL"];

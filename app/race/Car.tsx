@@ -33,8 +33,9 @@ import {
   wheelGroundPositions,
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
-import { computeDownforceN } from "@/lib/physics/aero";
-import { createEnergySystem } from "@/lib/physics/energy";
+import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
+import { createEnergySystem, overrideModeActive } from "@/lib/physics/energy";
+import { unwrapGap } from "@/lib/ai/racecraft";
 import {
   createGearboxState,
   engineTorqueMultiplier,
@@ -372,6 +373,8 @@ export function Car({
   const prevTireCompoundRef = useRef<TireCompoundId>(tireCompound.current);
   // Share of wheels on a kerb this physics tick, for the audio rumble.
   const kerbContactRef = useRef(0);
+  // Within a second of the car ahead this tick (Manual Override Mode).
+  const overrideActiveRef = useRef(false);
   // Grip lost to impact damage (1 = undamaged) - see applyImpactDamage's own
   // comment. Reset on the same "fresh attempt" triggers as the lap-scoped
   // state below: a new lap starting, or the off-track/world-edge teleport
@@ -664,8 +667,27 @@ export function Car({
       };
     }
 
+    // Manual Override Mode (see overrideModeActive): the same one-second
+    // window the AI gets, measured to the nearest car ahead on the road.
+    const race = raceRef?.current;
+    let gapAheadMeters = Infinity;
+    if (race) {
+      for (const o of race.opponents) {
+        const gap = unwrapGap(
+          race.player.lapCount,
+          race.player.progressMeters,
+          o.lapCount,
+          o.progressMeters,
+          track.lengthMeters
+        );
+        if (gap > 0 && gap < gapAheadMeters) gapAheadMeters = gap;
+      }
+    }
+    const overrideActive =
+      sessionMode === "race" && overrideModeActive(gapAheadMeters, Math.abs(race?.player.speedMs ?? 0));
+    overrideActiveRef.current = overrideActive;
     const energyStatus = energySystemRef.current.update(
-      { brakeAmount: gatedDriveInput.brake, deployRequested: gatedDriveInput.deploy },
+      { brakeAmount: gatedDriveInput.brake, deployRequested: gatedDriveInput.deploy, overrideActive },
       world.timestep
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
@@ -738,7 +760,23 @@ export function Car({
     }
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current);
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
-    applyDragImpulse(body, aeroMode.current, world.timestep);
+    // Slipstream (see towDragScale): tucked in behind a rival, less drag.
+    const towPos = body.translation();
+    const towVel = body.linvel();
+    const towRot = body.rotation();
+    const towTraffic = trafficRef?.current;
+    const towDrag = towTraffic
+      ? towDragScale(
+          {
+            x: towPos.x,
+            z: towPos.z,
+            yawRad: yawFromQuaternion(towRot.x, towRot.y, towRot.z, towRot.w),
+            speedMs: Math.hypot(towVel.x, towVel.z),
+          },
+          Object.entries(towTraffic).flatMap(([key, at]) => (key === trafficKey ? [] : [at]))
+        )
+      : 1;
+    applyDragImpulse(body, aeroMode.current, world.timestep, towDrag);
     // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
     // above - a wide moment costs time, and a gravel trap takes the car off
     // the driver's hands entirely rather than merely slowing it.
@@ -807,7 +845,8 @@ export function Car({
     }
     if (aeroModeRef?.current) {
       aeroModeRef.current.textContent =
-        aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE";
+        (aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE") +
+        (overrideActiveRef.current ? " · OVERRIDE" : "");
     }
     // Active-aero flap (plan section 5): the rear-wing top element rotates
     // open in low-drag mode and shut otherwise, rate-limited like a real

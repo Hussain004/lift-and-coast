@@ -59,3 +59,42 @@ export function computeDragN(
   const speed = Math.abs(speedMs);
   return DRAG_COEFFICIENT_N_PER_MS2 * AERO_MODE_MULTIPLIERS[mode].drag * speed * speed;
 }
+
+/** Most of a car's aero drag it can lose tucked in behind another: 14%
+ * is worth ~7% of top speed nose-to-tail - a real straight-line tow,
+ * enough to close and pull out, not a slingshot. */
+export const MAX_TOW_DRAG_REDUCTION = 0.14;
+const TOW_MIN_SPEED_MS = 25;
+const TOW_NEAR_METERS = 3.5;
+const TOW_FAR_METERS = 40;
+
+/**
+ * Slipstream: the aero-drag multiplier (1 = clean air) for a car at (x, z)
+ * heading `yawRad`, given the other cars' positions. The wake is strongest
+ * right behind a car and fades out by 40m, in a narrow cone around the car
+ * ahead, so pulling out to pass leaves it. Pure geometry, shared by the
+ * player, the AI and the headless field. Yaw convention: forward is
+ * (-sin yaw, -cos yaw).
+ */
+export function towDragScale(
+  own: { x: number; z: number; yawRad: number; speedMs: number },
+  others: readonly { x: number; z: number }[]
+): number {
+  if (Math.abs(own.speedMs) < TOW_MIN_SPEED_MS) return 1;
+  const fx = -Math.sin(own.yawRad);
+  const fz = -Math.cos(own.yawRad);
+  let best = 0;
+  for (const o of others) {
+    const dx = o.x - own.x;
+    const dz = o.z - own.z;
+    const ahead = dx * fx + dz * fz;
+    if (ahead < TOW_NEAR_METERS || ahead > TOW_FAR_METERS) continue;
+    const lateral = Math.abs(dx * -fz + dz * fx);
+    const halfWidth = 1.3 + ahead * 0.02;
+    if (lateral > halfWidth) continue;
+    const strength =
+      (1 - (ahead - TOW_NEAR_METERS) / (TOW_FAR_METERS - TOW_NEAR_METERS)) * (1 - 0.5 * (lateral / halfWidth));
+    if (strength > best) best = strength;
+  }
+  return 1 - MAX_TOW_DRAG_REDUCTION * best;
+}

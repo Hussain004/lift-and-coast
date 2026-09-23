@@ -551,12 +551,14 @@ export function resolveYawDampingTorque(angvelY: number): number {
 export function applyDragImpulse(
   body: RigidBody,
   mode: AeroMode,
-  timestep: number
+  timestep: number,
+  /** Slipstream multiplier (see towDragScale): 1 in clean air. */
+  dragScale = 1
 ) {
   const v = body.linvel();
   const speed = Math.hypot(v.x, v.z);
   if (speed < 0.01) return;
-  const dragN = computeDragN(speed, mode);
+  const dragN = computeDragN(speed, mode) * dragScale;
   const scale = (dragN * timestep) / speed;
   body.applyImpulse({ x: -v.x * scale, y: 0, z: -v.z * scale }, true);
 }
