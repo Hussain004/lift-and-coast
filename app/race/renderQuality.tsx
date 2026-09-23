@@ -34,7 +34,7 @@ export function SurfaceMaterial({
 }) {
   const { cheapMaterials } = useQuality();
   return cheapMaterials ? (
-    <meshLambertMaterial color={color} vertexColors={vertexColors} map={map} />
+    <meshLambertMaterial color={color} vertexColors={vertexColors} />
   ) : (
     <meshStandardMaterial color={color} vertexColors={vertexColors} map={map} roughness={0.95} />
   );
