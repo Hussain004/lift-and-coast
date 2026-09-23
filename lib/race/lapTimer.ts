@@ -37,6 +37,10 @@ export interface LapTimerState {
  * projection check (rather than true finite-segment intersection) is safe
  * here - revisit if a future track's layout loops back near its own start.
  */
+/** No circuit laps faster than this; a crossing sooner is a car shuffling
+ * back and forth over the line, never a lap. */
+export const MIN_LAP_SECONDS = 20;
+
 export function createLapTimer(config: LapTimerConfig) {
   const BEHIND_DEADZONE_METERS = 3;
   const forward = {
@@ -69,7 +73,11 @@ export function createLapTimer(config: LapTimerConfig) {
       signedForward >= 0 &&
       Math.abs(lateral) < config.lineHalfWidth
     ) {
-      if (skipFirstCrossing) {
+      if (!skipFirstCrossing && currentLapSeconds < MIN_LAP_SECONDS) {
+        // Back and forth over the line (a roll back off the grid, a spin
+        // at the line): not a lap. The clock keeps running.
+        armed = false;
+      } else if (skipFirstCrossing) {
         // Grid-spot start: the clock starts here, nothing is recorded.
         skipFirstCrossing = false;
         armed = false;

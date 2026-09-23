@@ -642,15 +642,15 @@ export function Car({
       wasRewindingRef.current = false;
     }
 
-    // Grid start: throttle and Push-to-Pass only, so the car can still
-    // brake/steer to hold its spot before the lights go out, but can't
-    // jump the start - or drain the battery deploying into a locked
-    // driveline (holding Shift through the countdown would otherwise
-    // arrive at turn 1 with an empty battery and no boost).
+    // Grid start: no throttle or Push-to-Pass before the lights (no jumped
+    // starts, no battery drained into a locked driveline), and the car
+    // sits on its brakes - otherwise it creeps down a sloped grid, and a
+    // car that rolls back past the line arms the lap timer for a bogus
+    // lap the moment it drives forward again.
     const raceStarted = raceStartRef?.current ?? true;
     const gatedDriveInput = raceStarted
       ? driveInput
-      : { ...driveInput, throttle: 0, deploy: false };
+      : { ...driveInput, throttle: 0, deploy: false, brake: 1 };
 
     // Guest input upload reads the gated inputs actually applied (see
     // playerInputRef) - what the car does, not what the keys say.

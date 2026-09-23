@@ -678,7 +678,7 @@ export function AICar({
 
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
     const raceStarted = raceStartRef?.current ?? true;
-    const gatedControls = raceStarted ? controls : { ...controls, throttle: 0 };
+    const gatedControls = raceStarted ? controls : { ...controls, throttle: 0, brake: 1 };
     const lv = body.linvel();
     lastControlsRef.current = { throttle: gatedControls.throttle, yaw, lvx: lv.x, lvz: lv.z };
     // Auto gearbox (shift requests left false): the AI driver shifts by the

@@ -37,7 +37,7 @@ describe("createLapTimer", () => {
 
     // Drive away from the line, then approach it again from behind.
     timer.update(at(0), 1 / 60);
-    timer.update(at(50), 1 / 60);
+    timer.update(at(50), 60); // a lap's worth of driving
     timer.update(at(-10), 1 / 60);
     timer.update(at(-2), 1 / 60);
     const crossing = timer.update(at(1), 1 / 60);
@@ -59,7 +59,7 @@ describe("createLapTimer", () => {
       z: track.startPos.z + forward.z * signedForward,
     });
 
-    timer.update(at(-5), 1 / 60);
+    timer.update(at(-5), 60);
     timer.update(at(1), 1 / 60); // completes lap 1
     // Wobbling right around the line without going meaningfully behind it
     // again should not register a second lap.
@@ -88,9 +88,9 @@ describe("createLapTimer", () => {
       return timer.update(at(1), 1 / 60);
     };
 
-    const lap1 = driveOneLap(1.0);
-    const lap2 = driveOneLap(0.5);
-    const lap3 = driveOneLap(0.8);
+    const lap1 = driveOneLap(90);
+    const lap2 = driveOneLap(75);
+    const lap3 = driveOneLap(80);
 
     expect(lap1.lapCount).toBe(1);
     expect(lap2.bestLapSeconds).toBeLessThan(lap1.lastLapSeconds!);
@@ -179,7 +179,7 @@ describe("createLapTimer startsBehindLine", () => {
     });
     timer.update(at(-9), 1 / 60);
     timer.update(at(1), 1 / 60);
-    timer.update(at(50), 1 / 60);
+    timer.update(at(50), 60);
     timer.update(at(-10), 1 / 60);
     const crossing = timer.update(at(1), 1 / 60);
     expect(crossing.crossedFinishLine).toBe(true);
@@ -189,9 +189,22 @@ describe("createLapTimer startsBehindLine", () => {
 
   it("behaves exactly as before without the flag", () => {
     const timer = createLapTimer({ startPos: track.startPos, lineHalfWidth: 6 });
-    timer.update(at(-9), 1 / 60);
+    timer.update(at(-9), 60);
     const crossing = timer.update(at(1), 1 / 60);
     expect(crossing.crossedFinishLine).toBe(true);
     expect(crossing.lapCount).toBe(1);
+  });
+
+  it("never counts a roll back off the grid and forward again as a lap", () => {
+    // Pole car creeping backward down a sloped grid, then launching: the
+    // crossing arms and fires within seconds - not a lap, clock untouched.
+    const timer = createLapTimer({ startPos: track.startPos, lineHalfWidth: 6 });
+    timer.update(at(0), 1 / 60);
+    timer.update(at(-4), 2);
+    const crossing = timer.update(at(1), 1);
+    expect(crossing.crossedFinishLine).toBe(false);
+    expect(crossing.lapCount).toBe(0);
+    expect(crossing.bestLapSeconds).toBeNull();
+    expect(crossing.currentLapSeconds).toBeCloseTo(3 + 1 / 60, 5);
   });
 });
