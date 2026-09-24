@@ -32,6 +32,7 @@ const BINDINGS: [string, string][] = [
   ["M", "mute"],
   ["K", "graphics"],
   ["F", "fps"],
+  ["H", "Race Ops"],
   ["X", "overtake"],
   ["O", "pit request"],
   ["P", "pause (singleplayer)"],

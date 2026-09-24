@@ -49,9 +49,10 @@ const MIN_PROFILE_SEGMENT_METERS = 0.5;
 
 // Speed-profile constants (also used to color the line - see ThrottleZone
 // below). The AI profile is the conservative reference envelope; a separate
-// driver-facing profile below keeps the visible cue from warning too early.
-// The normal and boosted ceilings leave room above the car's drag-limited
-// cruise so deployment can change the speed actually carried down a straight.
+// local driver profile below keeps the visible cue from warning on long
+// straights. The normal and boosted ceilings leave room above the car's
+// drag-limited cruise so deployment can change the speed actually carried
+// down a straight.
 //
 // The per-corner cap below used to be an empirically-tuned linear penalty
 // on a raw cross-product "turn" signal (turn * CURVATURE_SPEED_PENALTY).
@@ -165,9 +166,10 @@ export interface RacingLinePoint {
   /** AI-facing classification, retained as the conservative safety envelope. */
   zone: ThrottleZone;
   /**
-   * Driver-facing braking target. It uses the measured brake capability rather
-   * than the deliberately conservative AI decel cap, so the visible ribbon
-   * does not ask the player to brake earlier than the car actually needs.
+   * Driver-facing braking target. It uses the local curvature cap and the
+   * measured brake capability rather than the deliberately conservative AI
+   * decel cap, so the visible ribbon does not ask the player to brake earlier
+   * than the car actually needs.
    * Optional for small synthetic line fixtures in tests and integrations.
    */
   displayTargetSpeedMs?: number;
@@ -468,6 +470,17 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, capped));
   }
 
+  // A local, lightly-smoothed curvature cap is the honest driver-facing
+  // reference. The full speed profile below also contains a long backward
+  // braking anticipation pass; using that entire signal for color made a
+  // straight such as Spa's Eau Rouge approach red hundreds of meters before
+  // the car actually needed to brake. The local cap wins on straights, while
+  // the full profile still supplies a sensible upper bound in tight sections.
+  let displayLocalSpeedMs: Float64Array = Float64Array.from(curveOnlySpeed);
+  for (let pass = 0; pass < 2; pass++) {
+    displayLocalSpeedMs = boxFilterPass(displayLocalSpeedMs, 2);
+  }
+
   // Suzuka's bridge transitions change the contact patch's load and yaw
   // response abruptly. Keep its profile at the previously validated
   // acceleration ceiling even while the other circuits use the more realistic
@@ -477,7 +490,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, profileAccelMs2, MAX_DECEL_MS2);
 
   // Keep the safety-tuned profile above for AI stability, but derive a second
-  // profile for the driver-facing ribbon. The higher braking capability moves
+  // profile for the driver-facing ribbon. The local curvature reference moves
   // the colored braking band toward the real point where the player actually
   // needs to brake, without changing any AI target or control decision.
   const driverTargetSpeedMs = computeCappedSpeedProfile(
@@ -486,6 +499,10 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     profileAccelMs2,
     DRIVER_MAX_DECEL_MS2
   );
+  const displayReferenceSpeedMs = Float64Array.from(driverTargetSpeedMs);
+  for (let i = 0; i < n; i++) {
+    displayReferenceSpeedMs[i] = Math.max(displayReferenceSpeedMs[i], displayLocalSpeedMs[i]);
+  }
 
   // Same corner caps and the same real (unboosted) decel limit - only the
   // forward/accel side and the straight-line ceiling are boosted, matching
@@ -512,11 +529,12 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     aiZoneSpeedMs = boxFilterPass(aiZoneSpeedMs, SMOOTHING_BOX_RADIUS);
   }
 
-  // Display-only smoothed copy of the driver profile, used only to classify
-  // the visible ribbon. It is never returned as the AI-facing targetSpeedMs.
-  let displaySpeedMs: Float64Array = Float64Array.from(driverTargetSpeedMs);
-  for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
-    displaySpeedMs = boxFilterPass(displaySpeedMs, SMOOTHING_BOX_RADIUS);
+  // Display-only smoothed copy of the local/physical driver reference. It is
+  // never returned as the AI-facing targetSpeedMs, so the AI keeps the
+  // conservative full-lap profile while the ribbon stays local and readable.
+  let displaySpeedMs: Float64Array = Float64Array.from(displayReferenceSpeedMs);
+  for (let pass = 0; pass < 2; pass++) {
+    displaySpeedMs = boxFilterPass(displaySpeedMs, 2);
   }
 
   const result: RacingLinePoint[] = new Array(n);
@@ -548,7 +566,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       // line burns red is wrong advice - never eligible under red.
       boostEligible: boostedTargetSpeedMs[i] > targetSpeedMs[i] + 0.05 && zone !== "brake-hard",
       zone,
-      displayTargetSpeedMs: driverTargetSpeedMs[i],
+      displayTargetSpeedMs: displaySpeedMs[i],
       displayZone,
       distanceToNextMeters: segmentLengths[i],
     };
@@ -626,9 +644,9 @@ function mostSevereZone(a: ThrottleZone, b: ThrottleZone): ThrottleZone {
 
 /**
  * Recolors the racing line ribbon's vertex colors in place for a stretch
- * ahead of the car's actual current position. The baked per-point `zone`
- * is the primary instruction: green means the profile is throttle, while
- * yellow/orange/red mark its actual braking approach. Only the short
+ * ahead of the car's actual current position. The baked driver-facing zone
+ * is the primary instruction: green means the local profile is throttle,
+ * while yellow/orange/red mark its actual braking approach. Only the short
  * reaction window around the car compares current speed with the local
  * target, so a fast car cannot turn the entire visible horizon red just by
  * being above the profile.

@@ -77,6 +77,7 @@ Pit service currently uses the marked start-finish service window as a playable 
 | Camera | `C` | Assign as a button if supported |
 | Tires | `1` / `2` / `3` | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
+| Race Ops panel | `H` | Header click |
 | Overtake arm | Hold `X` | Assign as a button if supported |
 | Pit request | `O` | Race Ops button |
 | Pause singleplayer | `P` | Resume button |

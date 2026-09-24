@@ -9,6 +9,7 @@ import {
   type ThrottleZone,
 } from "../lib/tracks/racingLine";
 import { DEPLOY_BOOST_MULTIPLIER } from "../lib/physics/energy";
+import { getTrack } from "../lib/tracks/trackData";
 import silverstone from "../data/tracks/silverstone.json";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -178,6 +179,16 @@ describe("computeRacingLine speed profile", () => {
     );
     expect(deferred.length).toBeGreaterThan(0);
     expect(raisedTargets.length).toBeGreaterThan(0);
+  });
+
+  it("keeps Spa's Eau Rouge approach green until the local corner cue", () => {
+    const spa = getTrack("spa");
+    const line = computeRacingLine(spa);
+    const start = Math.round((700 / spa.lengthMeters) * line.length);
+    const end = Math.round((820 / spa.lengthMeters) * line.length);
+    for (let i = start; i < end; i++) {
+      expect(line[i].displayZone ?? line[i].zone, `progress ${Math.round((i / line.length) * spa.lengthMeters)}m`).not.toBe("brake-hard");
+    }
   });
 
   it("produces every throttle zone across a real lap, not just one color", () => {

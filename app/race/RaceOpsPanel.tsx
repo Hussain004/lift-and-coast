@@ -50,6 +50,18 @@ export function RaceOpsPanel({
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "KeyH" || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      event.preventDefault();
+      setCollapsed((value) => !value);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
     const refresh = () => {
       const next = snapshotRef.current;
       if (next) setSnapshot({ ...next });
@@ -68,7 +80,14 @@ export function RaceOpsPanel({
 
   return (
     <section className={styles.raceOpsPanel} aria-label="Race operations">
-      <button type="button" className={styles.raceOpsHeader} onClick={() => setCollapsed((value) => !value)} aria-expanded={!collapsed}>
+      <button
+        type="button"
+        className={styles.raceOpsHeader}
+        onClick={() => setCollapsed((value) => !value)}
+        aria-expanded={!collapsed}
+        aria-keyshortcuts="H"
+        title="Toggle Race Ops (H)"
+      >
         <span>RACE OPS</span><span>{collapsed ? "+" : "−"}</span>
       </button>
       {!collapsed && (

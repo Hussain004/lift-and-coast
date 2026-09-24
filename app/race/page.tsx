@@ -377,7 +377,7 @@ function RaceContent() {
         <div className={styles.hudStatus}>
           <div className={styles.statusCard}><span>TYRE</span><div className={styles.tire} ref={tireRef} /></div>
           <div className={styles.statusCard}><span>AERO</span><div className={styles.aeroMode} ref={aeroModeRef} /></div>
-          <div className={styles.statusCard}><span>ASSISTS</span><div className={styles.assists} ref={assistsRef} /></div>
+          <div className={`${styles.statusCard} ${styles.assistsCard}`}><span>ASSISTS</span><div className={styles.assists} ref={assistsRef} /></div>
           <div className={styles.statusFooter}><span className={styles.damage} ref={damageRef} /><span className={styles.mute} ref={muteRef} /></div>
         </div>
       </div>

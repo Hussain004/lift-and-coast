@@ -42,7 +42,7 @@
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  width: min(410px, calc(100vw - 24px));
+  width: min(270px, calc(100vw - 24px));
   max-height: 48vh;
   display: flex;
   flex-direction: column;
@@ -115,8 +115,9 @@
 .towerColumns,
 :global(.tower-row) {
   display: grid;
-  grid-template-columns: 30px minmax(90px, 1fr) 52px 52px;
+  grid-template-columns: 28px 90px 52px 52px;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
 }
 
@@ -260,13 +261,14 @@
   .tower {
     top: 12px;
     transform: none;
-    width: min(410px, calc(100vw - 24px));
+    width: min(240px, calc(100vw - 24px));
     max-height: 40vh;
   }
 
   .towerColumns,
   :global(.tower-row) {
-    grid-template-columns: 27px minmax(70px, 1fr) 46px 46px;
+    grid-template-columns: 27px 70px 46px 46px;
+    justify-content: space-between;
     gap: 3px;
     font-size: 9px;
   }
@@ -702,6 +704,17 @@
   gap: 3px;
   padding-left: 8px;
   border-left: 2px solid #4b5563;
+}
+
+.assistsCard {
+  grid-column: 1 / -1;
+}
+
+.assistsCard .assists {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .statusCard > span {
@@ -1435,9 +1448,15 @@
   .tower {
     top: 52px;
     left: 8px;
-    width: min(220px, 48%);
+    width: min(220px, 50%);
     max-height: 29%;
     transform: none;
+  }
+
+  .towerColumns,
+  :global(.tower-row) {
+    grid-template-columns: 24px 50px 38px 38px;
+    gap: 2px;
   }
 
   .towerRows {
