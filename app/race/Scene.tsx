@@ -174,6 +174,20 @@ function Ground({ track }: { track: TrackData }) {
   );
 }
 
+function PauseInput({ enabled, onToggle }: { enabled: boolean; onToggle?: () => void }) {
+  useEffect(() => {
+    if (!enabled || !onToggle) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "KeyP" || event.repeat) return;
+      event.preventDefault();
+      onToggle();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [enabled, onToggle]);
+  return null;
+}
+
 function RaceOpsTicker({ weatherRef }: { weatherRef: React.RefObject<WeatherHandle> }) {
   const { world } = useRapier();
   useBeforePhysicsStep(() => {
@@ -594,6 +608,8 @@ export function Scene({
   playerAccentColor,
   audioRef,
   timeOfDay = "day",
+  paused = false,
+  onPauseToggle,
   weatherPreset = "clear",
   raceCommandsRef,
   raceOpsSnapshotRef,
@@ -640,6 +656,8 @@ export function Scene({
   raceLaps?: number;
   /** Lighting preset - see page.tsx's ?tod= URL param. */
   timeOfDay?: TimeOfDay;
+  paused?: boolean;
+  onPauseToggle?: () => void;
   weatherPreset?: WeatherPreset;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
@@ -817,7 +835,8 @@ export function Scene({
         target={visualRef}
       />
       <WeatherFX weatherRef={weatherRef} target={visualRef} fogFar={settings.fogFar} />
-      <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
+      <PauseInput enabled={netRole === null} onToggle={onPauseToggle} />
+      <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} paused={paused}>
         <RaceOpsTicker weatherRef={weatherRef} />
         <Ground track={track} />
         <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />

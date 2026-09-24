@@ -5,7 +5,7 @@ export interface EnergyInput {
   brakeAmount: number;
   /** Whether the player is holding the deploy (Push-to-Pass) input. */
   deployRequested: boolean;
-  /** Manual Override Mode (see overrideModeActive): deploying costs less. */
+  /** Overtake mode (see overtakeModeActive): deploying costs less. */
   overrideActive?: boolean;
   /** Optional lap identity used to reset the per-lap deployment budget. */
   lap?: number;
@@ -45,24 +45,26 @@ const ENERGY_MODE_TUNING: Record<
 };
 
 /**
- * Manual Override Mode, the 2026 rules' replacement for DRS: a car within
- * one second of the car ahead gets extra electrical energy. Engine force is
- * already at its hard cap while deploying (see applyCarControls), so the
- * override is energy, not power: deployment drains at 40% of the normal
- * rate, and the chasing car can deploy down a whole straight while the car
- * ahead eats into its battery. Same rule for the player and the AI.
+ * 2026 overtake mode: a car within one second of the car ahead gets a lower
+ * deployment cost. The zone gate is handled by the overtake system; this
+ * helper is the shared proximity predicate used by the player and AI control
+ * layers before they request a zone deployment.
  */
-export const OVERRIDE_WINDOW_SECONDS = 1;
-const OVERRIDE_DRAIN_FRACTION = 0.4;
+export const OVERTAKE_WINDOW_SECONDS = 1;
+export const OVERRIDE_WINDOW_SECONDS = OVERTAKE_WINDOW_SECONDS;
+const OVERTAKE_DRAIN_FRACTION = 0.4;
 
-export function overrideModeActive(gapAheadMeters: number, speedMs: number): boolean {
-  return speedMs > 20 && gapAheadMeters > 0 && gapAheadMeters <= speedMs * OVERRIDE_WINDOW_SECONDS;
+export function overtakeModeActive(gapAheadMeters: number, speedMs: number): boolean {
+  return speedMs > 20 && gapAheadMeters > 0 && gapAheadMeters <= speedMs * OVERTAKE_WINDOW_SECONDS;
 }
+
+/** @deprecated Use overtakeModeActive. */
+export const overrideModeActive = overtakeModeActive;
 
 /**
  * The game's namesake mechanic: harvest energy under braking, deploy it on
- * straights for a power boost (plan section 5, "Push-to-Pass Override").
- * Energy is free to manage; racing adds Manual Override Mode below (the
+ * straights for a power boost (plan section 5, "Push-to-Pass").
+ * Energy is free to manage; racing adds 2026 overtake mode below (the
  * deployment bonus when close behind an opponent).
  *
  * If deploy is requested while also braking, deploying wins for that tick
@@ -102,7 +104,7 @@ export function createEnergySystem(
     const isDeploying = input.deployRequested && raceAllowed && battery > 0 && budgetAllowed && !thermalLimited;
     let harvestRate = 0;
     if (isDeploying) {
-      const drain = tuning.drain * (input.overrideActive ? OVERRIDE_DRAIN_FRACTION : 1);
+      const drain = tuning.drain * (input.overrideActive ? OVERTAKE_DRAIN_FRACTION : 1);
       battery = Math.max(0, battery - drain * safeDt);
       deploymentBudget = Math.max(0, deploymentBudget - drain * safeDt);
       thermal = Math.min(1, thermal + tuning.thermalPerSecond * safeDt);

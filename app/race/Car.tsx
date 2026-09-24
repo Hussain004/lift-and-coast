@@ -34,7 +34,7 @@ import {
   yawFromQuaternion,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
-import { createEnergySystem, overrideModeActive, type EnergyMode } from "@/lib/physics/energy";
+import { createEnergySystem, overtakeModeActive, type EnergyMode } from "@/lib/physics/energy";
 import { createWeatherSystem } from "@/lib/physics/weather";
 import { unwrapGap } from "@/lib/ai/racecraft";
 import {
@@ -82,7 +82,7 @@ import {
 } from "@/lib/tracks/surfaces";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
-import { createDrsSystem, DRS_DRAG_SCALE } from "@/lib/physics/drs";
+import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
 import { createStrategySystem } from "@/lib/race/strategy";
 import { createReplayController, type TelemetryFrame } from "@/lib/race/replay";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
@@ -391,8 +391,6 @@ export function Car({
   const ghostSpinRefs = useRef<(THREE.Group | null)[]>([]);
   // Share of wheels on a kerb this physics tick, for the audio rumble.
   const kerbContactRef = useRef(0);
-  // Within a second of the car ahead this tick (Manual Override Mode).
-  const overrideActiveRef = useRef(false);
   // Grip lost to impact damage (1 = undamaged) - see applyImpactDamage's own
   // comment. Reset on the same "fresh attempt" triggers as the lap-scoped
   // state below: a new lap starting, or the off-track/world-edge teleport
@@ -430,14 +428,17 @@ export function Car({
   const localRaceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
   const effectiveRaceControlRef = raceControlRef ?? localRaceControlRef;
   const strategyRef = useRef(createStrategySystem());
-  const drsSystem = useMemo(() => createDrsSystem(track), [track]);
+  const overtakeSystem = useMemo(
+    () => createOvertakeSystem(track, sessionMode === "race" ? "race" : "practice"),
+    [track, sessionMode]
+  );
   const replayRef = useRef(createReplayController(45, 1 / 60));
   const replayActiveRef = useRef(false);
   const replayCameraRestoreRef = useRef<CameraMode | null>(null);
-  const drsRequestedRef = useRef(false);
+  const overtakeRequestedRef = useRef(false);
   const energyStatusRef = useRef(energySystemRef.current.snapshot());
   const strategyStateRef = useRef(strategyRef.current.snapshot());
-  const drsStateRef = useRef(drsSystem.snapshot());
+  const overtakeStateRef = useRef(overtakeSystem.snapshot());
   const weatherStateRef = useRef(effectiveWeatherRef.current.snapshot());
   const startRotationRef = useRef(
     new THREE.Quaternion().setFromEuler(new THREE.Euler(0, gridSpot.headingRad, 0))
@@ -630,9 +631,9 @@ export function Car({
         case "cancel-pit":
           strategyRef.current.cancelPit();
           break;
-        case "toggle-drs":
-          drsRequestedRef.current = !drsRequestedRef.current;
-          drsSystem.setRequested(drsRequestedRef.current);
+        case "toggle-overtake":
+          overtakeRequestedRef.current = !overtakeRequestedRef.current;
+          overtakeSystem.setRequested(overtakeRequestedRef.current);
           break;
         case "toggle-replay":
           toggleReplay();
@@ -792,8 +793,9 @@ export function Car({
       };
     }
 
-    // Manual Override Mode (see overrideModeActive): the same one-second
-    // window the AI gets, measured to the nearest car ahead on the road.
+    // Overtake mode uses the same one-second proximity window as the AI.
+    // The zone system below adds the track-region gate and exposes the final
+    // active state to ERS, so a nearby car alone cannot enable the bonus.
     const race = raceRef?.current;
     let gapAheadMeters = Infinity;
     if (race) {
@@ -808,12 +810,16 @@ export function Car({
         if (gap > 0 && gap < gapAheadMeters) gapAheadMeters = gap;
       }
     }
-    const overrideActive =
-      sessionMode === "race" && overrideModeActive(gapAheadMeters, Math.abs(race?.player.speedMs ?? 0));
-    overrideActiveRef.current = overrideActive;
+    const proximityEligible =
+      sessionMode === "race" && overtakeModeActive(gapAheadMeters, Math.abs(race?.player.speedMs ?? 0));
     const speedForOps = Math.abs(controller.currentVehicleSpeed());
-    drsSystem.setRequested(drsRequestedRef.current || driveInput.drs);
-    const drsState = drsSystem.update(limitStatus.progressMeters, speedForOps);
+    overtakeSystem.setRequested(overtakeRequestedRef.current || driveInput.overtake);
+    const overtakeState = overtakeSystem.update(
+      limitStatus.progressMeters,
+      speedForOps,
+      proximityEligible ? gapAheadMeters : Infinity
+    );
+    const overtakeActive = overtakeState.active;
     const strategyState = strategyRef.current.update({
       dt: world.timestep,
       speedMs: speedForOps,
@@ -833,7 +839,7 @@ export function Car({
       {
         brakeAmount: gatedDriveInput.brake,
         deployRequested: gatedDriveInput.deploy,
-        overrideActive,
+        overrideActive: overtakeActive,
         lap: race?.player.lapCount ?? 0,
         raceStarted,
       },
@@ -842,7 +848,7 @@ export function Car({
     batteryFractionRef.current = energyStatus.batteryFraction;
     energyStatusRef.current = energyStatus;
     strategyStateRef.current = strategyState;
-    drsStateRef.current = drsState;
+    overtakeStateRef.current = overtakeState;
     weatherStateRef.current = weatherState;
 
     // Sync the gearbox's assist mode to the live toggle (useDriveInput
@@ -854,7 +860,7 @@ export function Car({
       controller,
       gatedDriveInput,
       DEFAULT_ENGINE_FORCE,
-      energyStatus.engineForceMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier,
+      energyStatus.engineForceMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier * (overtakeState.active ? OVERTAKE_BOOST_MULTIPLIER : 1),
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed(),
       tractionControlEnabled.current,
@@ -920,7 +926,7 @@ export function Car({
       body,
       aeroMode.current,
       world.timestep,
-      towDrag * weatherState.dragMultiplier * (drsState.active ? DRS_DRAG_SCALE : 1)
+      towDrag * weatherState.dragMultiplier
     );
     // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
     // above - a wide moment costs time, and a gravel trap takes the car off
@@ -941,7 +947,7 @@ export function Car({
         rpm: rpmForGear(gearboxSpeedMs(gearboxRef.current, speedForOps), gearboxRef.current.gear),
         batteryFraction: energyStatus.batteryFraction,
         tireGrip: strategyState.compoundGripMultiplier * weatherState.gripMultiplier,
-        drsActive: drsState.active,
+        overtakeActive: overtakeState.active,
         weather: weatherLabel(weatherState.preset),
       } satisfies TelemetryFrame,
     });
@@ -1008,8 +1014,7 @@ export function Car({
     if (aeroModeRef?.current) {
       aeroModeRef.current.textContent =
         (aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE") +
-        (drsStateRef.current.active ? " · DRS" : "") +
-        (overrideActiveRef.current ? " · OVERRIDE" : "");
+        (overtakeStateRef.current.active ? " · OVERTAKE" : "");
     }
     // Active-aero flap (plan section 5): the rear-wing top element rotates
     // open in low-drag mode and shut otherwise, rate-limited like a real
@@ -1444,7 +1449,7 @@ export function Car({
         energyMode: energyStatusRef.current.mode,
         batteryFraction: energyStatusRef.current.batteryFraction,
         deploymentBudgetFraction: energyStatusRef.current.deploymentBudgetFraction,
-        drs: drsStateRef.current,
+        overtake: overtakeStateRef.current,
         raceControl: effectiveRaceControlRef.current.snapshot(),
         replay: replayRef.current.state(),
         telemetry: replayRef.current.telemetryTrace(80),

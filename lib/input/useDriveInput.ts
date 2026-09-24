@@ -61,8 +61,8 @@ export interface DriveInput {
   steer: number;
   rewind: boolean;
   deploy: boolean;
-  /** Hold to request an available DRS zone. */
-  drs: boolean;
+  /** Hold to request an available 2026 overtake zone. */
+  overtake: boolean;
   /** Edge-triggered pit request. */
   pitRequested: boolean;
   /** Edge-triggered instant replay toggle. */
@@ -129,9 +129,11 @@ const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
 const ABS_TOGGLE_KEY = "KeyB";
 const RACING_LINE_TOGGLE_KEY = "KeyL";
 const AUTO_GEAR_TOGGLE_KEY = "KeyG";
-const DRS_KEY = "KeyX";
+const OVERTAKE_KEY = "KeyX";
 const PIT_REQUEST_KEY = "KeyO";
-const REPLAY_TOGGLE_KEY = "KeyP";
+// J is instant replay; P is reserved for the singleplayer pause controller
+// in Scene.tsx, which must keep listening while the physics world is paused.
+const REPLAY_TOGGLE_KEY = "KeyJ";
 const ERS_MODE_CYCLE_KEY = "KeyI";
 const STRATEGY_MODE_CYCLE_KEY = "KeyY";
 const WEATHER_CYCLE_KEY = "KeyU";
@@ -165,7 +167,7 @@ export function useDriveInput(
     steer: 0,
     rewind: false,
     deploy: false,
-    drs: false,
+    overtake: false,
     pitRequested: false,
     replayToggle: false,
     ersModeCycle: false,
@@ -357,7 +359,7 @@ export function useDriveInput(
             : brakeTarget;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
       input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
-      input.current.drs = anyPressed(pressed, [DRS_KEY]);
+      input.current.overtake = anyPressed(pressed, [OVERTAKE_KEY]);
       input.current.pitRequested = pitRequested;
       input.current.replayToggle = replayToggle;
       input.current.ersModeCycle = ersModeCycle;

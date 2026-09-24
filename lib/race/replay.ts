@@ -10,7 +10,7 @@ export interface TelemetryFrame {
   rpm: number;
   batteryFraction: number;
   tireGrip: number;
-  drsActive: boolean;
+  overtakeActive: boolean;
   weather: string;
 }
 
@@ -169,7 +169,7 @@ function blendFrames(a: ReplayFrame, b: ReplayFrame, t: number): ReplayFrame {
       rpm: lerp(a.telemetry.rpm, b.telemetry.rpm),
       batteryFraction: lerp(a.telemetry.batteryFraction, b.telemetry.batteryFraction),
       tireGrip: lerp(a.telemetry.tireGrip, b.telemetry.tireGrip),
-      drsActive: t < 0.5 ? a.telemetry.drsActive : b.telemetry.drsActive,
+      overtakeActive: t < 0.5 ? a.telemetry.overtakeActive : b.telemetry.overtakeActive,
       weather: t < 0.5 ? a.telemetry.weather : b.telemetry.weather,
     },
   };

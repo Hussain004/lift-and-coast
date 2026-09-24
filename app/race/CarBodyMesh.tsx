@@ -19,7 +19,7 @@ import { useQuality } from "./renderQuality";
 // the player's car, the ghost, every AI rival, every remote car and the
 // garage showroom all draw this. Geometry is cached per livery and colours
 // are baked in as vertex colours, so a car is seven draw calls - glossy
-// paint, matte carbon, the DRS flap, four wheels - and the grid shares one
+// paint, matte carbon, the active-aero flap, four wheels - and the grid shares one
 // geometry set per team. Materials are cached per finish.
 
 const bodyCache = new Map<string, CarGeometry>();
@@ -67,7 +67,7 @@ function material(finish: Finish, options: { ghost: boolean; studio: boolean; ch
 }
 
 /**
- * The body: paint and carbon meshes plus the DRS flap in its pivot group
+ * The body: paint and carbon meshes plus the active-aero flap in its pivot group
  * (its leading edge). `flapRef` is the pivot the owner animates (see
  * Car.tsx); without one the flap stays parked shut, which is what the AI,
  * the remote cars and the showroom want.

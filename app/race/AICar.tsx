@@ -46,7 +46,7 @@ import { getLineRoom, getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
 import { computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
 import { createEnergySystem } from "@/lib/physics/energy";
-import { createDrsSystem, DRS_DRAG_SCALE } from "@/lib/physics/drs";
+import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
 import { createStrategySystem } from "@/lib/race/strategy";
 import { createWeatherSystem } from "@/lib/physics/weather";
 import type { WeatherHandle } from "@/lib/race/raceOps";
@@ -317,7 +317,10 @@ export function AICar({
   const energyRef = useRef(createEnergySystem(1, difficulty === "ace" ? "attack" : "balanced"));
   const batteryRef = useRef(1);
   const strategyRef = useRef(createStrategySystem({ mode: difficulty === "ace" ? "push" : "balanced" }));
-  const drsSystem = useMemo(() => createDrsSystem(track), [track]);
+  const overtakeSystem = useMemo(
+    () => createOvertakeSystem(track, sessionMode === "race" ? "race" : "practice"),
+    [track, sessionMode]
+  );
   const localWeatherRef = useRef<WeatherHandle>(createWeatherSystem("clear"));
   const effectiveWeatherRef = weatherRef ?? localWeatherRef;
   const boostEligibleRef = useRef(false);
@@ -552,10 +555,10 @@ export function AICar({
     // sets it: a guest-driven car has no battery wiring over the wire, so
     // it keeps the legacy flat 1.
     let boostMultiplier = 1;
-    let drsState = drsSystem.snapshot();
+    let overtakeState = overtakeSystem.snapshot();
     let strategyState = strategyRef.current.snapshot();
     const weatherState = effectiveWeatherRef.current.snapshot();
-    drsSystem.setRequested(false);
+    overtakeSystem.setRequested(false);
     if (netFresh && netInput) {
       // A remotely driven car has no wing telemetry/strategy; keep the safe
       // high-downforce mode rather than carrying a previous AI straight
@@ -698,11 +701,17 @@ export function AICar({
       );
       zoneRef.current = aiControls.zone;
       boostEligibleRef.current = aiControls.boostEligible;
+      const nearestAheadGap = cars.reduce(
+        (nearest, car) => (car.gapMeters > 0 ? Math.min(nearest, car.gapMeters) : nearest),
+        Infinity
+      );
+      overtakeSystem.setRequested(sessionMode === "race" ? step.override : true);
+      overtakeState = overtakeSystem.update(trackedProgress, speedMs, nearestAheadGap);
       const energyStatus = energyRef.current.update(
         {
           brakeAmount: aiControls.brake,
           deployRequested: willDeploy,
-          overrideActive: sessionMode === "race" && step.override,
+          overrideActive: overtakeState.active,
           lap: myEntry?.lapCount ?? 0,
           raceStarted: raceStartRef?.current ?? true,
         },
@@ -710,8 +719,6 @@ export function AICar({
       );
       batteryRef.current = energyStatus.batteryFraction;
       boostMultiplier = energyStatus.engineForceMultiplier;
-      drsSystem.setRequested(speedMs > 30 && aiControls.brake < 0.2);
-      drsState = drsSystem.update(trackedProgress, speedMs);
       strategyState = strategyRef.current.update({
          dt: world.timestep,
          speedMs,
@@ -740,7 +747,7 @@ export function AICar({
       controller,
       gatedControls,
       DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty),
-      boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier,
+      boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier * (overtakeState.active ? OVERTAKE_BOOST_MULTIPLIER : 1),
       DEFAULT_BRAKE_FORCE,
       speedMs,
       true,
@@ -790,7 +797,7 @@ export function AICar({
       body,
       aeroModeRef.current,
       world.timestep,
-      towDrag * weatherState.dragMultiplier * (drsState.active ? DRS_DRAG_SCALE : 1)
+      towDrag * weatherState.dragMultiplier
     );
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
     aiBufferRef.current.push(snapshotOf(body));

@@ -377,7 +377,7 @@ describe("stepRacecraft", () => {
     expect(cautious.attemptKey).toBeNull();
   });
 
-  it("flags Manual Override within a second of the car ahead", () => {
+  it("flags 2026 overtake mode within a second of the car ahead", () => {
     const close = stepRacecraft(
       racingState(),
       input({ ownSpeedMs: 60, cars: [{ key: "a", gapMeters: 40, speedMs: 60, lateralMeters: 0 }] })

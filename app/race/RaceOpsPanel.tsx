@@ -5,7 +5,7 @@ import styles from "./race.module.css";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
 import type { TelemetryFrame } from "@/lib/race/replay";
 import { weatherLabel } from "@/lib/physics/weather";
-import { drsSummary } from "@/lib/physics/drs";
+import { overtakeSummary } from "@/lib/physics/overtake";
 import { strategySummary } from "@/lib/race/strategy";
 import { raceControlSummary } from "@/lib/race/raceControl";
 import type { EnergyMode } from "@/lib/physics/energy";
@@ -117,11 +117,11 @@ export function RaceOpsPanel({
           </div>
           <div className={styles.opsButtons}>
             <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: snapshot.strategy.pitPhase === "requested" ? "cancel-pit" : "request-pit" })}>{snapshot.strategy.pitPhase === "requested" ? "CANCEL PIT" : "PIT STOP"}</button>
-            <button type="button" className={snapshot.drs.requested ? styles.opsButtonActive : styles.opsAction} onClick={() => send(commandRef, { type: "toggle-drs" })}>{drsSummary(snapshot.drs)}</button>
+            <button type="button" className={snapshot.overtake.requested ? styles.opsButtonActive : styles.opsAction} onClick={() => send(commandRef, { type: "toggle-overtake" })}>{overtakeSummary(snapshot.overtake)}</button>
             {snapshot.replay.playback ? (
               <>
                 <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: "seek-replay", seconds: -5 })}>-5s</button>
-                <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: "toggle-replay" })}>PAUSE</button>
+                <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: "toggle-replay" })}>PAUSE REPLAY</button>
                 <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: "seek-replay", seconds: 5 })}>+5s</button>
                 <button type="button" className={styles.opsAction} onClick={() => send(commandRef, { type: "stop-replay" })}>EXIT</button>
               </>
@@ -137,7 +137,7 @@ export function RaceOpsPanel({
           </div>
           <TelemetryInputs sample={latestTelemetry} />
           <Sparkline values={speedTrace} color="#f2f4f7" />
-          <div className={styles.opsHint}>X DRS · O PIT · P REPLAY · SHIFT ERS DEPLOY</div>
+          <div className={styles.opsHint}>X OVERTAKE · O PIT · J REPLAY · P PAUSE · SHIFT ERS DEPLOY</div>
         </div>
       )}
     </section>

@@ -16,7 +16,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
 - Dynamic clear, cloudy, and rain weather with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, tire age, tire temperature, blankets, compound selection, and pit service
-- Track-derived DRS zones with manual arming and a real drag-reduction state
+- Track-derived 2026 overtake zones with race proximity and practice/qualifying access
 - Race Ops telemetry, steward decisions, penalties, invalid laps, and disqualification status
 - Rolling instant replay with a synchronized TV camera, seek controls, and a speed trace
 - Active Aero with high-downforce and low-drag modes
@@ -52,9 +52,9 @@ That command runs the quality gates and hot-laps every registered circuit with t
 
 ## Race Ops
 
-Open the Race Ops panel during a session to change weather, ERS mode, strategy mode, and compound. Request a pit service with `O`, arm DRS with `X`, and toggle instant replay with `P`. The panel shows fuel, tire temperature, grip, DRS state, steward decisions, penalties, and a rolling speed trace.
+Open the Race Ops panel during a session to change weather, ERS mode, strategy mode, and compound. Request a pit service with `O`, arm 2026 overtake mode with `X`, pause singleplayer with `P`, and toggle instant replay with `J`. The panel shows fuel, tire temperature, grip, overtake state, steward decisions, penalties, and a rolling speed trace.
 
-Weather is shared by the track, player, and AI. Rain reduces grip and increases drag while the scene adds rain particles, lower visibility, and a darker atmospheric feel. DRS zones are derived from long, low-curvature sections of each circuit, so the same zone system works on every registered track without hand-authored coordinates.
+Weather is shared by the track, player, and AI. Rain reduces grip and increases drag while the scene adds rain particles, lower visibility, and a darker atmospheric feel. Overtake zones are derived from long, low-curvature sections of each circuit. In a race they activate only within one second of the car ahead; in practice and qualifying they can be armed throughout the zone.
 
 Pit service currently uses the marked start-finish service window as a playable vertical slice. A full drivable pit-lane route and route-aware championship classification are the next simulation milestone.
 
@@ -77,9 +77,10 @@ Pit service currently uses the marked start-finish service window as a playable 
 | Camera | `C` | Assign as a button if supported |
 | Tires | `1` / `2` / `3` | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
-| DRS arm | Hold `X` | Assign as a button if supported |
+| Overtake arm | Hold `X` | Assign as a button if supported |
 | Pit request | `O` | Race Ops button |
-| Instant replay | `P` | Race Ops button |
+| Pause singleplayer | `P` | Resume button |
+| Instant replay | `J` | Race Ops button |
 | ERS mode | `I` | Race Ops button |
 | Strategy mode | `Y` | Race Ops button |
 | Weather cycle | `U` | Race Ops button |

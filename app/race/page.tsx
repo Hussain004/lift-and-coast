@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useRef } from "react";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
 import {
@@ -240,6 +240,9 @@ function RaceContent() {
   const audioRef = useRef(defaultAudioSnapshot());
   const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
+  const [paused, setPaused] = useState(false);
+  const togglePaused = useCallback(() => setPaused((value) => !value), []);
+  const singlePlayer = !netActive;
 
   return (
     <div className={styles.wrap}>
@@ -288,6 +291,8 @@ function RaceContent() {
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
         timeOfDay={timeOfDay}
+        paused={singlePlayer ? paused : false}
+        onPauseToggle={singlePlayer ? togglePaused : undefined}
         weatherPreset={weatherPreset}
         raceCommandsRef={raceCommandsRef}
         raceOpsSnapshotRef={raceOpsSnapshotRef}
@@ -302,6 +307,15 @@ function RaceContent() {
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
       <RaceOpsPanel commandRef={raceCommandsRef} snapshotRef={raceOpsSnapshotRef} />
+      {singlePlayer && paused && (
+        <div className={styles.pauseOverlay} role="dialog" aria-label="Game paused">
+          <div className={styles.pauseCard}>
+            <strong>PAUSED</strong>
+            <span>Press P or click below to resume</span>
+            <button type="button" onClick={togglePaused}>RESUME</button>
+          </div>
+        </div>
+      )}
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}

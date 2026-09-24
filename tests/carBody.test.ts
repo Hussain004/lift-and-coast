@@ -57,7 +57,7 @@ describe("sculpted car", () => {
     }
   });
 
-  it("fits the DRS flap between the rear endplates, behind the main plane", () => {
+  it("fits the active-aero flap between the rear endplates, behind the main plane", () => {
     expect(FLAP_SPAN / 2).toBeLessThan(0.72);
     expect(FLAP_PIVOT[2]).toBeGreaterThan(1.5);
     const b = box(car.flap);
@@ -106,8 +106,8 @@ describe("sculpted car", () => {
   });
 });
 
-describe("DRS flap and livery", () => {
-  it("parks the DRS flap at an angle of attack and opens further from it", () => {
+describe("active-aero flap and livery", () => {
+  it("parks the active-aero flap at an angle of attack and opens further from it", () => {
     expect(FLAP_CLOSED_INCLINE_RAD).toBeLessThan(0);
     const deployed = FLAP_CLOSED_INCLINE_RAD + FLAP_OPEN_RAD;
     // Opens past the park angle without folding flat over the wing: about

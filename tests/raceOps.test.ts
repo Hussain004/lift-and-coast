@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getTrack } from "../lib/tracks/trackData";
-import { buildDrsZones, createDrsSystem, DRS_MIN_SPEED_MS } from "../lib/physics/drs";
+import {
+  buildOvertakeZones,
+  createOvertakeSystem,
+  OVERTAKE_MIN_SPEED_MS,
+} from "../lib/physics/overtake";
 import { createEnergySystem } from "../lib/physics/energy";
 import { createStrategySystem } from "../lib/race/strategy";
 import { createRaceControlSystem } from "../lib/race/raceControl";
@@ -103,23 +107,41 @@ describe("race operations systems", () => {
     expect(attackStatus.thermalFraction).toBeGreaterThan(balancedStatus.thermalFraction);
   });
 
-  it("derives at least one DRS zone for every registered circuit", () => {
+  it("derives at least one overtake zone for every registered circuit", () => {
     for (const meta of TRACKS) {
-      expect(buildDrsZones(getTrack(meta.id)).length, meta.id).toBeGreaterThan(0);
+      expect(buildOvertakeZones(getTrack(meta.id)).length, meta.id).toBeGreaterThan(0);
     }
   });
 
-  it("builds usable DRS zones and only opens them at speed", () => {
+  it("builds usable overtake zones and only opens them at speed", () => {
     const track = getTrack("silverstone");
-    const zones = buildDrsZones(track);
+    const zones = buildOvertakeZones(track);
     expect(zones.length).toBeGreaterThan(0);
-    const system = createDrsSystem(track);
+    const system = createOvertakeSystem(track);
     const zone = zones[0];
     system.setRequested(true);
-    system.update(zone.startMeters + 1, DRS_MIN_SPEED_MS - 1);
+    system.update(zone.startMeters + 1, OVERTAKE_MIN_SPEED_MS - 1);
     expect(system.snapshot().active).toBe(false);
-    system.update(zone.startMeters + 1, DRS_MIN_SPEED_MS + 1);
+    system.update(zone.startMeters + 1, OVERTAKE_MIN_SPEED_MS + 1);
     expect(system.snapshot().active).toBe(true);
+  });
+
+  it("gates race overtake by one-second proximity, but not in practice or qualifying", () => {
+    const track = getTrack("silverstone");
+    const zone = buildOvertakeZones(track)[0];
+    const race = createOvertakeSystem(track, "race");
+    race.setRequested(true);
+    race.update(zone.startMeters + 1, OVERTAKE_MIN_SPEED_MS + 15, OVERTAKE_MIN_SPEED_MS + 15);
+    expect(race.snapshot().active).toBe(true);
+    race.update(zone.startMeters + 1, OVERTAKE_MIN_SPEED_MS + 15, OVERTAKE_MIN_SPEED_MS + 16);
+    expect(race.snapshot().active).toBe(false);
+
+    for (const mode of ["practice", "qualifying"] as const) {
+      const openSession = createOvertakeSystem(track, mode);
+      openSession.setRequested(true);
+      openSession.update(zone.startMeters + 1, OVERTAKE_MIN_SPEED_MS + 15, Infinity);
+      expect(openSession.snapshot().active, mode).toBe(true);
+    }
   });
 
   it("race control accumulates steward decisions and can disqualify", () => {
@@ -152,7 +174,7 @@ describe("race operations systems", () => {
           rpm: 5000,
           batteryFraction: 0.8,
           tireGrip: 0.98,
-          drsActive: false,
+          overtakeActive: false,
           weather: "clear",
         },
       });

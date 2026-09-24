@@ -1,5 +1,5 @@
 import type { TireCompoundId } from "../physics/tireModel";
-import type { DrsState } from "../physics/drs";
+import type { OvertakeState } from "../physics/overtake";
 import type { WeatherPreset, WeatherState } from "../physics/weather";
 import type { EnergyMode } from "../physics/energy";
 import type { RaceControlState } from "./raceControl";
@@ -15,7 +15,7 @@ export interface RaceOpsSnapshot {
   energyMode: EnergyMode;
   batteryFraction: number;
   deploymentBudgetFraction: number;
-  drs: DrsState;
+  overtake: OvertakeState;
   raceControl: RaceControlState;
   replay: ReplayState;
   telemetry: TelemetryFrame[];
@@ -28,7 +28,7 @@ export type RaceOpsCommand =
   | { type: "set-compound"; compound: TireCompoundId }
   | { type: "request-pit" }
   | { type: "cancel-pit" }
-  | { type: "toggle-drs" }
+  | { type: "toggle-overtake" }
   | { type: "toggle-replay" }
   | { type: "stop-replay" }
   | { type: "seek-replay"; seconds: number }

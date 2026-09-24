@@ -1,15 +1,15 @@
-// Car-body data that isn't geometry: the DRS flap's travel and actuator,
-// and the second livery colour. The sculpted shapes themselves live in
-// lib/race/carSculpt.ts (rendered by app/race/CarBodyMesh.tsx).
+// Car-body data that isn't geometry: the active-aero flap's travel and
+// actuator, and the second livery colour. The sculpted shapes themselves live
+// in lib/race/carSculpt.ts (rendered by app/race/CarBodyMesh.tsx).
 
-// Active aero (plan section 5 + the E-key DRS toggle in useDriveInput): the
-// flap element parks at a real wing's angle of attack, and DRS adds the
-// pivot rotation on top of it.
-/** Park angle of the shut DRS flap: trailing edge already up, like a real
- * rear-wing element (applied to the mesh inside the pivot group). */
+// Active aero (plan section 5 + the E-key aero toggle in useDriveInput): the
+// flap element parks at a real wing's angle of attack, and low-drag mode adds
+// the pivot rotation on top of it.
+/** Park angle of the shut active-aero flap: trailing edge already up, like a
+ * real rear-wing element (applied to the mesh inside the pivot group). */
 export const FLAP_CLOSED_INCLINE_RAD = -0.3;
-/** Pivot rotation added when DRS deploys (see Car.tsx's low-drag mode) -
- * with the park angle that is about 49 degrees of travel. */
+/** Pivot rotation added in low-drag mode (see Car.tsx) - with the park angle
+ * that is about 49 degrees of travel. */
 export const FLAP_OPEN_RAD = -0.55;
 /** Flap actuator speed - snaps open/shut in about a fifth of a second. */
 export const FLAP_RATE_RAD_S = 2.5;

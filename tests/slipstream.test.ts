@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_TOW_DRAG_REDUCTION, towDragScale } from "../lib/physics/aero";
-import { createEnergySystem, overrideModeActive } from "../lib/physics/energy";
+import { createEnergySystem, overtakeModeActive } from "../lib/physics/energy";
 
 // Heading yaw 0: forward is -Z, so a car "ahead" sits at negative z.
 const own = { x: 0, z: 0, yawRad: 0, speedMs: 60 };
@@ -22,12 +22,12 @@ describe("slipstream", () => {
   });
 });
 
-describe("Manual Override Mode", () => {
+describe("2026 overtake mode", () => {
   it("opens within one second of the car ahead at racing speed", () => {
-    expect(overrideModeActive(40, 60)).toBe(true);
-    expect(overrideModeActive(70, 60)).toBe(false);
-    expect(overrideModeActive(-5, 60)).toBe(false);
-    expect(overrideModeActive(5, 10)).toBe(false);
+    expect(overtakeModeActive(40, 60)).toBe(true);
+    expect(overtakeModeActive(70, 60)).toBe(false);
+    expect(overtakeModeActive(-5, 60)).toBe(false);
+    expect(overtakeModeActive(5, 10)).toBe(false);
   });
 
   it("makes deployment cheaper, not stronger", () => {

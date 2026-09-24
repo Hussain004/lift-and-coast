@@ -85,7 +85,7 @@ function Turntable({ team, reduced }: { team: RosterTeam; reduced: boolean }) {
         lastInput.current = RESUME_DELAY_S;
       }}
     >
-      {/* Car in full livery, DRS flap parked shut: the same shell every car
+      {/* Car in full livery, active-aero flap parked shut: the same shell every car
           on the grid draws (see app/race/CarBodyMesh.tsx), in studio finish
           and with the pick's secondary color as the stripe accent. */}
       <CarBodyShell

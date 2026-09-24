@@ -7,7 +7,7 @@ import { CarBodyShell, CarWheels } from "./CarBodyMesh";
 /**
  * The F1 car visual shared by the player (Car.tsx), the AI rivals
  * (AICar.tsx), the remote cars (RemoteCar.tsx) and the ghost replay: the
- * shared shell from ./CarBodyMesh (merged panels, the DRS flap in its pivot
+ * shared shell from ./CarBodyMesh (merged panels, the active-aero flap in its pivot
  * group, helmet, halo) plus its dressed wheels on the physics-owned
  * stations. Visual only - the solid colliders stay the chassis cuboid and
  * the mesh-less raycast wheels (see the colliders={false} comment in
@@ -32,7 +32,7 @@ export function F1CarBody({
   accentColor?: string;
   steerRefs: React.RefObject<(THREE.Group | null)[]>;
   spinRefs: React.RefObject<(THREE.Group | null)[]>;
-  /** Animated by the owner (see Car.tsx): rotates the rear-wing DRS flap
+  /** Animated by the owner (see Car.tsx): rotates the rear-wing active-aero flap
    * open in low-drag mode. Absent, the flap parks at its shut inclination -
    * the AI never deploys. */
   flapRef?: React.RefObject<THREE.Group | null>;

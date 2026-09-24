@@ -20,7 +20,7 @@
 // - Pick passing sides from the road: room to each edge (see LineRoom), the
 //   inside of the next corner, and who is already there.
 import { cornerAheadMeters } from "./pathFollower";
-import { overrideModeActive } from "../physics/energy";
+import { overtakeModeActive } from "../physics/energy";
 import type { AeroMode } from "../physics/aero";
 import { maxLateralAccelMs2, type RacingLinePoint, type ThrottleZone } from "../tracks/racingLine";
 import type { LineRoom } from "../tracks/racingLineCache";
@@ -424,7 +424,7 @@ export interface RacecraftOutput {
   /** The lateral offset to hand pathFollower this tick (the ramped offset,
    * stretched at walking pace when turning out round a stopped car). */
   steerOffsetMeters: number;
-  /** Within a second of the car ahead: Manual Override Mode (energy.ts). */
+  /** Within a second of the car ahead: 2026 overtake mode (energy.ts). */
   override: boolean;
   /** Active aero mode to apply to grip, downforce and drag this tick. */
   aeroMode: AeroMode;
@@ -784,8 +784,8 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     target.gapMeters <= 20;
   let gapAhead = Infinity;
   for (const car of cars) if (car.gapMeters > 0 && car.gapMeters < gapAhead) gapAhead = car.gapMeters;
-  const override = overrideModeActive(gapAhead, own);
-  // In the override window the energy is cheap: spend it chasing.
+  const override = overtakeModeActive(gapAhead, own);
+  // In the overtake window the energy is cheap: spend it chasing.
   const deploy =
     !input.mistakeActive &&
     shouldDeployBoost({

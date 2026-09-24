@@ -7,7 +7,7 @@
 //
 // Draw-call budget is the point of the layout: colours are baked in as
 // vertex colours, so a whole car is two body meshes (glossy paint, matte
-// carbon), the DRS flap and four wheels - and a 20-car grid shares one set
+// carbon), the active-aero flap and four wheels - and a 20-car grid shares one set
 // of geometry per livery. Frame and units match the RigidBody: +x right,
 // +y up, -z forward, meters, wheel stations from CAR_WHEELS.
 import * as THREE from "three";
@@ -25,7 +25,7 @@ export const COMPOUND_STRIPE_COLOR = { soft: "#e3322b", medium: "#f2c230", hard:
 export const HELMET_COLOR = "#f2f2f2";
 export const LIGHT_COLOR = "#ff2a2a";
 
-/** DRS flap: pivot (its leading edge) in the car frame, and chord/span. */
+/** Active-aero flap: pivot (its leading edge) in the car frame, and chord/span. */
 export const FLAP_PIVOT: P3 = [0, 0.64, 1.8];
 export const FLAP_CHORD = 0.26;
 export const FLAP_SPAN = 1.4;

@@ -407,7 +407,7 @@
   transform: translateX(-50%);
   bottom: 12px;
   width: min(820px, calc(100vw - 24px));
-  min-height: 108px;
+  min-height: 116px;
   display: grid;
   grid-template-columns: 86px minmax(210px, 1.15fr) minmax(145px, 0.72fr) minmax(190px, 1fr);
   background: linear-gradient(112deg, rgba(7, 9, 13, 0.97), rgba(17, 20, 26, 0.95));
@@ -420,6 +420,61 @@
   pointer-events: none;
   overflow: hidden;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+}
+
+.pauseOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 4, 8, 0.46);
+  pointer-events: auto;
+  z-index: 30;
+}
+
+.pauseCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 22px 28px;
+  border: 1px solid #3a414d;
+  border-top: 3px solid #e10600;
+  background: rgba(8, 10, 15, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-family: var(--font-geist-sans);
+  text-align: center;
+}
+
+.pauseCard strong {
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.pauseCard span {
+  color: #aeb7c4;
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+}
+
+.pauseCard button {
+  margin-top: 6px;
+  padding: 7px 18px;
+  border: 1px solid #ff7868;
+  border-radius: 2px;
+  background: #e10600;
+  color: #fff;
+  cursor: pointer;
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
 }
 
 .hudTopLine {
@@ -454,9 +509,9 @@
 .statusCard > span {
   color: #aeb7c4;
   font-family: var(--font-geist-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 1.1px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
 }
 
@@ -523,7 +578,8 @@
   display: flex;
   justify-content: space-between;
   color: #7f8a99;
-  font-size: 7px;
+  font-size: 9px;
+  letter-spacing: 0.6px;
 }
 
 .rpmTrack,
@@ -572,7 +628,7 @@
 .pedalRow,
 .steerRow {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 42px 1fr;
   align-items: center;
   gap: 7px;
 }
@@ -633,7 +689,8 @@
 
 .statusCard > span {
   color: #7f8a99;
-  font-size: 7px;
+  font-size: 9px;
+  letter-spacing: 0.6px;
 }
 
 .aeroMode,
@@ -642,9 +699,9 @@
   overflow: hidden;
   color: #f2f4f7;
   font-family: var(--font-geist-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -659,7 +716,7 @@
 
 .assists {
   color: #aeb7c4;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .statusFooter {
@@ -675,9 +732,9 @@
 .mute {
   color: #aeb7c4;
   font-family: var(--font-geist-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.2px;
 }
 
 .damage {
