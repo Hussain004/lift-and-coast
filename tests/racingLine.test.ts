@@ -168,6 +168,18 @@ describe("computeRacingLine speed profile", () => {
     }
   });
 
+  it("defers the driver-facing brake cue without changing the AI safety profile", () => {
+    const line = computeRacingLine(track);
+    const deferred = line.filter(
+      (point) => point.zone !== "throttle" && (point.displayZone ?? point.zone) === "throttle"
+    );
+    const raisedTargets = line.filter(
+      (point) => (point.displayTargetSpeedMs ?? point.targetSpeedMs) > point.targetSpeedMs + 0.5
+    );
+    expect(deferred.length).toBeGreaterThan(0);
+    expect(raisedTargets.length).toBeGreaterThan(0);
+  });
+
   it("produces every throttle zone across a real lap, not just one color", () => {
     const line = computeRacingLine(track);
     const zonesSeen = new Set<ThrottleZone>(line.map((p) => p.zone));
@@ -266,13 +278,13 @@ describe("buildRacingLineRibbon", () => {
     "brake-hard": [1, 0, 0],
   };
 
-  it("produces two vertices per line point, each colored by that point's zone", () => {
+  it("produces two vertices per line point, each colored by its driver-facing zone", () => {
     const line = computeRacingLine(track);
     const ribbon = buildRacingLineRibbon(line, 1.2, ZONE_COLOR);
     expect(ribbon.positions.length).toBe(line.length * 2 * 3);
     expect(ribbon.colors.length).toBe(line.length * 2 * 3);
     for (let i = 0; i < line.length; i++) {
-      const expected = ZONE_COLOR[line[i].zone];
+      const expected = ZONE_COLOR[line[i].displayZone ?? line[i].zone];
       const leftIdx = i * 2 * 3;
       const rightIdx = leftIdx + 3;
       expect([ribbon.colors[leftIdx], ribbon.colors[leftIdx + 1], ribbon.colors[leftIdx + 2]]).toEqual(expected);

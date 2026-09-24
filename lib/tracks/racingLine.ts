@@ -48,8 +48,8 @@ const SMOOTHING_PASSES = 4;
 const MIN_PROFILE_SEGMENT_METERS = 0.5;
 
 // Speed-profile constants (also used to color the line - see ThrottleZone
-// below). The profile owns the reference speed envelope shared by the AI and
-// the live-line overlay; it is intentionally not a second rigid speed clamp.
+// below). The AI profile is the conservative reference envelope; a separate
+// driver-facing profile below keeps the visible cue from warning too early.
 // The normal and boosted ceilings leave room above the car's drag-limited
 // cruise so deployment can change the speed actually carried down a straight.
 //
@@ -102,6 +102,12 @@ const LATERAL_SAFETY_FACTOR = 0.8;
 // car (roughly 1.4g braking, 0.85g acceleration) for shaping a smooth
 // profile, not a physics simulation in their own right.
 export const MAX_DECEL_MS2 = 14;
+// The AI's 14 m/s^2 cap is intentionally conservative. A clean braking trace
+// for the current car reaches roughly 2.1-2.6g; 18 m/s^2 leaves margin for
+// reaction and combined slip while moving the driver's brake cue closer to
+// the physical braking point. It is display-only and never enters the AI
+// control target.
+const DRIVER_MAX_DECEL_MS2 = 18;
 // The forward profile now allows the car's acceleration-limited exits to
 // catch up to the next corner, while retaining enough margin for close
 // traffic to settle cleanly. Braking is still governed by the unchanged
@@ -120,6 +126,13 @@ const SPEED_PASS_LAPS = 3; // full loop-arounds, so constraints propagate all th
 const LIFT_DECEL_THRESHOLD = 0.3;
 const BRAKE_MEDIUM_DECEL_THRESHOLD = 3;
 const BRAKE_HARD_DECEL_THRESHOLD = 7;
+
+// The visible line is a driver cue, not the AI's conservative safety target.
+// These slightly wider bands keep the first color change closer to the actual
+// braking point instead of warning at the earliest mathematical decel bump.
+const DISPLAY_LIFT_DECEL_THRESHOLD = 0.6;
+const DISPLAY_BRAKE_MEDIUM_DECEL_THRESHOLD = 4;
+const DISPLAY_BRAKE_HARD_DECEL_THRESHOLD = 9;
 
 export type ThrottleZone = "throttle" | "lift" | "brake-medium" | "brake-hard";
 
@@ -149,8 +162,17 @@ export interface RacingLinePoint {
    * cause an overspeed problem.
    */
   boostEligible: boolean;
-  /** For coloring/HUD: how much this point asks the driver to lift/brake. */
+  /** AI-facing classification, retained as the conservative safety envelope. */
   zone: ThrottleZone;
+  /**
+   * Driver-facing braking target. It uses the measured brake capability rather
+   * than the deliberately conservative AI decel cap, so the visible ribbon
+   * does not ask the player to brake earlier than the car actually needs.
+   * Optional for small synthetic line fixtures in tests and integrations.
+   */
+  displayTargetSpeedMs?: number;
+  /** Driver-facing color band, independent from the AI's `zone`. */
+  displayZone?: ThrottleZone;
   /** Arc length from this point to the next (wrapping at the lap), meters. */
   distanceToNextMeters: number;
 }
@@ -241,6 +263,13 @@ export function classifyZone(decelMs2: number): ThrottleZone {
   if (decelMs2 <= LIFT_DECEL_THRESHOLD) return "throttle";
   if (decelMs2 <= BRAKE_MEDIUM_DECEL_THRESHOLD) return "lift";
   if (decelMs2 <= BRAKE_HARD_DECEL_THRESHOLD) return "brake-medium";
+  return "brake-hard";
+}
+
+function classifyDisplayZone(decelMs2: number): ThrottleZone {
+  if (decelMs2 <= DISPLAY_LIFT_DECEL_THRESHOLD) return "throttle";
+  if (decelMs2 <= DISPLAY_BRAKE_MEDIUM_DECEL_THRESHOLD) return "lift";
+  if (decelMs2 <= DISPLAY_BRAKE_HARD_DECEL_THRESHOLD) return "brake-medium";
   return "brake-hard";
 }
 
@@ -447,6 +476,17 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   const profileAccelMs2 = track.id === "suzuka" ? 8 : MAX_ACCEL_MS2;
   const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, profileAccelMs2, MAX_DECEL_MS2);
 
+  // Keep the safety-tuned profile above for AI stability, but derive a second
+  // profile for the driver-facing ribbon. The higher braking capability moves
+  // the colored braking band toward the real point where the player actually
+  // needs to brake, without changing any AI target or control decision.
+  const driverTargetSpeedMs = computeCappedSpeedProfile(
+    curveOnlySpeed,
+    segmentLengths,
+    profileAccelMs2,
+    DRIVER_MAX_DECEL_MS2
+  );
+
   // Same corner caps and the same real (unboosted) decel limit - only the
   // forward/accel side and the straight-line ceiling are boosted, matching
   // how Push-to-Pass actually works (more engine force, not better brakes).
@@ -463,18 +503,18 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     MAX_DECEL_MS2
   );
 
-  // Display-only smoothed copy of the final, physically-capped speed
-  // profile, used ONLY to classify each point's zone for the on-track
-  // color overlay - never returned as targetSpeedMs, so the AI's actual
-  // driving target is untouched (see the module comment above on why that
-  // separation matters). Smoothing the already-capped profile works at
-  // least as well as smoothing the raw curvature cap did: checked
-  // numerically against real Silverstone data, this gives 0 zone "runs" of
-  // 3 points or shorter (down from 83 of 145), better than smoothing
-  // curveOnlySpeed itself managed (16 of 72) - the backward/forward passes
-  // already partly shape the profile, so there's less residual noise left
-  // to smooth out.
-  let displaySpeedMs: Float64Array = Float64Array.from(targetSpeedMs);
+  // Keep the original AI-facing classification signal exactly as it was
+  // before the driver profile was added. This is deliberately separate from
+  // displaySpeedMs: zone feeds pathFollower/racecraft, so changing it here
+  // would silently change AI braking and re-open old stability failures.
+  let aiZoneSpeedMs: Float64Array = Float64Array.from(targetSpeedMs);
+  for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
+    aiZoneSpeedMs = boxFilterPass(aiZoneSpeedMs, SMOOTHING_BOX_RADIUS);
+  }
+
+  // Display-only smoothed copy of the driver profile, used only to classify
+  // the visible ribbon. It is never returned as the AI-facing targetSpeedMs.
+  let displaySpeedMs: Float64Array = Float64Array.from(driverTargetSpeedMs);
   for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
     displaySpeedMs = boxFilterPass(displaySpeedMs, SMOOTHING_BOX_RADIUS);
   }
@@ -484,9 +524,14 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     const next = (i + 1) % n;
     const decelNeeded = Math.max(
       0,
-      (displaySpeedMs[i] ** 2 - displaySpeedMs[next] ** 2) / (2 * segmentLengths[i])
+      (aiZoneSpeedMs[i] ** 2 - aiZoneSpeedMs[next] ** 2) / (2 * segmentLengths[i])
     );
     const zone = classifyZone(decelNeeded);
+    const displayDecelNeeded = Math.max(
+      0,
+      (displaySpeedMs[i] ** 2 - displaySpeedMs[next] ** 2) / (2 * segmentLengths[i])
+    );
+    const displayZone = classifyDisplayZone(displayDecelNeeded);
     result[i] = {
       position: positions[i],
       targetSpeedMs: targetSpeedMs[i],
@@ -494,16 +539,17 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       // Epsilon guards against the two independent pass computations
       // disagreeing by float noise even where they're conceptually meant
       // to be identical (both decel-limited by the same backward pass).
-      // Plus the displayed zone gate: the zone comes from the SMOOTHED
-      // display profile while eligibility compares raw profiles, so at a
-      // braking zone's smeared edge a point can read brake-hard while the
-      // raw comparison still favors boost (corner exit overlapping the
-      // next corner's anticipation). The braking point itself still
-      // survives boosting (shared backward pass), but telling the driver
-      // to deploy where the line burns red is wrong advice - never
-      // eligible under red.
+      // Plus the AI zone gate: the zone comes from the SMOOTHED AI profile
+      // while eligibility compares raw profiles, so at a braking zone's
+      // smeared edge a point can read brake-hard while the raw comparison
+      // still favors boost (corner exit overlapping the next corner's
+      // anticipation). The braking point itself still survives boosting
+      // (shared backward pass), but telling the driver to deploy where the
+      // line burns red is wrong advice - never eligible under red.
       boostEligible: boostedTargetSpeedMs[i] > targetSpeedMs[i] + 0.05 && zone !== "brake-hard",
       zone,
+      displayTargetSpeedMs: driverTargetSpeedMs[i],
+      displayZone,
       distanceToNextMeters: segmentLengths[i],
     };
   }
@@ -610,15 +656,16 @@ export function updateLiveZoneColors(
   for (let k = 0; k < n; k++) {
     const i = (nearest + k) % n;
     const d = Math.max(distance, LIVE_REACTION_DISTANCE_METERS);
-    // Use the baked profile zone for the road ahead. Only the first short
-    // reaction window is allowed to escalate it when the car is genuinely
-    // carrying too much speed right now; the old all-distance calculation
-    // repainted a fast straight red from end to end.
-    let zone = line[i].zone;
+    // Use the driver-facing baked zone for the road ahead. Only the first
+    // short reaction window is allowed to escalate it when the car is
+    // genuinely carrying too much speed right now; the old all-distance
+    // calculation repainted a fast straight red from end to end.
+    let zone = line[i].displayZone ?? line[i].zone;
     if (distance <= LIVE_OVERSPEED_WINDOW_METERS) {
-      const toleratedTarget = line[i].targetSpeedMs * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
+      const driverTarget = line[i].displayTargetSpeedMs ?? line[i].targetSpeedMs;
+      const toleratedTarget = driverTarget * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
       const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
-      zone = mostSevereZone(zone, classifyZone(decelNeeded));
+      zone = mostSevereZone(zone, classifyDisplayZone(decelNeeded));
     }
     const [r, g, b] = zoneColor[zone];
     const idx = i * 6;
@@ -649,8 +696,8 @@ export interface RacingLineRibbon {
 /**
  * A flat, colored ribbon mesh tracing the racing line - "wide, like an F1
  * game's throttle map" rather than a thin wireframe line. Both vertices at
- * a given point share that point's own zone color, so the color only
- * varies along the line's length, not across its width. Small, fixed
+ * a given point share that point's own driver-facing zone color, so the color
+ * only varies along the line's length, not across its width. Small, fixed
  * width (not the track's own width) - this is an overlay drawn on top of
  * the track surface, not a lane.
  */
@@ -669,7 +716,7 @@ export function buildRacingLineRibbon(
     const tangent = unitTangentAt(points, i);
     const rightX = -tangent.z;
     const rightZ = tangent.x;
-    const [r, g, b] = zoneColor[line[i].zone];
+    const [r, g, b] = zoneColor[line[i].displayZone ?? line[i].zone];
 
     const leftIdx = i * 2 * 3;
     const rightIdx = leftIdx + 3;
