@@ -48,6 +48,7 @@ import {
 } from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
 import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
+import type { TouchDriveInput } from "@/lib/input/touch";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
@@ -159,6 +160,7 @@ export function Car({
   netSlot = 0,
   raceStartRef,
   sharedRewindActiveRef,
+  touchInputRef,
   qualifyingRef,
   qualifyingDisplayRef,
   penaltyToastRef,
@@ -285,6 +287,8 @@ export function Car({
    * between the two physics steps matters.
    */
   sharedRewindActiveRef?: React.RefObject<boolean>;
+  /** Shared mutable analog controls from the on-screen touch deck. */
+  touchInputRef?: React.RefObject<TouchDriveInput | null>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
@@ -322,7 +326,7 @@ export function Car({
   const flapRef = useRef<THREE.Group | null>(null);
   const { world, rapier } = useRapier();
   const { update, input, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
-    useDriveInput(cameraModeRef, racingLineVisibleRef);
+    useDriveInput(cameraModeRef, racingLineVisibleRef, touchInputRef);
   // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
   // per car. `auto` follows the autoGear toggle (synced each physics tick
   // below) so the HUD and drive model always agree with the assist state.

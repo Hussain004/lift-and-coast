@@ -2,6 +2,23 @@
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.gameStage {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gameStage canvas {
+  display: block;
+  touch-action: none;
 }
 
 .loading {
@@ -1090,4 +1107,523 @@
 
 .perf:empty {
   display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Touch drive deck. The desktop layout stays untouched; portrait phones get a
+   dedicated lower control deck, while landscape phones get transparent corner
+   controls over the full game view. */
+.mobileControls {
+  position: absolute;
+  z-index: 18;
+  display: none;
+  box-sizing: border-box;
+  color: #e8edf3;
+  font-family: var(--font-geist-mono);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.mobileControlsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8e9aaa;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+}
+
+.mobileControlsHeader span:first-child {
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.mobileStickRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 0;
+}
+
+.mobileStick {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(104px, 25vw, 164px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.08) 0 18%, transparent 19%),
+    radial-gradient(circle, rgba(9, 13, 20, 0.94), rgba(3, 5, 9, 0.98));
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.42),
+    inset 0 0 0 5px rgba(255, 255, 255, 0.035),
+    inset 0 0 28px rgba(0, 0, 0, 0.52);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobileStick::before,
+.mobileStick::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.mobileStick::before {
+  top: 8%;
+  bottom: 8%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(transparent, #fff, transparent);
+}
+
+.mobileStick::after {
+  top: 50%;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #fff, transparent);
+}
+
+.mobileStickSteer {
+  border-color: rgba(107, 209, 255, 0.6);
+}
+
+.mobileStickPedal {
+  border-color: rgba(255, 159, 74, 0.65);
+}
+
+.mobileStickCrosshair {
+  position: absolute;
+  inset: 15%;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.mobileStickKnob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42%;
+  height: 42%;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6e7b8b, #1a202a 68%);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.mobileStickLabel {
+  position: absolute;
+  right: 0;
+  bottom: -19px;
+  left: 0;
+  color: #aeb8c5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.mobileControlHint {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 7px;
+  color: #7f8a99;
+  font-size: 8px;
+  letter-spacing: 0.7px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.mobileControlHint strong {
+  margin-top: 5px;
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.mobileActionRow {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 7px;
+}
+
+.mobileActionButton {
+  min-width: 74px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #4a5563;
+  border-radius: 3px;
+  background: rgba(17, 22, 30, 0.94);
+  color: #e8edf3;
+  cursor: pointer;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.7px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobileActionButton:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.mobileActionButton:active {
+  transform: translateY(1px);
+}
+
+.mobileActionRed {
+  border-color: rgba(225, 6, 0, 0.8);
+  color: #ffb3a7;
+}
+
+.mobileActionBlue {
+  border-color: rgba(107, 209, 255, 0.8);
+  color: #b9e9ff;
+}
+
+.mobileActionPause {
+  border-color: rgba(255, 210, 63, 0.75);
+  color: #ffd23f;
+}
+
+.mobileControlDisabled,
+.mobileActionButton:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.mobileControlsDisabled {
+  filter: saturate(0.55);
+}
+
+@media (max-width: 1100px), (pointer: coarse) {
+  .controlsPanel {
+    display: none;
+  }
+
+  .mobileControls {
+    display: flex;
+  }
+
+  .minimap {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    width: 96px;
+    height: 96px;
+  }
+
+  .raceDataStrip {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    transform: none;
+  }
+
+  .raceOpsPanel {
+    top: 94px;
+    right: 8px;
+    width: min(240px, 42vw);
+    max-height: 36%;
+    overflow-y: auto;
+  }
+
+  .trackLimit {
+    top: 46px;
+    max-width: calc(100% - 24px);
+    text-align: center;
+  }
+
+  .penaltyToast {
+    top: 88px;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 1100px), (pointer: coarse) and (orientation: portrait) {
+  .wrap {
+    --mobile-control-height: clamp(220px, 42vh, 360px);
+    --mobile-control-height: clamp(220px, 42dvh, 360px);
+  }
+
+  .gameStage {
+    bottom: var(--mobile-control-height);
+  }
+
+  .mobileControls {
+    inset: auto 0 0;
+    height: var(--mobile-control-height);
+    min-height: 0;
+    flex-direction: column;
+    gap: 7px;
+    padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    border-top: 1px solid #3b444f;
+    background:
+      linear-gradient(180deg, rgba(11, 15, 22, 0.98), rgba(3, 5, 9, 0.99)),
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 8px);
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.38);
+  }
+
+  .mobileControlsHeader {
+    flex: 0 0 auto;
+    padding: 0 3px;
+  }
+
+  .mobileStickRow {
+    flex: 1 1 auto;
+    gap: 8px;
+  }
+
+  .mobileStick {
+    width: clamp(94px, 29vw, 148px);
+  }
+
+  .mobileStickKnob {
+    width: 40%;
+    height: 40%;
+  }
+
+  .mobileActionRow {
+    flex: 0 0 auto;
+    gap: 5px;
+  }
+
+  .mobileActionButton {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 34px;
+    padding: 6px 5px;
+    font-size: 8px;
+  }
+
+  .raceDataLap {
+    min-width: 0;
+    max-width: 128px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .raceDataPosition {
+    min-width: 50px;
+  }
+
+  .raceDataStrip .delta,
+  .raceDataStrip .sectors {
+    display: none;
+  }
+
+  .tower {
+    top: 52px;
+    left: 8px;
+    width: min(220px, 48%);
+    max-height: 29%;
+    transform: none;
+  }
+
+  .towerRows {
+    max-height: 20vh;
+  }
+
+  .raceOpsPanel {
+    top: 94px;
+    right: 8px;
+    width: min(205px, 48%);
+    max-height: 29%;
+  }
+
+  .minimap {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    width: 78px;
+    height: 78px;
+  }
+
+  .bottomBar {
+    right: 6px;
+    bottom: max(7px, env(safe-area-inset-bottom));
+    left: 6px;
+    width: auto;
+    transform: none;
+    min-height: 76px;
+    grid-template-columns: 58px minmax(0, 1fr) 78px;
+  }
+
+  .hudStatus {
+    display: none;
+  }
+
+  .gearCluster,
+  .speedCluster,
+  .inputCluster {
+    padding: 8px 8px 7px;
+  }
+
+  .gear {
+    font-size: 40px;
+  }
+
+  .speed {
+    font-size: 30px;
+  }
+
+  .clusterLabel,
+  .barLabel,
+  .pedalRow > span,
+  .steerRow > span {
+    font-size: 8px;
+    letter-spacing: 0.4px;
+  }
+
+  .pedalRow,
+  .steerRow {
+    grid-template-columns: 30px 1fr;
+    gap: 4px;
+  }
+
+  .inputCluster {
+    gap: 5px;
+  }
+
+  .rpmTrack {
+    height: 8px;
+  }
+
+  .energyTrack {
+    height: 4px;
+  }
+}
+
+@media (orientation: landscape) and (max-width: 1100px), (pointer: coarse) and (orientation: landscape) {
+  .gameStage {
+    inset: 0;
+  }
+
+  .mobileControls {
+    inset: 0;
+    display: block;
+    height: 100%;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .mobileControlsHeader {
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top));
+    left: 50%;
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    background: rgba(5, 8, 13, 0.72);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .mobileStickRow {
+    position: static;
+    display: block;
+  }
+
+  .mobileStick {
+    position: absolute;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    width: clamp(94px, 16vw, 142px);
+    pointer-events: auto;
+  }
+
+  .mobileStickSteer {
+    left: max(16px, env(safe-area-inset-left));
+  }
+
+  .mobileStickPedal {
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  .mobileControlHint {
+    position: absolute;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    left: 50%;
+    padding: 5px 8px;
+    border-radius: 3px;
+    background: rgba(5, 8, 13, 0.64);
+    transform: translateX(-50%);
+  }
+
+  .mobileActionRow {
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    pointer-events: auto;
+  }
+
+  .mobileActionButton {
+    min-width: 62px;
+    min-height: 34px;
+    padding: 6px 7px;
+    font-size: 8px;
+  }
+
+  .bottomBar {
+    right: auto;
+    bottom: max(9px, env(safe-area-inset-bottom));
+    left: 50%;
+    width: clamp(300px, calc(100% - 280px), 560px);
+    min-height: 76px;
+    grid-template-columns: 58px minmax(0, 1fr) 78px;
+  }
+
+  .hudStatus {
+    display: none;
+  }
+
+  .gearCluster,
+  .speedCluster,
+  .inputCluster {
+    padding: 8px 8px 7px;
+  }
+
+  .gear {
+    font-size: 40px;
+  }
+
+  .speed {
+    font-size: 30px;
+  }
+
+  .clusterLabel,
+  .barLabel,
+  .pedalRow > span,
+  .steerRow > span {
+    font-size: 8px;
+    letter-spacing: 0.4px;
+  }
+
+  .pedalRow,
+  .steerRow {
+    grid-template-columns: 30px 1fr;
+    gap: 4px;
+  }
+
+  .inputCluster {
+    gap: 5px;
+  }
 }

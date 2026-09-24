@@ -11,6 +11,7 @@ import {
 } from "./gamepad";
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
+import type { TouchDriveInput } from "./touch";
 
 export type CameraMode = "chase" | "cockpit" | "t-cam" | "tv" | "orbit";
 /** Every mode except the free orbit, which sits outside the C cycle. */
@@ -154,11 +155,13 @@ const anyPressed = (keys: Set<string>, codes: string[]) =>
  *
  * `externalRacingLineVisibleRef` is the same idea, for the same reason -
  * the racing line overlay lives in Track.tsx, a sibling of Car.tsx under
- * the Canvas, not a child of it.
+ * the Canvas, not a child of it. `touchInputRef` is the matching mutable
+ * channel for the adaptive on-screen phone controls.
  */
 export function useDriveInput(
   externalCameraModeRef?: RefObject<CameraMode>,
-  externalRacingLineVisibleRef?: RefObject<boolean>
+  externalRacingLineVisibleRef?: RefObject<boolean>,
+  touchInputRef?: RefObject<TouchDriveInput | null>
 ) {
   const keys = useRef(new Set<string>());
   const input = useRef<DriveInput>({
@@ -286,6 +289,10 @@ export function useDriveInput(
     gamepadConnected,
     update(dt: number) {
       const pressed = keys.current;
+      const touch = touchInputRef?.current;
+      const touchSteering = touch?.steeringActive ? touch.steer : null;
+      const touchThrottle = touch?.throttle ?? 0;
+      const touchBrake = touch?.brake ?? 0;
       // Shift requests are edge-triggered: keydown latches them, this tick
       // consumes them exactly once (copied out before the fields are
       // cleared, so holding Q/Z down can't shift every frame), and they're
@@ -337,20 +344,21 @@ export function useDriveInput(
       }
 
       input.current.steer =
-        padSteer !== null
-          ? padSteer
-          : stepSteering(input.current.steer, steerTarget, dt, STEER_RATE, STEER_CENTER_RATE);
+        touchSteering !== null
+          ? touchSteering
+          : padSteer !== null
+            ? padSteer
+            : stepSteering(input.current.steer, steerTarget, dt, STEER_RATE, STEER_CENTER_RATE);
 
       const keyboardThrottle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
-      input.current.throttle =
-        padThrottle !== null ? Math.max(keyboardThrottle, padThrottle) : keyboardThrottle;
+      input.current.throttle = Math.max(keyboardThrottle, padThrottle ?? 0, touchThrottle);
 
       // Unified brake target from both input sources, ramped with the same
       // guard as the keyboard path: instant release, rate-limited
       // application (and raw full-force application with ABS off - the
       // documented ABS-off tradeoff applies to gamepad braking too).
       const keyboardBrake = anyPressed(pressed, BRAKE_KEYS) ? 1 : 0;
-      const brakeTarget = padBrake !== null ? Math.max(keyboardBrake, padBrake) : keyboardBrake;
+      const brakeTarget = Math.max(keyboardBrake, padBrake ?? 0, touchBrake);
       input.current.brake =
         brakeTarget === 0
           ? 0
@@ -358,8 +366,8 @@ export function useDriveInput(
             ? Math.min(input.current.brake + dt / BRAKE_RAMP_SECONDS, brakeTarget)
             : brakeTarget;
       input.current.rewind = anyPressed(pressed, REWIND_KEYS);
-      input.current.deploy = anyPressed(pressed, DEPLOY_KEYS);
-      input.current.overtake = anyPressed(pressed, [OVERTAKE_KEY]);
+      input.current.deploy = anyPressed(pressed, DEPLOY_KEYS) || (touch?.deploy ?? false);
+      input.current.overtake = anyPressed(pressed, [OVERTAKE_KEY]) || (touch?.overtake ?? false);
       input.current.pitRequested = pitRequested;
       input.current.replayToggle = replayToggle;
       input.current.ersModeCycle = ersModeCycle;

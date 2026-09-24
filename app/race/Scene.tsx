@@ -21,6 +21,7 @@ import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import type { TouchDriveInput } from "@/lib/input/touch";
 import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
@@ -607,6 +608,7 @@ export function Scene({
   playerBodyColor,
   playerAccentColor,
   audioRef,
+  touchInputRef,
   timeOfDay = "day",
   paused = false,
   onPauseToggle,
@@ -626,6 +628,8 @@ export function Scene({
   playerAccentColor?: string;
   /** Shared with the race audio rig - every car fills it in every frame. */
   audioRef?: React.RefObject<AudioSnapshot>;
+  /** Shared mutable analog controls from the on-screen touch deck. */
+  touchInputRef?: React.RefObject<TouchDriveInput | null>;
   speedRef: React.RefObject<HTMLDivElement | null>;
   lapRef: React.RefObject<HTMLDivElement | null>;
   deltaRef: React.RefObject<HTMLDivElement | null>;
@@ -845,6 +849,7 @@ export function Scene({
           visualRef={visualRef}
           cameraModeRef={cameraModeRef}
           racingLineVisibleRef={racingLineVisibleRef}
+          touchInputRef={touchInputRef}
           speedRef={speedRef}
           lapRef={lapRef}
           deltaRef={deltaRef}

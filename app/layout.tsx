@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Archivo, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -21,6 +21,14 @@ const display = Archivo({
   weight: ["600", "700", "800", "900"],
   style: ["normal", "italic"],
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#040509",
+  colorScheme: "dark",
+};
 
 export const metadata: Metadata = {
   title: "LIFT & COAST",

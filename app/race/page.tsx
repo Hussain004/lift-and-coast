@@ -23,6 +23,8 @@ import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
 import { RaceOpsPanel } from "./RaceOpsPanel";
+import { MobileControls } from "./MobileControls";
+import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
@@ -238,15 +240,20 @@ function RaceContent() {
   // pumps it into the synth voices - plain mutable data, never React state,
   // at audio-unrelated rates.
   const audioRef = useRef(defaultAudioSnapshot());
+  const touchInputRef = useRef<TouchDriveInput>(createTouchDriveInput());
   const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
   const [paused, setPaused] = useState(false);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
+  const toggleMobileReplay = useCallback(() => {
+    raceCommandsRef.current.push({ type: "toggle-replay" });
+  }, []);
   const singlePlayer = !netActive;
 
   return (
     <div className={styles.wrap}>
-      <Scene
+      <div className={styles.gameStage}>
+        <Scene
         key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${weatherPreset}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
         track={track}
         playerBodyColor={team.primaryColor}
@@ -290,6 +297,7 @@ function RaceContent() {
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
+        touchInputRef={touchInputRef}
         timeOfDay={timeOfDay}
         paused={singlePlayer ? paused : false}
         onPauseToggle={singlePlayer ? togglePaused : undefined}
@@ -307,15 +315,6 @@ function RaceContent() {
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
       <RaceOpsPanel commandRef={raceCommandsRef} snapshotRef={raceOpsSnapshotRef} />
-      {singlePlayer && paused && (
-        <div className={styles.pauseOverlay} role="dialog" aria-label="Game paused">
-          <div className={styles.pauseCard}>
-            <strong>PAUSED</strong>
-            <span>Press P or click below to resume</span>
-            <button type="button" onClick={togglePaused}>RESUME</button>
-          </div>
-        </div>
-      )}
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}
@@ -417,7 +416,23 @@ function RaceContent() {
             heading-arrow rotation math to get backwards. */}
         <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
       </svg>
-      <ControlsPanel />
+        <ControlsPanel />
+      </div>
+      <MobileControls
+        inputRef={touchInputRef}
+        disabled={singlePlayer && paused}
+        onPause={singlePlayer ? togglePaused : undefined}
+        onReplay={toggleMobileReplay}
+      />
+      {singlePlayer && paused && (
+        <div className={styles.pauseOverlay} role="dialog" aria-label="Game paused">
+          <div className={styles.pauseCard}>
+            <strong>PAUSED</strong>
+            <span>Press P or tap below to resume</span>
+            <button type="button" onClick={togglePaused}>RESUME</button>
+          </div>
+        </div>
+      )}
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />

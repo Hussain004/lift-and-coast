@@ -22,7 +22,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Active Aero with high-downforce and low-drag modes
 - Tire compounds, wear, grip changes, damage, and per-wheel surface effects
 - Traction control, ABS, manual gears, and a toggleable racing line
-- Keyboard, gamepad, and wheel input with shaped steering and braking
+- Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, T-cam, TV broadcast, orbit, replay, and rewind cameras
 - Practice, qualifying, quick races, and full championship weekends
 - Multiplayer rooms with synchronized timing and race-control telemetry
@@ -86,6 +86,8 @@ Pit service currently uses the marked start-finish service window as a playable 
 | Weather cycle | `U` | Race Ops button |
 
 ABS and traction control are assists, not driving eras. Turn them off when you want to feel the consequences.
+
+On a phone, the race automatically adapts to the orientation. Portrait mode gives the game the upper portion of the screen and places analog steering and pedal sticks in a lower control deck. Landscape mode keeps the full game view and overlays the sticks in the lower corners. The touch deck also provides Overtake, ERS, pause, and replay actions.
 
 ## Development
 
