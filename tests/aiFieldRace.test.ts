@@ -91,7 +91,7 @@ describe("AI field race", () => {
     upright(ace);
     for (const car of [...pro.cars, ...ace.cars]) expect(car.traveled).toBeGreaterThan(1500);
     const mean = (r: FieldResult): number => r.cars.reduce((sum, car) => sum + car.traveled, 0) / r.cars.length;
-    expect(mean(ace)).toBeGreaterThan(mean(pro) * 1.02);
+    expect(mean(ace)).toBeGreaterThan(mean(pro) * 1.05);
     // Batteries must actually cycle.
     expect(Math.min(...ace.cars.map((car) => car.finalBattery))).toBeLessThan(0.9);
   }, 240000);

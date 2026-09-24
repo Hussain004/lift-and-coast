@@ -37,6 +37,9 @@ const LANE_HALF_WIDTH_METERS = 1.8;
 /** No attacks or defending while a standing start sorts itself out;
  * avoidance and following run from the green light. */
 const LAUNCH_HOLD_SECONDS = 5;
+/** A rolling launch is not a queue: leave a little room, but do not brake to a crawl. */
+const LAUNCH_FOLLOW_GAP_METERS = 8;
+const LAUNCH_FOLLOW_SPEED_FLOOR_MS = 16;
 const ATTACK_TIMEOUT_SECONDS = 10;
 const RETRY_COOLDOWN_SECONDS = 4;
 /** Offset ramp across the track: a drift, never a swerve... */
@@ -319,6 +322,8 @@ export function lineContextAt(
 
 export const AERO_STRAIGHT_ENTER_METERS = 320;
 export const AERO_STRAIGHT_EXIT_METERS = 240;
+/** A car this close makes a straight a traffic situation rather than clear air. */
+export const AERO_TRAFFIC_CLEARANCE_METERS = 120;
 
 /**
  * Conservative AI active aero: a low-drag wing is worth deploying only on
@@ -336,11 +341,15 @@ export function chooseAeroMode(args: {
   blocked: boolean;
   cars?: readonly Pick<FieldCarView, "gapMeters" | "speedMs" | "lateralMeters">[];
 }): AeroMode {
-  // A nearby car makes the straight no longer "safe" for a grip trade: the
-  // low-drag mode is reserved for a clear track, not merely a large gap in
-  // the traffic table. This also keeps the multiplayer field on one stable
-  // aero model while solo AI can use the straight-line advantage.
-  const trafficClear = args.cars === undefined || args.cars.length === 0;
+  // Only traffic in the immediate wake/decision window should force the
+  // high-downforce wing. The old check treated a single distant car anywhere
+  // on a 5-7km lap as traffic, so a full field could never use low-drag at
+  // all and silently gave away straight-line pace. A distant car still gets
+  // the normal tow/racecraft handling; it does not make this corner exit a
+  // close-quarters grip trade.
+  const trafficClear =
+    args.cars === undefined ||
+    args.cars.every((car) => Math.abs(car.gapMeters) > AERO_TRAFFIC_CLEARANCE_METERS);
   const safeStraight =
     args.line.throttleZone &&
     args.line.curveSign === 0 &&
@@ -755,9 +764,25 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     // (fading to a stop a meter off its gearbox) instead of waiting at the
     // standoff - a car can't turn out of a lane it isn't rolling in.
     const threading = car === obstacle && obstacleAim !== null && car.speedMs < 1;
-    const carCap = threading
+    let carCap = threading
       ? Math.max(0, Math.min(5, 0.8 * (car.gapMeters - 5.5)))
       : followSpeedCapMs(car.gapMeters, car.speedMs, followGapMeters(own, aggression, isTarget, car.speedMs));
+    // During the launch phase a car ahead is often still accelerating from
+    // zero. Treating its instantaneous speed as a cruising speed turns a
+    // normal staggered grid into a 5-10m/s convoy. Once both cars are
+    // rolling and there is still a grid-sized gap, give the follower a
+    // launch-speed floor; a genuinely stopped/parked car still falls through
+    // to the normal stopping cap.
+    if (
+      !racing &&
+      car.speedMs > 3 &&
+      car.gapMeters > LAUNCH_FOLLOW_GAP_METERS
+    ) {
+      carCap = Math.max(
+        carCap,
+        Math.min(30, Math.max(LAUNCH_FOLLOW_SPEED_FLOOR_MS, car.speedMs + 6))
+      );
+    }
     if (carCap < cap) {
       cap = carCap;
       blocked = car.speedMs < 4 && car.gapMeters < 15;

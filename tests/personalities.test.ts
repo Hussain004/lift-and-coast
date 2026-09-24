@@ -35,7 +35,7 @@ describe("difficulty scales", () => {
   });
 
   it("gives Ace a real acceleration advantage without changing Pro", () => {
-    expect(difficultyEngineForceScale("ace")).toBeGreaterThan(1.05);
+    expect(difficultyEngineForceScale("ace")).toBeGreaterThan(1.1);
     expect(difficultyEngineForceScale("pro")).toBe(1);
     expect(difficultyEngineForceScale("club")).toBeLessThan(1);
     expect(difficultyEngineForceScale("rookie")).toBeLessThan(difficultyEngineForceScale("club"));

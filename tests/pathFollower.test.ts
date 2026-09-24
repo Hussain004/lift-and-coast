@@ -129,6 +129,16 @@ describe("personality inputs (paceScale, lateralOffsetMeters)", () => {
     expect(offset.steer).not.toBe(0);
   });
 
+  it("gives a fast Ace entry more throttle without turning slow corners into full-throttle inputs", () => {
+    const fastLine = buildStraightLine(200, 80);
+    const fast = computeAIControls(fastLine, 0, 0, 0, 85, false, 1.18, 0);
+    expect(fast.throttle).toBe(1);
+
+    const slowCorner = buildStraightLine(200, 40);
+    const cautious = computeAIControls(slowCorner, 0, 0, 0, 45, false, 1.18, 0);
+    expect(cautious.throttle).toBeCloseTo((40 * 1.18 - 45) / 8, 6);
+  });
+
   it("clamps garbage pace instead of chasing it", () => {
     const line = buildStraightLine(200, 70);
     const sane = computeAIControls(line, 0, 0, 0, 60, false, 1, 0);

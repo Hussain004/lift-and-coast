@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AERO_STRAIGHT_ENTER_METERS,
   AERO_STRAIGHT_EXIT_METERS,
+  AERO_TRAFFIC_CLEARANCE_METERS,
   chooseAeroMode,
   createRacecraftState,
   followGapMeters,
@@ -79,9 +80,19 @@ describe("chooseAeroMode", () => {
         speedMs: 60,
         attempting: false,
         blocked: false,
-        cars: [{ gapMeters: 250, speedMs: 55, lateralMeters: 0 }],
+        cars: [{ gapMeters: AERO_TRAFFIC_CLEARANCE_METERS - 1, speedMs: 55, lateralMeters: 0 }],
       })
     ).toBe("high-downforce");
+    expect(
+      chooseAeroMode({
+        current: "high-downforce",
+        line: straight(400),
+        speedMs: 60,
+        attempting: false,
+        blocked: false,
+        cars: [{ gapMeters: AERO_TRAFFIC_CLEARANCE_METERS + 1, speedMs: 55, lateralMeters: 0 }],
+      })
+    ).toBe("low-drag");
     expect(
       chooseAeroMode({
         current: "low-drag",
@@ -267,6 +278,21 @@ describe("stepRacecraft", () => {
       input({ ownSpeedMs: 60, cars: [{ key: "x", gapMeters: 12, speedMs: 50, lateralMeters: 2.8 }] })
     );
     expect(out.paceMult).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps a rolling staggered launch from becoming a stationary queue", () => {
+    const launch = createRacecraftState();
+    const rollingLeader = { key: "leader", gapMeters: 12, speedMs: 8, lateralMeters: 0 };
+    const launched = stepRacecraft(
+      launch,
+      input({ ownSpeedMs: 10, cars: [rollingLeader] })
+    );
+    const cruising = stepRacecraft(
+      racingState(),
+      input({ ownSpeedMs: 10, cars: [rollingLeader] })
+    );
+    expect(launched.paceMult).toBeGreaterThan(cruising.paceMult);
+    expect(launched.paceMult).toBeGreaterThan(0.22);
   });
 
   it("goes round a stopped car on the side with road", () => {

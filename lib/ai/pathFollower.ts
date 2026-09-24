@@ -100,6 +100,9 @@ const LOOKAHEAD_MAX_METERS = 50;
 const LOOKAHEAD_TIGHT_FRACTION = 0.85;
 const LOOKAHEAD_TIGHT_MIN_METERS = 14;
 const SPEED_ERROR_NORMALIZER_MS = 8; // full throttle/brake once speed error reaches this.
+const FAST_AI_THROTTLE_NORMALIZER_MS = 4;
+const FAST_AI_THROTTLE_MIN_TARGET_MS = 65;
+const FAST_AI_PACE_THRESHOLD = 1.1;
 // Brake planning: how far ahead to scan the profile for its minimum. The
 // trigger below fires full brake only when the deceleration REQUIRED to
 // make that minimum exceeds MAX_DECEL_MS2 - i.e. the profile's own
@@ -377,7 +380,18 @@ export function computeAIControls(
 
   const baseTarget = profileTarget;
   const speedError = baseTarget - carSpeedMs;
-  const throttle = speedError > 0 ? Math.min(1, speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
+  // Ace/strong pace inputs get a more immediate throttle response. The old
+  // 8m/s error ramp made a car that was already on target crawl back to it
+  // after a small lift, which read as a slow launch even when the target
+  // profile was already asking for full power. The target and braking law
+  // stay unchanged; only the pedal reaches the command sooner. Restricting
+  // this to genuinely fast targets keeps slow street corners on the proven
+  // response curve.
+  const throttleErrorNormalizerMs =
+    clampedPace > FAST_AI_PACE_THRESHOLD && nearestPoint.targetSpeedMs >= FAST_AI_THROTTLE_MIN_TARGET_MS
+      ? FAST_AI_THROTTLE_NORMALIZER_MS
+      : SPEED_ERROR_NORMALIZER_MS;
+  const throttle = speedError > 0 ? Math.min(1, speedError / throttleErrorNormalizerMs) : 0;
   let brake = speedError < 0 ? Math.min(1, -speedError / SPEED_ERROR_NORMALIZER_MS) : 0;
 
   // Brake planning: the proportional law above only reacts to the speed
