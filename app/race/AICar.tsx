@@ -318,7 +318,7 @@ export function AICar({
   const batteryRef = useRef(1);
   const strategyRef = useRef(createStrategySystem({ mode: difficulty === "ace" ? "push" : "balanced" }));
   const overtakeSystem = useMemo(
-    () => createOvertakeSystem(track, sessionMode === "race" ? "race" : "practice"),
+    () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
   );
   const localWeatherRef = useRef<WeatherHandle>(createWeatherSystem("clear"));

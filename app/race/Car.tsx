@@ -429,7 +429,7 @@ export function Car({
   const effectiveRaceControlRef = raceControlRef ?? localRaceControlRef;
   const strategyRef = useRef(createStrategySystem());
   const overtakeSystem = useMemo(
-    () => createOvertakeSystem(track, sessionMode === "race" ? "race" : "practice"),
+    () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
   );
   const replayRef = useRef(createReplayController(45, 1 / 60));
