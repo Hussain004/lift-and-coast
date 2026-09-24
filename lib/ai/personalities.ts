@@ -47,11 +47,18 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
 /**
  * Engine-force multiplier for the AI field. Pace scale changes the target
  * speed envelope; this changes how quickly the car can actually get there.
- * Ace gets a real acceleration advantage while Pro remains the reference
- * physics baseline. The general Ace step is 1.12; Spa's Ace-only benchmark
- * profile uses 1.5 because its separate line and controller are validated as
- * one bounded package. The boost cap in vehicle.ts still applies afterward.
+ * Most Ace circuits use 1.12. Spa keeps its separately validated 1.5 package;
+ * Suzuka and Madrid retain the reference force because their bridge/banked
+ * geometry is sensitive to longitudinal load, even though their Ace lines
+ * are substantially faster. The boost cap in vehicle.ts still applies
+ * afterward.
  */
+const ACE_ENGINE_FORCE_SCALE_BY_TRACK: Record<string, number> = {
+  spa: 1.5,
+  suzuka: 1.0,
+  madrid: 1.0,
+};
+
 export function difficultyEngineForceScale(
   difficulty: AIDifficulty,
   trackId?: string
@@ -64,7 +71,7 @@ export function difficultyEngineForceScale(
     case "pro":
       return 1.0;
     case "ace":
-      return trackId === "spa" ? 1.5 : 1.12;
+      return (trackId === undefined ? undefined : ACE_ENGINE_FORCE_SCALE_BY_TRACK[trackId]) ?? 1.12;
   }
 }
 

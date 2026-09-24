@@ -121,10 +121,6 @@ const SPA_OPTIMAL_CROSS_TRACK_GAIN = 1.0;
 const SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS = 10;
 const SPA_OPTIMAL_STRAIGHT_LOOKAHEAD_METERS = 14;
 const SPA_OPTIMAL_CORNER_TARGET_MS = 50;
-const SPA_OPTIMAL_MAX_PACE = 1.1;
-// Corner pace is deliberately bounded, but a clear Spa straight can use the
-// full Ace input envelope without changing the corner target or brake plan.
-const SPA_OPTIMAL_STRAIGHT_PACE_CAP = 1.2;
 
 /**
  * Nearest line index for an (x, z) position - exported for the racecraft
@@ -324,16 +320,19 @@ export function computeAIControls(
   const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0, paceScale)) : 1;
   const steeringMode: AISteeringMode = nearestPoint.steeringMode ?? "pure-pursuit";
   const spaOptimal = steeringMode === "spa-optimal";
-  // Spa's faster profile is deliberately bounded at the corner-control
-  // layer. Racecraft can still add slipstream/traffic pace, but a grid of
-  // unrestricted 1.18 multipliers can turn a fast transition into a snap
-  // before the energy system has a chance to help.
-  const effectivePace = spaOptimal
+  // Every generated line carries a corner pace cap. The default profile's
+  // cap is the existing 1.18 ceiling, so this is inert for Pro/lower tiers;
+  // Ace profiles can lower it without changing the target line or handing
+  // racecraft a new actuator. Straight-line deployment keeps the normal
+  // 1.18 envelope, while corners remain bounded where a small target shift
+  // can otherwise turn into a snap.
+  const profileCornerPaceCap = nearestPoint.steeringMaxPace;
+  const effectivePace = profileCornerPaceCap !== undefined
     ? Math.min(
         clampedPace,
         nearestPoint.targetSpeedMs >= 70
-          ? Math.max(nearestPoint.steeringMaxPace ?? SPA_OPTIMAL_MAX_PACE, SPA_OPTIMAL_STRAIGHT_PACE_CAP)
-          : nearestPoint.steeringMaxPace ?? SPA_OPTIMAL_MAX_PACE
+          ? Math.max(profileCornerPaceCap, 1.18)
+          : profileCornerPaceCap
       )
     : clampedPace;
   const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;

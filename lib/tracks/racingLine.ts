@@ -3,6 +3,7 @@ import { computeDownforceN } from "../physics/aero";
 import { CHASSIS_MASS } from "../physics/vehicle";
 import { peakFrictionMu } from "../physics/tireModel";
 import { bankedHeight, stationOf } from "./banking";
+import { TRACKS } from "./registry";
 import type { TrackData } from "./types";
 
 // Plan section 4 point 8 ("racing line... drives the AI and the optional
@@ -156,13 +157,51 @@ const DEFAULT_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.18,
 };
 
-// Spa is the one circuit where the conservative profile is materially slower
-// than the player's measured standing lap. Its Ace line uses a tighter local
-// curvature window and a little more of the available road, while the
-// controller below supplies the cross-track correction needed to keep that
-// faster envelope on the ribbon. The default profile remains unchanged so
-// lower tiers retain the established racing behavior.
+// Ace profiles use a faster, bounded envelope than the default reference.
+// The common package is now the starting point for every registered circuit:
+// tighter local curvature sensing, a modest lateral-grip allowance, and a
+// lower corner pace cap while retaining the proven pure-pursuit path.
+// Spa alone opts into the separately validated tangent/cross-track controller
+// below. Individual circuits can tighten or relax these values in
+// TRACK_TUNING without changing the default profile or shared physics.
+//
+// Spa was the first circuit calibrated against a measured standing-start lap
+// (2:08). Its values remain the reference calibration; the all-track gates
+// below require each other circuit to earn the same profile through its own
+// completed-lap and track-limit checks rather than assuming Spa's geometry
+// transfers unchanged.
+const ACE_TUNING: RacingLineTuning = {
+  ...DEFAULT_TUNING,
+  maxOffsetFractionOfHalfWidth: 0.68,
+  speedLookaheadPoints: 20,
+  curvatureSubWindows: 4,
+  curvatureSubPoints: 8,
+  lateralSafetyFactor: 0.95,
+  maxSpeedMs: 90,
+  maxBoostSpeedMs: 98,
+  steeringMode: "pure-pursuit",
+  steeringMaxPace: 1.12,
+};
+
+// Per-track Ace overrides are deliberately partial so the common Ace
+// calibration remains visible and a new circuit automatically receives a
+// tested profile. These values are populated only where the common package
+// needs a circuit-specific safety or geometry adjustment.
+const ACE_FALLBACK_TUNING: RacingLineTuning = {
+  ...DEFAULT_TUNING,
+  steeringMaxPace: 1.08,
+};
+
 const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
+  monza: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.1 },
+  // The bridge load transition and a full 20-car launch both reward a lower
+  // corner cap than the open-circuit default; the line itself is still much
+  // faster than the reference profile.
+  suzuka: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.04 },
+  monaco: { ...ACE_FALLBACK_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
+  zandvoort: { ...ACE_FALLBACK_TUNING, lateralSafetyFactor: 0.85, steeringMaxPace: 1.08 },
+  miami: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
+  madrid: { ...ACE_TUNING, lateralSafetyFactor: 0.8, steeringMaxPace: 1.04 },
   spa: {
     maxOffsetFractionOfHalfWidth: 0.6,
     speedLookaheadPoints: 10,
@@ -179,10 +218,20 @@ const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
   },
 };
 
+const REGISTERED_TRACK_IDS = new Set(TRACKS.map((track) => track.id));
+
 function tuningForTrack(trackId: string, profile: RacingLineProfile): RacingLineTuning {
+  if (profile !== "ace") return { ...DEFAULT_TUNING };
+  // Synthetic tracks used by unit tests (and any future unregistered data)
+  // must not silently inherit an aggressive racing-line package. Only the
+  // registry's known circuits opt into the common Ace calibration; unknown
+  // IDs get the same conservative pace cap as the tightly controlled
+  // street/technical profiles until they are explicitly calibrated.
+  const base = REGISTERED_TRACK_IDS.has(trackId) ? ACE_TUNING : ACE_FALLBACK_TUNING;
   return {
     ...DEFAULT_TUNING,
-    ...(profile === "ace" ? TRACK_TUNING[trackId] : undefined),
+    ...base,
+    ...(REGISTERED_TRACK_IDS.has(trackId) ? TRACK_TUNING[trackId] : undefined),
   };
 }
 
@@ -251,10 +300,11 @@ export interface RacingLinePoint {
   distanceToNextMeters: number;
   /** Controller profile to use for this generated line. */
   steeringMode?: AISteeringMode;
-  /** Optional Spa controller tuning, carried with the line for headless parity. */
+  /** Optional controller tuning, carried with the line for headless parity. */
   steeringCornerLookaheadMeters?: number;
   steeringStraightLookaheadMeters?: number;
   steeringCrossTrackGain?: number;
+  /** Corner pace ceiling; the default profile leaves this at its 1.18 bound. */
   steeringMaxPace?: number;
   /** Lateral-grip safety factor used to build this line's target profile. */
   lateralSafetyFactor?: number;
