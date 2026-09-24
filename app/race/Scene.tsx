@@ -843,7 +843,12 @@ export function Scene({
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} paused={paused}>
         <RaceOpsTicker weatherRef={weatherRef} />
         <Ground track={track} />
-        <Track track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
+        <Track
+          track={track}
+          chassisRef={chassisRef}
+          racingLineVisibleRef={racingLineVisibleRef}
+          difficulty={difficulty}
+        />
         <Car
           chassisRef={chassisRef}
           visualRef={visualRef}

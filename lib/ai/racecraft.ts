@@ -315,7 +315,11 @@ export function lineContextAt(
     roomMinusMeters: Number.isFinite(roomMinus) ? roomMinus : 0,
     cornerSign: room.cornerSign[anchor] as -1 | 0 | 1,
     curveSign: cross > 1e-3 ? 1 : cross < -1e-3 ? -1 : 0,
-    impliedRadiusMeters: target > 1 ? (target * target) / Math.max(1, maxLateralAccelMs2(target)) : Infinity,
+    impliedRadiusMeters:
+      target > 1
+        ? (target * target) /
+          Math.max(1, maxLateralAccelMs2(target, line[anchor].lateralSafetyFactor))
+        : Infinity,
     profileTargetMs: profileTarget,
   };
 }

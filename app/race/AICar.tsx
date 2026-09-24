@@ -350,8 +350,9 @@ export function AICar({
   // both per-tick full-line scans collapse into one windowed one.
   const nearestIdxRef = useRef(0);
 
-  const racingLine = useMemo(() => getRacingLine(track), [track]);
-  const lineRoom = useMemo(() => getLineRoom(track), [track]);
+  const lineProfile = difficulty === "ace" ? "ace" : "default";
+  const racingLine = useMemo(() => getRacingLine(track, lineProfile), [track, lineProfile]);
+  const lineRoom = useMemo(() => getLineRoom(track, lineProfile), [track, lineProfile]);
 
   const { spawnX, spawnY, spawnZ, spawnYaw, spawnQuat } = useMemo(() => {
     const grid = gridSlot(track, gridSlotIndex);
@@ -746,7 +747,7 @@ export function AICar({
     applyCarControls(
       controller,
       gatedControls,
-      DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty),
+      DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty, track.id),
       boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier * (overtakeState.active ? OVERTAKE_BOOST_MULTIPLIER : 1),
       DEFAULT_BRAKE_FORCE,
       speedMs,

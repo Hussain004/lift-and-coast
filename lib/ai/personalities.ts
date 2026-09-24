@@ -48,12 +48,14 @@ export function difficultyPaceScale(difficulty: AIDifficulty): number {
  * Engine-force multiplier for the AI field. Pace scale changes the target
  * speed envelope; this changes how quickly the car can actually get there.
  * Ace gets a real acceleration advantage while Pro remains the reference
- * physics baseline. Ace's 1.12 step is deliberately measured: it improves
- * launch acceleration while retaining margin in the full-field stability
- * gates; larger global engine steps were rejected by the tightest circuits.
- * The boost cap in vehicle.ts still applies afterward.
+ * physics baseline. The general Ace step is 1.12; Spa's Ace-only benchmark
+ * profile uses 1.5 because its separate line and controller are validated as
+ * one bounded package. The boost cap in vehicle.ts still applies afterward.
  */
-export function difficultyEngineForceScale(difficulty: AIDifficulty): number {
+export function difficultyEngineForceScale(
+  difficulty: AIDifficulty,
+  trackId?: string
+): number {
   switch (difficulty) {
     case "rookie":
       return 0.94;
@@ -62,7 +64,7 @@ export function difficultyEngineForceScale(difficulty: AIDifficulty): number {
     case "pro":
       return 1.0;
     case "ace":
-      return 1.12;
+      return trackId === "spa" ? 1.5 : 1.12;
   }
 }
 

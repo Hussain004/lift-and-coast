@@ -14,6 +14,7 @@ import {
 } from "@/lib/tracks/racingLine";
 import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { TrackData } from "@/lib/tracks/types";
+import type { AIDifficulty } from "@/lib/ai/personalities";
 import { chunkMesh, chunkPoints, thin } from "@/lib/render/chunks";
 import { asphaltTexture, planarUvs } from "@/lib/render/textures";
 import { SurfaceMaterial, useQuality } from "./renderQuality";
@@ -54,9 +55,11 @@ function RacingLine({
   track,
   chassisRef,
   racingLineVisibleRef,
+  difficulty = "pro",
 }: {
   track: TrackData;
   chassisRef?: React.RefObject<RapierRigidBody | null>;
+  difficulty?: AIDifficulty;
   /** Toggled by useDriveInput's own "L" key - see its own comment. */
   racingLineVisibleRef?: React.RefObject<boolean>;
 }) {
@@ -67,7 +70,7 @@ function RacingLine({
   // the next frame's windowed search is equivalent to the full scan.
   const nearestIdxRef = useRef(0);
   const { geometry, line } = useMemo(() => {
-    const line = getRacingLine(track);
+    const line = getRacingLine(track, difficulty === "ace" ? "ace" : "default");
     const { positions, colors, indices } = buildRacingLineRibbon(
       line,
       RACING_LINE_HALF_WIDTH_METERS,
@@ -89,7 +92,7 @@ function RacingLine({
     geo.setAttribute("color", colorAttr);
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
     return { geometry: geo, line };
-  }, [track]);
+  }, [track, difficulty]);
 
   useFrame(() => {
     const visible = racingLineVisibleRef?.current ?? true;
@@ -178,10 +181,12 @@ export function Track({
   track,
   chassisRef,
   racingLineVisibleRef,
+  difficulty = "pro",
 }: {
   track: TrackData;
   chassisRef?: React.RefObject<RapierRigidBody | null>;
   racingLineVisibleRef?: React.RefObject<boolean>;
+  difficulty?: AIDifficulty;
 }) {
   const { positions, indices, geometry, kerbGeometry, edgeLineGeometry } = useMemo(() => {
     const { positions, indices } = buildRibbonGeometry(track);
@@ -239,7 +244,12 @@ export function Track({
             asphalt/grass boundary is hardest to see. */}
         <meshBasicMaterial color="white" />
       </mesh>
-      <RacingLine track={track} chassisRef={chassisRef} racingLineVisibleRef={racingLineVisibleRef} />
+      <RacingLine
+        track={track}
+        chassisRef={chassisRef}
+        racingLineVisibleRef={racingLineVisibleRef}
+        difficulty={difficulty}
+      />
       <PitBoxMarker track={track} />
     </>
   );

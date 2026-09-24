@@ -1,4 +1,4 @@
-import type { RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
+import type { AISteeringMode, RacingLinePoint, ThrottleZone } from "../tracks/racingLine";
 import { MAX_DECEL_MS2, maxLateralAccelMs2 } from "../tracks/racingLine";
 
 // Plan section 6: "steer toward a lookahead point on the racing line;
@@ -117,6 +117,14 @@ const FAST_AI_PACE_THRESHOLD = 1.1;
 // crawled - the gate is the profile's own assumption, not a second one.)
 const BRAKE_PLANNING_METERS = 250;
 const STEER_GAIN = 1.0;
+const SPA_OPTIMAL_CROSS_TRACK_GAIN = 1.0;
+const SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS = 10;
+const SPA_OPTIMAL_STRAIGHT_LOOKAHEAD_METERS = 14;
+const SPA_OPTIMAL_CORNER_TARGET_MS = 50;
+const SPA_OPTIMAL_MAX_PACE = 1.1;
+// Corner pace is deliberately bounded, but a clear Spa straight can use the
+// full Ace input envelope without changing the corner target or brake plan.
+const SPA_OPTIMAL_STRAIGHT_PACE_CAP = 1.2;
 
 /**
  * Nearest line index for an (x, z) position - exported for the racecraft
@@ -314,12 +322,26 @@ export function computeAIControls(
   // stop a car behind a stopped one (a 0.9 floor here silently turned
   // every "stop" into "ram at 90%" - the grid-start and queue shunts).
   const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0, paceScale)) : 1;
+  const steeringMode: AISteeringMode = nearestPoint.steeringMode ?? "pure-pursuit";
+  const spaOptimal = steeringMode === "spa-optimal";
+  // Spa's faster profile is deliberately bounded at the corner-control
+  // layer. Racecraft can still add slipstream/traffic pace, but a grid of
+  // unrestricted 1.18 multipliers can turn a fast transition into a snap
+  // before the energy system has a chance to help.
+  const effectivePace = spaOptimal
+    ? Math.min(
+        clampedPace,
+        nearestPoint.targetSpeedMs >= 70
+          ? Math.max(nearestPoint.steeringMaxPace ?? SPA_OPTIMAL_MAX_PACE, SPA_OPTIMAL_STRAIGHT_PACE_CAP)
+          : nearestPoint.steeringMaxPace ?? SPA_OPTIMAL_MAX_PACE
+      )
+    : clampedPace;
   const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
-  const profileTarget = unscaledTarget * clampedPace;
+  const profileTarget = unscaledTarget * effectivePace;
   // The preview geometry below keeps the pace range it was validated over:
   // a follow cap slowing the car must not also shorten the lookahead to a
   // hairpin's length at 60 m/s.
-  const steeringTarget = unscaledTarget * Math.max(0.9, clampedPace);
+  const steeringTarget = unscaledTarget * Math.max(0.9, effectivePace);
 
   // Preview distance scales with speed - see LOOKAHEAD_SECONDS above. Walk
   // the line by its own segment lengths rather than assuming a fixed point
@@ -331,17 +353,22 @@ export function computeAIControls(
   // apex.
   const impliedRadiusMeters =
     steeringTarget > 1
-      ? (steeringTarget * steeringTarget) / Math.max(1, maxLateralAccelMs2(steeringTarget))
+      ? (steeringTarget * steeringTarget) /
+        Math.max(1, maxLateralAccelMs2(steeringTarget, nearestPoint.lateralSafetyFactor))
       : Infinity;
   const curvatureCapMeters = Math.max(
     LOOKAHEAD_TIGHT_MIN_METERS,
     impliedRadiusMeters * LOOKAHEAD_TIGHT_FRACTION
   );
-  const lookaheadMeters = Math.min(
-    LOOKAHEAD_MAX_METERS,
-    Math.max(LOOKAHEAD_MIN_METERS, Math.abs(carSpeedMs) * LOOKAHEAD_SECONDS),
-    curvatureCapMeters
-  );
+  const lookaheadMeters = spaOptimal
+    ? nearestPoint.targetSpeedMs < SPA_OPTIMAL_CORNER_TARGET_MS
+      ? nearestPoint.steeringCornerLookaheadMeters ?? SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS
+      : nearestPoint.steeringStraightLookaheadMeters ?? SPA_OPTIMAL_STRAIGHT_LOOKAHEAD_METERS
+    : Math.min(
+        LOOKAHEAD_MAX_METERS,
+        Math.max(LOOKAHEAD_MIN_METERS, Math.abs(carSpeedMs) * LOOKAHEAD_SECONDS),
+        curvatureCapMeters
+      );
   let lookaheadIndex = nearest;
   let previewedMeters = 0;
   while (previewedMeters < lookaheadMeters) {
@@ -366,17 +393,48 @@ export function computeAIControls(
       aimZ = lookZ + (dirX / len) * lateralOffsetMeters;
     }
   }
-  const dx = aimX - carX;
-  const dz = aimZ - carZ;
-  // Solving forward = (-sin(yaw), -cos(yaw)) for yaw given a desired
-  // forward direction (dx, dz) - same convention as yawFromQuaternion.
-  const targetYaw = Math.atan2(-dx, -dz);
-  let yawError = targetYaw - carYaw;
-  // Wrap to (-pi, pi] so a lookahead point behind-ish the car doesn't
-  // demand a near-360-degree steer the wrong way round.
-  while (yawError > Math.PI) yawError -= 2 * Math.PI;
-  while (yawError < -Math.PI) yawError += 2 * Math.PI;
-  const steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
+
+  let steer: number;
+  if (spaOptimal) {
+    // Stanley-style tangent tracking. Pure pursuit points at a future vertex;
+    // on Spa's long exit transitions that vertex can be on the far side of a
+    // corner, which makes the car cut across the track before the steering
+    // has finished the preceding bend. Follow the tangent at the same preview
+    // distance and add a bounded cross-track term instead.
+    const tangentPoint = line[lookaheadIndex].position;
+    const nextPoint = line[(lookaheadIndex + 1) % n].position;
+    const tangentX = nextPoint[0] - tangentPoint[0];
+    const tangentZ = nextPoint[2] - tangentPoint[2];
+    const tangentLength = Math.hypot(tangentX, tangentZ) || 1;
+    const tangentYaw = Math.atan2(-tangentX / tangentLength, -tangentZ / tangentLength);
+    let headingError = tangentYaw - carYaw;
+    while (headingError > Math.PI) headingError -= 2 * Math.PI;
+    while (headingError < -Math.PI) headingError += 2 * Math.PI;
+
+    const nearestNext = line[(nearest + 1) % n].position;
+    const nearestTangentX = nearestNext[0] - nearestPoint.position[0];
+    const nearestTangentZ = nearestNext[2] - nearestPoint.position[2];
+    const nearestTangentLength = Math.hypot(nearestTangentX, nearestTangentZ) || 1;
+    const lateralError =
+      ((carX - nearestPoint.position[0]) * -nearestTangentZ +
+        (carZ - nearestPoint.position[2]) * nearestTangentX) /
+        nearestTangentLength - lateralOffsetMeters;
+    const crossTrack = (nearestPoint.steeringCrossTrackGain ?? SPA_OPTIMAL_CROSS_TRACK_GAIN) *
+      Math.atan2(lateralError, Math.max(5, Math.abs(carSpeedMs)));
+    steer = Math.max(-1, Math.min(1, headingError + crossTrack));
+  } else {
+    const dx = aimX - carX;
+    const dz = aimZ - carZ;
+    // Solving forward = (-sin(yaw), -cos(yaw)) for yaw given a desired
+    // forward direction (dx, dz) - same convention as yawFromQuaternion.
+    const targetYaw = Math.atan2(-dx, -dz);
+    let yawError = targetYaw - carYaw;
+    // Wrap to (-pi, pi] so a lookahead point behind-ish the car doesn't
+    // demand a near-360-degree steer the wrong way round.
+    while (yawError > Math.PI) yawError -= 2 * Math.PI;
+    while (yawError < -Math.PI) yawError += 2 * Math.PI;
+    steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
+  }
 
   const baseTarget = profileTarget;
   const speedError = baseTarget - carSpeedMs;
@@ -388,7 +446,7 @@ export function computeAIControls(
   // this to genuinely fast targets keeps slow street corners on the proven
   // response curve.
   const throttleErrorNormalizerMs =
-    clampedPace > FAST_AI_PACE_THRESHOLD && nearestPoint.targetSpeedMs >= FAST_AI_THROTTLE_MIN_TARGET_MS
+    effectivePace > FAST_AI_PACE_THRESHOLD && nearestPoint.targetSpeedMs >= FAST_AI_THROTTLE_MIN_TARGET_MS
       ? FAST_AI_THROTTLE_NORMALIZER_MS
       : SPEED_ERROR_NORMALIZER_MS;
   const throttle = speedError > 0 ? Math.min(1, speedError / throttleErrorNormalizerMs) : 0;
@@ -416,7 +474,7 @@ export function computeAIControls(
     const i = (nearest + k) % n;
     const point = line[i];
     const candidate =
-      (useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs) * clampedPace;
+      (useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs) * effectivePace;
     if (scanned > 1e-6) {
       const required = (speed ** 2 - candidate ** 2) / (2 * scanned);
       if (required > maxRequiredDecel) maxRequiredDecel = required;

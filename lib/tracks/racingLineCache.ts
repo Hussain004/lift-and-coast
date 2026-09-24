@@ -1,28 +1,38 @@
 import type { TrackData } from "./types";
-import type { RacingLinePoint } from "./racingLine";
+import type { RacingLinePoint, RacingLineProfile } from "./racingLine";
 import { computeRacingLine } from "./racingLine";
 
 // computeRacingLine is an O(n) two-pass optimization over 1,700-3,000
-// centerline points, and its output depends only on the track geometry.
-// Before this cache, every AICar instance computed it on mount (plus one
-// more in Track.tsx for the visible ribbon) - 21 identical computations
-// per race load. The line array is shared read-only: no consumer mutates
-// points (they write derived values into their own buffers), so one
-// instance serves the whole scene.
-const racingLineCache = new WeakMap<TrackData, RacingLinePoint[]>();
+// centerline points, and its output depends only on the track geometry and
+// requested profile. Before this cache, every AICar instance computed it on
+// mount (plus one more in Track.tsx for the visible ribbon) - 21 identical
+// computations per race load. The line arrays are shared read-only: no
+// consumer mutates points (they write derived values into their own buffers),
+// so one instance per profile serves the whole scene.
+const racingLineCache = new WeakMap<
+  TrackData,
+  Partial<Record<RacingLineProfile, RacingLinePoint[]>>
+>();
 
 /**
- * The (shared, read-only) ideal racing line for a track, computed on
- * first request and reused by every AICar, the Track ribbon and tests
- * thereafter. Semantically identical to calling computeRacingLine
- * directly - same pure function underneath - just computed once per
- * track object instead of once per consumer.
+ * The (shared, read-only) ideal racing line for a track and profile, computed
+ * on first request and reused by every matching AICar, Track ribbon and test
+ * thereafter. Semantically identical to calling computeRacingLine directly -
+ * same pure function underneath - just computed once per track/profile pair.
  */
-export function getRacingLine(track: TrackData): RacingLinePoint[] {
-  let line = racingLineCache.get(track);
+export function getRacingLine(
+  track: TrackData,
+  profile: RacingLineProfile = "default"
+): RacingLinePoint[] {
+  let profiles = racingLineCache.get(track);
+  if (!profiles) {
+    profiles = {};
+    racingLineCache.set(track, profiles);
+  }
+  let line = profiles[profile];
   if (!line) {
-    line = computeRacingLine(track);
-    racingLineCache.set(track, line);
+    line = computeRacingLine(track, profile);
+    profiles[profile] = line;
   }
   return line;
 }
@@ -101,13 +111,24 @@ export function computeLineRoom(track: TrackData, line: RacingLinePoint[]): Line
   return { plus, minus, cornerSign };
 }
 
-const lineRoomCache = new WeakMap<TrackData, LineRoom>();
+const lineRoomCache = new WeakMap<
+  TrackData,
+  Partial<Record<RacingLineProfile, LineRoom>>
+>();
 
-export function getLineRoom(track: TrackData): LineRoom {
-  let room = lineRoomCache.get(track);
+export function getLineRoom(
+  track: TrackData,
+  profile: RacingLineProfile = "default"
+): LineRoom {
+  let profiles = lineRoomCache.get(track);
+  if (!profiles) {
+    profiles = {};
+    lineRoomCache.set(track, profiles);
+  }
+  let room = profiles[profile];
   if (!room) {
-    room = computeLineRoom(track, getRacingLine(track));
-    lineRoomCache.set(track, room);
+    room = computeLineRoom(track, getRacingLine(track, profile));
+    profiles[profile] = room;
   }
   return room;
 }

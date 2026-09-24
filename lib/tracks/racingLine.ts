@@ -35,7 +35,7 @@ import type { TrackData } from "./types";
 // ~28 over the whole lap, in line with the track's real corner count.
 const CURVATURE_LOOKAHEAD_POINTS = 20;
 const CURVATURE_OFFSET_GAIN = 40;
-const MAX_OFFSET_FRACTION_OF_HALF_WIDTH = 0.76;
+const DEFAULT_MAX_OFFSET_FRACTION_OF_HALF_WIDTH = 0.76;
 // An inside offset larger than the local corner radius folds the line through
 // itself at hairpins. The old fixed 75%-of-half-width cap ignored that
 // constraint and produced near-zero-length segments at COTA, Bahrain and
@@ -65,8 +65,8 @@ const MIN_PROFILE_SEGMENT_METERS = 0.5;
 // cap derived from the tire/aero model itself (see maxLateralAccelMs2):
 // v <= sqrt(a_lat(v) * radius), solved by fixed-point iteration since the
 // cap depends on speed through downforce. A flat ~1.2g cap was tried first
-// and misfit both ends of the lap at once (see LATERAL_SAFETY_FACTOR).
-const SPEED_LOOKAHEAD_POINTS = 30;
+// and misfit both ends of the lap at once (see DEFAULT_LATERAL_SAFETY_FACTOR).
+const DEFAULT_SPEED_LOOKAHEAD_POINTS = 30;
 /**
  * Straight-line reference speed for the shared AI profile. This is above the
  * normal high-downforce equilibrium on purpose: the profile is a target
@@ -85,8 +85,10 @@ const MIN_CORNER_SPEED_MS = 12;
 // power - the friction circle is shared), load transfer unloading the
 // inside tires, tire wear through a stint, and the AI's own tracking error
 // around the precomputed line. Checked 0.8 against the full 180s AI gate
-// on all five circuits (see tests/trackAIStability.test.ts) - the profile
-// this produces is one the pure-pursuit driver can actually hold.
+// on all five circuits (see tests/trackAIStability.test.ts) - the default
+// profile this produces is one the pure-pursuit driver can actually hold.
+// Spa's Ace profile deliberately uses a higher factor and a separate
+// tangent-tracking law, both covered by the standing-start regression test.
 //
 // Why speed-dependent at all: a flat cap misfits both ends of the lap at
 // once. At 60+ m/s the car pulls ~2.5g+ on downforce the flat 1.2g cap
@@ -95,7 +97,7 @@ const MIN_CORNER_SPEED_MS = 12;
 // downforce and the flat cap was, if anything, generous, so hairpins
 // targeted speeds the car couldn't hold and the AI ran wide. One curve
 // fixes both directions: ~16 m/s² slow, ~25+ fast.
-const LATERAL_SAFETY_FACTOR = 0.8;
+const DEFAULT_LATERAL_SAFETY_FACTOR = 0.8;
 // Backward/forward passes enforce a physically-plausible speed profile: you
 // can't be doing 250 km/h one point and 65 km/h the next just because a
 // tight corner is there - braking (and accelerating) takes distance. Values
@@ -114,6 +116,76 @@ const DRIVER_MAX_DECEL_MS2 = 18;
 // traffic to settle cleanly. Braking is still governed by the unchanged
 // physical backward pass above.
 export const MAX_ACCEL_MS2 = 8.5;
+
+/**
+ * AI steering law associated with a generated line. The default remains the
+ * validated pure-pursuit controller. The Ace profile for Spa opts into a
+ * bounded Stanley-style tracker because its long, fast transitions expose
+ * the difference between following a point and following the line's tangent.
+ */
+export type AISteeringMode = "pure-pursuit" | "spa-optimal";
+export type RacingLineProfile = "default" | "ace";
+
+export interface RacingLineTuning {
+  maxOffsetFractionOfHalfWidth: number;
+  speedLookaheadPoints: number;
+  curvatureSubWindows: number;
+  curvatureSubPoints: number;
+  lateralSafetyFactor: number;
+  maxSpeedMs: number;
+  maxBoostSpeedMs: number;
+  steeringMode: AISteeringMode;
+  steeringCornerLookaheadMeters: number;
+  steeringStraightLookaheadMeters: number;
+  steeringCrossTrackGain: number;
+  steeringMaxPace: number;
+}
+
+const DEFAULT_TUNING: RacingLineTuning = {
+  maxOffsetFractionOfHalfWidth: DEFAULT_MAX_OFFSET_FRACTION_OF_HALF_WIDTH,
+  speedLookaheadPoints: DEFAULT_SPEED_LOOKAHEAD_POINTS,
+  curvatureSubWindows: 6,
+  curvatureSubPoints: 10,
+  lateralSafetyFactor: DEFAULT_LATERAL_SAFETY_FACTOR,
+  maxSpeedMs: MAX_SPEED_MS,
+  maxBoostSpeedMs: MAX_BOOST_SPEED_MS,
+  steeringMode: "pure-pursuit",
+  steeringCornerLookaheadMeters: 0,
+  steeringStraightLookaheadMeters: 0,
+  steeringCrossTrackGain: 0,
+  steeringMaxPace: 1.18,
+};
+
+// Spa is the one circuit where the conservative profile is materially slower
+// than the player's measured standing lap. Its Ace line uses a tighter local
+// curvature window and a little more of the available road, while the
+// controller below supplies the cross-track correction needed to keep that
+// faster envelope on the ribbon. The default profile remains unchanged so
+// lower tiers retain the established racing behavior.
+const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
+  spa: {
+    maxOffsetFractionOfHalfWidth: 0.6,
+    speedLookaheadPoints: 10,
+    curvatureSubWindows: 2,
+    curvatureSubPoints: 5,
+    lateralSafetyFactor: 1.2,
+    maxSpeedMs: 94,
+    maxBoostSpeedMs: 102,
+    steeringMode: "spa-optimal",
+    steeringCornerLookaheadMeters: 10,
+    steeringStraightLookaheadMeters: 14,
+    steeringCrossTrackGain: 1,
+    steeringMaxPace: 1.1,
+  },
+};
+
+function tuningForTrack(trackId: string, profile: RacingLineProfile): RacingLineTuning {
+  return {
+    ...DEFAULT_TUNING,
+    ...(profile === "ace" ? TRACK_TUNING[trackId] : undefined),
+  };
+}
+
 const SPEED_PASS_LAPS = 3; // full loop-arounds, so constraints propagate all the way round a closed track.
 
 // Thresholds on required deceleration (m/s^2) between consecutive points,
@@ -177,6 +249,15 @@ export interface RacingLinePoint {
   displayZone?: ThrottleZone;
   /** Arc length from this point to the next (wrapping at the lap), meters. */
   distanceToNextMeters: number;
+  /** Controller profile to use for this generated line. */
+  steeringMode?: AISteeringMode;
+  /** Optional Spa controller tuning, carried with the line for headless parity. */
+  steeringCornerLookaheadMeters?: number;
+  steeringStraightLookaheadMeters?: number;
+  steeringCrossTrackGain?: number;
+  steeringMaxPace?: number;
+  /** Lateral-grip safety factor used to build this line's target profile. */
+  lateralSafetyFactor?: number;
 }
 
 function unitTangentAt(points: readonly (readonly [number, number, number])[], i: number): { x: number; z: number } {
@@ -278,13 +359,16 @@ function classifyDisplayZone(decelMs2: number): ThrottleZone {
 /**
  * Peak lateral acceleration the car can sustain at a given speed, from the
  * tire model's own load-sensitive mu at that speed's aero load - see the
- * LATERAL_SAFETY_FACTOR comment for what the factor covers.
+ * DEFAULT_LATERAL_SAFETY_FACTOR comment for what the factor covers.
  */
-export function maxLateralAccelMs2(speedMs: number): number {
+export function maxLateralAccelMs2(
+  speedMs: number,
+  safetyFactor = DEFAULT_LATERAL_SAFETY_FACTOR
+): number {
   const downforceN = computeDownforceN(Math.max(0, speedMs));
   const loadPerTireN = (CHASSIS_MASS * 9.81 + downforceN) / 4;
   const mu = peakFrictionMu(loadPerTireN);
-  return LATERAL_SAFETY_FACTOR * mu * (9.81 + downforceN / CHASSIS_MASS);
+  return safetyFactor * mu * (9.81 + downforceN / CHASSIS_MASS);
 }
 
 /**
@@ -294,7 +378,11 @@ export function maxLateralAccelMs2(speedMs: number): number {
  * each carrying a target speed and a throttle/brake zone alongside its
  * position.
  */
-export function computeRacingLine(track: TrackData): RacingLinePoint[] {
+export function computeRacingLine(
+  track: TrackData,
+  profile: RacingLineProfile = "default"
+): RacingLinePoint[] {
+  const tuning = tuningForTrack(track.id, profile);
   const n = track.centerline.length;
   const centerline = track.centerline;
 
@@ -320,9 +408,9 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     // transition; the radius guard is for the other circuits' isolated
     // hairpin spikes, not for the crossover's load-sensitive geometry.
     const maxOffset = track.id === "suzuka"
-      ? halfWidth * MAX_OFFSET_FRACTION_OF_HALF_WIDTH
+      ? halfWidth * tuning.maxOffsetFractionOfHalfWidth
       : Math.min(
-          halfWidth * MAX_OFFSET_FRACTION_OF_HALF_WIDTH,
+          halfWidth * tuning.maxOffsetFractionOfHalfWidth,
           Math.max(halfWidth * OFFSET_MIN_FRACTION_OF_HALF_WIDTH, radiusLimit)
         );
     offsetLimits[i] = maxOffset;
@@ -436,14 +524,14 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // never binds (noise reads as radius 300m+, capped by MAX_SPEED_MS long
   // before it matters) yet short enough to catch each direction change of
   // an esses on its own.
-  const CURVATURE_SUB_WINDOWS = 6;
-  const CURVATURE_SUB_POINTS = 10;
+  const CURVATURE_SUB_WINDOWS = tuning.curvatureSubWindows;
+  const CURVATURE_SUB_POINTS = tuning.curvatureSubPoints;
   const curveOnlySpeed = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     let curvature = 0;
     for (let w = 0; w < CURVATURE_SUB_WINDOWS; w++) {
-      const a = (i - SPEED_LOOKAHEAD_POINTS + w * CURVATURE_SUB_POINTS + n) % n;
-      const b = (i - SPEED_LOOKAHEAD_POINTS + (w + 1) * CURVATURE_SUB_POINTS + n) % n;
+      const a = (i - tuning.speedLookaheadPoints + w * CURVATURE_SUB_POINTS + n) % n;
+      const b = (i - tuning.speedLookaheadPoints + (w + 1) * CURVATURE_SUB_POINTS + n) % n;
       const behind = unitTangentAt(curvaturePositions, a);
       const ahead = unitTangentAt(curvaturePositions, b);
       const cross = behind.x * ahead.z - behind.z * ahead.x;
@@ -459,15 +547,15 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
     // downforce), so iterate a few times from the old flat-cap answer - the
     // map is a contraction (sqrt of an affine function), so this converges
     // to the fixed point within a fraction of an m/s.
-    let capped = MAX_SPEED_MS;
+    let capped = tuning.maxSpeedMs;
     if (curvature > 1e-9) {
       const radius = 1 / curvature;
       capped = Math.sqrt(12 / curvature);
       for (let k = 0; k < 4; k++) {
-        capped = Math.sqrt(maxLateralAccelMs2(capped) * radius);
+        capped = Math.sqrt(maxLateralAccelMs2(capped, tuning.lateralSafetyFactor) * radius);
       }
     }
-    curveOnlySpeed[i] = Math.min(MAX_SPEED_MS, Math.max(MIN_CORNER_SPEED_MS, capped));
+    curveOnlySpeed[i] = Math.min(tuning.maxSpeedMs, Math.max(MIN_CORNER_SPEED_MS, capped));
   }
 
   // A local, lightly-smoothed curvature cap is the honest driver-facing
@@ -511,7 +599,7 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
   // help while the car was still below the normal profile's artificial top
   // speed, which is exactly the straight-line case the player cares about.
   const boostedCurveOnlySpeed = Float64Array.from(curveOnlySpeed, (speed) =>
-    Math.min(MAX_BOOST_SPEED_MS, speed)
+    Math.min(tuning.maxBoostSpeedMs, speed)
   );
   const boostedTargetSpeedMs = computeCappedSpeedProfile(
     boostedCurveOnlySpeed,
@@ -569,6 +657,12 @@ export function computeRacingLine(track: TrackData): RacingLinePoint[] {
       displayTargetSpeedMs: displaySpeedMs[i],
       displayZone,
       distanceToNextMeters: segmentLengths[i],
+      steeringMode: tuning.steeringMode,
+      steeringCornerLookaheadMeters: tuning.steeringCornerLookaheadMeters,
+      steeringStraightLookaheadMeters: tuning.steeringStraightLookaheadMeters,
+      steeringCrossTrackGain: tuning.steeringCrossTrackGain,
+      steeringMaxPace: tuning.steeringMaxPace,
+      lateralSafetyFactor: tuning.lateralSafetyFactor,
     };
   }
   return result;

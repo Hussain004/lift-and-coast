@@ -167,8 +167,9 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     trace = false,
   } = options;
   const track = (options.track ?? silverstone) as TrackData;
-  const racingLine = getRacingLine(track);
-  const room = getLineRoom(track);
+  const lineProfile = difficulty === "ace" ? "ace" : "default";
+  const racingLine = getRacingLine(track, lineProfile);
+  const room = getLineRoom(track, lineProfile);
   const timestep = 1 / 60;
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
@@ -436,7 +437,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       applyCarControls(
         car.controller,
         controls,
-        DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty),
+        DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(difficulty, track.id),
         boostMultiplier,
         DEFAULT_BRAKE_FORCE,
         car.speedMs,
