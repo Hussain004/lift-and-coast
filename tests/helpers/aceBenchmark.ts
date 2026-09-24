@@ -3,6 +3,7 @@ import { computeAIControls, nearestLineIndex } from "../../lib/ai/pathFollower";
 import {
   difficultyEngineForceScale,
   difficultyPaceScale,
+  type AIDifficulty,
 } from "../../lib/ai/personalities";
 import {
   DEFAULT_BRAKE_FORCE,
@@ -39,6 +40,7 @@ export async function runStandingStartLap(
 ): Promise<AceLapBenchmark> {
   const line = computeRacingLine(track, profile);
   const quality = analyzeRacingLine(track, line);
+  const benchmarkDifficulty: AIDifficulty = profile === "default" ? "pro" : profile;
   // Slow circuits need more than the old fixed 180s window. This remains a
   // one-lap benchmark, with a generous bounded margin rather than an
   // endurance test.
@@ -61,7 +63,7 @@ export async function runStandingStartLap(
         state.yawRad,
         state.speedMs,
         false,
-        profile === "ace" ? difficultyPaceScale("ace") : 1,
+        difficultyPaceScale(benchmarkDifficulty, track.id),
         0,
         warmStartIndex
       );
@@ -69,7 +71,7 @@ export async function runStandingStartLap(
     {
       engineForce:
         DEFAULT_ENGINE_FORCE *
-        (profile === "ace" ? difficultyEngineForceScale("ace", track.id) : 1),
+        (benchmarkDifficulty === "pro" ? 1 : difficultyEngineForceScale(benchmarkDifficulty, track.id)),
       brakeForce: DEFAULT_BRAKE_FORCE,
       stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
       track,

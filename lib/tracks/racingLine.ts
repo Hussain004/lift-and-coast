@@ -125,7 +125,7 @@ export const MAX_ACCEL_MS2 = 8.5;
  * the difference between following a point and following the line's tangent.
  */
 export type AISteeringMode = "pure-pursuit" | "spa-optimal";
-export type RacingLineProfile = "default" | "ace";
+export type RacingLineProfile = "default" | "hard" | "ace";
 
 export interface RacingLineTuning {
   maxOffsetFractionOfHalfWidth: number;
@@ -157,20 +157,26 @@ const DEFAULT_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.18,
 };
 
-// Ace profiles use a faster, bounded envelope than the default reference.
-// The common package is now the starting point for every registered circuit:
-// tighter local curvature sensing, a modest lateral-grip allowance, and a
-// lower corner pace cap while retaining the proven pure-pursuit path.
-// Spa alone opts into the separately validated tangent/cross-track controller
-// below. Individual circuits can tighten or relax these values in
-// TRACK_TUNING without changing the default profile or shared physics.
+// Hard profiles use the previously validated fast-line regime. The common
+// package is now the starting point for every registered circuit: tighter
+// local curvature sensing, a modest lateral-grip allowance, and a lower
+// corner pace cap while retaining the proven pure-pursuit path. Spa alone
+// opts into the separately validated tangent/cross-track controller below.
+// Individual circuits can tighten or relax these values in TRACK_TUNING
+// without changing the default profile or shared physics.
+//
+// Ace deliberately starts from the Hard geometry for now: its extra difficulty
+// comes from a higher pace/engine envelope, which keeps the newly separated
+// top tier fast without immediately asking the line tracker to carry a second
+// unvalidated geometry change. The all-track gates can promote a circuit into
+// a distinct Ace line later without changing the difficulty contract.
 //
 // Spa was the first circuit calibrated against a measured standing-start lap
 // (2:08). Its values remain the reference calibration; the all-track gates
 // below require each other circuit to earn the same profile through its own
 // completed-lap and track-limit checks rather than assuming Spa's geometry
 // transfers unchanged.
-const ACE_TUNING: RacingLineTuning = {
+const HARD_TUNING: RacingLineTuning = {
   ...DEFAULT_TUNING,
   maxOffsetFractionOfHalfWidth: 0.68,
   speedLookaheadPoints: 20,
@@ -183,25 +189,34 @@ const ACE_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.12,
 };
 
-// Per-track Ace overrides are deliberately partial so the common Ace
+// Ace uses the same validated geometry as Hard for the first rollout. The
+// difficulty scales in personalities.ts provide the additional pace,
+// acceleration, aggression, and mistake envelope; keeping the geometry shared
+// makes the new tier's speed gain measurable and its stability regression
+// localized to those inputs.
+const ACE_TUNING: RacingLineTuning = {
+  ...HARD_TUNING,
+};
+
+// Per-track Hard/Ace overrides are deliberately partial so the common
 // calibration remains visible and a new circuit automatically receives a
 // tested profile. These values are populated only where the common package
 // needs a circuit-specific safety or geometry adjustment.
-const ACE_FALLBACK_TUNING: RacingLineTuning = {
+const PROFILE_FALLBACK_TUNING: RacingLineTuning = {
   ...DEFAULT_TUNING,
   steeringMaxPace: 1.08,
 };
 
 const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
-  monza: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.1 },
+  monza: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.1 },
   // The bridge load transition and a full 20-car launch both reward a lower
   // corner cap than the open-circuit default; the line itself is still much
   // faster than the reference profile.
-  suzuka: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.04 },
-  monaco: { ...ACE_FALLBACK_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
-  zandvoort: { ...ACE_FALLBACK_TUNING, lateralSafetyFactor: 0.85, steeringMaxPace: 1.08 },
-  miami: { ...ACE_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
-  madrid: { ...ACE_TUNING, lateralSafetyFactor: 0.8, steeringMaxPace: 1.04 },
+  suzuka: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.04 },
+  monaco: { ...PROFILE_FALLBACK_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
+  zandvoort: { ...PROFILE_FALLBACK_TUNING, lateralSafetyFactor: 0.85, steeringMaxPace: 1.08 },
+  miami: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
+  madrid: { ...HARD_TUNING, lateralSafetyFactor: 0.8, steeringMaxPace: 1.04 },
   spa: {
     maxOffsetFractionOfHalfWidth: 0.6,
     speedLookaheadPoints: 10,
@@ -218,20 +233,49 @@ const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
   },
 };
 
+// Ace-only line overrides start from the validated Hard package. These are
+// deliberately conservative where the first global Ace pace pass exposed a
+// bridge/traffic or high-speed-runoff sensitivity; the difficulty scales
+// still provide the extra straight-line commitment.
+const ACE_TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
+  spa: {
+    ...TRACK_TUNING.spa,
+    maxSpeedMs: 95,
+    maxBoostSpeedMs: 103,
+    steeringMaxPace: 1.11,
+  },
+  suzuka: {
+    ...TRACK_TUNING.suzuka,
+    maxSpeedMs: 92,
+    maxBoostSpeedMs: 100,
+    steeringMaxPace: 1.06,
+  },
+  spielberg: {
+    ...HARD_TUNING,
+  },
+};
+
 const REGISTERED_TRACK_IDS = new Set(TRACKS.map((track) => track.id));
 
 function tuningForTrack(trackId: string, profile: RacingLineProfile): RacingLineTuning {
-  if (profile !== "ace") return { ...DEFAULT_TUNING };
+  if (profile === "default") return { ...DEFAULT_TUNING };
   // Synthetic tracks used by unit tests (and any future unregistered data)
   // must not silently inherit an aggressive racing-line package. Only the
-  // registry's known circuits opt into the common Ace calibration; unknown
-  // IDs get the same conservative pace cap as the tightly controlled
-  // street/technical profiles until they are explicitly calibrated.
-  const base = REGISTERED_TRACK_IDS.has(trackId) ? ACE_TUNING : ACE_FALLBACK_TUNING;
+  // registry's known circuits opt into the common Hard/Ace calibration;
+  // unknown IDs get the conservative fallback until explicitly calibrated.
+  const base = REGISTERED_TRACK_IDS.has(trackId)
+    ? profile === "ace"
+      ? ACE_TUNING
+      : HARD_TUNING
+    : PROFILE_FALLBACK_TUNING;
   return {
     ...DEFAULT_TUNING,
     ...base,
-    ...(REGISTERED_TRACK_IDS.has(trackId) ? TRACK_TUNING[trackId] : undefined),
+    ...(REGISTERED_TRACK_IDS.has(trackId)
+      ? profile === "ace"
+        ? { ...TRACK_TUNING[trackId], ...ACE_TRACK_TUNING[trackId] }
+        : TRACK_TUNING[trackId]
+      : undefined),
   };
 }
 

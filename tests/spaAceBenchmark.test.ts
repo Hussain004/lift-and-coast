@@ -20,10 +20,10 @@ const MAX_OFF_TRACK_METERS = 3;
 const ACE_STRAIGHT_AERO_THRESHOLD_MS = 65;
 const ACE_STRAIGHT_AERO_PREVIEW_METERS = 300;
 
-describe("Ace Spa standing-start benchmark", () => {
+describe("Hard Spa standing-start benchmark", () => {
   it("beats the player from a standing start without a track-limit excursion", async () => {
     const track = getTrack("spa");
-    const line = computeRacingLine(track, "ace");
+    const line = computeRacingLine(track, "hard");
     const quality = analyzeRacingLine(track, line);
     let previousProgress = 0;
     let lapStart = 0;
@@ -65,7 +65,7 @@ describe("Ace Spa standing-start benchmark", () => {
       },
       {
         engineForce:
-          DEFAULT_ENGINE_FORCE * difficultyEngineForceScale("ace", track.id),
+          DEFAULT_ENGINE_FORCE * difficultyEngineForceScale("hard", track.id),
         brakeForce: DEFAULT_BRAKE_FORCE,
         stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
         track,

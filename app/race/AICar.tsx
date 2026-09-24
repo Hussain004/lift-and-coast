@@ -62,6 +62,7 @@ import {
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import {
+  applyLaunchControl,
   createRacecraftState,
   lateralAtLineIndex,
   lineContextAt,
@@ -314,9 +315,10 @@ export function AICar({
   // plan's 2026 rules. boostEligible rides one tick behind (same pattern
   // as zoneRef above) - one tick of lag at 60Hz is nothing next to a
   // multi-second deploy.
-  const energyRef = useRef(createEnergySystem(1, difficulty === "ace" ? "attack" : "balanced"));
+  const highDifficulty = difficulty === "hard" || difficulty === "ace";
+  const energyRef = useRef(createEnergySystem(1, highDifficulty ? "attack" : "balanced"));
   const batteryRef = useRef(1);
-  const strategyRef = useRef(createStrategySystem({ mode: difficulty === "ace" ? "push" : "balanced" }));
+  const strategyRef = useRef(createStrategySystem({ mode: highDifficulty ? "push" : "balanced" }));
   const overtakeSystem = useMemo(
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
@@ -350,7 +352,7 @@ export function AICar({
   // both per-tick full-line scans collapse into one windowed one.
   const nearestIdxRef = useRef(0);
 
-  const lineProfile = difficulty === "ace" ? "ace" : "default";
+  const lineProfile = difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default";
   const racingLine = useMemo(() => getRacingLine(track, lineProfile), [track, lineProfile]);
   const lineRoom = useMemo(() => getLineRoom(track, lineProfile), [track, lineProfile]);
 
@@ -552,6 +554,7 @@ export function AICar({
     const netInput = netInputRef?.current ?? null;
     const netFresh = netInput !== null && Date.now() - netInput.atMs < 500;
     let controls: { throttle: number; brake: number; steer: number };
+    let launchTractionControlDisabled = false;
     // Push-to-Pass multiplier (1 = not deploying). Only the AI branch ever
     // sets it: a guest-driven car has no battery wiring over the wire, so
     // it keeps the legacy flat 1.
@@ -574,7 +577,7 @@ export function AICar({
       const myLap = myEntry?.lapCount ?? 0;
       const raceProgress = Math.min(1, Math.max(0, myLap / Math.max(1, raceLaps)));
       let paceMult =
-        traits.pace * difficultyPaceScale(difficulty) * tireCurveMultiplier(traits.latePace, raceProgress);
+        traits.pace * difficultyPaceScale(difficulty, track.id) * tireCurveMultiplier(traits.latePace, raceProgress);
       // Mistake envelope: an armed moment triggers when the car reaches
       // the scheduled point, then reads as a lift for under a second -
       // pace only, the steering never wavers.
@@ -700,6 +703,18 @@ export function AICar({
         // windowed hit (distance 0) instead of a second full-line scan.
         anchor
       );
+      // Launch control closes the path-follower's deliberate low-speed
+      // throttle ramp, but only while the shared racecraft step says the
+      // launch is uncontested. Braking and traffic caps remain authoritative.
+      const launchControls = applyLaunchControl(
+        aiControls,
+        step.launchThrottleFloor,
+        raceStartRef?.current ?? true
+      );
+      launchTractionControlDisabled =
+        (raceStartRef?.current ?? true) &&
+        step.launchThrottleFloor > 0 &&
+        launchControls.brake < 1;
       zoneRef.current = aiControls.zone;
       boostEligibleRef.current = aiControls.boostEligible;
       const nearestAheadGap = cars.reduce(
@@ -732,7 +747,7 @@ export function AICar({
          airTemperatureC: weatherState.airTemperatureC,
          trackTemperatureC: weatherState.trackTemperatureC,
        });
-      controls = aiControls;
+      controls = launchControls;
     }
 
     // Grid start (Scene.tsx) - see Car.tsx's own comment on the identical gate.
@@ -751,7 +766,7 @@ export function AICar({
       boostMultiplier * strategyState.engineMultiplier * strategyState.paceMultiplier * (overtakeState.active ? OVERTAKE_BOOST_MULTIPLIER : 1),
       DEFAULT_BRAKE_FORCE,
       speedMs,
-      true,
+      !launchTractionControlDisabled,
       { state: gearboxRef.current, shiftUp: false, shiftDown: false }
     );
 

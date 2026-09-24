@@ -70,7 +70,10 @@ function RacingLine({
   // the next frame's windowed search is equivalent to the full scan.
   const nearestIdxRef = useRef(0);
   const { geometry, line } = useMemo(() => {
-    const line = getRacingLine(track, difficulty === "ace" ? "ace" : "default");
+    const line = getRacingLine(
+      track,
+      difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default"
+    );
     const { positions, colors, indices } = buildRacingLineRibbon(
       line,
       RACING_LINE_HALF_WIDTH_METERS,

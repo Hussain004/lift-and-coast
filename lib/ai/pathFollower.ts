@@ -116,6 +116,7 @@ const FAST_AI_PACE_THRESHOLD = 1.1;
 // corner-dense lap that meant nearly perpetual full braking and the AI
 // crawled - the gate is the profile's own assumption, not a second one.)
 const BRAKE_PLANNING_METERS = 250;
+const MAX_AI_PACE_SCALE = 1.24;
 const STEER_GAIN = 1.0;
 const SPA_OPTIMAL_CROSS_TRACK_GAIN = 1.0;
 const SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS = 10;
@@ -249,7 +250,7 @@ export function cornerAheadMeters(
 ): number {
   const n = line.length;
   if (n === 0) return 400;
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0.9, paceScale)) : 1;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(MAX_AI_PACE_SCALE, Math.max(0.9, paceScale)) : 1;
   let ahead = 0;
   for (let k = 0; k < n && ahead < 400; k++) {
     const point = line[(fromIndex + k) % n];
@@ -317,21 +318,21 @@ export function computeAIControls(
   // ceiling. The floor is zero: racecraft's follow cap has to be able to
   // stop a car behind a stopped one (a 0.9 floor here silently turned
   // every "stop" into "ram at 90%" - the grid-start and queue shunts).
-  const clampedPace = Number.isFinite(paceScale) ? Math.min(1.18, Math.max(0, paceScale)) : 1;
+  const clampedPace = Number.isFinite(paceScale) ? Math.min(MAX_AI_PACE_SCALE, Math.max(0, paceScale)) : 1;
   const steeringMode: AISteeringMode = nearestPoint.steeringMode ?? "pure-pursuit";
   const spaOptimal = steeringMode === "spa-optimal";
   // Every generated line carries a corner pace cap. The default profile's
   // cap is the existing 1.18 ceiling, so this is inert for Pro/lower tiers;
-  // Ace profiles can lower it without changing the target line or handing
-  // racecraft a new actuator. Straight-line deployment keeps the normal
-  // 1.18 envelope, while corners remain bounded where a small target shift
-  // can otherwise turn into a snap.
+  // Hard and Ace profiles can lower it without changing the target line or
+  // handing racecraft a new actuator. Straight-line deployment keeps the
+  // normal 1.24 envelope, while corners remain bounded where a small target
+  // shift can otherwise turn into a snap.
   const profileCornerPaceCap = nearestPoint.steeringMaxPace;
   const effectivePace = profileCornerPaceCap !== undefined
     ? Math.min(
         clampedPace,
         nearestPoint.targetSpeedMs >= 70
-          ? Math.max(profileCornerPaceCap, 1.18)
+          ? Math.max(profileCornerPaceCap, MAX_AI_PACE_SCALE)
           : profileCornerPaceCap
       )
     : clampedPace;

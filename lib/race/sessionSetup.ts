@@ -66,7 +66,7 @@ export function parseRivals(raw: string | null): number {
 // AI difficulty (see lib/ai/personalities.ts): unknown/missing values fall
 // back to Pro so every existing link keeps today's reference pace.
 export function parseDifficulty(raw: string | null): AIDifficulty {
-  if (raw === "rookie" || raw === "club" || raw === "ace") return raw;
+  if (raw === "rookie" || raw === "club" || raw === "hard" || raw === "ace") return raw;
   return DEFAULT_DIFFICULTY;
 }
 
@@ -214,7 +214,9 @@ function clampWeather(raw: unknown): WeatherPreset {
 }
 
 function clampDifficulty(raw: unknown): AIDifficulty {
-  return raw === "rookie" || raw === "club" || raw === "ace" ? raw : DEFAULT_DIFFICULTY;
+  return raw === "rookie" || raw === "club" || raw === "hard" || raw === "ace"
+    ? raw
+    : DEFAULT_DIFFICULTY;
 }
 
 function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {

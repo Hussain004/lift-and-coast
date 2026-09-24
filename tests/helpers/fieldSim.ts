@@ -43,6 +43,7 @@ import {
   type AIDifficulty,
 } from "../../lib/ai/personalities";
 import {
+  applyLaunchControl,
   createRacecraftState,
   lateralAtLineIndex,
   lineContextAt,
@@ -167,7 +168,8 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     trace = false,
   } = options;
   const track = (options.track ?? silverstone) as TrackData;
-  const lineProfile = difficulty === "ace" ? "ace" : "default";
+  const lineProfile =
+    difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default";
   const racingLine = getRacingLine(track, lineProfile);
   const room = getLineRoom(track, lineProfile);
   const timestep = 1 / 60;
@@ -334,7 +336,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       const traits = traitsForDriver(car.code);
       const raceProgress = Math.min(1, Math.max(0, car.lapCount / Math.max(1, raceLaps)));
       const basePace =
-        traits.pace * difficultyPaceScale(difficulty) * tireCurveMultiplier(traits.latePace, raceProgress);
+        traits.pace * difficultyPaceScale(difficulty, track.id) * tireCurveMultiplier(traits.latePace, raceProgress);
       const aggression = Math.min(1, Math.max(0, traits.aggression + difficultyAggressionShift(difficulty)));
       const p = car.chassis.translation();
       const rot = car.chassis.rotation();
@@ -408,7 +410,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
       }
       car.maxOffset = Math.max(car.maxOffset, Math.abs(car.racecraft.offset));
       const deploying = !parkedCar && !held && step.deploy;
-      const controls = parkedCar
+      const baseControls = parkedCar
         ? { throttle: 0, brake: 1, steer: 0, zone: car.zone, boostEligible: false }
         : held
         ? { throttle: 0, brake: 1, steer: 0, zone: car.zone, boostEligible: false }
@@ -423,6 +425,13 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
             step.steerOffsetMeters,
             car.anchor
           );
+      const controls = applyLaunchControl(
+        baseControls,
+        step.launchThrottleFloor,
+        !held && !parkedCar
+      );
+      const launchTractionControlDisabled =
+        !held && !parkedCar && step.launchThrottleFloor > 0 && controls.brake < 1;
       car.zone = controls.zone;
       car.boostEligible = controls.boostEligible;
       let boostMultiplier = 1;
@@ -441,17 +450,17 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         boostMultiplier,
         DEFAULT_BRAKE_FORCE,
         car.speedMs,
-        true,
+        !launchTractionControlDisabled,
         { state: car.gearbox, shiftUp: false, shiftDown: false }
       );
     }
     if (trace && i % 120 === 0) {
       console.log(
-        `t=${(i * timestep).toFixed(0)} ` +
+        `t=${(i * timestep).toFixed(2)} ` +
           cars
             .map(
               (c) =>
-                `${c.code}@${totalOf(c).toFixed(0)} v=${c.speedMs.toFixed(0)} off=${c.racecraft.offset.toFixed(1)} att=${c.racecraft.attemptKey ?? "-"}`
+                `${c.code}@${totalOf(c).toFixed(1)} v=${c.speedMs.toFixed(1)} off=${c.racecraft.offset.toFixed(1)} att=${c.racecraft.attemptKey ?? "-"}`
             )
             .join(" | ")
       );

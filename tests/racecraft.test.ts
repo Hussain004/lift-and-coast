@@ -4,6 +4,7 @@ import {
   AERO_STRAIGHT_EXIT_METERS,
   AERO_TRAFFIC_CLEARANCE_METERS,
   chooseAeroMode,
+  applyLaunchControl,
   createRacecraftState,
   followGapMeters,
   followSpeedCapMs,
@@ -278,6 +279,46 @@ describe("stepRacecraft", () => {
       input({ ownSpeedMs: 60, cars: [{ key: "x", gapMeters: 12, speedMs: 50, lateralMeters: 2.8 }] })
     );
     expect(out.paceMult).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens a full-throttle launch window without overriding a stopped car", () => {
+    const launch = createRacecraftState();
+    const open = stepRacecraft(launch, input({ ownSpeedMs: 0, basePace: 1.1 }));
+    expect(open.launchThrottleFloor).toBe(1);
+    expect(applyLaunchControl({ throttle: 0.35, brake: 0 }, open.launchThrottleFloor)).toEqual({
+      throttle: 1,
+      brake: 0,
+    });
+    expect(applyLaunchControl({ throttle: 0.35, brake: 1 }, open.launchThrottleFloor)).toEqual({
+      throttle: 0.35,
+      brake: 1,
+    });
+
+    const stoppedAhead = stepRacecraft(
+      createRacecraftState(),
+      input({
+        ownSpeedMs: 0,
+        basePace: 1.1,
+        cars: [{ key: "stopped", gapMeters: 10, speedMs: 0, lateralMeters: 0 }],
+      })
+    );
+    expect(stoppedAhead.launchThrottleFloor).toBe(0);
+
+    const closeGridNeighbour = stepRacecraft(
+      createRacecraftState(),
+      input({
+        ownSpeedMs: 0,
+        basePace: 1.1,
+        cars: [{ key: "neighbour", gapMeters: 12, speedMs: 8, lateralMeters: 0 }],
+      })
+    );
+    expect(closeGridNeighbour.launchThrottleFloor).toBe(0);
+
+    const later = stepRacecraft(
+      { ...createRacecraftState(), raceSeconds: 30 },
+      input({ ownSpeedMs: 0, basePace: 1.1 })
+    );
+    expect(later.launchThrottleFloor).toBe(0);
   });
 
   it("keeps a rolling staggered launch from becoming a stationary queue", () => {

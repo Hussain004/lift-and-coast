@@ -67,11 +67,13 @@ const GO_DISPLAY_SECONDS = 0.75;
 function RaceStartCountdown({
   raceStartRef,
   countdownRef,
+  countdownValueRef,
   goAtMs = 0,
   goGate,
 }: {
   raceStartRef: React.RefObject<boolean>;
   countdownRef: React.RefObject<HTMLDivElement | null>;
+  countdownValueRef: React.RefObject<HTMLSpanElement | null>;
   /**
    * Plan section 16: net-room lights alignment. The host's START message
    * carries go-time; every peer (host included) delays its local
@@ -96,6 +98,21 @@ function RaceStartCountdown({
   const elapsedRef = useRef(0);
   const finishedRef = useRef(false);
   const startedRef = useRef(false);
+  const displayValueRef = useRef("");
+  const displayPhaseRef = useRef("");
+
+  const showCountdown = (value: string, phase: string): void => {
+    if (displayValueRef.current === value && displayPhaseRef.current === phase) return;
+    displayValueRef.current = value;
+    displayPhaseRef.current = phase;
+    const overlay = countdownRef.current;
+    if (overlay) {
+      overlay.dataset.active = "true";
+      overlay.dataset.phase = phase;
+      overlay.dataset.value = value;
+    }
+    if (countdownValueRef.current) countdownValueRef.current.textContent = value;
+  };
 
   useFrame((_, dt) => {
     if (finishedRef.current) return;
@@ -103,7 +120,7 @@ function RaceStartCountdown({
       // Hold the grid (throttle stays locked via raceStartRef) until the
       // room is actually ready to go.
       if (goGate && !goGate.signalled.current) {
-        if (countdownRef.current) countdownRef.current.textContent = "3";
+        showCountdown("3", "waiting");
         return;
       }
       const goAt = goGate ? goGate.atMs.current : goAtMs;
@@ -114,27 +131,27 @@ function RaceStartCountdown({
     elapsedRef.current += dt;
     const elapsed = elapsedRef.current;
     if (elapsed < 0) {
-      if (countdownRef.current) countdownRef.current.textContent = "3";
+      showCountdown("3", "waiting");
       return;
     }
 
     if (elapsed < COUNTDOWN_SECONDS) {
-      if (countdownRef.current) {
-        countdownRef.current.textContent = String(
-          Math.max(1, Math.ceil(COUNTDOWN_SECONDS - elapsed))
-        );
-      }
+      showCountdown(
+        String(Math.max(1, Math.ceil(COUNTDOWN_SECONDS - elapsed))),
+        "countdown"
+      );
       return;
     }
     // Flip the instant "GO!" appears, not after it fades - the countdown
     // display's own tail shouldn't add extra locked-throttle time.
     if (!raceStartRef.current) raceStartRef.current = true;
     if (elapsed < COUNTDOWN_SECONDS + GO_DISPLAY_SECONDS) {
-      if (countdownRef.current) countdownRef.current.textContent = "GO!";
+      showCountdown("GO!", "go");
       return;
     }
     finishedRef.current = true;
-    if (countdownRef.current) countdownRef.current.textContent = "";
+    showCountdown("", "done");
+    if (countdownRef.current) countdownRef.current.dataset.active = "false";
   });
 
   return null;
@@ -603,6 +620,7 @@ export function Scene({
   netHumanSlots = [],
   countdownGoAtMs = 0,
   countdownRef,
+  countdownValueRef,
   qualifyingDisplayRef,
   penaltyToastRef,
   playerBodyColor,
@@ -706,6 +724,7 @@ export function Scene({
   /** Lights alignment from the host's START go-time (see RaceStartCountdown). */
   countdownGoAtMs?: number;
   countdownRef: React.RefObject<HTMLDivElement | null>;
+  countdownValueRef: React.RefObject<HTMLSpanElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -994,6 +1013,7 @@ export function Scene({
       <RaceStartCountdown
         raceStartRef={raceStartRef}
         countdownRef={countdownRef}
+        countdownValueRef={countdownValueRef}
         goAtMs={countdownGoAtMs}
         goGate={
           netRole !== null

@@ -22,16 +22,173 @@
 }
 
 .loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(225, 6, 0, 0.13), transparent 28%),
+    linear-gradient(135deg, #090b11 0%, #05060a 58%, #0b0d13 100%);
+  color: #f4f1e8;
+  font-family: var(--font-geist-mono);
+}
+
+.loading::before,
+.loading::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.loading::before {
+  opacity: 0.28;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, transparent, #000 28%, #000 72%, transparent);
+}
+
+.loading::after {
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.07) 48%, transparent 66%);
+  transform: translateX(-100%);
+  animation: loadingSweep 2.4s ease-in-out infinite;
+}
+
+.loadingCard {
+  position: relative;
+  z-index: 1;
+  width: min(520px, calc(100vw - 40px));
+  padding: 26px 30px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-top: 2px solid #e10600;
+  background: linear-gradient(145deg, rgba(18, 21, 30, 0.92), rgba(7, 9, 14, 0.88));
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+}
+
+.loadingHeader,
+.startSequenceHeader,
+.startSequenceFooter {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #7f8999;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+}
+
+.loadingHeader span:first-child,
+.startSequenceHeader span:first-child {
+  color: #f4f1e8;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 1.2px;
+}
+
+.loadingCircuit {
+  position: relative;
+  height: 112px;
+  margin: 22px 0 20px;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(90deg, transparent, rgba(225, 6, 0, 0.05), transparent);
+}
+
+.loadingCircuit svg {
   width: 100%;
   height: 100%;
-  background: #0a0a0a;
-  color: #39ff88;
-  font-family: var(--font-geist-mono);
-  font-size: 18px;
-  letter-spacing: 2px;
+  overflow: visible;
+}
+
+.loadingCircuit path {
+  fill: none;
+  stroke: #e10600;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 12 8;
+  filter: drop-shadow(0 0 7px rgba(225, 6, 0, 0.65));
+  animation: loadingCircuitDash 2.8s linear infinite;
+}
+
+.loadingCircuitGhost {
+  stroke: rgba(244, 241, 232, 0.18) !important;
+  stroke-width: 8 !important;
+  stroke-dasharray: none !important;
+  filter: none !important;
+  animation: none !important;
+}
+
+.loadingCircuitDot {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ffd23f;
+  box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.12), 0 0 18px #ffd23f;
+  animation: loadingDot 2.8s ease-in-out infinite;
+}
+
+.loadingKicker {
+  color: #e10600;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2.2px;
+}
+
+.loadingTitle {
+  margin-top: 8px;
+  color: #f4f1e8;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 6vw, 48px);
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+}
+
+.loadingProgress {
+  position: relative;
+  height: 3px;
+  margin-top: 24px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.loadingProgress span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #e10600, #ffd23f, transparent);
+  animation: loadingProgress 1.35s ease-in-out infinite;
+}
+
+.loadingDetail {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 13px;
+  color: #697586;
+  font-size: 8px;
+  letter-spacing: 1.25px;
+}
+
+.loadingDetail i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #e10600;
+  box-shadow: 0 0 8px rgba(225, 6, 0, 0.8);
 }
 
 /* Compact F1 timing tower: driver, interval and gap only. Car.tsx owns the
@@ -1084,22 +1241,158 @@
   display: none;
 }
 
-.countdown {
+.startSequence {
   position: absolute;
-  top: 30%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #ffd23f;
-  font-family: var(--font-geist-mono);
-  font-size: 64px;
-  font-weight: 700;
-  letter-spacing: 4px;
-  text-shadow: 0 0 16px rgba(0, 0, 0, 0.6);
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(225, 6, 0, 0.15), transparent 25%),
+    linear-gradient(180deg, rgba(3, 4, 7, 0.12), rgba(3, 4, 7, 0.48));
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
+  transition: opacity 240ms ease, visibility 240ms ease;
 }
 
-.countdown:empty {
-  display: none;
+.startSequence[data-active="true"] {
+  opacity: 1;
+  visibility: visible;
+}
+
+.startSequence::before,
+.startSequence::after {
+  position: absolute;
+  left: 50%;
+  width: min(680px, 86vw);
+  height: 1px;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.startSequence::before {
+  top: 21%;
+  background: linear-gradient(90deg, transparent, rgba(225, 6, 0, 0.52), transparent);
+}
+
+.startSequence::after {
+  bottom: 21%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+
+.startSequencePanel {
+  position: relative;
+  width: min(410px, calc(100vw - 40px));
+  padding: 18px 24px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-top: 2px solid #e10600;
+  background: linear-gradient(145deg, rgba(13, 16, 23, 0.9), rgba(5, 7, 11, 0.78));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+  transform: translateY(0);
+  animation: startPanelIn 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.startSequenceHeader {
+  color: #778293;
+  font-size: 8px;
+}
+
+.startSequenceHeader span:last-child {
+  max-width: 190px;
+  overflow: hidden;
+  color: #aeb7c5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.startLights {
+  display: flex;
+  justify-content: center;
+  gap: clamp(8px, 2.5vw, 16px);
+  margin: 25px 0 20px;
+}
+
+.startLight {
+  width: clamp(18px, 4vw, 28px);
+  height: clamp(18px, 4vw, 28px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: #161b24;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+  transition: background 100ms ease, box-shadow 100ms ease, transform 100ms ease;
+}
+
+.startSequence[data-phase="waiting"] .startLight:nth-child(-n + 2),
+.startSequence[data-value="3"] .startLight:nth-child(-n + 2) {
+  background: #8f1214;
+  box-shadow: 0 0 12px rgba(225, 6, 0, 0.35), inset 0 0 8px rgba(255, 70, 55, 0.35);
+}
+
+.startSequence[data-value="2"] .startLight:nth-child(-n + 4) {
+  background: #e10600;
+  box-shadow: 0 0 15px rgba(225, 6, 0, 0.62), inset 0 0 8px rgba(255, 90, 70, 0.5);
+}
+
+.startSequence[data-value="1"] .startLight {
+  background: #e10600;
+  border-color: rgba(255, 90, 70, 0.65);
+  box-shadow: 0 0 18px rgba(225, 6, 0, 0.72), inset 0 0 9px rgba(255, 90, 70, 0.5);
+  transform: scale(1.04);
+}
+
+.startSequence[data-phase="go"] .startLight {
+  background: #39ff88;
+  border-color: rgba(57, 255, 136, 0.75);
+  box-shadow: 0 0 20px rgba(57, 255, 136, 0.78), inset 0 0 9px rgba(220, 255, 235, 0.65);
+  transform: scale(1.06);
+}
+
+.startCountdownValue {
+  min-height: 92px;
+  color: #f4f1e8;
+  font-family: var(--font-display);
+  font-size: clamp(72px, 16vw, 122px);
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  line-height: 0.9;
+  text-align: center;
+  text-shadow: 0 0 28px rgba(225, 6, 0, 0.32);
+}
+
+.startSequence[data-phase="go"] .startCountdownValue {
+  color: #39ff88;
+  font-size: clamp(54px, 12vw, 92px);
+  letter-spacing: -0.06em;
+  text-shadow: 0 0 30px rgba(57, 255, 136, 0.6);
+  animation: startGoPop 420ms cubic-bezier(0.16, 1.3, 0.3, 1) both;
+}
+
+.startSequenceFooter {
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+  color: #687384;
+  font-size: 7px;
+  letter-spacing: 1.3px;
+}
+
+.startSignal {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e10600;
+  box-shadow: 0 0 9px rgba(225, 6, 0, 0.8);
+  animation: startSignalPulse 1s ease-in-out infinite;
+}
+
+.startSequence[data-phase="go"] .startSignal {
+  background: #39ff88;
+  box-shadow: 0 0 9px rgba(57, 255, 136, 0.8);
 }
 
 /* F-key performance readout (see FrameRateGovernor). Empty until toggled. */
@@ -1644,5 +1937,113 @@
 
   .inputCluster {
     gap: 5px;
+  }
+}
+
+@keyframes loadingSweep {
+  0%,
+  18% {
+    transform: translateX(-100%);
+  }
+  72%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes loadingCircuitDash {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+@keyframes loadingDot {
+  0%,
+  100% {
+    left: 4%;
+    opacity: 0.35;
+  }
+  50% {
+    left: 94%;
+    opacity: 1;
+  }
+}
+
+@keyframes loadingProgress {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(330%);
+  }
+}
+
+@keyframes startPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes startGoPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes startSignalPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading::after,
+  .loadingCircuit path,
+  .loadingCircuitDot,
+  .loadingProgress span,
+  .startSequencePanel,
+  .startSequence[data-phase="go"] .startCountdownValue,
+  .startSignal {
+    animation: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .loadingCard {
+    padding: 22px 20px 20px;
+  }
+
+  .startSequencePanel {
+    padding: 15px 16px 17px;
+  }
+
+  .startSequenceHeader span:last-child {
+    max-width: 130px;
+  }
+
+  .startSequenceFooter {
+    gap: 7px;
+    font-size: 6px;
+    letter-spacing: 0.8px;
   }
 }

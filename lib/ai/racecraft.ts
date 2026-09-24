@@ -37,6 +37,11 @@ const LANE_HALF_WIDTH_METERS = 1.8;
 /** No attacks or defending while a standing start sorts itself out;
  * avoidance and following run from the green light. */
 const LAUNCH_HOLD_SECONDS = 5;
+/** A short launch-control window closes the low-speed throttle ramp without
+ * changing the line or removing traffic awareness. */
+export const AI_LAUNCH_THROTTLE_SECONDS = 2.4;
+export const AI_LAUNCH_THROTTLE_SPEED_MS = 22;
+const AI_LAUNCH_TRAFFIC_CLEARANCE_METERS = 24;
 /** A rolling launch is not a queue: leave a little room, but do not brake to a crawl. */
 const LAUNCH_FOLLOW_GAP_METERS = 8;
 const LAUNCH_FOLLOW_SPEED_FLOOR_MS = 16;
@@ -429,6 +434,8 @@ export interface RacecraftInput {
 
 export interface RacecraftOutput {
   paceMult: number;
+  /** Minimum throttle during the short, uncontested launch window. */
+  launchThrottleFloor: number;
   deploy: boolean;
   attempting: boolean;
   /** Held up behind a slow or stopped car (stuck detection must not
@@ -449,6 +456,16 @@ function clamp01(v: number): number {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+/** Apply the launch floor without ever overriding a real braking command. */
+export function applyLaunchControl<T extends { throttle: number; brake: number }>(
+  controls: T,
+  launchThrottleFloor: number,
+  enabled = true
+): T {
+  if (!enabled || launchThrottleFloor <= controls.throttle || controls.brake >= 1) return controls;
+  return { ...controls, throttle: launchThrottleFloor };
 }
 
 /**
@@ -838,5 +855,32 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     blocked,
     cars: input.cars,
   });
-  return { paceMult: pace, deploy, attempting: attacking, blocked, steerOffsetMeters, override, aeroMode };
+  // The path follower deliberately ramps throttle over a few m/s of target
+  // speed. That is correct while a car is already rolling, but it made a
+  // standing-start AI visibly lazy next to a player holding the key. Give
+  // an uncontested car a short launch-control floor, bounded by the same
+  // racecraft pace cap that still protects a car following traffic. A nearby
+  // grid neighbour opts out entirely: full launch power there would turn a
+  // normal standing-start queue into a contact event.
+  const launchTrafficClear = cars.every(
+    (car) => car.gapMeters < -OVERLAP_METERS || car.gapMeters > AI_LAUNCH_TRAFFIC_CLEARANCE_METERS
+  );
+  const launchThrottleFloor =
+    state.raceSeconds < AI_LAUNCH_THROTTLE_SECONDS &&
+    own < AI_LAUNCH_THROTTLE_SPEED_MS &&
+    line.throttleZone &&
+    obstacle === undefined &&
+    launchTrafficClear
+      ? clamp(pace, 0, 1)
+      : 0;
+  return {
+    paceMult: pace,
+    launchThrottleFloor,
+    deploy,
+    attempting: attacking,
+    blocked,
+    steerOffsetMeters,
+    override,
+    aeroMode,
+  };
 }

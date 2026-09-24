@@ -26,9 +26,43 @@ import { RaceOpsPanel } from "./RaceOpsPanel";
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 
+function TrackLoadingFallback() {
+  const loadingTrackName =
+    typeof window === "undefined"
+      ? "RACE ENVIRONMENT"
+      : getTrack(
+          parseTrackId(new URLSearchParams(window.location.search).get("track"))
+        ).name.toUpperCase();
+  return (
+    <div className={styles.loading} role="status" aria-live="polite">
+      <div className={styles.loadingCard}>
+        <div className={styles.loadingHeader}>
+          <span>LIFT &amp; COAST</span>
+          <span>{loadingTrackName}</span>
+        </div>
+        <div className={styles.loadingCircuit} aria-hidden="true">
+          <svg viewBox="0 0 240 92" role="presentation">
+            <path d="M12 68C28 18 62 12 86 35s30 45 57 31 24-45 51-45c18 0 28 12 34 25" />
+            <path className={styles.loadingCircuitGhost} d="M12 68C28 18 62 12 86 35s30 45 57 31 24-45 51-45c18 0 28 12 34 25" />
+          </svg>
+          <span className={styles.loadingCircuitDot} />
+        </div>
+        <div className={styles.loadingKicker}>INITIALIZING RACE ENVIRONMENT</div>
+        <div className={styles.loadingTitle}>LOADING TRACK</div>
+        <div className={styles.loadingProgress} aria-hidden="true">
+          <span />
+        </div>
+        <div className={styles.loadingDetail}>
+          BUILDING CIRCUIT <i /> SYNCHRONIZING GRID
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
-  loading: () => <div className={styles.loading}>Loading track...</div>,
+  loading: () => <TrackLoadingFallback />,
 });
 
 const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
@@ -231,6 +265,7 @@ function RaceContent() {
   const raceResultRef = useRef<HTMLDivElement>(null);
   const towerRef = useRef<HTMLDivElement>(null);
   const countdownRef = useRef<HTMLDivElement>(null);
+  const countdownValueRef = useRef<HTMLSpanElement>(null);
   const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
   const penaltyToastRef = useRef<HTMLDivElement>(null);
   const muteRef = useRef<HTMLDivElement>(null);
@@ -294,6 +329,7 @@ function RaceContent() {
         playerGridSpot={playerGridSpot}
         difficulty={difficulty}
         countdownRef={countdownRef}
+        countdownValueRef={countdownValueRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}
         audioRef={audioRef}
@@ -383,7 +419,36 @@ function RaceContent() {
       </div>
       <div className={styles.raceResult} ref={raceResultRef} />
       <div className={styles.qualifying} ref={qualifyingDisplayRef} />
-      <div className={styles.countdown} ref={countdownRef} />
+      <div
+        className={styles.startSequence}
+        ref={countdownRef}
+        data-active="true"
+        data-phase="waiting"
+        data-value="3"
+      >
+        <div className={styles.startSequencePanel}>
+          <div className={styles.startSequenceHeader}>
+            <span>LIGHTS OUT</span>
+            <span>{trackName}</span>
+          </div>
+          <div className={styles.startLights} aria-hidden="true">
+            {Array.from({ length: 5 }, (_, index) => (
+              <span className={styles.startLight} key={index} />
+            ))}
+          </div>
+          <span
+            className={styles.startCountdownValue}
+            ref={countdownValueRef}
+            aria-live="assertive"
+            aria-atomic="true"
+          />
+          <div className={styles.startSequenceFooter}>
+            <span>GRID START</span>
+            <span className={styles.startSignal} aria-hidden="true" />
+            <span>FULL THROTTLE ON GO</span>
+          </div>
+        </div>
+      </div>
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.penaltyToast} ref={penaltyToastRef} />
       <svg

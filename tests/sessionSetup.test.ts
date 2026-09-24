@@ -286,15 +286,17 @@ describe("rivals prefs", () => {
 });
 
 describe("parseDifficulty", () => {
-  it("accepts the four tiers and falls back to Pro", () => {
+  it("accepts the five tiers and falls back to Pro", () => {
     expect(parseDifficulty("rookie")).toBe("rookie");
     expect(parseDifficulty("club")).toBe("club");
+    expect(parseDifficulty("hard")).toBe("hard");
     expect(parseDifficulty("ace")).toBe("ace");
     expect(parseDifficulty(null)).toBe("pro");
     expect(parseDifficulty("legend")).toBe("pro");
   });
 
   it("round-trips through buildRaceUrl", () => {
+    expect(buildRaceUrl({ difficulty: "hard" })).toContain("diff=hard");
     expect(buildRaceUrl({ difficulty: "ace" })).toContain("diff=ace");
   });
 });
