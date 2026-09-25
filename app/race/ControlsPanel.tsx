@@ -46,9 +46,14 @@ const BINDINGS: [string, string][] = [
 export function ControlsPanel({
   sideMirrorsEnabled,
   onToggleSideMirrors,
+  hidden,
+  onShowRaceOps,
 }: {
   sideMirrorsEnabled: boolean;
   onToggleSideMirrors: () => void;
+  /** Race Ops took over this HUD slot (H), so stand down until it closes. */
+  hidden: boolean;
+  onShowRaceOps: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<boolean>(() => loadCollapsed());
   const toggle = () => {
@@ -62,7 +67,7 @@ export function ControlsPanel({
   };
 
   return (
-    <div className={styles.controlsPanel}>
+    <div className={styles.controlsPanel} hidden={hidden}>
       <div className={styles.controlsHeader}>
         <button
           type="button"
@@ -72,6 +77,15 @@ export function ControlsPanel({
           aria-label={`Toggle side mirrors, currently ${sideMirrorsEnabled ? "on" : "off"}`}
         >
           MIRRORS {sideMirrorsEnabled ? "ON" : "OFF"}
+        </button>
+        <button
+          type="button"
+          className={styles.controlsToggle}
+          onClick={onShowRaceOps}
+          aria-keyshortcuts="H"
+          title="Show Race Ops (H)"
+        >
+          OPS H
         </button>
         <button type="button" className={styles.controlsToggle} onClick={toggle} aria-expanded={!collapsed}>
           {collapsed ? "CONTROLS +" : "CONTROLS −"}

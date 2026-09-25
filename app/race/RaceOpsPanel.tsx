@@ -42,30 +42,21 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
 export function RaceOpsPanel({
   commandRef,
   snapshotRef,
+  open,
+  onToggle,
 }: {
   commandRef: React.RefObject<RaceOpsCommand[]>;
   snapshotRef: React.RefObject<RaceOpsSnapshot | null>;
+  /** Controlled by page.tsx, which also hides the controls panel while this
+   *  is open - the two share one HUD slot and must never both be on screen. */
+  open: boolean;
+  onToggle: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<RaceOpsSnapshot | null>(null);
-  // Collapsed by default: the panel is a tall block on the right-hand HUD
-  // column, directly under the right mirror. Starting it open pushed it into
-  // the mirror's corner on short viewports, so the default state is the small
-  // "press H" header and the body is opt-in.
-  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "KeyH" || event.repeat) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
-      event.preventDefault();
-      setCollapsed((value) => !value);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  useEffect(() => {
+    // Nothing to poll while the panel is not on screen.
+    if (!open) return;
     const refresh = () => {
       const next = snapshotRef.current;
       if (next) setSnapshot({ ...next });
@@ -73,9 +64,9 @@ export function RaceOpsPanel({
     refresh();
     const id = window.setInterval(refresh, 120);
     return () => window.clearInterval(id);
-  }, [snapshotRef]);
+  }, [open, snapshotRef]);
 
-  if (!snapshot) return null;
+  if (!open || !snapshot) return null;
   const latestTelemetry = snapshot.telemetry[snapshot.telemetry.length - 1];
   const speedTrace = snapshot.telemetry.slice(-80).map((sample) => Math.abs(sample.speedMs) / 100);
   const ersModes: EnergyMode[] = ["harvest", "balanced", "attack"];
@@ -87,16 +78,14 @@ export function RaceOpsPanel({
       <button
         type="button"
         className={styles.raceOpsHeader}
-        onClick={() => setCollapsed((value) => !value)}
-        aria-expanded={!collapsed}
+        onClick={onToggle}
+        aria-expanded
         aria-keyshortcuts="H"
-        title="Toggle Race Ops (H)"
+        title="Close Race Ops and show the controls reference (H)"
       >
-        <span>{collapsed ? "RACE OPS · PRESS H" : "RACE OPS"}</span>
-        <span>{collapsed ? "+" : "−"}</span>
+        <span>RACE OPS</span><span>−</span>
       </button>
-      {!collapsed && (
-        <div className={styles.raceOpsBody}>
+      <div className={styles.raceOpsBody}>
           <div className={styles.opsStatus}>
             <strong>{weatherLabel(snapshot.weather.preset)}</strong>
             <span>{snapshot.weather.trackTemperatureC.toFixed(0)}° TRACK</span>
@@ -161,9 +150,10 @@ export function RaceOpsPanel({
           </div>
           <TelemetryInputs sample={latestTelemetry} />
           <Sparkline values={speedTrace} color="#f2f4f7" />
-          <div className={styles.opsHint}>X OVERTAKE · O PIT · J REPLAY · P PAUSE · SHIFT ERS DEPLOY</div>
-        </div>
-      )}
+          <div className={styles.opsHint}>
+            H CLOSE · N MIRRORS · X OVERTAKE · O PIT · J REPLAY · P PAUSE · SHIFT ERS DEPLOY
+          </div>
+      </div>
     </section>
   );
 }

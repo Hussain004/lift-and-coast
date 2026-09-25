@@ -442,14 +442,18 @@
     display: none;
   }
 
-  .raceOpsPanel {
+  /* This block sits ABOVE the base .raceOpsPanel/.controlsPanel/.bottomBar
+     rules in the file, so a same-specificity override here would lose on
+     source order and silently do nothing. Qualify with .gameStage to win. */
+  .gameStage .raceOpsPanel,
+  .gameStage .controlsPanel {
     top: 200px;
     right: 16px;
     max-height: 42vh;
     overflow-y: auto;
   }
 
-  .bottomBar {
+  .gameStage .bottomBar {
     left: 6px;
     right: 212px;
     width: auto;
@@ -985,17 +989,21 @@
   pointer-events: none;
 }
 
+/* Shared slot for the right-hand HUD column below the right mirror. Race Ops
+   and the controls reference are mutually exclusive (page.tsx renders one or
+   the other, swapped with H), so they share these box values and can never
+   stack on top of each other. */
+.controlsPanel,
 .raceOpsPanel {
   position: absolute;
-  /* Right-hand HUD column, under the right mirror. The mirror reaches roughly
-     a third of the way down, so both the collapsed header and the expanded
-     body start below it; the height cap keeps the expanded body on screen on
-     short viewports. */
   top: 376px;
   right: 16px;
-  width: 286px;
   max-height: calc(100% - 392px);
   overflow-y: auto;
+}
+
+.raceOpsPanel {
+  width: 286px;
   background: linear-gradient(145deg, rgba(7, 9, 13, 0.97), rgba(20, 23, 29, 0.95));
   border: 1px solid #3a414d;
   border-top: 3px solid #e10600;
@@ -1179,13 +1187,7 @@
   line-height: 1.4;
 }
 .controlsPanel {
-  position: absolute;
-  /* Below the right mirror, above Race Ops - same right-hand column. */
-  top: 376px;
-  right: 16px;
   width: 196px;
-  max-height: calc(100% - 392px);
-  overflow-y: auto;
   background: rgba(10, 10, 14, 0.72);
   border-radius: 6px;
   font-family: var(--font-geist-mono);
@@ -1232,11 +1234,15 @@
   text-align: left;
 }
 
+/* Three actions share this 196px header (mirrors / race ops / collapse), so
+   the header buttons use the compact 9px type rather than the 12px standalone
+   size. */
 .controlsHeader .controlsToggle {
   width: auto;
   flex: 0 0 auto;
-  padding-left: 8px;
-  padding-right: 8px;
+  padding: 8px 5px;
+  font-size: 9px;
+  letter-spacing: 0.8px;
   text-align: center;
 }
 

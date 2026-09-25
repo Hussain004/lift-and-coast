@@ -281,18 +281,30 @@ function RaceContent() {
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
   const [paused, setPaused] = useState(false);
   const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(true);
+  // Race Ops and the controls reference share the same right-hand HUD slot:
+  // whichever is inactive is not rendered, so they can never overlap. H
+  // (or the controls panel's own hint) swaps them.
+  const [raceOpsOpen, setRaceOpsOpen] = useState(false);
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
   const toggleSideMirrors = useCallback(() => {
     setSideMirrorsEnabled((value) => !value);
   }, []);
+  const toggleRaceOps = useCallback(() => setRaceOpsOpen((value) => !value), []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code === "KeyN" && !event.repeat) toggleSideMirrors();
+      if (event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      if (event.code === "KeyN") toggleSideMirrors();
+      if (event.code === "KeyH") {
+        event.preventDefault();
+        toggleRaceOps();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleSideMirrors]);
+  }, [toggleRaceOps, toggleSideMirrors]);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
@@ -373,7 +385,12 @@ function RaceContent() {
       </div>
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
-      <RaceOpsPanel commandRef={raceCommandsRef} snapshotRef={raceOpsSnapshotRef} />
+      <RaceOpsPanel
+        commandRef={raceCommandsRef}
+        snapshotRef={raceOpsSnapshotRef}
+        open={raceOpsOpen}
+        onToggle={toggleRaceOps}
+      />
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}
@@ -518,6 +535,8 @@ function RaceContent() {
       <ControlsPanel
         sideMirrorsEnabled={sideMirrorsEnabled}
         onToggleSideMirrors={toggleSideMirrors}
+        hidden={raceOpsOpen}
+        onShowRaceOps={toggleRaceOps}
       />
       </div>
       <MobileControls
