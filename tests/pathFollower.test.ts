@@ -69,6 +69,34 @@ describe("computeAIControls speed control", () => {
     expect(controls.throttle).toBe(0);
   });
 
+  it("smooths the opt-in corner-to-straight pace cap across the threshold", () => {
+    const line = buildStraightLine(200, 70).map((point) => ({
+      ...point,
+      steeringMaxPace: 1.1,
+      paceCapMode: "smooth" as const,
+    }));
+    const justAbove = computeAIControls(
+      line.map((point) => ({ ...point, targetSpeedMs: 70.01, boostedTargetSpeedMs: 70.01 })),
+      0,
+      0,
+      0,
+      80,
+      false,
+      1.28
+    );
+    const justBelow = computeAIControls(
+      line.map((point) => ({ ...point, targetSpeedMs: 69.99, boostedTargetSpeedMs: 69.99 })),
+      0,
+      0,
+      0,
+      80,
+      false,
+      1.28
+    );
+    expect(Math.abs(justAbove.throttle - justBelow.throttle)).toBeLessThan(0.01);
+    expect(Math.abs(justAbove.brake - justBelow.brake)).toBeLessThan(0.01);
+  });
+
   it("reads the target speed from the nearest point on the line, not a fixed value", () => {
     // Two lines identical except for the target speed baked into the
     // nearest point - confirms computeAIControls actually looks this up

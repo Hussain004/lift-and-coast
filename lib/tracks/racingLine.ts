@@ -125,6 +125,7 @@ export const MAX_ACCEL_MS2 = 8.5;
  * the difference between following a point and following the line's tangent.
  */
 export type AISteeringMode = "pure-pursuit" | "spa-optimal";
+export type RacingLinePaceCapMode = "hard" | "smooth";
 export type RacingLineProfile = "default" | "pro" | "ace";
 
 /**
@@ -158,6 +159,8 @@ export interface RacingLineTuning {
   steeringStraightLookaheadMeters: number;
   steeringCrossTrackGain: number;
   steeringMaxPace: number;
+  /** Optional smooth corner-to-straight pace-cap blend for tuned profiles. */
+  paceCapMode?: RacingLinePaceCapMode;
 }
 
 const DEFAULT_TUNING: RacingLineTuning = {
@@ -279,6 +282,13 @@ const ACE_TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
     maxBoostSpeedMs: 100,
     steeringMaxPace: 1.06,
   },
+  // Monza's high-speed target profile crosses the old 70m/s cap threshold
+  // often enough to expose the hard switch as a one-frame command jump.
+  // Keep the other profiles' validated hard envelopes unchanged.
+  monza: {
+    ...PRO_TRACK_TUNING.monza,
+    paceCapMode: "smooth",
+  },
   monaco: {
     ...PRO_TRACK_TUNING.monaco,
     steeringMaxPace: 1.08,
@@ -396,6 +406,8 @@ export interface RacingLinePoint {
   steeringCrossTrackGain?: number;
   /** Corner pace ceiling; the default profile leaves this at its 1.18 bound. */
   steeringMaxPace?: number;
+  /** Optional smooth corner-to-straight pace-cap blend for tuned profiles. */
+  paceCapMode?: RacingLinePaceCapMode;
   /** Lateral-grip safety factor used to build this line's target profile. */
   lateralSafetyFactor?: number;
 }
@@ -802,6 +814,7 @@ export function computeRacingLine(
       steeringStraightLookaheadMeters: tuning.steeringStraightLookaheadMeters,
       steeringCrossTrackGain: tuning.steeringCrossTrackGain,
       steeringMaxPace: tuning.steeringMaxPace,
+      paceCapMode: tuning.paceCapMode,
       lateralSafetyFactor: tuning.lateralSafetyFactor,
     };
   }

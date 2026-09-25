@@ -88,6 +88,14 @@ describe("computeRacingLine geometry", () => {
     }
   });
 
+  it("opts Monza Ace into the smooth pace-cap mode only", () => {
+    const monza = getTrack("monza");
+    const pro = computeRacingLine(monza, "pro");
+    const ace = computeRacingLine(monza, "ace");
+    expect(pro.some((point) => point.paceCapMode === "smooth")).toBe(false);
+    expect(ace.every((point) => point.paceCapMode === "smooth")).toBe(true);
+  });
+
   it("produces one point per centerline point on the real track, with no NaNs", () => {
     const line = computeRacingLine(track);
     expect(line.length).toBe(track.centerline.length);

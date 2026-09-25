@@ -117,11 +117,40 @@ const FAST_AI_PACE_THRESHOLD = 1.1;
 // crawled - the gate is the profile's own assumption, not a second one.)
 const BRAKE_PLANNING_METERS = 250;
 const MAX_AI_PACE_SCALE = 1.28;
+// The line profile is already spatially smoothed; this narrow band removes
+// the controller's separate hard threshold without rewriting target speeds.
+const SMOOTH_PACE_CAP_START_MS = 60;
+const SMOOTH_PACE_CAP_END_MS = 70;
 const STEER_GAIN = 1.0;
 const SPA_OPTIMAL_CROSS_TRACK_GAIN = 1.0;
 const SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS = 10;
 const SPA_OPTIMAL_STRAIGHT_LOOKAHEAD_METERS = 14;
 const SPA_OPTIMAL_CORNER_TARGET_MS = 50;
+
+function smoothstep01(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
+
+function smoothPaceCap(targetSpeedMs: number, cornerPaceCap: number): number {
+  const straightPaceCap = Math.max(cornerPaceCap, MAX_AI_PACE_SCALE);
+  const blend = smoothstep01(
+    (targetSpeedMs - SMOOTH_PACE_CAP_START_MS) / (SMOOTH_PACE_CAP_END_MS - SMOOTH_PACE_CAP_START_MS)
+  );
+  return cornerPaceCap + (straightPaceCap - cornerPaceCap) * blend;
+}
+
+function cappedPaceForPoint(point: RacingLinePoint, clampedPace: number): number {
+  const cornerPaceCap = point.steeringMaxPace;
+  if (cornerPaceCap === undefined) return clampedPace;
+  const profilePaceCap =
+    point.paceCapMode === "smooth"
+      ? smoothPaceCap(point.targetSpeedMs, cornerPaceCap)
+      : point.targetSpeedMs >= 70
+        ? Math.max(cornerPaceCap, MAX_AI_PACE_SCALE)
+        : cornerPaceCap;
+  return Math.min(clampedPace, profilePaceCap);
+}
 
 /**
  * Nearest line index for an (x, z) position - exported for the racecraft
@@ -254,7 +283,8 @@ export function cornerAheadMeters(
   let ahead = 0;
   for (let k = 0; k < n && ahead < 400; k++) {
     const point = line[(fromIndex + k) % n];
-    if (ahead > 1e-6 && point.targetSpeedMs * clampedPace < speedMs - 12) return ahead;
+    const pointPace = cappedPaceForPoint(point, clampedPace);
+    if (ahead > 1e-6 && point.targetSpeedMs * pointPace < speedMs - 12) return ahead;
     ahead += point.distanceToNextMeters;
   }
   return ahead;
@@ -322,20 +352,12 @@ export function computeAIControls(
   const steeringMode: AISteeringMode = nearestPoint.steeringMode ?? "pure-pursuit";
   const spaOptimal = steeringMode === "spa-optimal";
   // Every generated line carries a corner pace cap. The default profile's
-  // cap is the existing 1.18 ceiling, so this is inert for Pro/lower tiers;
-  // Pro and Ace profiles can lower it without changing the target line or
-  // handing racecraft a new actuator. Straight-line deployment keeps the
-  // normal 1.28 envelope, while corners remain bounded where a small target
-  // shift can otherwise turn into a snap.
-  const profileCornerPaceCap = nearestPoint.steeringMaxPace;
-  const effectivePace = profileCornerPaceCap !== undefined
-    ? Math.min(
-        clampedPace,
-        nearestPoint.targetSpeedMs >= 70
-          ? Math.max(profileCornerPaceCap, MAX_AI_PACE_SCALE)
-          : profileCornerPaceCap
-      )
-    : clampedPace;
+  // cap is the existing 1.18 ceiling, while Pro and Ace profiles can lower
+  // it without changing the target line or handing racecraft a new actuator.
+  // Most profiles retain the historical hard straight-line threshold. The
+  // tuned smooth mode is opt-in per line so a fix for one high-speed circuit
+  // cannot perturb the separately validated bridge/street profiles.
+  const effectivePace = cappedPaceForPoint(nearestPoint, clampedPace);
   const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
   const profileTarget = unscaledTarget * effectivePace;
   // The preview geometry below keeps the pace range it was validated over:
