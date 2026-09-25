@@ -8,6 +8,12 @@ import {
   touchSteerFromDelta,
   type TouchDriveInput,
 } from "@/lib/input/touch";
+import {
+  loadTouchStickSize,
+  saveTouchStickSize,
+  TOUCH_STICK_SIZE_OPTIONS,
+  type TouchStickSize,
+} from "@/lib/input/touchSettings";
 
 type JoystickMode = "steer" | "pedal";
 
@@ -19,10 +25,12 @@ function Joystick({
   mode,
   inputRef,
   disabled,
+  size,
 }: {
   mode: JoystickMode;
   inputRef: React.RefObject<TouchDriveInput | null>;
   disabled: boolean;
+  size: TouchStickSize;
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const pointerIdRef = useRef<number | null>(null);
@@ -99,6 +107,7 @@ function Joystick({
     <div
       ref={baseRef}
       className={`${styles.mobileStick} ${mode === "steer" ? styles.mobileStickSteer : styles.mobileStickPedal} ${disabled ? styles.mobileControlDisabled : ""}`}
+      data-size={size}
       role="slider"
       aria-label={mode === "steer" ? "Steering joystick" : "Throttle and brake joystick"}
       aria-orientation={mode === "steer" ? "horizontal" : "vertical"}
@@ -187,6 +196,13 @@ export function MobileControls({
   onPause?: () => void;
   onReplay?: () => void;
 }) {
+  const [stickSize, setStickSize] = useState<TouchStickSize>(() => loadTouchStickSize());
+
+  const changeStickSize = (next: TouchStickSize) => {
+    setStickSize(next);
+    saveTouchStickSize(next);
+  };
+
   useEffect(() => {
     if (disabled) resetTouchDriveInput(inputRef.current);
   }, [disabled, inputRef]);
@@ -208,17 +224,31 @@ export function MobileControls({
     <section className={`${styles.mobileControls} ${disabled ? styles.mobileControlsDisabled : ""}`} aria-label="Touch driving controls">
       <div className={styles.mobileControlsHeader}>
         <span>TOUCH DRIVE</span>
-        <span>PORTRAIT DECK / LANDSCAPE OVERLAY</span>
+        <div className={styles.touchSizeSetting} role="group" aria-label="Joystick size">
+          <span>STICK SIZE</span>
+          {TOUCH_STICK_SIZE_OPTIONS.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={`${styles.touchSizeButton} ${stickSize === option ? styles.touchSizeButtonActive : ""}`}
+              aria-label={`${option} joystick size`}
+              aria-pressed={stickSize === option}
+              onClick={() => changeStickSize(option)}
+            >
+              {option === "small" ? "S" : option === "medium" ? "M" : "L"}
+            </button>
+          ))}
+        </div>
       </div>
       <div className={styles.mobileStickRow}>
-        <Joystick mode="steer" inputRef={inputRef} disabled={disabled} />
+        <Joystick mode="pedal" inputRef={inputRef} disabled={disabled} size={stickSize} />
         <div className={styles.mobileControlHint}>
-          <strong>STEER</strong>
-          <span>LEFT / RIGHT</span>
           <strong>PEDAL</strong>
           <span>UP THROTTLE / DOWN BRAKE</span>
+          <strong>STEER</strong>
+          <span>LEFT / RIGHT</span>
         </div>
-        <Joystick mode="pedal" inputRef={inputRef} disabled={disabled} />
+        <Joystick mode="steer" inputRef={inputRef} disabled={disabled} size={stickSize} />
       </div>
       <div className={styles.mobileActionRow}>
         <HoldButton label="OVERTAKE" field="overtake" inputRef={inputRef} disabled={disabled} tone="red" />

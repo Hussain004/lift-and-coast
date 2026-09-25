@@ -42,6 +42,8 @@ next-env.d.ts
 
 # planning docs (local reference only, not part of the shipped repo)
 implementation_plan.md
+CLAUDE.md
+AGENTS.md
 
 # scratch/ad-hoc test scripts (not the real test suite in /tests)
 /scratch/
