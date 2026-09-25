@@ -2,6 +2,12 @@
 // `npm run diagnose:ace-field`. It is opt-in so the normal unit suite does not
 // create 27 Rapier worlds on every run, while the command remains a
 // repeatable stability gate.
+//
+// This is intentionally a racecraft/launch stability gate, not a full
+// production vehicle calibration: it shares the vehicle rig and
+// `stepRacecraft` with AICar, while live AICar additionally owns strategy,
+// ERS, weather, and overtake-system state. The standing-start sweep owns the
+// Pro/Ace line and pace calibration.
 import { describe, expect, it } from "vitest";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";

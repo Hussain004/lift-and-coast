@@ -3,6 +3,10 @@
 // lib/ai/racecraft.ts's stepRacecraft), plus the race metrics the field
 // tests gate on - position swaps, lead changes, car-to-car contacts
 // (classified side vs nose-to-tail), spins and side-by-side time.
+//
+// This harness deliberately isolates racecraft/launch stability. Live AICar
+// additionally runs strategy, ERS, weather, and overtake state; the
+// standing-start benchmark owns the full Pro/Ace pace/line calibration.
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import {

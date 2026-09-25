@@ -645,7 +645,7 @@ export function Scene({
 }: {
   /** Optional performance readout (F key) - see FrameRateGovernor. */
   perfRef?: React.RefObject<HTMLDivElement | null>;
-  /** Called after the first rendered Canvas frame, when the track is ready. */
+  /** Called after the first rendered Physics-tree frame, when the track is ready. */
   onReady?: () => void;
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
@@ -863,7 +863,6 @@ export function Scene({
     >
       <QualityContext.Provider value={settings}>
       <FarPlane far={settings.fogFar + 40} />
-      <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
       <color attach="background" args={[lighting.sky]} />
       <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
@@ -1036,6 +1035,9 @@ export function Scene({
             sceneReadyRef={sceneReadyRef}
           />
         )}
+        {/* Mount inside Physics after the track, player, AI, and net carriers
+            so readiness means the actual simulation tree is live. */}
+        <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
       <RaceStartCountdown
@@ -1054,7 +1056,7 @@ export function Scene({
   );
 }
 
-/** Signals readiness only after the Canvas has presented its first frame. */
+/** Signals readiness only after the Physics tree has presented its first frame. */
 function SceneReady({
   onReady,
   readyRef,

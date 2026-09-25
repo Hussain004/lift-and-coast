@@ -97,7 +97,7 @@ export function NetHost({
   /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
   goAtRef: React.RefObject<number>;
   goSignalledRef: React.RefObject<boolean>;
-  /** Set only after this peer's first rendered Canvas frame. */
+  /** Set only after this peer's first rendered Physics-tree frame. */
   sceneReadyRef: React.RefObject<boolean>;
 }) {
   // Frozen join-order roster for input routing: members may leave mid-race,
@@ -331,7 +331,7 @@ export function NetClient({
   /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
   goAtRef: React.RefObject<number>;
   goSignalledRef: React.RefObject<boolean>;
-  /** Set only after this peer's first rendered Canvas frame. */
+  /** Set only after this peer's first rendered Physics-tree frame. */
   sceneReadyRef: React.RefObject<boolean>;
 }) {
   const seqRef = useRef(0);
