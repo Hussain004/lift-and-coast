@@ -1,7 +1,8 @@
 import type { TrackData } from "./types";
 import { buildTerrainGeometry } from "./terrain";
 import { hexToLinearRgb } from "./mesh";
-import { isPavedRunoff } from "./environment";
+import { isPavedRunoff, barrierProfileForTrack } from "./environment";
+import { checkTrackLimits } from "./trackLimits";
 import silverstone from "../../data/tracks/structures/silverstone.json";
 import monza from "../../data/tracks/structures/monza.json";
 import spa from "../../data/tracks/structures/spa.json";
@@ -42,13 +43,18 @@ import lusail from "../../data/tracks/structures/lusail.json";
  *
  * Rendering is low-poly massing (boxes, one torus) merged into solid
  * (grandstands, buildings, walls, landmarks) and visual-only (tunnel roofs
- * the car drives under) geometry per track. Both sets are VISUAL ONLY, in
- * the game and in the headless harness alike: the physics suite's blind
- * drivers roam metres past the edge where real furniture stands, so solid
- * walls there read as crashes the tests cannot see coming (verified: six
- * gates fail with a structures collider attached). Track limits, surface
- * grip and the off-track reset govern cutting instead; physical walls want
- * perception-aware drivers first.
+ * the car drives under) geometry per track.
+ *
+ * Only the massing is visual-only. The BARRIER LINE is physical: the
+ * continuous circuit barrier and the pit walls are additionally emitted as
+ * physics wall boxes (see buildBarrierWalls) and hung off the track as
+ * colliders, because a car that reaches a wall has to hit it. That is safe
+ * for the headless harness too, and for the AI, because the wall sits at
+ * each circuit's own run-off setback (lib/tracks/environment.ts) rather than
+ * a fixed 5.5m: the AI's measured worst excursion is 4.6m, and the shallowest
+ * setback in the table (Monaco, 5.5m) is the only circuit close to that, with
+ * every other venue between 6.5m and 26m. The previous blanket "no colliders"
+ * rule was hiding walls INSIDE the AI's legitimate running-off.
  */
 
 export type StructureKind =
@@ -213,6 +219,10 @@ const TUNNEL_ROOF = hexToLinearRgb("#3A3D42");
 const BARRIER_POST = hexToLinearRgb("#555B63");
 const BARRIER_RAIL = hexToLinearRgb("#D7D9DC");
 const BARRIER_PANEL = hexToLinearRgb("#D51F2A");
+/** TecPro impact-absorbing block: dark grey foam-faced stack. */
+const TECPRO = hexToLinearRgb("#4A4F57");
+/** Catch-fence mesh. Kept dark so a fence line reads as a fence, not a wall. */
+const FENCE_MESH = hexToLinearRgb("#6E7784");
 
 export interface StructureGeometry {
   positions: Float32Array;
@@ -495,6 +505,246 @@ function emitWallRun(
  * structures, so adding a barrier never turns an existing AI stability test
  * into an unseen wall collision.
  */
+/** One box of physical barrier, in world space, for the wall collider. */
+export interface WallBox {
+  cx: number;
+  cy: number;
+  cz: number;
+  /** Half-extents along the barrier's own axes. */
+  hx: number;
+  hy: number;
+  hz: number;
+  yaw: number;
+}
+
+export interface BarrierWallBuild {
+  boxes: WallBox[];
+  /**
+   * Track-edge-to-wall distance actually achieved on the emitted boxes,
+   * metres. This is the run-off the player has before anything stops them,
+   * and the number the wall-safety test gates on.
+   */
+  minimumSetbackMeters: number;
+}
+
+/**
+ * Collects the barrier line as physical boxes, using the same placement the
+ * visual emitter uses so what you see is what you hit.
+ *
+ * Separate from the massing on purpose: this returns axis-aligned-in-local-
+ * frame boxes with a yaw, which is what a collider wants, and it deliberately
+ * contains ONLY the continuous circuit barrier and the pit walls. Grandstands
+ * and buildings stay visual-only - a car that has cleared the barrier and is
+ * loose in the scenery should not be stopped by a marquee.
+ */
+export function buildBarrierWalls(
+  track: TrackData,
+  terrain: ReturnType<typeof buildTerrainGeometry>
+): BarrierWallBuild {
+  const boxes: WallBox[] = [];
+  const profile = barrierProfileForTrack(track.id);
+  const n = track.centerline.length;
+  const segmentPoints = 4;
+  const offset = (halfWidth: number): number => halfWidth + profile.setbackMeters;
+
+  for (let i = 0; i < n; i += segmentPoints) {
+    const j = (i + segmentPoints) % n;
+    const p = track.centerline[i];
+    const q = track.centerline[j];
+    const before = track.centerline[(i - 1 + n) % n];
+    const after = track.centerline[(j + 1) % n];
+    const tx = after[0] - before[0];
+    const tz = after[2] - before[2];
+    const tangentLength = Math.hypot(tx, tz) || 1;
+    const rightX = -tz / tangentLength;
+    const rightZ = tx / tangentLength;
+    const segmentLength = Math.hypot(q[0] - p[0], q[2] - p[2]) || 1;
+    const yaw = Math.atan2(-(q[2] - p[2]) / segmentLength, (q[0] - p[0]) / segmentLength);
+
+    for (const side of [-1, 1] as const) {
+      // The collider is deeper than the visual barrier (see
+      // BarrierProfile.halfThicknessMeters), and the extra depth goes
+      // OUTWARD so the near face lands exactly on the circuit's run-off
+      // setback. Depth inward would eat the player's run-off for no reason.
+      const pa = (offset(track.width[i] / 2) + profile.halfThicknessMeters) * side;
+      const pb = (offset(track.width[j] / 2) + profile.halfThicknessMeters) * side;
+      const ax = p[0] + rightX * pa;
+      const az = p[2] + rightZ * pa;
+      const bx = q[0] + rightX * pb;
+      const bz = q[2] + rightZ * pb;
+      const length = Math.hypot(bx - ax, bz - az);
+      if (length < 1e-6) continue;
+      const mx = (ax + bx) / 2;
+      const mz = (az + bz) / 2;
+      if (!barrierSegmentClearOfRibbon(track, mx, mz, ax, az, bx, bz, length)) continue;
+      const surfaceY = groundY(terrain, mx, mz) + 1;
+      // The wall reaches from below the visible ground line to a little above
+      // the visual barrier, so there is no gap to squeeze under at a kerb.
+      const box: WallBox = {
+        cx: mx,
+        cy: surfaceY + profile.heightMeters / 2 - 0.6,
+        cz: mz,
+        hx: length / 2 + 0.2,
+        hy: profile.heightMeters / 2 + 0.6,
+        hz: profile.halfThicknessMeters,
+        yaw,
+      };
+      // Hard safety gate: never place a physical wall closer to the racing
+      // surface than WALL_MIN_RUNOFF_METERS, measured the same way the
+      // track-limit penalty measures it.
+      if (!wallBoxClearOfTrack(track, box)) continue;
+      boxes.push(box);
+    }
+  }
+
+  // Pit walls stay VISUAL ONLY, deliberately.
+  //
+  // A pit wall sits 2-4m off the racing surface - it has to, that is what
+  // separates the pit lane from the circuit. The AI's line follower carries a
+  // steady ~2m outward drift through a fast corner exit (measured: 2-4.6m
+  // excursions on every circuit, and on the pit straight specifically it
+  // walks out at ~3.5 m/s of lateral velocity). With the wall solid, that
+  // wobble became a dead stop from 48 m/s on Silverstone, Budapest, Baku and
+  // Singapore alike, which is not what a pit wall does - it is what a wall
+  // 3m from a car that cannot steer away from it does.
+  //
+  // The circuit barrier line above is the one that has to be solid: it sits
+  // at the circuit's own run-off setback, far outside anything the driver
+  // reaches while still driving.
+
+  // Measured with the track-limit projection over each box's whole footprint
+  // (see wallBoxRunoff), so this is the run-off a car actually gets.
+  let minimumSetbackMeters = Infinity;
+  for (const box of boxes) {
+    minimumSetbackMeters = Math.min(minimumSetbackMeters, wallBoxRunoff(track, box));
+  }
+  return {
+    boxes,
+    minimumSetbackMeters: Number.isFinite(minimumSetbackMeters) ? minimumSetbackMeters : 0,
+  };
+}
+
+export interface WallMesh {
+  positions: Float32Array;
+  indices: Uint32Array;
+  boxCount: number;
+}
+
+/**
+ * The barrier line as ONE triangle mesh, for a single static trimesh
+ * collider. A mesh rather than ~1500 separate colliders: Rapier builds one
+ * BVH instead of 1500 broadphase entries, and the app and the headless
+ * harness can then share the exact same wall the player sees.
+ *
+ * Outward-wound (pushBox's own winding) so a car hitting the inside face
+ * resolves against the front, not the back.
+ */
+export function buildBarrierWallMesh(
+  track: TrackData,
+  terrain: ReturnType<typeof buildTerrainGeometry>
+): WallMesh {
+  const { boxes } = buildBarrierWalls(track, terrain);
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const colors: number[] = [];
+  const colour = hexToLinearRgb("#6B7079");
+  for (const box of boxes) {
+    pushBox(
+      positions,
+      indices,
+      colors,
+      {
+        cx: box.cx,
+        yBase: box.cy - box.hy,
+        cz: box.cz,
+        sx: box.hx * 2,
+        sy: box.hy * 2,
+        sz: box.hz * 2,
+        yaw: box.yaw,
+        color: colour,
+      }
+    );
+  }
+  return {
+    positions: new Float32Array(positions),
+    indices: new Uint32Array(indices),
+    boxCount: boxes.length,
+  };
+}
+
+/**
+ * Minimum run-off a physical wall may leave between the painted edge and its
+ * own near face. A wall closer than this is either a wall in the run-off or a
+ * wall on the racing surface, and the barrier is skipped there instead - the
+ * same deliberate gap-at-a-hairpin the visual emitter has always taken.
+ */
+export const WALL_MIN_RUNOFF_METERS = 2.5;
+
+/**
+ * The safety guarantee the wall collider rests on: every box's plan footprint
+ * (all four corners and the centre, at the box's own half-extents) must clear
+ * the racing surface by WALL_MIN_RUNOFF_METERS.
+ *
+ * This deliberately uses checkTrackLimits rather than the structures-local
+ * nearestTrack. nearestTrack measures lateral offset against the tangent at
+ * the nearest centerline SAMPLE, which is optimistic where the track folds
+ * back on itself - at a hairpin the offset barrier for one arm sits metres
+ * from the other arm's asphalt, and nearestTrack under-reports that. The
+ * track-limit check projects onto the nearest centerline SEGMENT, so it is
+ * the same measure the track-limit penalty and the tests use, and the two
+ * can never disagree about where the road is.
+ */
+function wallBoxRunoff(track: TrackData, box: WallBox): number {
+  const c = Math.cos(box.yaw);
+  const s = Math.sin(box.yaw);
+  // pushBox's own local->world mapping: x += lx*c + lz*s, z += -lx*s + lz*c.
+  const at = (lx: number, lz: number): number =>
+    checkTrackLimits(track, box.cx + lx * c + lz * s, box.cz - lx * s + lz * c, box.cy)
+      .distanceFromEdgeMeters;
+  // Minimum over the whole plan footprint: the closest a car's nose can get
+  // to the painted line before touching this box.
+  return Math.min(
+    at(0, 0),
+    at(-box.hx, -box.hz),
+    at(box.hx, -box.hz),
+    at(-box.hx, box.hz),
+    at(box.hx, box.hz)
+  );
+}
+
+function wallBoxClearOfTrack(track: TrackData, box: WallBox): boolean {
+  return wallBoxRunoff(track, box) >= WALL_MIN_RUNOFF_METERS;
+}
+
+/**
+ * Shared keep-out test: a straight ribbon offset can still cut across the
+ * inside of a very tight hairpin, so a segment is only built when its whole
+ * conservative bounding circle clears the nearest track arm. A short gap at a
+ * hairpin is preferable to placing a barrier - visual or physical - on the
+ * racing surface.
+ */
+function barrierSegmentClearOfRibbon(
+  track: TrackData,
+  mx: number,
+  mz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  length: number
+): boolean {
+  const clearOfRibbon = (x: number, z: number, margin: number): boolean => {
+    const near = nearestTrack(track, x, z);
+    return Math.abs(near.lateral) >= near.halfW + margin;
+  };
+  const boundingMargin = Math.max(0.8, length / 2 + 0.6);
+  return (
+    clearOfRibbon(mx, mz, boundingMargin) &&
+    clearOfRibbon(ax, az, 0.8) &&
+    clearOfRibbon(bx, bz, 0.8)
+  );
+}
+
 function emitCircuitBarriers(
   emitter: Emitter,
   track: TrackData,
@@ -502,11 +752,14 @@ function emitCircuitBarriers(
 ): void {
   const n = track.centerline.length;
   const street = isPavedRunoff(track.id);
+  const profile = barrierProfileForTrack(track.id);
   const segmentPoints = 4;
-  const offset = (halfWidth: number): number => halfWidth + (street ? 5.0 : 5.5);
-  const wallColor = street ? CONCRETE : CONCRETE_DARK;
+  const offset = (halfWidth: number): number => halfWidth + profile.setbackMeters;
+  const wallColor = profile.style === "concrete" ? CONCRETE : CONCRETE_DARK;
   const postEvery = street ? 3 : 5;
   const panelEvery = street ? 5 : 9;
+  const wallHeight = profile.heightMeters * 0.72;
+  const wallThickness = street ? 0.48 : 0.34;
 
   for (let i = 0; i < n; i += segmentPoints) {
     const j = (i + segmentPoints) % n;
@@ -535,24 +788,7 @@ function emitCircuitBarriers(
       if (length < 1e-6) continue;
       const mx = (ax + bx) / 2;
       const mz = (az + bz) / 2;
-      // A straight ribbon offset can still cut across the inside of a very
-      // tight hairpin. Check the whole segment's conservative bounding
-      // circle against the nearest track arm before emitting it; a short
-      // visual gap at a hairpin is preferable to placing a barrier vertex
-      // on the racing surface (and keeps the existing structure invariant
-      // true for every circuit).
-      const clearOfRibbon = (x: number, z: number, margin: number): boolean => {
-        const near = nearestTrack(track, x, z);
-        return Math.abs(near.lateral) >= near.halfW + margin;
-      };
-      const boundingMargin = Math.max(0.8, length / 2 + 0.6);
-      if (
-        !clearOfRibbon(mx, mz, boundingMargin) ||
-        !clearOfRibbon(ax, az, 0.8) ||
-        !clearOfRibbon(bx, bz, 0.8)
-      ) {
-        continue;
-      }
+      if (!barrierSegmentClearOfRibbon(track, mx, mz, ax, az, bx, bz, length)) continue;
       // groundY intentionally sinks structures by one metre; add it back for
       // a barrier whose base should sit on the visible terrain surface.
       const surfaceY = groundY(terrain, mx, mz) + 1;
@@ -561,28 +797,67 @@ function emitCircuitBarriers(
         yBase: surfaceY,
         cz: mz,
         sx: length + 0.35,
-        sy: street ? 0.95 : 0.78,
-        sz: street ? 0.48 : 0.34,
+        sy: wallHeight,
+        sz: wallThickness,
         yaw,
         color: wallColor,
       });
       emitBox(emitter, {
         cx: mx,
-        yBase: surfaceY + (street ? 0.95 : 0.78),
+        yBase: surfaceY + wallHeight,
         cz: mz,
         sx: length + 0.2,
         sy: 0.16,
-        sz: street ? 0.62 : 0.46,
+        sz: wallThickness + 0.14,
         yaw,
         color: BARRIER_RAIL,
       });
+      // TecPro: stacked impact-absorbing blocks set back behind the armco,
+      // the modern F1 answer to "the wall is too hard".
+      if (profile.style === "tecpro" && i % panelEvery === 0) {
+        emitBox(emitter, {
+          cx: mx,
+          yBase: surfaceY,
+          cz: mz,
+          sx: Math.max(1.5, length * 0.9),
+          sy: 1.0,
+          sz: 0.55,
+          yaw,
+          color: TECPRO,
+        });
+      }
+      // Catch fence: a tall open mesh panel standing behind the barrier.
+      // Purely visual - the barrier in front of it is what stops a car, so
+      // the fence never needs to be a collider.
+      if (profile.catchFence && i % panelEvery === 0) {
+        emitBox(emitter, {
+          cx: mx,
+          yBase: surfaceY + wallHeight,
+          cz: mz,
+          sx: length + 0.1,
+          sy: 3.2,
+          sz: 0.1,
+          yaw,
+          color: FENCE_MESH,
+        });
+        emitBox(emitter, {
+          cx: mx,
+          yBase: surfaceY + wallHeight + 3.2,
+          cz: mz,
+          sx: length + 0.1,
+          sy: 0.12,
+          sz: 0.16,
+          yaw,
+          color: BARRIER_POST,
+        });
+      }
       if (i % postEvery === 0) {
         emitBox(emitter, {
           cx: ax,
           yBase: surfaceY,
           cz: az,
           sx: 0.18,
-          sy: street ? 1.35 : 1.12,
+          sy: profile.heightMeters,
           sz: 0.18,
           yaw,
           color: BARRIER_POST,

@@ -478,8 +478,14 @@ export function classifySurface(track: TrackData, status: TrackLimitStatus): Sur
   // Beyond the kerb/gravel bands, the runoff kind follows the circuit's
   // environment table. This keeps the visual terrain, flora placement, and
   // wheel physics on the same page for street and desert circuits.
+  //
+  // "concrete" is Monaco/Baku's sealed run-off and is handled in the paved
+  // branch: same surface, same grip, same drag. It MUST be named here - an
+  // unhandled kind falls through to grass below, and grass is grippier than
+  // sealed run-off, so Monaco's run-off silently became fast and drag-free
+  // (it cost Monaco's Ace standing-start benchmark its margin over Pro).
   const runoffKind = runoffKindForTrack(track.id);
-  if (runoffKind === "paved") {
+  if (runoffKind === "paved" || runoffKind === "concrete") {
     return {
       ...base,
       surface: "paved",

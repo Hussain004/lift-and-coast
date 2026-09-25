@@ -319,6 +319,10 @@ describe("simulateDrive onTelemetry hook", () => {
         brakeForce: DEFAULT_BRAKE_FORCE,
         stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
         track,
+        // Blind straight-line run to populate the telemetry buffer; it ends
+        // in the run-off, so opt out of the barrier rather than measuring a
+        // wall impact instead of suspension state.
+        walls: false,
         onTelemetry: (s) => samples.push(s),
         captureChassisContacts: true,
       }

@@ -27,6 +27,7 @@ import {
 import { computeDownforceN, type AeroMode } from "../physics/aero";
 import { createGearboxState, gearboxSpeedMs, rpmForGear } from "../physics/gearbox";
 import { buildRibbonGeometry } from "../tracks/mesh";
+import { buildBarrierWallMesh } from "../tracks/structures";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { checkTrackLimits, worldEdgeResetMeters } from "../tracks/trackLimits";
 import {
@@ -73,6 +74,27 @@ export interface StabilityOptions {
    * shared edges) are a different and stricter test.
    */
   track?: TrackData;
+  /**
+   * Include the barrier line's collider. Defaults to true, because that is
+   * what the game does and a gate that runs without it validates a car that
+   * can drive through walls the player cannot.
+   *
+   * Set false ONLY for scenarios that deliberately drive blind off the
+   * ribbon - the fixed full-throttle/steer-lock runs whose subject is grass
+   * and suspension recovery, and which now end against a wall instead of
+   * out in the scenery. Those tests are about the surface under the car once
+   * it is off the road, not about the barrier; barrier behaviour is covered
+   * by tests/barrierWalls.test.ts.
+   */
+  walls?: boolean;
+  /**
+   * Override the spawn pose. Defaults to `track.startPos` at its heading.
+   * Only for tests that need to place a car somewhere specific - the barrier
+   * collision test drops a car onto the run-off pointing at a wall, which is
+   * not a pose any circuit's start line produces. Still a full vehicle sim:
+   * same chassis, same raycast suspension, same world.
+   */
+  spawn?: { x: number; z: number; headingRad: number; speedMs?: number };
   /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
   aeroMode?: AeroMode;
   /**
@@ -263,6 +285,7 @@ export async function simulateDrive(
   // stays trivially correct if that option is ever removed.
   let groundHandle = -1;
   let trackHandle = -1;
+  let wallHandle = -1;
 
   if (options.track) {
     // Matches Scene.tsx exactly: the elevation-following grass field under
@@ -273,9 +296,12 @@ export async function simulateDrive(
     // at one altitude, which stopped being the same surface as the game's the
     // moment the track gained elevation. Surface height derived from
     // GRASS_BELOW_TRACK_METERS - see its definition for why that gap.
-    // Trackside massing (Track.tsx <Structures>) is visual-only in both
-    // worlds: solid furniture where the blind test drivers roam would read
-    // as physics failures, so walls and buildings render but never collide.
+    // Trackside MASSING (Track.tsx <Structures>) is still visual-only in both
+    // worlds: grandstands and buildings stand well beyond the barrier, and a
+    // car loose in the scenery should be slowed by the surface, not stopped
+    // by a marquee. The BARRIER LINE, though, is physical in the game and
+    // must be physical here too - otherwise these gates would be validating
+    // a car that drives through walls the player cannot.
     const terrain = buildTerrainGeometry(options.track);
     const groundBody = world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed());
     groundHandle = world
@@ -290,6 +316,20 @@ export async function simulateDrive(
     trackHandle = world
       .createCollider(RAPIER_MOD.ColliderDesc.trimesh(positions, indices).setFriction(1.3), trackBody)
       .handle;
+
+    // Same mesh the game hangs off <Track>. Restitution 0 on purpose: a wall
+    // should absorb the car, not fling it back onto the circuit.
+    const walls = options.walls === false ? null : buildBarrierWallMesh(options.track, terrain);
+    wallHandle = walls
+      ? world
+          .createCollider(
+            RAPIER_MOD.ColliderDesc.trimesh(walls.positions, walls.indices)
+              .setFriction(0.4)
+              .setRestitution(0),
+            world.createRigidBody(RAPIER_MOD.RigidBodyDesc.fixed())
+          )
+          .handle
+      : -1;
   } else {
     const groundBody = world.createRigidBody(
       RAPIER_MOD.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0)
@@ -299,13 +339,24 @@ export async function simulateDrive(
       .handle;
   }
 
-  const spawn = options.track?.startPos ?? { x: 0, z: 0, headingRad: 0 };
+  const spawn: { x: number; z: number; headingRad: number; speedMs?: number } =
+    options.spawn ?? options.track?.startPos ?? { x: 0, z: 0, headingRad: 0 };
   const chassisDesc = RAPIER_MOD.RigidBodyDesc.dynamic()
     .setTranslation(spawn.x, 1, spawn.z)
     .setRotation(new RAPIER_MOD.Quaternion(0, Math.sin(spawn.headingRad / 2), 0, Math.cos(spawn.headingRad / 2)))
     .setLinearDamping(LINEAR_DAMPING)
     .setAngularDamping(ANGULAR_DAMPING)
     .setCanSleep(false);
+  if (spawn.speedMs) {
+    // Launch velocity along the spawn heading, so a barrier test can start
+    // the car already at racing speed instead of spending its whole run
+    // accelerating.
+    chassisDesc.setLinvel(
+      Math.sin(spawn.headingRad) * spawn.speedMs,
+      0,
+      Math.cos(spawn.headingRad) * spawn.speedMs
+    );
+  }
   const chassis = world.createRigidBody(chassisDesc);
   // Matches Car.tsx exactly: mass is set on the one chassis collider via
   // setMass, not setAdditionalMass on the body. They are not equivalent -
@@ -474,6 +525,7 @@ export async function simulateDrive(
         world.contactPairsWith(chassisCollider, (otherCollider) => {
           if (otherCollider.handle === groundHandle) chassisContacts.push("ground");
           else if (otherCollider.handle === trackHandle) chassisContacts.push("track");
+          else if (otherCollider.handle === wallHandle) chassisContacts.push("wall");
         });
       }
       options.onTelemetry({

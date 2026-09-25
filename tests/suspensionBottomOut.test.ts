@@ -43,6 +43,11 @@ describe("suspension does not bottom out under sustained throttle on the real tr
         brakeForce: DEFAULT_BRAKE_FORCE,
         stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
         track,
+        // Sustained straight-line throttle runs the car off the ribbon and
+        // along the grass. The subject here is whether the suspension
+        // bottoms out on that surface, not what it hits at the far side of
+        // the run-off.
+        walls: false,
       }
     );
     // A bottomed-out suspension glitch kicked this well past 0.3 rad in a

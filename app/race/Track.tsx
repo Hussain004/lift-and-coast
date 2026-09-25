@@ -5,7 +5,8 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, TrimeshCollider, type RapierRigidBody } from "@react-three/rapier";
 import { buildEdgeLineGeometry, buildKerbGeometry, buildRibbonGeometry, RIBBON_COLOR } from "@/lib/tracks/mesh";
-import { buildStructureGeometry } from "@/lib/tracks/structures";
+import { buildStructureGeometry, buildBarrierWallMesh } from "@/lib/tracks/structures";
+import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import { buildFlora, type FloraBuild } from "@/lib/tracks/flora";
 import {
   buildRacingLineRibbon,
@@ -235,6 +236,7 @@ export function Track({
           <SurfaceMaterial color={RIBBON_COLOR} map={asphaltTexture()} />
         </mesh>
       </RigidBody>
+      <BarrierWalls track={track} />
       <Structures track={track} />
       <Flora track={track} />
       <mesh geometry={kerbGeometry}>
@@ -259,14 +261,38 @@ export function Track({
 }
 
 /**
+ * The barrier line as physics. The grandstand/building massing below stays
+ * visual-only, but the wall a car actually runs into has to be solid: one
+ * static trimesh, built from the same per-track profile (setback, style,
+ * thickness) as the visible barrier, so the wall you see is the wall you hit.
+ *
+ * Friction is low and restitution zero on purpose. A barrier should scrub
+ * speed and deflect, not launch the car back onto the circuit - a
+ * springy wall reads as a trampoline, which is not what armco does.
+ */
+function BarrierWalls({ track }: { track: TrackData }) {
+  const mesh = useMemo(
+    () => buildBarrierWallMesh(track, buildTerrainGeometry(track)),
+    [track]
+  );
+  if (mesh.positions.length === 0) return null;
+  return (
+    <RigidBody type="fixed" colliders={false}>
+      <TrimeshCollider args={[mesh.positions, mesh.indices]} friction={0.4} restitution={0} />
+    </RigidBody>
+  );
+}
+
+/**
  * Trackside massing (plan section 4, circuit detail): pit buildings,
  * grandstands, walls and landmarks from lib/tracks/structures, merged into
- * two meshes. Both are VISUAL ONLY: the physics suite's blind drivers (the
- * weave in grassTrackTransition, the straight-line suspension runs, the
- * perception-free AI) roam metres past the edge, where real furniture
- * stands - solid walls there break six gates with crashes the tests cannot
- * see coming. Track limits, surface grip and the off-track reset already
- * govern cutting; physical walls need perception-aware drivers first.
+ * two meshes. This massing is VISUAL ONLY, and the distinction from
+ * <BarrierWalls> is deliberate: massing stands beyond the barrier line, in
+ * territory a car only reaches by having already left the road, and a car
+ * loose in the scenery should be slowed by the surface rather than stopped
+ * by a grandstand. The barrier itself is physical (see lib/tracks/
+ * environment.ts for the per-track run-off setbacks that keep it well clear
+ * of anywhere the car is actually driving).
  */
 function Structures({ track }: { track: TrackData }) {
   const { solid, visual } = useMemo(() => {

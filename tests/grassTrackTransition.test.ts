@@ -14,6 +14,11 @@ const TUNING = {
   brakeForce: DEFAULT_BRAKE_FORCE,
   stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
   track,
+  // These scenarios deliberately weave the car off the ribbon and back on;
+  // the subject is the grass/track surface transition, not the barrier.
+  // With walls on, the car now ends the run against one (see
+  // tests/barrierWalls.test.ts for barrier behaviour).
+  walls: false,
 };
 
 // Reported as the car "twitching" every so often during normal driving -

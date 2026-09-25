@@ -15,6 +15,10 @@ const TUNING = {
   brakeForce: DEFAULT_BRAKE_FORCE,
   stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
   track,
+  // Several of these deliberately hold fixed inputs until the car runs off
+  // the ribbon - the comments on each say so. Their subject is the car
+  // surviving grass and kerbs, not what it meets at the edge of the run-off.
+  walls: false,
 };
 
 // The flat-plane suite (vehicle-stability.test.ts) tests an infinite analytic
