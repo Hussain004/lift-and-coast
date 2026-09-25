@@ -25,6 +25,19 @@ describe("createQualifyingReferenceTimes", () => {
     });
   });
 
+  it("places Monza Pro and Ace references around competitive targets", () => {
+    const track = getTrack("monza");
+    const pro = createQualifyingReferenceTimes(track, [{ code: "VER" }], "pro").opponents[0];
+    const ace = createQualifyingReferenceTimes(track, [{ code: "VER" }], "ace").opponents[0];
+    expect(pro).not.toBeNull();
+    expect(ace).not.toBeNull();
+    expect(pro as number).toBeGreaterThan(97);
+    expect(pro as number).toBeLessThan(100);
+    expect(ace as number).toBeGreaterThan(90);
+    expect(ace as number).toBeLessThan(95);
+    expect(ace as number).toBeLessThan((pro as number) * 0.97);
+  });
+
   it("keeps the reference field ordered by difficulty", () => {
     const track = getTrack("spielberg");
     const rookie = createQualifyingReferenceTimes(track, rivals, "rookie");

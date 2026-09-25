@@ -11,19 +11,30 @@ import type { TrackData } from "../tracks/types";
 import type { QualifyingTimes } from "./qualifying";
 
 /**
- * The generated line is a target envelope, not a measured lap. A small
- * execution allowance keeps the hidden qualifying field in the same physical
- * neighborhood as a real standing-start lap without pretending that the
- * browser has run a second physics world for every rival.
+ * The generated line is a target envelope, not a measured lap. This factor
+ * keeps the lightweight reference model in the same broad physical
+ * neighborhood as a standing-start lap without pretending that the browser
+ * has run a second physics world for every rival.
  */
 const REFERENCE_EXECUTION_FACTOR = 1.045;
 
-/** A gentle tier spread on top of the selected line/pace package. */
+/**
+ * Monza's long, high-speed lap needs a more competitive target than the
+ * generic envelope: its clean player lap is already quicker than the
+ * theoretical line once launch and minimum-speed losses are included. Keep
+ * this calibration explicit instead of making every circuit artificially
+ * quick just to move one track's pole target.
+ */
+const REFERENCE_TRACK_FACTOR: Record<string, number> = {
+  monza: 0.91,
+};
+
+/** A visible tier spread on top of the selected line/pace package. */
 const DIFFICULTY_REFERENCE_FACTOR: Record<AIDifficulty, number> = {
   rookie: 1.04,
   club: 1.015,
   pro: 1,
-  ace: 0.992,
+  ace: 0.96,
 };
 
 /** Only a fraction of the target-speed pace scale is visible in lap time. */
@@ -66,7 +77,13 @@ export function createQualifyingReferenceTimes(
   // is represented conservatively instead of dividing the whole lap by it.
   const paceFactor = 1 / (1 + (pace - 1) * PACE_REFERENCE_WEIGHT);
   const difficultyFactor = DIFFICULTY_REFERENCE_FACTOR[difficulty];
-  const baseLapSeconds = theoreticalLapSeconds * REFERENCE_EXECUTION_FACTOR * paceFactor * difficultyFactor;
+  const trackFactor = REFERENCE_TRACK_FACTOR[track.id] ?? 1;
+  const baseLapSeconds =
+    theoreticalLapSeconds *
+    REFERENCE_EXECUTION_FACTOR *
+    paceFactor *
+    difficultyFactor *
+    trackFactor;
 
   return {
     player: null,
