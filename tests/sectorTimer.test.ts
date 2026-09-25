@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createSectorTimer } from "../lib/race/sectorTimer";
+import { computeSectorGates } from "../lib/tracks/sectors";
+import spielberg from "../data/tracks/spielberg.json";
+import type { TrackData } from "../lib/tracks/types";
 
 // Two gates 100m apart along +x, both facing +x (headingRad chosen so
 // forward = {x: -sin(heading), z: -cos(heading)} = {x: 1, z: 0}).
@@ -39,6 +42,23 @@ describe("createSectorTimer", () => {
 
     expect(sector0).toEqual({ sectorIndex: 0, sectorSeconds: 10, color: "purple" });
     expect(sector1).toEqual({ sectorIndex: 1, sectorSeconds: 10, color: "purple" });
+  });
+
+  it("ignores distant line crossings on a real Spielberg lap", () => {
+    const track = spielberg as TrackData;
+    const timer = createSectorTimer(computeSectorGates(track, 3));
+    const points = track.centerline;
+    const sampleSeconds = 0.05;
+    const crossings: { sectorIndex: number; sectorSeconds: number }[] = [];
+    for (let i = 0; i <= points.length; i++) {
+      const point = points[i % points.length];
+      const crossing = timer.update(point[0], point[2], i * sampleSeconds, true);
+      if (crossing) crossings.push(crossing);
+    }
+    expect(crossings.map((crossing) => crossing.sectorIndex)).toEqual([0, 1]);
+    // The authored second gate is centerline index 1437, not the false
+    // projection crossing at 1004: 718 samples * 0.05s = 35.9s.
+    expect(crossings[1].sectorSeconds).toBeCloseTo(35.9, 1);
   });
 
   it("does not register a gate out of order (skipping ahead)", () => {
@@ -120,6 +140,17 @@ describe("createSectorTimer", () => {
     // No prior real sector-1 sample exists, so this can only be classified
     // by session-best (also unset) -> purple.
     expect(sector0?.color).toBe("purple");
+  });
+
+  it("rewinds the in-progress sector baseline without stale split data", () => {
+    const timer = createSectorTimer(gateConfigs);
+    timer.update(0, 0, 0, true);
+    timer.update(100, 0, 10, true);
+    timer.rewindTo(4);
+
+    timer.update(99, 0, 13, true);
+    const sector = timer.update(100, 0, 14, true);
+    expect(sector).toMatchObject({ sectorIndex: 0, sectorSeconds: 10 });
   });
 
   it("reset clears in-progress gate state without recording anything", () => {

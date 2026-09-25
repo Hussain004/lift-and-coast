@@ -12,6 +12,8 @@ interface Gate {
   forward: { x: number; z: number };
 }
 
+const GATE_CAPTURE_RADIUS_METERS = 30;
+
 function toGate(g: { x: number; z: number; headingRad: number }): Gate {
   return {
     x: g.x,
@@ -72,13 +74,21 @@ export function createSectorTimer(gateConfigs: { x: number; z: number; headingRa
     const gate = gates[nextGateIndex];
     const signedForward = (x - gate.x) * gate.forward.x + (z - gate.z) * gate.forward.z;
 
-    if (prevSignedForward !== null && prevSignedForward < 0 && signedForward >= 0) {
+    if (
+      prevSignedForward !== null &&
+      prevSignedForward < 0 &&
+      signedForward >= 0 &&
+      Math.hypot(x - gate.x, z - gate.z) <= GATE_CAPTURE_RADIUS_METERS
+    ) {
+      // A closed circuit can pass the same infinite gate line elsewhere
+      // (Spielberg's sector-2 line is a good example). Require the crossing
+      // sample to be physically near the authored gate, not merely on its
+      // projected line.
       // Clamped at 0 - a rewind mid-sector can roll currentLapSeconds back
       // past sectorStartSeconds (see lapTimer.ts's own rewindBy), which
-      // would otherwise show a negative split. Such a lap already can't
-      // set a purple (eligible is false whenever a rewind happened this
-      // lap), so this only affects a cosmetic number on an already-tainted
-      // lap, never recorded data.
+      // would otherwise show a negative split. A qualifying rewind can still
+      // be accepted after the underlying excursion is corrected, so the
+      // clamp is a cosmetic safety net for that corrected lap.
       const sectorSeconds = Math.max(0, currentLapSeconds - sectorStartSeconds);
       currentLapSectors.push(sectorSeconds);
       const color = classify(nextGateIndex, sectorSeconds, eligible);
@@ -136,5 +146,19 @@ export function createSectorTimer(gateConfigs: { x: number; z: number; headingRa
     prevSignedForward = null;
   }
 
-  return { update, onLapEnd, reset };
+  /**
+   * Rewinds the in-progress sector baseline after the lap clock is rolled
+   * back. Gate crossings already recorded from the discarded future cannot be
+   * trusted, so start a fresh split sequence at the restored lap time. The
+   * final sector still completes at the next finish-line crossing; this keeps
+   * a corrected qualifying rewind from displaying stale or negative splits.
+   */
+  function rewindTo(currentLapSeconds: number) {
+    currentLapSectors = [];
+    sectorStartSeconds = Math.max(0, currentLapSeconds);
+    nextGateIndex = 0;
+    prevSignedForward = null;
+  }
+
+  return { update, onLapEnd, reset, rewindTo };
 }
