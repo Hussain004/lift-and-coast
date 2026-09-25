@@ -3,6 +3,7 @@ import {
   TIMED_QUALIFYING_SECONDS,
   createQualifyingSession,
   createQualifyingTimes,
+  isQualifyingLapValid,
   playerGridSpot,
   polePosition,
   qualifyingLeaderboard,
@@ -68,6 +69,15 @@ describe("qualifyingLeaderboard", () => {
     expect(board[1].gapToLeaderSeconds).toBe(2);
     expect(board[2].gapToLeaderSeconds).toBeNull();
     expect(board[3].gapToLeaderSeconds).toBeNull();
+  });
+});
+
+describe("isQualifyingLapValid", () => {
+  it("accepts a corrected rewind but rejects a remaining track-limit violation", () => {
+    expect(isQualifyingLapValid(false, false)).toBe(true);
+    expect(isQualifyingLapValid(false, true)).toBe(false);
+    expect(isQualifyingLapValid(true, false)).toBe(false);
+    expect(isQualifyingLapValid(true, true)).toBe(false);
   });
 });
 

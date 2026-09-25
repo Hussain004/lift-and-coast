@@ -171,6 +171,25 @@ describe("createLapTimer startsBehindLine", () => {
     expect(crossing.bestLapSeconds).toBeNull();
   });
 
+  it("does not miss the grid grace crossing when the first post-go sample is past the line", () => {
+    const timer = createLapTimer({
+      startPos: track.startPos,
+      lineHalfWidth: 6,
+      startsBehindLine: true,
+    });
+    timer.prime(at(-9));
+    const grace = timer.update(at(1), 1 / 60);
+    expect(grace.crossedFinishLine).toBe(false);
+    expect(grace.lapCount).toBe(0);
+    expect(grace.awaitingStart).toBe(false);
+
+    timer.update(at(50), 60);
+    timer.update(at(-10), 1 / 60);
+    const lap = timer.update(at(1), 1 / 60);
+    expect(lap.crossedFinishLine).toBe(true);
+    expect(lap.lapCount).toBe(1);
+  });
+
   it("times normally after the forgiven crossing", () => {
     const timer = createLapTimer({
       startPos: track.startPos,

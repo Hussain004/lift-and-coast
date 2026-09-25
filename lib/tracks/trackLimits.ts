@@ -249,18 +249,27 @@ export function computeSurfaceGripMultiplier(distanceFromEdgeMeters: number): nu
 
 /**
  * The real track-limits rule (plan section 5, depth feature 7): a lap is
- * only invalidated when ALL FOUR wheels are off the track, not the chassis
- * center - a single wheel still touching keeps the lap legal, same as real
+ * only invalidated when ALL FOUR tires are off the track, not the chassis
+ * center - a single tire still touching keeps the lap legal, same as real
  * regulations, and avoids penalizing a car that's mostly still on track
- * through a wide corner exit. The HUD's real-time "TRACK LIMITS" warning
+ * through a wide corner exit. The optional wheel radius accounts for the
+ * contact patch extending beyond the suspension hardpoint. The HUD's real-time
+ * "TRACK LIMITS" warning
  * fires on this same rule (see Car.tsx), so the warning and the penalty
  * can never disagree about what's legal.
  */
 export function allWheelsOffTrack(
   track: TrackData,
-  wheelPositions: { x: number; z: number }[]
+  wheelPositions: { x: number; z: number }[],
+  wheelRadiusMeters = 0
 ): boolean {
-  return wheelPositions.every((p) => checkTrackLimits(track, p.x, p.z).isOffTrack);
+  // wheelGroundPositions reports the suspension hardpoint, while the actual
+  // tire can still overlap the ribbon until its contact patch is fully past
+  // the edge. Callers pass the wheel radius so a one-frame hardpoint jitter at
+  // the painted boundary does not invalidate an otherwise clean lap.
+  return wheelPositions.every(
+    (p) => checkTrackLimits(track, p.x, p.z).distanceFromEdgeMeters > wheelRadiusMeters
+  );
 }
 
 /**

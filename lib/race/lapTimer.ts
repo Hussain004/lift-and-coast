@@ -77,11 +77,29 @@ export function createLapTimer(config: LapTimerConfig) {
   let lastLapSeconds: number | null = null;
   let bestLapSeconds: number | null = null;
 
-  function update(position: { x: number; z: number }, dt: number): LapTimerState {
+  function signedForwardAt(position: { x: number; z: number }) {
     const dx = position.x - config.startPos.x;
     const dz = position.z - config.startPos.z;
-    const signedForward = dx * forward.x + dz * forward.z;
-    const lateral = dx * right.x + dz * right.z;
+    return {
+      signedForward: dx * forward.x + dz * forward.z,
+      lateral: dx * right.x + dz * right.z,
+    };
+  }
+
+  /**
+   * Seeds the crossing detector from the grid pose before lights-out. The
+   * first post-go render sample can already be past a back-grid slot's start
+   * line; without priming, the timer would miss the forgiven crossing and
+   * consume the player's first real lap as the grace crossing instead.
+   */
+  function prime(position: { x: number; z: number }) {
+    const projection = signedForwardAt(position);
+    prevSignedForward = projection.signedForward;
+    armed = projection.signedForward < -BEHIND_DEADZONE_METERS;
+  }
+
+  function update(position: { x: number; z: number }, dt: number): LapTimerState {
+    const { signedForward, lateral } = signedForwardAt(position);
 
     if (signedForward < -BEHIND_DEADZONE_METERS) armed = true;
 
@@ -144,7 +162,7 @@ export function createLapTimer(config: LapTimerConfig) {
     return currentLapSeconds;
   }
 
-  return { update, rewindBy };
+  return { update, rewindBy, prime };
 }
 
 export function formatLapTime(seconds: number | null): string {

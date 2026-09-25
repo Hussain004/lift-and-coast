@@ -507,7 +507,7 @@ export function AICar({
       // shared times the player writes (see Car.tsx) so the grid compares
       // clean laps on both sides. Unconditional on mode - in a race the
       // overlay simply compares bests instead of first laps.
-      if (allWheelsOffTrack(track, wheelGroundPositions(body))) {
+      if (allWheelsOffTrack(track, wheelGroundPositions(body), CAR_WHEELS[0].radius)) {
         if (!aiLapInvalidRef.current) {
           aiLapInvalidAtSecondsRef.current = lap.currentLapSeconds;
         }

@@ -89,6 +89,18 @@ describe("allWheelsOffTrack", () => {
     expect(allWheelsOffTrack(track, wheels)).toBe(false);
   });
 
+  it("keeps a tire legal while its contact patch still overlaps the edge", () => {
+    const halfWidth = track.width[200] / 2;
+    const wheels = [
+      pointAtLateralOffset(200, halfWidth + 0.1),
+      pointAtLateralOffset(200, halfWidth + 0.1),
+      pointAtLateralOffset(200, halfWidth + 0.1),
+      pointAtLateralOffset(200, halfWidth + 0.1),
+    ];
+    expect(allWheelsOffTrack(track, wheels)).toBe(true);
+    expect(allWheelsOffTrack(track, wheels, 0.34)).toBe(false);
+  });
+
   it("is true only once all four wheels are past the edge", () => {
     const halfWidth = track.width[200] / 2;
     const wheels = [

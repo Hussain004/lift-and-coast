@@ -47,6 +47,19 @@ export function polePosition(times: QualifyingTimes): "player" | number | null {
 
 export type QualifyingFormat = "oneshot" | "timed";
 
+/**
+ * Validity for the player's classified lap. A rewind is allowed when the
+ * player rewound before the offending excursion and is driving cleanly again;
+ * a remaining track-limit violation still invalidates the lap. Continuous
+ * timing for the delta/ghost reference is tracked separately by Car.tsx.
+ */
+export function isQualifyingLapValid(
+  trackLimitsInvalid: boolean,
+  timingDiscontinuity: boolean
+): boolean {
+  return !trackLimitsInvalid && !timingDiscontinuity;
+}
+
 /** Timed qualifying session length: 10 minutes of open track. */
 export const TIMED_QUALIFYING_SECONDS = 600;
 

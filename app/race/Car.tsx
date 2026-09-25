@@ -66,7 +66,7 @@ import {
   updateTrackLimitSequence,
 } from "@/lib/race/trackLimitSequence";
 import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
-import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
+import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, isQualifyingLapValid, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
@@ -470,6 +470,10 @@ export function Car({
   // the actual violation, not just any rewind at all (which would let an
   // unrelated later correction erase an earlier, still-valid infraction).
   const lapInvalidAtSecondsRef = useRef<number | null>(null);
+  // Qualifying can accept a lap after a rewind once the underlying track-limit
+  // violation has been undone. Keep the general continuity flag for the delta
+  // and ghost systems, but use this timing-specific flag for the result.
+  const qualifyingDiscontinuityRef = useRef(false);
   const sectorTimerRef = useRef(createSectorTimer(computeSectorGates(track, SECTOR_COUNT)));
   const trackLimitSequenceRef = useRef(createTrackLimitSequence());
   const sectorResultsRef = useRef<(SectorCrossing | null)[]>(
@@ -515,6 +519,7 @@ export function Car({
   const rewindCursorRef = useRef(0);
   const wasRewindingRef = useRef(false);
   const isRewindingRef = useRef(false);
+  const lapTimerPrimedRef = useRef(false);
 
   const energySystemRef = useRef(createEnergySystem());
   const batteryFractionRef = useRef(1);
@@ -788,6 +793,10 @@ export function Car({
     // a car that drives straight past the far end of the track's own extent,
     // since the nearest ribbon point stays fixed while the car keeps going.
     const pos = body.translation();
+    if (!lapTimerPrimedRef.current) {
+      lapTimerRef.current.prime({ x: pos.x, z: pos.z });
+      lapTimerPrimedRef.current = true;
+    }
     // Reused below for the surface grip penalty too, instead of a second
     // brute-force nearest-centerline-point scan for the same position.
     const limitStatus = checkTrackLimits(track, pos.x, pos.z, pos.y);
@@ -811,6 +820,8 @@ export function Car({
       body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      rewindBufferRef.current.clear();
+      lapTimerRef.current.prime({ x: gridSpot.x, z: gridSpot.z });
       // Clear rewind state too - otherwise a reset that lands mid-rewind
       // (holding R while 300m out, the exact situation a stranded player
       // reaches for) leaves wasRewindingRef true, and the next tick's
@@ -819,6 +830,7 @@ export function Car({
       wasRewindingRef.current = false;
       rewindCursorRef.current = 0;
       lapHadDiscontinuityRef.current = true;
+      qualifyingDiscontinuityRef.current = true;
       // Otherwise nextGateIndex would still point at whatever gate was
       // being approached before the teleport - the car driving from the
       // start line would silently miss gate 0 and later register a
@@ -831,6 +843,7 @@ export function Car({
 
     if (driveInput.rewind) {
       lapHadDiscontinuityRef.current = true;
+      qualifyingDiscontinuityRef.current = true;
       wasRewindingRef.current = true;
       const buffer = rewindBufferRef.current;
       rewindCursorRef.current = Math.min(
@@ -845,6 +858,11 @@ export function Car({
     if (wasRewindingRef.current) {
       const sample = rewindBufferRef.current.resumeFrom(rewindCursorRef.current);
       if (sample) applySnapshot(body, sample, false);
+      // The rewind can move the car across the finish-line projection. Prime
+      // the detector from the restored pose so its old sample cannot cause a
+      // duplicate or missed crossing on the next physics/render tick.
+      const rewoundPosition = body.translation();
+      lapTimerRef.current.prime({ x: rewoundPosition.x, z: rewoundPosition.z });
       // Undo the mistake, not just its consequences: roll the lap clock
       // back by however much time was actually scrubbed. Only clear an
       // existing track-limits invalidation if the rollback actually
@@ -859,10 +877,12 @@ export function Car({
       // samples, which stay non-monotonic across this rewind regardless of
       // whether the driving itself was clean afterward.)
       const rolledBackTo = lapTimerRef.current.rewindBy(rewindCursorRef.current);
+      sectorTimerRef.current.rewindTo(rolledBackTo);
       if (lapInvalidAtSecondsRef.current === null || rolledBackTo <= lapInvalidAtSecondsRef.current) {
         lapInvalidRef.current = false;
         lapInvalidAtSecondsRef.current = null;
         resetTrackLimitSequence(trackLimitSequenceRef.current);
+        if (sessionMode === "qualifying") qualifyingDiscontinuityRef.current = false;
       }
       rewindCursorRef.current = 0;
       wasRewindingRef.current = false;
@@ -1207,6 +1227,40 @@ export function Car({
     const t = body.translation();
     const bodyRot = body.rotation();
     const lap = lapTimerRef.current.update({ x: t.x, z: t.z }, dt);
+
+    // Race-control track-limits sequence: a first all-four-wheels-off
+    // moment is a warning, a sustained/repeated offense raises the
+    // black-and-white flag, and only the next stage applies the five-second
+    // penalty. Evaluate this before lap completion so a violation on the
+    // finish-line frame is attributed to the lap that is actually ending.
+    // A wheel still on the asphalt keeps the car legal, same as the real
+    // all-four-wheels rule.
+    const wheelWorldPositions = wheelGroundPositions(body);
+    const allFourWheelsOff = allWheelsOffTrack(track, wheelWorldPositions, CAR_WHEELS[0].radius);
+    const limitUpdate = updateTrackLimitSequence(
+      trackLimitSequenceRef.current,
+      allFourWheelsOff,
+      dt
+    );
+    if (allFourWheelsOff && !lapInvalidRef.current) {
+      lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+      lapInvalidRef.current = true;
+    }
+    if (limitUpdate.penaltyJustApplied) {
+      if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+      lapInvalidRef.current = true;
+      effectiveRaceControlRef.current.reportIncident("track-limits", raceElapsedSecondsRef.current, {
+        penaltySeconds: TRACK_LIMIT_PENALTY_SECONDS,
+      });
+      if (!raceFinishedRef.current) {
+        raceElapsedSecondsRef.current += TRACK_LIMIT_PENALTY_SECONDS;
+        if (penaltyToastRef?.current) {
+          penaltyToastRef.current.textContent = `+${TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
+        }
+        penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
+      }
+    }
+
     // Ranked progress comes from the continuity tracker, not the raw
     // scan: at the start/finish seam the scan flickers between ~0 and
     // ~trackLength for a car sitting on the line, slingshotting it
@@ -1256,15 +1310,19 @@ export function Car({
       }
     }
 
-    const eligible = !lapHadDiscontinuityRef.current && !lapInvalidRef.current;
+    const continuousLap = !lapHadDiscontinuityRef.current;
+    const eligible =
+      sessionMode === "qualifying"
+        ? isQualifyingLapValid(lapInvalidRef.current, qualifyingDiscontinuityRef.current)
+        : !lapInvalidRef.current && continuousLap;
 
     // Playable Qualifying (plan section 7): best valid lap per car,
     // informing the overlay below in race mode and the grid in qualifying
-    // sessions. Valid means the lap's own `eligible` flag (clean +
-    // continuous, same standard as the delta/ghost reference) - symmetric
-    // with AICar.tsx's own best-valid recording. Checked every frame (not
-    // just inside the crossedFinishLine block below) since the cars'
-    // laps usually finish on different frames.
+    // sessions. A corrected qualifying rewind is a valid session result,
+    // while continuousLap still keeps that non-monotonic lap out of the
+    // personal-best/ghost/delta reference. Checked every frame (not just
+    // inside the crossedFinishLine block below) since the cars' laps usually
+    // finish on different frames.
     if (sessionMode !== "qualifying" && qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
       const pole = qualifyingRef?.current ? polePosition(qualifyingRef.current) : null;
       if (pole !== null && qualifyingRef?.current) {
@@ -1367,7 +1425,7 @@ export function Car({
           `  //  <a href="${window.location.pathname}${window.location.search}">DRIVE AGAIN</a>  //  <a href="/">MENU</a>`;
       }
       const wasNewBest =
-        eligible && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
+        continuousLap && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
         bestLapRef.current = lap.lastLapSeconds;
       }
@@ -1397,6 +1455,7 @@ export function Car({
       sectorResultsRef.current[finalSplit.sectorIndex] = finalSplit;
       renderSectors();
       lapHadDiscontinuityRef.current = false;
+      qualifyingDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
       lapInvalidAtSecondsRef.current = null;
       damageGripMultiplierRef.current = 1;
@@ -1407,37 +1466,6 @@ export function Car({
     if (sectorCrossing) {
       sectorResultsRef.current[sectorCrossing.sectorIndex] = sectorCrossing;
       renderSectors();
-    }
-
-    // Race-control track-limits sequence: a first all-four-wheels-off
-    // moment is a warning, a sustained/repeated offense raises the
-    // black-and-white flag, and only the next stage applies the five-second
-    // penalty. A wheel still on the asphalt keeps the car legal, same as
-    // the real all-four-wheels rule.
-    const wheelWorldPositions = wheelGroundPositions(body);
-    const allFourWheelsOff = allWheelsOffTrack(track, wheelWorldPositions);
-    const limitUpdate = updateTrackLimitSequence(
-      trackLimitSequenceRef.current,
-      allFourWheelsOff,
-      dt
-    );
-    if (allFourWheelsOff && !lapInvalidRef.current) {
-      lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
-      lapInvalidRef.current = true;
-    }
-    if (limitUpdate.penaltyJustApplied) {
-      if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
-      lapInvalidRef.current = true;
-      effectiveRaceControlRef.current.reportIncident("track-limits", raceElapsedSecondsRef.current, {
-        penaltySeconds: TRACK_LIMIT_PENALTY_SECONDS,
-      });
-      if (!raceFinishedRef.current) {
-        raceElapsedSecondsRef.current += TRACK_LIMIT_PENALTY_SECONDS;
-        if (penaltyToastRef?.current) {
-          penaltyToastRef.current.textContent = `+${TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
-        }
-        penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
-      }
     }
 
     if (lapRef?.current) {
