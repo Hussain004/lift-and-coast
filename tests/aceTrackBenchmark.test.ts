@@ -3,8 +3,12 @@
 // `npm run diagnose:ace`.
 import { describe, expect, it } from "vitest";
 import { getLineRoom, getRacingLine } from "../lib/tracks/racingLineCache";
-import { computeRacingLine, racingLineAccelerationLimitMs2 } from "../lib/tracks/racingLine";
-import { analyzeRacingLine, RACING_LINE_DECELERATION_LIMIT } from "../lib/tracks/racingLineQuality";
+import { computeRacingLine } from "../lib/tracks/racingLine";
+import {
+  analyzeRacingLine,
+  RACING_LINE_ACCELERATION_LIMIT,
+  RACING_LINE_DECELERATION_LIMIT,
+} from "../lib/tracks/racingLineQuality";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
 import { runStandingStartLap } from "./helpers/aceBenchmark";
@@ -24,6 +28,12 @@ describe("all-track Pro/Ace racing-line profiles", () => {
     expect(aceLine[0].steeringMaxPace).toBe(1.08);
   });
 
+  it("keeps Suzuka's default line on the bridge-safe acceleration ceiling", () => {
+    const suzuka = getTrack("suzuka");
+    const quality = analyzeRacingLine(suzuka, getRacingLine(suzuka, "default"));
+    expect(quality.maximumRequiredAcceleration).toBeLessThanOrEqual(8.05);
+  });
+
   it("keeps every registered default, Pro, and Ace line finite and feasible", () => {
     for (const meta of TRACKS) {
       const track = getTrack(meta.id);
@@ -40,7 +50,10 @@ describe("all-track Pro/Ace racing-line profiles", () => {
         ["pro", proLine, proQuality],
         ["ace", aceLine, aceQuality],
       ] as const) {
-        const accelerationLimit = racingLineAccelerationLimitMs2(meta.id, profile);
+        // Keep the acceptance bound independent from the production tuning
+        // helper: a raised implementation limit must not raise the gate.
+        const accelerationLimit =
+          meta.id === "suzuka" ? 8 : meta.id === "spielberg" ? 11 : RACING_LINE_ACCELERATION_LIMIT;
         expect(line.length, `${meta.id}/${profile}`).toBe(track.centerline.length);
         expect(Number.isFinite(quality.theoreticalLapSeconds), `${meta.id}/${profile}`).toBe(true);
         expect(quality.minimumEdgeMarginMeters, `${meta.id}/${profile}`).toBeGreaterThan(0.25);

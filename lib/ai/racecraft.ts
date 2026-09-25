@@ -746,9 +746,11 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     state.raceSeconds > 0 &&
     state.raceSeconds < AI_LAUNCH_LATERAL_SECONDS &&
     own < AI_LAUNCH_THROTTLE_SPEED_MS;
-  const lateralRate = launchLateralActive
-    ? Math.max(rate, input.launchLateralRateMs ?? AI_LAUNCH_LATERAL_RATE_MS)
-    : rate;
+  const launchRate = input.launchLateralRateMs ?? AI_LAUNCH_LATERAL_RATE_MS;
+  // The ordinary rate remains a speed/evasion ceiling, while a track's
+  // launch value is a true cap: Monaco and Spa must not silently return to
+  // the wider field rate as soon as the car gets rolling.
+  const lateralRate = launchLateralActive ? Math.min(rate, launchRate) : rate;
   const maxStep = state.raceSeconds > 0 ? lateralRate * dt : 0;
   state.offset += clamp(bounded - state.offset, -maxStep, maxStep);
 

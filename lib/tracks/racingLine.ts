@@ -137,8 +137,10 @@ export function racingLineAccelerationLimitMs2(
   trackId: string,
   profile: RacingLineProfile
 ): number {
-  if (profile === "default") return MAX_ACCEL_MS2;
+  // Suzuka's bridge/load transition is sensitive for every profile,
+  // including the default line used by Rookie and Club.
   if (trackId === "suzuka") return 8;
+  if (profile === "default") return MAX_ACCEL_MS2;
   if (trackId === "spielberg") return 11;
   return MAX_ACCEL_MS2;
 }

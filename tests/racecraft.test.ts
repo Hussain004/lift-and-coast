@@ -288,6 +288,17 @@ describe("stepRacecraft", () => {
     expect(state.offset).toBeGreaterThan(2.25);
   });
 
+  it("keeps a narrow-track launch rate capped as the car gains speed", () => {
+    for (const speed of [1, 10, 20]) {
+      const state = { ...createRacecraftState(), initialized: true, offset: 2.3, raceSeconds: 0.02 };
+      stepRacecraft(
+        state,
+        input({ ownSpeedMs: speed, ownLateralMeters: 2.3, launchLateralRateMs: 0.3 })
+      );
+      expect(state.offset).toBeCloseTo(2.295, 6);
+    }
+  });
+
   it("opens a full-throttle launch window without overriding a stopped car", () => {
     const launch = createRacecraftState();
     const open = stepRacecraft(launch, input({ ownSpeedMs: 0, basePace: 1.1 }));

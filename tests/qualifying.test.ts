@@ -58,12 +58,16 @@ describe("qualifyingLeaderboard", () => {
 
   it("keeps no-time entries behind the classified field", () => {
     const board = qualifyingLeaderboard(
-      { player: null, opponents: [null, 95] },
+      { player: null, opponents: [null, 95, 97] },
       "YOU",
-      ["A", "B"]
+      ["A", "B", "C"]
     );
-    expect(board.map((entry) => entry.code)).toEqual(["B", "YOU", "A"]);
+    expect(board.map((entry) => entry.code)).toEqual(["B", "C", "YOU", "A"]);
     expect(board.every((entry) => entry.gapToPlayerSeconds === null)).toBe(true);
+    expect(board[0].gapToLeaderSeconds).toBe(0);
+    expect(board[1].gapToLeaderSeconds).toBe(2);
+    expect(board[2].gapToLeaderSeconds).toBeNull();
+    expect(board[3].gapToLeaderSeconds).toBeNull();
   });
 });
 

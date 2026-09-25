@@ -76,6 +76,7 @@ export function NetHost({
   netPoseRefs,
   goAtRef,
   goSignalledRef,
+  sceneReadyRef,
 }: {
   raceRef: React.RefObject<RaceState>;
   carPosesRef: React.RefObject<Record<number, CarPose>>;
@@ -96,6 +97,8 @@ export function NetHost({
   /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
   goAtRef: React.RefObject<number>;
   goSignalledRef: React.RefObject<boolean>;
+  /** Set only after this peer's first rendered Canvas frame. */
+  sceneReadyRef: React.RefObject<boolean>;
 }) {
   // Frozen join-order roster for input routing: members may leave mid-race,
   // but slots must not shift under running cars.
@@ -122,7 +125,7 @@ export function NetHost({
    * same instant (see Scene's goGate) instead of each off its own clock.
    */
   const signalGo = () => {
-    if (goSentRef.current) return;
+    if (!sceneReadyRef.current || goSentRef.current) return;
     goSentRef.current = true;
     const atMs = Date.now() + GO_DELAY_MS;
     netRoom.broadcast({ type: "go", atMs });
@@ -133,17 +136,20 @@ export function NetHost({
   useEffect(() => {
     const expected = Math.max(0, memberPeerIds.current.length - 1);
     expectedGuestsRef.current = expected;
-    // Host-only room (defensive - the lobby blocks this): nothing to wait
-    // for, go now.
-    if (expected <= 0) {
-      signalGo();
-      return;
-    }
-    // Safety valve: a guest whose scene never mounts (dead tab, endless
-    // load, a lost "ready") can't hold the room hostage - go with whatever
-    // we have after the timeout.
-    const id = setTimeout(signalGo, READY_TIMEOUT_MS);
-    return () => clearTimeout(id);
+    const trySignalGo = () => {
+      if (expected <= 0 || readyPeersRef.current.size >= expected) signalGo();
+    };
+    // A ready message can arrive before the host's first Canvas frame, and a
+    // host-only room has no ready message to wait for. Poll the shared frame
+    // gate so either case still waits for the actual scene, then fall back to
+    // the existing safety valve for a guest that never reports.
+    const interval = setInterval(trySignalGo, 100);
+    const timeout = setTimeout(signalGo, READY_TIMEOUT_MS);
+    trySignalGo();
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -310,6 +316,7 @@ export function NetClient({
   slotToOpponent,
   goAtRef,
   goSignalledRef,
+  sceneReadyRef,
 }: {
   raceRef: React.RefObject<RaceState>;
   playerInputRef: React.RefObject<{ throttle: number; brake: number; steer: number } | null>;
@@ -324,6 +331,8 @@ export function NetClient({
   /** Shared lights-out stamp + gate (see RaceStartCountdown's goGate). */
   goAtRef: React.RefObject<number>;
   goSignalledRef: React.RefObject<boolean>;
+  /** Set only after this peer's first rendered Canvas frame. */
+  sceneReadyRef: React.RefObject<boolean>;
 }) {
   const seqRef = useRef(0);
   // Host's peer id at mount (members are host-first join order): the only
@@ -343,15 +352,15 @@ export function NetClient({
   }, []);
 
   /**
-   * Ready handshake (see NetHost): this component only mounts once the
-   * guest's scene is live - three.js, rapier and the track mesh all built -
-   * which is exactly when the host may safely set a lights-out time. The
-   * ready is re-sent on a slow tick until the go arrives, so one dropped
-   * datagram costs a moment, not the race.
+   * Ready handshake (see NetHost): the shared scene ref is set only after the
+   * first rendered Canvas frame, so a mounted-but-cold guest cannot report
+   * ready while its track/controllers are still building. The ready is
+   * re-sent on a slow tick until the go arrives, so one dropped datagram
+   * costs a moment, not the race.
    */
   useEffect(() => {
     const send = () => {
-      if (goSignalledRef.current) return;
+      if (!sceneReadyRef.current || goSignalledRef.current) return;
       const host = hostIdRef.current;
       if (host === null) return;
       netRoom.sendTo(host, { type: "ready" });
@@ -359,7 +368,7 @@ export function NetClient({
     send();
     const id = setInterval(send, 1500);
     return () => clearInterval(id);
-  }, [goSignalledRef]);
+  }, [goSignalledRef, sceneReadyRef]);
 
   /**
    * Guest pose uplink: our own car's truth, from our own simulation. The

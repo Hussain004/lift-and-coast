@@ -76,6 +76,19 @@ describe("AI field race", () => {
     expect(passes).toBeGreaterThanOrEqual(12);
   }, 480000);
 
+  it("keeps a production Pro field clean in the normal suite", async () => {
+    const result = await simulateField(
+      ["VER", "HAM", "ALO", "HUL", "STR", "COL"],
+      { seconds: 90, track: getTrack("silverstone"), difficulty: "pro" }
+    );
+    upright(result);
+    expect(result.field.contacts).toBeLessThanOrEqual(2);
+    expect(result.field.hardContacts).toBeLessThanOrEqual(1);
+    expect(result.field.spins).toBe(0);
+    expect(result.field.recoveries).toBe(0);
+    for (const car of result.cars) expect(car.traveled).toBeGreaterThan(3000);
+  });
+
   it("places and launches a full Hungaroring grid on its curved run to turn one", async () => {
     const codes = [
       "COL", "ALO", "STR", "HUL", "BOR", "PER", "BOT", "HAM", "LEC", "OCO",

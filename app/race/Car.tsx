@@ -157,11 +157,13 @@ function renderQualifyingResultHtml({
       const code = entry.isPlayer ? playerCode : entry.code;
       const name = entry.isPlayer ? playerName : rival?.name ?? entry.code;
       const color = qualifyingColor(entry.isPlayer ? playerColor : rival?.color);
+      const gapSeconds =
+        playerTime === null ? entry.gapToLeaderSeconds : entry.gapToPlayerSeconds;
       const gap = entry.isPlayer
         ? "YOU"
-        : entry.gapToPlayerSeconds === null
+        : gapSeconds === null
           ? "—"
-          : qualifyingGap(entry.gapToPlayerSeconds);
+          : qualifyingGap(gapSeconds);
       return (
         `<div class="qualifying-board-row${entry.isPlayer ? " qualifying-board-row-you" : ""}">` +
         `<span class="qualifying-board-pos">P${entry.position}</span>` +
@@ -173,13 +175,14 @@ function renderQualifyingResultHtml({
     })
     .join("");
   const actionLabel = champRound === null ? "START RACE" : `START ROUND ${champRound + 1}`;
+  const gapTitle = playerTime === null ? "GAP TO LEADER" : "GAP TO YOU";
   return (
     `<section class="qualifying-result" aria-label="Qualifying result">` +
     `<div class="qualifying-result-kicker">QUALIFYING COMPLETE</div>` +
     `<div class="qualifying-result-summary"><strong>P${playerPosition}</strong>` +
     `<span>YOU  ${playerTime === null ? "NO VALID LAP" : formatLapTime(playerTime)}</span>` +
     `<span>${escapeHtml(summaryGap)}</span></div>` +
-    `<div class="qualifying-result-title">AI LAP TIMES  <small>GAP TO YOU</small></div>` +
+    `<div class="qualifying-result-title">AI REFERENCE LAPS  <small>${gapTitle}</small></div>` +
     `<div class="qualifying-result-rows">${rows}</div>` +
     `<div class="qualifying-result-actions"><a href="${escapeHtml(raceHref)}">${actionLabel} FROM P${playerPosition}</a>` +
     `<a href="/">MENU</a></div></section>`

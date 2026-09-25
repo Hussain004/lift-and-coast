@@ -18,6 +18,13 @@ describe("createQualifyingReferenceTimes", () => {
     expect(createQualifyingReferenceTimes(getTrack("spielberg"), rivals, "pro")).toEqual(times);
   });
 
+  it("handles a player-only empty reference field", () => {
+    expect(createQualifyingReferenceTimes(getTrack("monza"), [], "ace")).toEqual({
+      player: null,
+      opponents: [],
+    });
+  });
+
   it("keeps the reference field ordered by difficulty", () => {
     const track = getTrack("spielberg");
     const rookie = createQualifyingReferenceTimes(track, rivals, "rookie");

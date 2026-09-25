@@ -2159,6 +2159,26 @@
   }
 }
 
+@media (orientation: landscape) and (max-width: 760px),
+  (pointer: coarse) and (orientation: landscape) and (max-width: 760px) {
+  /* Keep the S/M/L selector away from the action row on narrow phones. The
+     hold buttons move above the bottom telemetry instead of competing for
+     the same top-right hit area. */
+  .mobileControlsHeader {
+    right: auto;
+    left: max(8px, env(safe-area-inset-left));
+    transform: none;
+  }
+
+  .mobileActionRow {
+    top: auto;
+    right: auto;
+    bottom: max(108px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
 @media (max-width: 600px) {
   :global(.qualifying-result) {
     width: min(100%, calc(100vw - 18px));

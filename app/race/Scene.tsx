@@ -801,6 +801,10 @@ export function Scene({
   // live, then run one countdown off one stamp.
   const netGoAtRef = useRef(0);
   const netGoSignalledRef = useRef(false);
+  // Net readiness is shared with the page's loader, but remains mutable so
+  // NetHost/NetClient can observe the actual first Canvas frame without a
+  // React state round-trip.
+  const sceneReadyRef = useRef(false);
   // Shared rewind flag (see Car.tsx's sharedRewindActiveRef): the player
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
@@ -859,7 +863,7 @@ export function Scene({
     >
       <QualityContext.Provider value={settings}>
       <FarPlane far={settings.fogFar + 40} />
-      <SceneReady onReady={onReady} />
+      <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
       <color attach="background" args={[lighting.sky]} />
       <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
@@ -1014,6 +1018,7 @@ export function Scene({
             netPoseRefs={netPoseRefs}
             goAtRef={netGoAtRef}
             goSignalledRef={netGoSignalledRef}
+            sceneReadyRef={sceneReadyRef}
           />
         )}
         {netRole === "guest" && (
@@ -1028,6 +1033,7 @@ export function Scene({
             slotToOpponent={slotToOpponent}
             goAtRef={netGoAtRef}
             goSignalledRef={netGoSignalledRef}
+            sceneReadyRef={sceneReadyRef}
           />
         )}
       </Physics>
@@ -1049,11 +1055,18 @@ export function Scene({
 }
 
 /** Signals readiness only after the Canvas has presented its first frame. */
-function SceneReady({ onReady }: { onReady?: () => void }) {
+function SceneReady({
+  onReady,
+  readyRef,
+}: {
+  onReady?: () => void;
+  readyRef: React.RefObject<boolean>;
+}) {
   const notifiedRef = useRef(false);
   useFrame(() => {
     if (notifiedRef.current) return;
     notifiedRef.current = true;
+    readyRef.current = true;
     onReady?.();
   });
   return null;
