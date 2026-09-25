@@ -47,7 +47,11 @@ export function RaceOpsPanel({
   snapshotRef: React.RefObject<RaceOpsSnapshot | null>;
 }) {
   const [snapshot, setSnapshot] = useState<RaceOpsSnapshot | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default: the panel is a tall block on the right-hand HUD
+  // column, directly under the right mirror. Starting it open pushed it into
+  // the mirror's corner on short viewports, so the default state is the small
+  // "press H" header and the body is opt-in.
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -88,7 +92,8 @@ export function RaceOpsPanel({
         aria-keyshortcuts="H"
         title="Toggle Race Ops (H)"
       >
-        <span>RACE OPS</span><span>{collapsed ? "+" : "−"}</span>
+        <span>{collapsed ? "RACE OPS · PRESS H" : "RACE OPS"}</span>
+        <span>{collapsed ? "+" : "−"}</span>
       </button>
       {!collapsed && (
         <div className={styles.raceOpsBody}>

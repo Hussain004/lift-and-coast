@@ -198,10 +198,14 @@
 .tower {
   position: absolute;
   left: 16px;
-  top: 50%;
+  /* Below the left mirror. The mirror occupies roughly the top third of the
+     frame (see SideMirrors.tsx, which insets by a pixel margin scaled to the
+     viewport), so a truly centred tower overlapped it; 56% keeps the whole
+     block in the lower half without crowding the bottom-left. */
+  top: 56%;
   transform: translateY(-50%);
   width: min(270px, calc(100vw - 24px));
-  max-height: 48vh;
+  max-height: 42vh;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -417,10 +421,12 @@
 
 @media (max-width: 900px) {
   .tower {
-    top: 12px;
+    /* Below the left mirror, matching the desktop rule - the mirror owns the
+       top corner at every width. */
+    top: 210px;
     transform: none;
     width: min(240px, calc(100vw - 24px));
-    max-height: 40vh;
+    max-height: 32vh;
   }
 
   .towerColumns,
@@ -437,14 +443,18 @@
   }
 
   .raceOpsPanel {
-    top: 180px;
+    top: 200px;
     right: 16px;
     max-height: 42vh;
     overflow-y: auto;
   }
 
   .bottomBar {
-    width: calc(100vw - 12px);
+    left: 6px;
+    right: 212px;
+    width: auto;
+    max-width: none;
+    margin-inline: 0;
     grid-template-columns: 64px 1fr 0.8fr;
   }
 
@@ -580,10 +590,14 @@
    speed/gear hierarchy, segmented power bars, inputs, and car status. */
 .bottomBar {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Centred on the space left of the bottom-right map block, so the telemetry
+     and the map sit side by side instead of overlapping. */
+  left: 12px;
+  right: 216px;
   bottom: 12px;
-  width: min(820px, calc(100vw - 24px));
+  width: auto;
+  max-width: 820px;
+  margin-inline: auto;
   min-height: 116px;
   display: grid;
   grid-template-columns: 86px minmax(210px, 1.15fr) minmax(145px, 0.72fr) minmax(190px, 1fr);
@@ -935,20 +949,53 @@
 }
 
 
-.minimap {
+/* Map block, bottom right (see page.tsx). It replaced the old top-right
+   minimap, which sat in the right mirror's corner. The block owns the right
+   edge; the telemetry bottomBar is offset by the same width so the two sit
+   side by side instead of overlapping. */
+.minimapBlock {
+  --minimap-block-size: 188px;
   position: absolute;
-  top: 16px;
   right: 16px;
-  background: rgba(0, 0, 0, 0.4);
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 6px;
+  background: rgba(0, 0, 0, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 4px;
+  pointer-events: none;
+}
+
+.minimapLabel {
+  color: #9aa5b3;
+  font-family: var(--font-geist-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  line-height: 1;
+}
+
+.minimap {
+  display: block;
+  border-radius: 3px;
   pointer-events: none;
 }
 
 .raceOpsPanel {
   position: absolute;
-  top: 76px;
-  right: 230px;
+  /* Right-hand HUD column, under the right mirror. The mirror reaches roughly
+     a third of the way down, so both the collapsed header and the expanded
+     body start below it; the height cap keeps the expanded body on screen on
+     short viewports. */
+  top: 376px;
+  right: 16px;
   width: 286px;
+  max-height: calc(100% - 392px);
+  overflow-y: auto;
   background: linear-gradient(145deg, rgba(7, 9, 13, 0.97), rgba(20, 23, 29, 0.95));
   border: 1px solid #3a414d;
   border-top: 3px solid #e10600;
@@ -1133,9 +1180,12 @@
 }
 .controlsPanel {
   position: absolute;
-  top: 200px;
+  /* Below the right mirror, above Race Ops - same right-hand column. */
+  top: 376px;
   right: 16px;
   width: 196px;
+  max-height: calc(100% - 392px);
+  overflow-y: auto;
   background: rgba(10, 10, 14, 0.72);
   border-radius: 6px;
   font-family: var(--font-geist-mono);
@@ -1891,9 +1941,13 @@
     display: flex;
   }
 
-  .minimap {
-    top: max(8px, env(safe-area-inset-top));
+  .minimapBlock {
     right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 4px 5px 5px;
+  }
+
+  .minimap {
     width: 96px;
     height: 96px;
   }
@@ -1905,7 +1959,7 @@
   }
 
   .raceOpsPanel {
-    top: 94px;
+    top: 170px;
     right: 8px;
     width: min(240px, 42vw);
     max-height: 36%;
@@ -1996,10 +2050,10 @@
   }
 
   .tower {
-    top: 52px;
+    top: 190px;
     left: 8px;
     width: min(220px, 50%);
-    max-height: 29%;
+    max-height: 24%;
     transform: none;
   }
 
@@ -2014,24 +2068,29 @@
   }
 
   .raceOpsPanel {
-    top: 94px;
+    top: 190px;
     right: 8px;
     width: min(205px, 48%);
-    max-height: 29%;
+    max-height: 24%;
+  }
+
+  .minimapBlock {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
   }
 
   .minimap {
-    top: max(8px, env(safe-area-inset-top));
-    right: max(8px, env(safe-area-inset-right));
     width: 78px;
     height: 78px;
   }
 
   .bottomBar {
-    right: 6px;
+    right: 104px;
     bottom: max(7px, env(safe-area-inset-bottom));
     left: 6px;
     width: auto;
+    max-width: none;
+    margin-inline: 0;
     transform: none;
     min-height: 76px;
     grid-template-columns: 58px minmax(0, 1fr) 78px;
@@ -2151,11 +2210,20 @@
     font-size: 8px;
   }
 
+  /* Landscape phone: the steering stick owns the bottom-right corner, so the
+     map block moves inboard of it and the telemetry bar takes what is left. */
+  .minimapBlock {
+    right: calc(max(16px, env(safe-area-inset-right)) + 150px);
+  }
+
   .bottomBar {
-    right: auto;
     bottom: max(9px, env(safe-area-inset-bottom));
-    left: 50%;
-    width: clamp(300px, calc(100% - 280px), 560px);
+    left: 12px;
+    right: 262px;
+    width: auto;
+    max-width: 560px;
+    margin-inline: auto;
+    transform: none;
     min-height: 76px;
     grid-template-columns: 58px minmax(0, 1fr) 78px;
   }

@@ -478,40 +478,47 @@ function RaceContent() {
       )}
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.penaltyToast} ref={penaltyToastRef} />
-      <svg
-        className={styles.minimap}
-        width={MINIMAP_SIZE_PX}
-        height={MINIMAP_SIZE_PX}
-        viewBox={`0 0 ${MINIMAP_SIZE_PX} ${MINIMAP_SIZE_PX}`}
-      >
-        <g ref={minimapGroupRef} transform={initialMinimapTransform}>
-          <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
-          <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
-          {/* One dot per rival, written by aiIndex (see AICar.tsx) - plain
-              world-space dots inside the same rotating group as the track
-              path, so they inherit the egocentric transform for free. */}
-          {!qualifyingSession && rivals.map((rival, k) => (
-            <circle
-              key={rival.code}
-              ref={(el) => {
-                aiMarkerEls.current[k] = el;
-              }}
-              cx={track.startPos.x}
-              cy={track.startPos.z}
-              r={5}
-              fill={rival.color}
-            />
-          ))}
-        </g>
-        {/* Fixed at the box center, always pointing up - the world rotates
-            around this marker instead of the marker rotating, so there's no
-            heading-arrow rotation math to get backwards. */}
-        <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
-      </svg>
-        <ControlsPanel
-          sideMirrorsEnabled={sideMirrorsEnabled}
-          onToggleSideMirrors={toggleSideMirrors}
-        />
+      {/* Bottom-right map block. It is a sibling of the telemetry bottomBar,
+          and its right offset is a CSS variable so both stay side by side:
+          the map block owns the right edge, the bar owns everything left of
+          it (see .minimap / .bottomBar in race.module.css). */}
+      <div className={styles.minimapBlock}>
+        <span className={styles.minimapLabel}>MAP</span>
+        <svg
+          className={styles.minimap}
+          width={MINIMAP_SIZE_PX}
+          height={MINIMAP_SIZE_PX}
+          viewBox={`0 0 ${MINIMAP_SIZE_PX} ${MINIMAP_SIZE_PX}`}
+        >
+          <g ref={minimapGroupRef} transform={initialMinimapTransform}>
+            <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
+            <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
+            {/* One dot per rival, written by aiIndex (see AICar.tsx) - plain
+                world-space dots inside the same rotating group as the track
+                path, so they inherit the egocentric transform for free. */}
+            {!qualifyingSession && rivals.map((rival, k) => (
+              <circle
+                key={rival.code}
+                ref={(el) => {
+                  aiMarkerEls.current[k] = el;
+                }}
+                cx={track.startPos.x}
+                cy={track.startPos.z}
+                r={5}
+                fill={rival.color}
+              />
+            ))}
+          </g>
+          {/* Fixed at the box center, always pointing up - the world rotates
+              around this marker instead of the marker rotating, so there's no
+              heading-arrow rotation math to get backwards. */}
+          <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
+        </svg>
+      </div>
+      <ControlsPanel
+        sideMirrorsEnabled={sideMirrorsEnabled}
+        onToggleSideMirrors={toggleSideMirrors}
+      />
       </div>
       <MobileControls
         inputRef={touchInputRef}
