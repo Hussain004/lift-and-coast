@@ -266,7 +266,7 @@ export function MobileControls({
           <button
             type="button"
             className={`${styles.mobileActionButton} ${styles.mobileActionBlue} ${sideMirrorsEnabled ? styles.mobileActionActive : ""}`}
-            disabled={disabled}
+            disabled={false}
             aria-pressed={sideMirrorsEnabled}
             onClick={onToggleSideMirrors}
           >
