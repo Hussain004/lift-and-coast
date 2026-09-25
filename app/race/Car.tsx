@@ -1425,7 +1425,9 @@ export function Car({
           `  //  <a href="${window.location.pathname}${window.location.search}">DRIVE AGAIN</a>  //  <a href="/">MENU</a>`;
       }
       const wasNewBest =
-        continuousLap && (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
+        eligible &&
+        continuousLap &&
+        (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
         bestLapRef.current = lap.lastLapSeconds;
       }
