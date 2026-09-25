@@ -116,7 +116,7 @@ const FAST_AI_PACE_THRESHOLD = 1.1;
 // corner-dense lap that meant nearly perpetual full braking and the AI
 // crawled - the gate is the profile's own assumption, not a second one.)
 const BRAKE_PLANNING_METERS = 250;
-const MAX_AI_PACE_SCALE = 1.24;
+const MAX_AI_PACE_SCALE = 1.28;
 const STEER_GAIN = 1.0;
 const SPA_OPTIMAL_CROSS_TRACK_GAIN = 1.0;
 const SPA_OPTIMAL_CORNER_LOOKAHEAD_METERS = 10;
@@ -323,9 +323,9 @@ export function computeAIControls(
   const spaOptimal = steeringMode === "spa-optimal";
   // Every generated line carries a corner pace cap. The default profile's
   // cap is the existing 1.18 ceiling, so this is inert for Pro/lower tiers;
-  // Hard and Ace profiles can lower it without changing the target line or
+  // Pro and Ace profiles can lower it without changing the target line or
   // handing racecraft a new actuator. Straight-line deployment keeps the
-  // normal 1.24 envelope, while corners remain bounded where a small target
+  // normal 1.28 envelope, while corners remain bounded where a small target
   // shift can otherwise turn into a snap.
   const profileCornerPaceCap = nearestPoint.steeringMaxPace;
   const effectivePace = profileCornerPaceCap !== undefined

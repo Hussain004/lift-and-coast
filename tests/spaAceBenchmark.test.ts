@@ -20,10 +20,10 @@ const MAX_OFF_TRACK_METERS = 3;
 const ACE_STRAIGHT_AERO_THRESHOLD_MS = 65;
 const ACE_STRAIGHT_AERO_PREVIEW_METERS = 300;
 
-describe("Hard Spa standing-start benchmark", () => {
+describe("Pro Spa standing-start benchmark", () => {
   it("beats the player from a standing start without a track-limit excursion", async () => {
     const track = getTrack("spa");
-    const line = computeRacingLine(track, "hard");
+    const line = computeRacingLine(track, "pro");
     const quality = analyzeRacingLine(track, line);
     let previousProgress = 0;
     let lapStart = 0;
@@ -56,7 +56,7 @@ describe("Hard Spa standing-start benchmark", () => {
         }
         return {
           ...controls,
-          // A solo Ace qualifying run has the full straight-line deployment
+          // A solo Pro qualifying run has the full straight-line deployment
           // envelope available. Traffic racing still uses the shared energy
           // and racecraft gates in AICar.tsx.
           boostMultiplier: DEPLOY_BOOST_MULTIPLIER,
@@ -65,7 +65,7 @@ describe("Hard Spa standing-start benchmark", () => {
       },
       {
         engineForce:
-          DEFAULT_ENGINE_FORCE * difficultyEngineForceScale("hard", track.id),
+          DEFAULT_ENGINE_FORCE * difficultyEngineForceScale("pro", track.id),
         brakeForce: DEFAULT_BRAKE_FORCE,
         stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
         track,

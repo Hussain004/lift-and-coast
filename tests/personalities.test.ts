@@ -15,40 +15,39 @@ import {
 } from "../lib/ai/personalities";
 
 describe("parseDifficulty", () => {
-  it("accepts the five tiers, defaulting to Pro", () => {
+  it("accepts the four tiers, defaulting to Pro", () => {
     expect(parseDifficulty("rookie")).toBe("rookie");
     expect(parseDifficulty("club")).toBe("club");
     expect(parseDifficulty("pro")).toBe("pro");
-    expect(parseDifficulty("hard")).toBe("hard");
     expect(parseDifficulty("ace")).toBe("ace");
     expect(parseDifficulty(null)).toBe(DEFAULT_DIFFICULTY);
+    expect(parseDifficulty("hard")).toBe(DEFAULT_DIFFICULTY);
     expect(parseDifficulty("legend")).toBe(DEFAULT_DIFFICULTY);
   });
 });
 
 describe("difficulty scales", () => {
-  it("orders pace rookie < club < pro < hard < ace", () => {
-    const scales = (["rookie", "club", "pro", "hard", "ace"] as const).map(
+  it("orders pace rookie < club < pro < ace", () => {
+    const scales = (["rookie", "club", "pro", "ace"] as const).map(
       (difficulty) => difficultyPaceScale(difficulty)
     );
     expect(scales).toEqual([...scales].sort((a, b) => a - b));
-    expect(difficultyPaceScale("pro")).toBe(1);
-    expect(difficultyPaceScale("ace")).toBeGreaterThan(1.02);
+    expect(difficultyPaceScale("pro")).toBeGreaterThan(1.1);
+    expect(difficultyPaceScale("ace")).toBeGreaterThan(difficultyPaceScale("pro"));
     expect(difficultyPaceScale("rookie")).toBeLessThan(0.97);
   });
 
-  it("gives Hard and Ace real acceleration advantages without changing Pro", () => {
-    expect(difficultyEngineForceScale("hard")).toBeGreaterThan(1.1);
-    expect(difficultyEngineForceScale("ace")).toBeGreaterThan(difficultyEngineForceScale("hard"));
-    expect(difficultyEngineForceScale("hard", "spa")).toBe(1.5);
+  it("gives Pro and Ace real acceleration advantages", () => {
+    expect(difficultyEngineForceScale("pro")).toBeGreaterThan(1.1);
+    expect(difficultyEngineForceScale("ace")).toBeGreaterThan(difficultyEngineForceScale("pro"));
+    expect(difficultyEngineForceScale("pro", "spa")).toBe(1.5);
     expect(difficultyEngineForceScale("ace", "spa")).toBeGreaterThan(1.5);
-    expect(difficultyEngineForceScale("hard", "suzuka")).toBe(1);
+    expect(difficultyEngineForceScale("pro", "suzuka")).toBe(1);
     expect(difficultyEngineForceScale("ace", "suzuka")).toBeGreaterThan(1);
-    expect(difficultyEngineForceScale("hard", "madrid")).toBe(1);
+    expect(difficultyEngineForceScale("pro", "madrid")).toBe(1);
     expect(difficultyEngineForceScale("ace", "madrid")).toBeGreaterThan(1);
-    expect(difficultyEngineForceScale("hard", "monaco")).toBe(1.12);
-    expect(difficultyEngineForceScale("ace", "monaco")).toBe(1.05);
-    expect(difficultyEngineForceScale("pro")).toBe(1);
+    expect(difficultyEngineForceScale("pro", "monaco")).toBe(1.12);
+    expect(difficultyEngineForceScale("ace", "monaco")).toBe(1);
     expect(difficultyEngineForceScale("club")).toBeLessThan(1);
     expect(difficultyEngineForceScale("rookie")).toBeLessThan(difficultyEngineForceScale("club"));
   });
@@ -56,8 +55,7 @@ describe("difficulty scales", () => {
   it("scales mistakes down with tier", () => {
     expect(difficultyMistakeScale("rookie")).toBeGreaterThan(difficultyMistakeScale("club"));
     expect(difficultyMistakeScale("club")).toBeGreaterThan(difficultyMistakeScale("pro"));
-    expect(difficultyMistakeScale("pro")).toBeGreaterThan(difficultyMistakeScale("hard"));
-    expect(difficultyMistakeScale("hard")).toBeGreaterThan(difficultyMistakeScale("ace"));
+    expect(difficultyMistakeScale("pro")).toBeGreaterThan(difficultyMistakeScale("ace"));
   });
 
   it("keeps aggression shifts small and ordered", () => {
@@ -161,7 +159,7 @@ describe("mulberry32", () => {
 });
 
 describe("DIFFICULTY_OPTIONS", () => {
-  it("lists five labeled tiers", () => {
-    expect(DIFFICULTY_OPTIONS.map((o) => o.id)).toEqual(["rookie", "club", "pro", "hard", "ace"]);
+  it("lists four labeled tiers", () => {
+    expect(DIFFICULTY_OPTIONS.map((o) => o.id)).toEqual(["rookie", "club", "pro", "ace"]);
   });
 });

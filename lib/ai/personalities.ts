@@ -12,31 +12,38 @@
 // trait acts through PACE levers only - target-speed scaling, throttle
 // lifts, a bounded lateral offset on straights. The steering/lookahead
 // control law itself is never retuned per driver.
-export type AIDifficulty = "rookie" | "club" | "pro" | "hard" | "ace";
+export type AIDifficulty = "rookie" | "club" | "pro" | "ace";
 
 export const DIFFICULTY_OPTIONS: { id: AIDifficulty; label: string; blurb: string }[] = [
   { id: "rookie", label: "Rookie", blurb: "Gentle field, generous mistakes" },
   { id: "club", label: "Club", blurb: "Lively midfield, occasional errors" },
-  { id: "pro", label: "Pro", blurb: "The reference pace" },
-  { id: "hard", label: "Hard", blurb: "Calibrated fast lines and strong launches" },
-  { id: "ace", label: "Ace", blurb: "Elite pace, maximum commitment, rare mistakes" },
+  { id: "pro", label: "Pro", blurb: "Calibrated fast lines and strong launches" },
+  { id: "ace", label: "Ace", blurb: "Maximum pace, commitment, and aggression" },
 ];
 
 export const DEFAULT_DIFFICULTY: AIDifficulty = "pro";
 
 export function parseDifficulty(raw: string | null): AIDifficulty {
-  return raw === "rookie" || raw === "club" || raw === "hard" || raw === "ace"
+  return raw === "rookie" || raw === "club" || raw === "pro" || raw === "ace"
     ? raw
     : DEFAULT_DIFFICULTY;
 }
 
-/** Global pace multiplier applied to every AI target speed. Pro remains the
- * reference; Hard carries the previously calibrated fast-line regime, while
- * Ace adds another bounded pace step for the top difficulty. */
+/** Global pace multiplier applied to every AI target speed. Pro carries the
+ * previously validated fast-line regime; Ace adds another bounded pace step
+ * for the top difficulty. */
+const PRO_PACE_SCALE_BY_TRACK: Record<string, number> = {
+  // Spielberg's open layout can use more of its long straights while the
+  // Pro corner cap remains the stability guard.
+  spielberg: 1.22,
+};
+
 const ACE_PACE_SCALE_BY_TRACK: Record<string, number> = {
   // Suzuka's bridge/load transition rewards a slightly lower target pace;
-  // its Ace line and engine calibration still make it faster than Hard.
+  // its Ace line and engine calibration still make it faster than Pro.
   suzuka: 1.17,
+  monaco: 1.2,
+  spielberg: 1.24,
 };
 
 export function difficultyPaceScale(difficulty: AIDifficulty, trackId?: string): number {
@@ -46,31 +53,29 @@ export function difficultyPaceScale(difficulty: AIDifficulty, trackId?: string):
     case "club":
       return 0.985;
     case "pro":
-      return 1.0;
-    case "hard":
-      return 1.18;
+      return (trackId === undefined ? undefined : PRO_PACE_SCALE_BY_TRACK[trackId]) ?? 1.18;
     case "ace":
-      return (trackId === undefined ? undefined : ACE_PACE_SCALE_BY_TRACK[trackId]) ?? 1.2;
+      return (trackId === undefined ? undefined : ACE_PACE_SCALE_BY_TRACK[trackId]) ?? 1.28;
   }
 }
 
 /**
  * Engine-force multiplier for the AI field. Pace scale changes the target
  * speed envelope; this changes how quickly the car can actually get there.
- * Hard keeps the validated per-track package. Ace adds a further, still
+ * Pro keeps the validated per-track package. Ace adds a further, still
  * bounded acceleration step; the boost cap in vehicle.ts applies afterward.
  */
 const DIFFICULTY_ENGINE_FORCE_SCALE_BY_TRACK: Record<
   string,
-  { hard: number; ace: number }
+  { pro: number; ace: number }
 > = {
-  spa: { hard: 1.5, ace: 1.55 },
-  suzuka: { hard: 1.0, ace: 1.03 },
-  madrid: { hard: 1.0, ace: 1.05 },
+  spa: { pro: 1.5, ace: 1.55 },
+  suzuka: { pro: 1.0, ace: 1.03 },
+  madrid: { pro: 1.0, ace: 1.05 },
   // Monaco's narrow grid rewards a calmer launch force; its higher pace
   // target still gives Ace the quicker lap without a 20-car contact spike.
-  monaco: { hard: 1.12, ace: 1.05 },
-  spielberg: { hard: 1.12, ace: 1.12 },
+  monaco: { pro: 1.12, ace: 1.0 },
+  spielberg: { pro: 1.27, ace: 1.27 },
 };
 
 export function difficultyEngineForceScale(
@@ -83,15 +88,13 @@ export function difficultyEngineForceScale(
     case "club":
       return 0.98;
     case "pro":
-      return 1.0;
-    case "hard":
-      return (trackId === undefined ? undefined : DIFFICULTY_ENGINE_FORCE_SCALE_BY_TRACK[trackId]?.hard) ?? 1.12;
+      return (trackId === undefined ? undefined : DIFFICULTY_ENGINE_FORCE_SCALE_BY_TRACK[trackId]?.pro) ?? 1.12;
     case "ace":
-      return (trackId === undefined ? undefined : DIFFICULTY_ENGINE_FORCE_SCALE_BY_TRACK[trackId]?.ace) ?? 1.2;
+      return (trackId === undefined ? undefined : DIFFICULTY_ENGINE_FORCE_SCALE_BY_TRACK[trackId]?.ace) ?? 1.35;
   }
 }
 
-/** Global aggression shift applied to every AI driver. Hard and Ace shift the
+/** Global aggression shift applied to every AI driver. Pro and Ace shift the
  * whole field into lunge range earlier and deploy Push-to-Pass more freely. */
 export function difficultyAggressionShift(difficulty: AIDifficulty): number {
   switch (difficulty) {
@@ -100,8 +103,6 @@ export function difficultyAggressionShift(difficulty: AIDifficulty): number {
     case "club":
       return -0.08;
     case "pro":
-      return 0;
-    case "hard":
       return 0.35;
     case "ace":
       return 0.5;
@@ -116,8 +117,6 @@ export function difficultyMistakeScale(difficulty: AIDifficulty): number {
     case "club":
       return 1.2;
     case "pro":
-      return 1.0;
-    case "hard":
       return 0.35;
     case "ace":
       return 0.2;

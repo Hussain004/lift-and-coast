@@ -62,6 +62,8 @@ import {
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import {
+  AI_LAUNCH_LATERAL_RATE_NARROW_MS,
+  AI_LAUNCH_LATERAL_RATE_SPA_MS,
   applyLaunchControl,
   createRacecraftState,
   lateralAtLineIndex,
@@ -315,7 +317,7 @@ export function AICar({
   // plan's 2026 rules. boostEligible rides one tick behind (same pattern
   // as zoneRef above) - one tick of lag at 60Hz is nothing next to a
   // multi-second deploy.
-  const highDifficulty = difficulty === "hard" || difficulty === "ace";
+  const highDifficulty = difficulty === "pro" || difficulty === "ace";
   const energyRef = useRef(createEnergySystem(1, highDifficulty ? "attack" : "balanced"));
   const batteryRef = useRef(1);
   const strategyRef = useRef(createStrategySystem({ mode: highDifficulty ? "push" : "balanced" }));
@@ -352,7 +354,7 @@ export function AICar({
   // both per-tick full-line scans collapse into one windowed one.
   const nearestIdxRef = useRef(0);
 
-  const lineProfile = difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default";
+  const lineProfile = difficulty === "ace" ? "ace" : difficulty === "pro" ? "pro" : "default";
   const racingLine = useMemo(() => getRacingLine(track, lineProfile), [track, lineProfile]);
   const lineRoom = useMemo(() => getLineRoom(track, lineProfile), [track, lineProfile]);
 
@@ -656,6 +658,12 @@ export function AICar({
         batteryFraction: batteryRef.current,
         mistakeActive: mistakeTimeLeftRef.current > 0,
         aeroMode: aeroModeRef.current,
+        launchLateralRateMs:
+          track.id === "monaco"
+            ? AI_LAUNCH_LATERAL_RATE_NARROW_MS
+            : track.id === "spa"
+              ? AI_LAUNCH_LATERAL_RATE_SPA_MS
+              : undefined,
       });
       aeroModeRef.current = step.aeroMode;
       paceMult = step.paceMult;

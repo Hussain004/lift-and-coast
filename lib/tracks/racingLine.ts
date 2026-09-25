@@ -125,7 +125,23 @@ export const MAX_ACCEL_MS2 = 8.5;
  * the difference between following a point and following the line's tangent.
  */
 export type AISteeringMode = "pure-pursuit" | "spa-optimal";
-export type RacingLineProfile = "default" | "hard" | "ace";
+export type RacingLineProfile = "default" | "pro" | "ace";
+
+/**
+ * Acceleration ceiling used when shaping a profile's forward speed pass.
+ * Most profiles retain the shared conservative envelope; a calibrated
+ * circuit may opt into a different bounded value without weakening the
+ * quality gate for every other line.
+ */
+export function racingLineAccelerationLimitMs2(
+  trackId: string,
+  profile: RacingLineProfile
+): number {
+  if (profile === "default") return MAX_ACCEL_MS2;
+  if (trackId === "suzuka") return 8;
+  if (trackId === "spielberg") return 11;
+  return MAX_ACCEL_MS2;
+}
 
 export interface RacingLineTuning {
   maxOffsetFractionOfHalfWidth: number;
@@ -157,26 +173,24 @@ const DEFAULT_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.18,
 };
 
-// Hard profiles use the previously validated fast-line regime. The common
+// Pro profiles use the previously validated fast-line regime. The common
 // package is now the starting point for every registered circuit: tighter
 // local curvature sensing, a modest lateral-grip allowance, and a lower
 // corner pace cap while retaining the proven pure-pursuit path. Spa alone
 // opts into the separately validated tangent/cross-track controller below.
-// Individual circuits can tighten or relax these values in TRACK_TUNING
+// Individual circuits can tighten or relax these values in PRO_TRACK_TUNING
 // without changing the default profile or shared physics.
 //
-// Ace deliberately starts from the Hard geometry for now: its extra difficulty
-// comes from a higher pace/engine envelope, which keeps the newly separated
-// top tier fast without immediately asking the line tracker to carry a second
-// unvalidated geometry change. The all-track gates can promote a circuit into
-// a distinct Ace line later without changing the difficulty contract.
+// Ace builds on the Pro geometry with a higher pace/engine envelope and
+// circuit-specific top-tier overrides, keeping the extra difficulty measurable
+// without changing the validated controller law.
 //
 // Spa was the first circuit calibrated against a measured standing-start lap
 // (2:08). Its values remain the reference calibration; the all-track gates
 // below require each other circuit to earn the same profile through its own
 // completed-lap and track-limit checks rather than assuming Spa's geometry
 // transfers unchanged.
-const HARD_TUNING: RacingLineTuning = {
+const PRO_TUNING: RacingLineTuning = {
   ...DEFAULT_TUNING,
   maxOffsetFractionOfHalfWidth: 0.68,
   speedLookaheadPoints: 20,
@@ -189,16 +203,21 @@ const HARD_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.12,
 };
 
-// Ace uses the same validated geometry as Hard for the first rollout. The
+// Ace uses the same validated geometry as Pro for the first rollout. The
 // difficulty scales in personalities.ts provide the additional pace,
 // acceleration, aggression, and mistake envelope; keeping the geometry shared
 // makes the new tier's speed gain measurable and its stability regression
 // localized to those inputs.
 const ACE_TUNING: RacingLineTuning = {
-  ...HARD_TUNING,
+  ...PRO_TUNING,
+  // Ace may carry more corner pace than the validated Pro cap; the global
+  // path-follower ceiling and track-limit gates still bound the resulting
+  // overspeed. Per-circuit overrides below remain conservative where the
+  // original calibration requires it.
+  steeringMaxPace: 1.182,
 };
 
-// Per-track Hard/Ace overrides are deliberately partial so the common
+// Per-track Pro/Ace overrides are deliberately partial so the common
 // calibration remains visible and a new circuit automatically receives a
 // tested profile. These values are populated only where the common package
 // needs a circuit-specific safety or geometry adjustment.
@@ -207,16 +226,24 @@ const PROFILE_FALLBACK_TUNING: RacingLineTuning = {
   steeringMaxPace: 1.08,
 };
 
-const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
-  monza: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.1 },
+const PRO_TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
+  monza: { ...PRO_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.1 },
   // The bridge load transition and a full 20-car launch both reward a lower
   // corner cap than the open-circuit default; the line itself is still much
   // faster than the reference profile.
-  suzuka: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.04 },
+  suzuka: { ...PRO_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.04 },
   monaco: { ...PROFILE_FALLBACK_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
-  zandvoort: { ...PROFILE_FALLBACK_TUNING, lateralSafetyFactor: 0.85, steeringMaxPace: 1.08 },
-  miami: { ...HARD_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
-  madrid: { ...HARD_TUNING, lateralSafetyFactor: 0.8, steeringMaxPace: 1.04 },
+  zandvoort: { ...PROFILE_FALLBACK_TUNING, lateralSafetyFactor: 0.85, steeringMaxPace: 1.04 },
+  miami: { ...PRO_TUNING, lateralSafetyFactor: 0.9, steeringMaxPace: 1.08 },
+  madrid: { ...PRO_TUNING, lateralSafetyFactor: 0.8, steeringMaxPace: 1.04 },
+  spielberg: {
+    ...PRO_TUNING,
+    maxOffsetFractionOfHalfWidth: 0.5,
+    lateralSafetyFactor: 1.15,
+    maxSpeedMs: 108,
+    maxBoostSpeedMs: 116,
+    steeringMaxPace: 1.15,
+  },
   spa: {
     maxOffsetFractionOfHalfWidth: 0.6,
     speedLookaheadPoints: 10,
@@ -233,25 +260,42 @@ const TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
   },
 };
 
-// Ace-only line overrides start from the validated Hard package. These are
+// Ace-only line overrides start from the validated Pro package. These are
 // deliberately conservative where the first global Ace pace pass exposed a
 // bridge/traffic or high-speed-runoff sensitivity; the difficulty scales
 // still provide the extra straight-line commitment.
 const ACE_TRACK_TUNING: Record<string, Partial<RacingLineTuning>> = {
   spa: {
-    ...TRACK_TUNING.spa,
+    ...PRO_TRACK_TUNING.spa,
     maxSpeedMs: 95,
     maxBoostSpeedMs: 103,
     steeringMaxPace: 1.11,
   },
   suzuka: {
-    ...TRACK_TUNING.suzuka,
+    ...PRO_TRACK_TUNING.suzuka,
     maxSpeedMs: 92,
     maxBoostSpeedMs: 100,
     steeringMaxPace: 1.06,
   },
+  monaco: {
+    ...PRO_TRACK_TUNING.monaco,
+    steeringMaxPace: 1.08,
+  },
+  melbourne: {
+    ...PRO_TUNING,
+    steeringMaxPace: 1.1,
+  },
+  // Budapest's long, fast entry sequence is the one place where the global
+  // Ace corner step needs a conservative cap; the pace/engine step still
+  // keeps it ahead of Pro without running wide.
+  budapest: {
+    ...PRO_TUNING,
+    steeringMaxPace: 1.12,
+  },
+  // Spielberg's long open sections reward a little more top-speed and corner
+  // pace for Ace while retaining the validated Pro line shape.
   spielberg: {
-    ...HARD_TUNING,
+    ...PRO_TRACK_TUNING.spielberg,
   },
 };
 
@@ -261,20 +305,20 @@ function tuningForTrack(trackId: string, profile: RacingLineProfile): RacingLine
   if (profile === "default") return { ...DEFAULT_TUNING };
   // Synthetic tracks used by unit tests (and any future unregistered data)
   // must not silently inherit an aggressive racing-line package. Only the
-  // registry's known circuits opt into the common Hard/Ace calibration;
+  // registry's known circuits opt into the common Pro/Ace calibration;
   // unknown IDs get the conservative fallback until explicitly calibrated.
   const base = REGISTERED_TRACK_IDS.has(trackId)
     ? profile === "ace"
       ? ACE_TUNING
-      : HARD_TUNING
+      : PRO_TUNING
     : PROFILE_FALLBACK_TUNING;
   return {
     ...DEFAULT_TUNING,
     ...base,
     ...(REGISTERED_TRACK_IDS.has(trackId)
       ? profile === "ace"
-        ? { ...TRACK_TUNING[trackId], ...ACE_TRACK_TUNING[trackId] }
-        : TRACK_TUNING[trackId]
+        ? { ...PRO_TRACK_TUNING[trackId], ...ACE_TRACK_TUNING[trackId] }
+        : PRO_TRACK_TUNING[trackId]
       : undefined),
   };
 }
@@ -668,7 +712,7 @@ export function computeRacingLine(
   // acceleration ceiling even while the other circuits use the more realistic
   // exit acceleration above; the live and headless AI must not approach that
   // crossover deck with a freshly raised corner-exit target.
-  const profileAccelMs2 = track.id === "suzuka" ? 8 : MAX_ACCEL_MS2;
+  const profileAccelMs2 = racingLineAccelerationLimitMs2(track.id, profile);
   const targetSpeedMs = computeCappedSpeedProfile(curveOnlySpeed, segmentLengths, profileAccelMs2, MAX_DECEL_MS2);
 
   // Keep the safety-tuned profile above for AI stability, but derive a second

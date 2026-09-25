@@ -64,9 +64,9 @@ export function parseRivals(raw: string | null): number {
 }
 
 // AI difficulty (see lib/ai/personalities.ts): unknown/missing values fall
-// back to Pro so every existing link keeps today's reference pace.
+// back to Pro, the calibrated fast-line reference for existing links.
 export function parseDifficulty(raw: string | null): AIDifficulty {
-  if (raw === "rookie" || raw === "club" || raw === "hard" || raw === "ace") return raw;
+  if (raw === "rookie" || raw === "club" || raw === "pro" || raw === "ace") return raw;
   return DEFAULT_DIFFICULTY;
 }
 
@@ -214,7 +214,7 @@ function clampWeather(raw: unknown): WeatherPreset {
 }
 
 function clampDifficulty(raw: unknown): AIDifficulty {
-  return raw === "rookie" || raw === "club" || raw === "hard" || raw === "ace"
+  return raw === "rookie" || raw === "club" || raw === "pro" || raw === "ace"
     ? raw
     : DEFAULT_DIFFICULTY;
 }

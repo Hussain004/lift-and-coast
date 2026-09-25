@@ -72,7 +72,7 @@ function RacingLine({
   const { geometry, line } = useMemo(() => {
     const line = getRacingLine(
       track,
-      difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default"
+      difficulty === "ace" ? "ace" : difficulty === "pro" ? "pro" : "default"
     );
     const { positions, colors, indices } = buildRacingLineRibbon(
       line,

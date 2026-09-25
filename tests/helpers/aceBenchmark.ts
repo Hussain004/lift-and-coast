@@ -40,7 +40,10 @@ export async function runStandingStartLap(
 ): Promise<AceLapBenchmark> {
   const line = computeRacingLine(track, profile);
   const quality = analyzeRacingLine(track, line);
-  const benchmarkDifficulty: AIDifficulty = profile === "default" ? "pro" : profile;
+  // The default line is the conservative lower-tier reference; Pro now owns
+  // the calibrated fast-line regime, so use Club for the apples-to-apples
+  // baseline rather than pairing the default geometry with Pro pace.
+  const benchmarkDifficulty: AIDifficulty = profile === "default" ? "club" : profile;
   // Slow circuits need more than the old fixed 180s window. This remains a
   // one-lap benchmark, with a generous bounded margin rather than an
   // endurance test.
@@ -70,8 +73,7 @@ export async function runStandingStartLap(
     },
     {
       engineForce:
-        DEFAULT_ENGINE_FORCE *
-        (benchmarkDifficulty === "pro" ? 1 : difficultyEngineForceScale(benchmarkDifficulty, track.id)),
+        DEFAULT_ENGINE_FORCE * difficultyEngineForceScale(benchmarkDifficulty, track.id),
       brakeForce: DEFAULT_BRAKE_FORCE,
       stabilizeStrength: DEFAULT_STABILIZE_STRENGTH,
       track,

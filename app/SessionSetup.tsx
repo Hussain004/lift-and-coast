@@ -64,8 +64,8 @@ const QUALI_FORMATS: { id: QualifyingFormat; label: string }[] = [
 // Persists the last picks (plan section 10) so the next session opens the
 // way the previous one left it. Difficulty tiers scale the AI field's pace
 // and aggression only (see lib/ai/personalities.ts) - the player's car is
-// untouched, and Pro is the pre-tier reference pace, so old links (which
-// carry no ?diff=) drive exactly as before.
+// untouched. Pro is the calibrated fast-line reference, so old links (which
+// carry no ?diff=) open on the new Pro regime.
 export function SessionSetup() {
   const initial = loadSessionSetupPrefs();
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);

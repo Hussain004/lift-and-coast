@@ -41,6 +41,14 @@ const LAUNCH_HOLD_SECONDS = 5;
  * changing the line or removing traffic awareness. */
 export const AI_LAUNCH_THROTTLE_SECONDS = 2.4;
 export const AI_LAUNCH_THROTTLE_SPEED_MS = 22;
+export const AI_LAUNCH_LATERAL_SECONDS = 1.5;
+export const AI_LAUNCH_LATERAL_RATE_MS = 2.4;
+/** Monaco's narrow grid needs the same immediate peel with less lateral
+ * energy, otherwise a full field spends the launch crossing columns. */
+export const AI_LAUNCH_LATERAL_RATE_NARROW_MS = 0.3;
+/** Spa's long grid-to-turn transition also benefits from a gentler first
+ * lateral blend, while the launch throttle and traffic gates stay unchanged. */
+export const AI_LAUNCH_LATERAL_RATE_SPA_MS = 0.6;
 const AI_LAUNCH_TRAFFIC_CLEARANCE_METERS = 24;
 /** A rolling launch is not a queue: leave a little room, but do not brake to a crawl. */
 const LAUNCH_FOLLOW_GAP_METERS = 8;
@@ -430,6 +438,8 @@ export interface RacecraftInput {
   mistakeActive: boolean;
   /** Current physical wing mode; the strategy returns the mode for this tick. */
   aeroMode?: AeroMode;
+  /** Optional track-specific launch lateral rate (m/s). */
+  launchLateralRateMs?: number;
 }
 
 export interface RacecraftOutput {
@@ -728,9 +738,18 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
     0.25 + 0.35 * own
   );
   // Frozen on the grid: before the lights go out every car keeps its own
-  // column. Converging onto the line early put the second row in the pole
-  // car's lane before anyone had moved.
-  const maxStep = state.raceSeconds > 0 ? rate * dt : 0;
+  // column. On the launch, give the first rolling second a bounded lateral
+  // kick so the field peels off the grid instead of spending several seconds
+  // driving parallel columns. The racecraft band above still prevents a car
+  // from steering into a nearby overlap.
+  const launchLateralActive =
+    state.raceSeconds > 0 &&
+    state.raceSeconds < AI_LAUNCH_LATERAL_SECONDS &&
+    own < AI_LAUNCH_THROTTLE_SPEED_MS;
+  const lateralRate = launchLateralActive
+    ? Math.max(rate, input.launchLateralRateMs ?? AI_LAUNCH_LATERAL_RATE_MS)
+    : rate;
+  const maxStep = state.raceSeconds > 0 ? lateralRate * dt : 0;
   state.offset += clamp(bounded - state.offset, -maxStep, maxStep);
 
   // Pace: slipstream and attack bonus up, then every cap down.

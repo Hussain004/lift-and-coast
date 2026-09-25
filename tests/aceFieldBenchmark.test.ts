@@ -15,7 +15,7 @@ const ACE_GRID_CODES = [
   "BEA", "NOR", "PIA", "RUS", "ANT", "LAW", "LIN", "VER", "HAD", "SAI",
 ];
 const ACE_GRID_TRACKS = ["spa", "suzuka", "monaco", "madrid"] as const;
-const DIFFICULTIES = ["hard", "ace"] as const;
+const DIFFICULTIES = ["pro", "ace"] as const;
 
 describe("all-track Ace field stability benchmark", () => {
   // This is a traffic/launch stability sample; the opt-in standing-start

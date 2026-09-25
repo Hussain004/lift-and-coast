@@ -281,6 +281,13 @@ describe("stepRacecraft", () => {
     expect(out.paceMult).toBeGreaterThanOrEqual(1);
   });
 
+  it("peels a launched car off its grid column immediately", () => {
+    const state = { ...createRacecraftState(), initialized: true, offset: 2.3, raceSeconds: 0.02 };
+    stepRacecraft(state, input({ ownSpeedMs: 1, ownLateralMeters: 2.3 }));
+    expect(state.offset).toBeLessThan(2.3);
+    expect(state.offset).toBeGreaterThan(2.25);
+  });
+
   it("opens a full-throttle launch window without overriding a stopped car", () => {
     const launch = createRacecraftState();
     const open = stepRacecraft(launch, input({ ownSpeedMs: 0, basePace: 1.1 }));

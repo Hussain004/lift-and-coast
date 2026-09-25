@@ -43,6 +43,8 @@ import {
   type AIDifficulty,
 } from "../../lib/ai/personalities";
 import {
+  AI_LAUNCH_LATERAL_RATE_NARROW_MS,
+  AI_LAUNCH_LATERAL_RATE_SPA_MS,
   applyLaunchControl,
   createRacecraftState,
   lateralAtLineIndex,
@@ -169,7 +171,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
   } = options;
   const track = (options.track ?? silverstone) as TrackData;
   const lineProfile =
-    difficulty === "ace" ? "ace" : difficulty === "hard" ? "hard" : "default";
+    difficulty === "ace" ? "ace" : difficulty === "pro" ? "pro" : "default";
   const racingLine = getRacingLine(track, lineProfile);
   const room = getLineRoom(track, lineProfile);
   const timestep = 1 / 60;
@@ -379,6 +381,12 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         batteryFraction: car.battery,
         mistakeActive: false,
         aeroMode: car.aeroMode,
+        launchLateralRateMs:
+          track.id === "monaco"
+            ? AI_LAUNCH_LATERAL_RATE_NARROW_MS
+            : track.id === "spa"
+              ? AI_LAUNCH_LATERAL_RATE_SPA_MS
+              : undefined,
       });
       car.aeroMode = step.aeroMode;
       if (step.attempting) car.attemptTicks++;
