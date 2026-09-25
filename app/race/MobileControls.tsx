@@ -190,11 +190,15 @@ export function MobileControls({
   disabled = false,
   onPause,
   onReplay,
+  onToggleSideMirrors,
+  sideMirrorsEnabled = true,
 }: {
   inputRef: React.RefObject<TouchDriveInput | null>;
   disabled?: boolean;
   onPause?: () => void;
   onReplay?: () => void;
+  onToggleSideMirrors?: () => void;
+  sideMirrorsEnabled?: boolean;
 }) {
   const [stickSize, setStickSize] = useState<TouchStickSize>(() => loadTouchStickSize());
 
@@ -256,6 +260,17 @@ export function MobileControls({
         {onReplay && (
           <button type="button" className={styles.mobileActionButton} disabled={disabled} onClick={onReplay}>
             REPLAY
+          </button>
+        )}
+        {onToggleSideMirrors && (
+          <button
+            type="button"
+            className={`${styles.mobileActionButton} ${styles.mobileActionBlue} ${sideMirrorsEnabled ? styles.mobileActionActive : ""}`}
+            disabled={disabled}
+            aria-pressed={sideMirrorsEnabled}
+            onClick={onToggleSideMirrors}
+          >
+            MIRRORS
           </button>
         )}
         {onPause && (

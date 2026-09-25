@@ -6,6 +6,7 @@ import {
   FLAP_CLOSED_INCLINE_RAD,
   FLAP_OPEN_RAD,
   computeAccentColor,
+  steeringWheelAngle,
   stepFlapAngle,
 } from "../lib/race/carBody";
 import {
@@ -140,6 +141,14 @@ describe("active-aero flap and livery", () => {
     expect(mid).toBeGreaterThan(FLAP_OPEN_RAD);
     expect(stepFlapAngle(FLAP_OPEN_RAD, 0, 1)).toBe(0);
   });
+  it("maps shaped steering input to a bounded wheel angle", () => {
+    expect(steeringWheelAngle(0)).toBe(0);
+    expect(steeringWheelAngle(1)).toBeGreaterThan(0);
+    expect(steeringWheelAngle(-1)).toBeLessThan(0);
+    expect(steeringWheelAngle(4)).toBeCloseTo(steeringWheelAngle(1), 9);
+    expect(steeringWheelAngle(-4)).toBeCloseTo(steeringWheelAngle(-1), 9);
+  });
+
   it("derives a readable accent from a single-paint livery", () => {
     const luminance = (hex: string) => {
       const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

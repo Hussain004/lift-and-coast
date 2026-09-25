@@ -1143,6 +1143,31 @@
   pointer-events: auto;
 }
 
+.controlsHeader {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.controlsMirrorToggle {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+  border: none;
+  background: rgba(57, 255, 136, 0.08);
+  color: #9dffc5;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+}
+
+.controlsMirrorToggle[aria-pressed="false"] {
+  background: rgba(255, 255, 255, 0.04);
+  color: #8993a2;
+}
+
 .controlsToggle {
   width: 100%;
   background: none;
@@ -1155,6 +1180,14 @@
   padding: 8px 12px;
   cursor: pointer;
   text-align: left;
+}
+
+.controlsHeader .controlsToggle {
+  width: auto;
+  flex: 0 0 auto;
+  padding-left: 8px;
+  padding-right: 8px;
+  text-align: center;
 }
 
 .controlsList {
@@ -1827,6 +1860,11 @@
 .mobileActionBlue {
   border-color: rgba(107, 209, 255, 0.8);
   color: #b9e9ff;
+}
+
+.mobileActionActive {
+  background: rgba(107, 209, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(185, 233, 255, 0.25);
 }
 
 .mobileActionPause {

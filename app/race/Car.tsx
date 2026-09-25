@@ -92,9 +92,10 @@ import { weatherLabel } from "@/lib/physics/weather";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { F1CarBody } from "./F1CarBody";
+import { SteeringWheel } from "./CarBodyMesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
-import { FLAP_OPEN_RAD, stepFlapAngle } from "@/lib/race/carBody";
+import { FLAP_OPEN_RAD, steeringWheelAngle, stepFlapAngle } from "@/lib/race/carBody";
 
 const SECTOR_COUNT = 3;
 
@@ -413,6 +414,7 @@ export function Car({
   );
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
+  const steeringWheelRef = useRef<THREE.Group | null>(null);
   // Rear-wing flap pivot (see app/race/F1CarBody.tsx) - rotated open in
   // low-drag mode, like the real active-aero flap.
   const flapRef = useRef<THREE.Group | null>(null);
@@ -1103,13 +1105,18 @@ export function Car({
     // transient null (a remount, a track change) while in cockpit mode
     // can't leave the car permanently invisible with nothing left to
     // restore it.
+    const interiorCamera = cameraMode.current === "cockpit" || cameraMode.current === "helmet";
     if (visualRef?.current) {
-      visualRef.current.visible = cameraMode.current !== "cockpit";
+      visualRef.current.visible = !interiorCamera;
     }
 
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
+    if (steeringWheelRef.current) {
+      steeringWheelRef.current.visible = cameraMode.current === "helmet";
+      steeringWheelRef.current.rotation.z = steeringWheelAngle(input.current.steer);
+    }
     CAR_WHEELS.forEach((wheel, i) => {
       const steerGroup = steerRefs.current[i];
       const spinGroup = spinRefs.current[i];
@@ -1663,6 +1670,7 @@ export function Car({
             compoundRef={tireCompound}
           />
         </group>
+        <SteeringWheel wheelRef={steeringWheelRef} />
       </RigidBody>
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
 import {
@@ -280,8 +280,19 @@ function RaceContent() {
   const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
   const [paused, setPaused] = useState(false);
+  const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(true);
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
+  const toggleSideMirrors = useCallback(() => {
+    setSideMirrorsEnabled((value) => !value);
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyN" && !event.repeat) toggleSideMirrors();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleSideMirrors]);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
@@ -351,6 +362,7 @@ function RaceContent() {
         raceCommandsRef={raceCommandsRef}
         raceOpsSnapshotRef={raceOpsSnapshotRef}
         perfRef={perfRef}
+        sideMirrorsEnabled={sideMirrorsEnabled}
       />
       {!sceneReady && <TrackLoadingFallback />}
       <div className={styles.raceDataStrip}>
@@ -496,13 +508,18 @@ function RaceContent() {
             heading-arrow rotation math to get backwards. */}
         <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
       </svg>
-        <ControlsPanel />
+        <ControlsPanel
+          sideMirrorsEnabled={sideMirrorsEnabled}
+          onToggleSideMirrors={toggleSideMirrors}
+        />
       </div>
       <MobileControls
         inputRef={touchInputRef}
         disabled={singlePlayer && paused}
         onPause={singlePlayer ? togglePaused : undefined}
         onReplay={toggleMobileReplay}
+        onToggleSideMirrors={toggleSideMirrors}
+        sideMirrorsEnabled={sideMirrorsEnabled}
       />
       {singlePlayer && paused && (
         <div className={styles.pauseOverlay} role="dialog" aria-label="Game paused">

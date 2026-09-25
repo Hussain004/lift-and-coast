@@ -14,6 +14,14 @@ export const FLAP_OPEN_RAD = -0.55;
 /** Flap actuator speed - snaps open/shut in about a fifth of a second. */
 export const FLAP_RATE_RAD_S = 2.5;
 
+/** Maximum visual steering-wheel lock for the helmet camera. */
+export const STEERING_WHEEL_MAX_RAD = Math.PI * 0.72;
+
+/** Map the shaped driver command to a bounded steering-wheel angle. */
+export function steeringWheelAngle(steer: number): number {
+  return Math.max(-1, Math.min(1, steer)) * STEERING_WHEEL_MAX_RAD;
+}
+
 /** Rate-limited step toward the flap target: no overshoot, dt-safe. */
 export function stepFlapAngle(current: number, target: number, dtSeconds: number): number {
   const remaining = target - current;

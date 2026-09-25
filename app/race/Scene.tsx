@@ -55,6 +55,7 @@ import { runoffKindForTrack } from "@/lib/tracks/environment";
 import { createWeatherSystem, type WeatherPreset } from "@/lib/physics/weather";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
+import { SideMirrors } from "./SideMirrors";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -278,9 +279,11 @@ function WeatherFX({ weatherRef, target, fogFar }: { weatherRef: React.RefObject
 // real T-cam frames the nose.
 const CHASE_OFFSET = new THREE.Vector3(0, 2.6, 8.5);
 const COCKPIT_OFFSET = new THREE.Vector3(0, 0.65, -0.3);
+const HELMET_OFFSET = new THREE.Vector3(0, 0.56, 0.22);
 const TCAM_OFFSET = new THREE.Vector3(0, 2.2, 5.0);
 const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
+const HELMET_FOV = 90;
 const TCAM_FOV = 70;
 const TV_FOV = 55;
 const ORBIT_FOV = 60;
@@ -501,7 +504,23 @@ function ChaseCamera({
     // look-at aim point below, for the same reason (see its comment). Any
     // future camera mode must keep this unsmoothed - it's the fix for a
     // real, previously-shipped bug, not a style choice.
-    if (mode === "cockpit") {
+    if (mode === "helmet") {
+      // Helmet view sits at the driver's head, behind the wheel plane. The
+      // normal chassis is hidden by Car.tsx, while the separate wheel visual
+      // remains a sibling of that hidden group and therefore stays visible.
+      offset.current.copy(HELMET_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
+      desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
+      camera.position.copy(desiredPos.current);
+
+      forward.current.set(0, 0, -1).applyEuler(setCamEuler(yawEuler.current, yaw));
+      lookAt.current.set(
+        desiredPos.current.x + forward.current.x * 20,
+        desiredPos.current.y - 0.08,
+        desiredPos.current.z + forward.current.z * 20
+      );
+      camera.lookAt(lookAt.current);
+      setPerspectiveFov(camera, HELMET_FOV);
+    } else if (mode === "cockpit") {
       offset.current.copy(COCKPIT_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       camera.position.copy(desiredPos.current);
@@ -642,9 +661,12 @@ export function Scene({
   raceCommandsRef,
   raceOpsSnapshotRef,
   perfRef,
+  sideMirrorsEnabled = true,
 }: {
   /** Optional performance readout (F key) - see FrameRateGovernor. */
   perfRef?: React.RefObject<HTMLDivElement | null>;
+  /** Live left/right mirror views in the main camera overlay. */
+  sideMirrorsEnabled?: boolean;
   /** Called after the first rendered Physics-tree frame, when the track is ready. */
   onReady?: () => void;
   /** Selected circuit - see the home-screen session setup / ?track= param. */
@@ -1040,6 +1062,7 @@ export function Scene({
         <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
+      <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} />
       <RaceStartCountdown
         raceStartRef={raceStartRef}
         countdownRef={countdownRef}

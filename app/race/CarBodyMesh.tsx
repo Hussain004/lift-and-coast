@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { CAR_WHEELS } from "@/lib/physics/vehicle";
@@ -112,6 +112,36 @@ export function CarBodyShell({
  * `compoundRef` (the player's live 1/2/3 pick) swaps the sidewall stripe
  * colour without a re-render; without one the car runs mediums.
  */
+export function SteeringWheel({
+  wheelRef,
+}: {
+  wheelRef: React.RefObject<THREE.Group | null>;
+}) {
+  const rim = useMemo(() => new THREE.TorusGeometry(0.15, 0.024, 8, 24), []);
+  const spoke = useMemo(() => new THREE.BoxGeometry(0.27, 0.024, 0.022), []);
+  const hub = useMemo(() => {
+    const geometry = new THREE.CylinderGeometry(0.045, 0.045, 0.045, 12);
+    geometry.rotateX(Math.PI / 2);
+    return geometry;
+  }, []);
+
+  return (
+    <group ref={wheelRef} position={[0, 0.27, -0.08]} visible={false}>
+      <mesh geometry={rim} castShadow>
+        <meshStandardMaterial color="#252a31" roughness={0.48} metalness={0.35} />
+      </mesh>
+      {[0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].map((angle) => (
+        <mesh key={angle} geometry={spoke} rotation={[0, 0, angle]} castShadow>
+          <meshStandardMaterial color="#3a414b" roughness={0.42} metalness={0.4} />
+        </mesh>
+      ))}
+      <mesh geometry={hub} castShadow>
+        <meshStandardMaterial color="#0b0d10" roughness={0.35} metalness={0.55} />
+      </mesh>
+    </group>
+  );
+}
+
 export function CarWheels({
   steerRefs,
   spinRefs,

@@ -30,6 +30,7 @@ const BINDINGS: [string, string][] = [
   ["Q / Z", "shift gears"],
   ["G", "auto-gears"],
   ["M", "mute"],
+  ["N", "side mirrors"],
   ["K", "graphics"],
   ["F", "fps"],
   ["H", "Race Ops"],
@@ -42,7 +43,13 @@ const BINDINGS: [string, string][] = [
   ["U", "weather cycle"],
 ];
 
-export function ControlsPanel() {
+export function ControlsPanel({
+  sideMirrorsEnabled,
+  onToggleSideMirrors,
+}: {
+  sideMirrorsEnabled: boolean;
+  onToggleSideMirrors: () => void;
+}) {
   const [collapsed, setCollapsed] = useState<boolean>(() => loadCollapsed());
   const toggle = () => {
     const next = !collapsed;
@@ -56,9 +63,20 @@ export function ControlsPanel() {
 
   return (
     <div className={styles.controlsPanel}>
-      <button type="button" className={styles.controlsToggle} onClick={toggle} aria-expanded={!collapsed}>
-        {collapsed ? "CONTROLS +" : "CONTROLS −"}
-      </button>
+      <div className={styles.controlsHeader}>
+        <button
+          type="button"
+          className={styles.controlsMirrorToggle}
+          onClick={onToggleSideMirrors}
+          aria-pressed={sideMirrorsEnabled}
+          aria-label={`Toggle side mirrors, currently ${sideMirrorsEnabled ? "on" : "off"}`}
+        >
+          MIRRORS {sideMirrorsEnabled ? "ON" : "OFF"}
+        </button>
+        <button type="button" className={styles.controlsToggle} onClick={toggle} aria-expanded={!collapsed}>
+          {collapsed ? "CONTROLS +" : "CONTROLS −"}
+        </button>
+      </div>
       {!collapsed && (
         <dl className={styles.controlsList}>
           {BINDINGS.map(([keys, action]) => (

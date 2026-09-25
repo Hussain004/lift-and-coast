@@ -13,14 +13,15 @@ import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 import type { TouchDriveInput } from "./touch";
 
-export type CameraMode = "chase" | "cockpit" | "t-cam" | "tv" | "orbit";
+export type CameraMode = "chase" | "cockpit" | "helmet" | "t-cam" | "tv" | "orbit";
 /** Every mode except the free orbit, which sits outside the C cycle. */
 export type DrivingCameraMode = Exclude<CameraMode, "orbit">;
 
-/** C-key cycle order (plan section 9: chase, cockpit, TV T-cam, broadcast). */
+/** C-key cycle order (plan section 9: chase, cockpit, helmet, TV T-cam, broadcast). */
 export function nextCameraMode(mode: DrivingCameraMode): DrivingCameraMode {
   if (mode === "chase") return "cockpit";
-  if (mode === "cockpit") return "t-cam";
+  if (mode === "cockpit") return "helmet";
+  if (mode === "helmet") return "t-cam";
   if (mode === "t-cam") return "tv";
   return "chase";
 }

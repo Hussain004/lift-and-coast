@@ -23,7 +23,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Tire compounds, wear, grip changes, damage, and per-wheel surface effects
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
-- Chase, cockpit, T-cam, TV broadcast, orbit, replay, and rewind cameras
+- Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
 - Practice, qualifying, quick races, and full championship weekends
 - Multiplayer rooms with synchronized timing and race-control telemetry
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
@@ -74,7 +74,8 @@ Pit service currently uses the marked start-finish service window as a playable 
 | ABS | `B` | Assign as a button if supported |
 | Racing line | `L` | Assign as a button if supported |
 | Active Aero | `E` | Assign as a button if supported |
-| Camera | `C` | Assign as a button if supported |
+| Camera (includes helmet view) | `C` | Assign as a button if supported |
+| Side mirrors | `N` | Mirror button in the HUD/touch deck |
 | Tires | `1` / `2` / `3` | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
 | Race Ops panel | `H` | Header click |
@@ -88,7 +89,7 @@ Pit service currently uses the marked start-finish service window as a playable 
 
 ABS and traction control are assists, not driving eras. Turn them off when you want to feel the consequences.
 
-On a phone, the race automatically adapts to the orientation. Portrait mode gives the game the upper portion of the screen and places analog steering and pedal sticks in a lower control deck. Landscape mode keeps the full game view and overlays the sticks in the lower corners. The touch deck also provides Overtake, ERS, pause, and replay actions.
+On a phone, the race automatically adapts to the orientation. Portrait mode gives the game the upper portion of the screen and places analog steering and pedal sticks in a lower control deck. Landscape mode keeps the full game view and overlays the sticks in the lower corners. The touch deck also provides Overtake, ERS, side-mirror, pause, and replay actions.
 
 ## Development
 
