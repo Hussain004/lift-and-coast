@@ -188,6 +188,16 @@ describe("createLapTimer startsBehindLine", () => {
     const lap = timer.update(at(1), 1 / 60);
     expect(lap.crossedFinishLine).toBe(true);
     expect(lap.lapCount).toBe(1);
+
+    const projectedAhead = createLapTimer({
+      startPos: track.startPos,
+      lineHalfWidth: 6,
+      startsBehindLine: true,
+    });
+    projectedAhead.prime(at(1));
+    const projectedGrace = projectedAhead.update(at(2), 1 / 60);
+    expect(projectedGrace.crossedFinishLine).toBe(false);
+    expect(projectedGrace.awaitingStart).toBe(false);
   });
 
   it("times normally after the forgiven crossing", () => {

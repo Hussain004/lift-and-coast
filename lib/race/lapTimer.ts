@@ -94,8 +94,17 @@ export function createLapTimer(config: LapTimerConfig) {
    */
   function prime(position: { x: number; z: number }) {
     const projection = signedForwardAt(position);
-    prevSignedForward = projection.signedForward;
-    armed = projection.signedForward < -BEHIND_DEADZONE_METERS;
+    if (skipFirstCrossing) {
+      // A curved back-grid slot can project to the positive side of the
+      // straight start-line axis even though the car is physically behind
+      // the line. Seed a guaranteed pre-crossing sample so the first forward
+      // update consumes the grace crossing instead of the first flying lap.
+      prevSignedForward = Math.min(projection.signedForward, -BEHIND_DEADZONE_METERS - 0.001);
+      armed = true;
+    } else {
+      prevSignedForward = projection.signedForward;
+      armed = projection.signedForward < -BEHIND_DEADZONE_METERS;
+    }
   }
 
   function update(position: { x: number; z: number }, dt: number): LapTimerState {
