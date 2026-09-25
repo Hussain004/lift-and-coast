@@ -290,7 +290,7 @@ function RaceContent() {
   // identities, hidden reference times). Keep those inputs in the remount
   // key so a same-sized client navigation cannot reuse stale classification.
   const rosterKey = `${driver.code}/${driver.name}/${team.id}/${rivals.map((rival) => rival.code).join(",")}`;
-  const sceneKey = `${track.id}-${rivals.length}-${sessionMode}-${qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
+  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
   const sceneReady = readySceneKey === sceneKey;
   const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
 
