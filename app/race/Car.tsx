@@ -66,7 +66,7 @@ import {
   updateTrackLimitSequence,
 } from "@/lib/race/trackLimitSequence";
 import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
-import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, sessionGridOrder, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
+import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
@@ -97,6 +97,95 @@ import { impactGain01, limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/
 import { FLAP_OPEN_RAD, stepFlapAngle } from "@/lib/race/carBody";
 
 const SECTOR_COUNT = 3;
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function qualifyingColor(value: string | undefined): string {
+  return value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#7d8795";
+}
+
+function qualifyingGap(seconds: number): string {
+  return `${seconds >= 0 ? "+" : ""}${seconds.toFixed(3)}`;
+}
+
+function renderQualifyingResultHtml({
+  times,
+  playerCode,
+  playerName,
+  playerColor,
+  rivals,
+  playerPosition,
+  raceHref,
+  champRound,
+}: {
+  times: QualifyingTimes;
+  playerCode: string;
+  playerName: string;
+  playerColor: string;
+  rivals: readonly TowerDriver[];
+  playerPosition: number;
+  raceHref: string;
+  champRound: number | null;
+}): string {
+  const board = qualifyingLeaderboard(
+    times,
+    playerCode,
+    rivals.map((rival) => rival.code)
+  );
+  const playerEntry = board.find((entry) => entry.isPlayer);
+  const playerTime = times.player;
+  const playerGap = playerEntry?.gapToLeaderSeconds ?? null;
+  const summaryGap =
+    playerTime === null
+      ? "NO VALID LAP"
+      : playerGap === null
+        ? "NO COMPARISON"
+        : playerGap === 0
+          ? "POLE"
+          : `${qualifyingGap(playerGap)} TO POLE`;
+  const rivalByCode = new Map(rivals.map((rival) => [rival.code, rival]));
+  const rows = board
+    .map((entry) => {
+      const rival = entry.isPlayer ? null : rivalByCode.get(entry.code);
+      const code = entry.isPlayer ? playerCode : entry.code;
+      const name = entry.isPlayer ? playerName : rival?.name ?? entry.code;
+      const color = qualifyingColor(entry.isPlayer ? playerColor : rival?.color);
+      const gap = entry.isPlayer
+        ? "YOU"
+        : entry.gapToPlayerSeconds === null
+          ? "—"
+          : qualifyingGap(entry.gapToPlayerSeconds);
+      return (
+        `<div class="qualifying-board-row${entry.isPlayer ? " qualifying-board-row-you" : ""}">` +
+        `<span class="qualifying-board-pos">P${entry.position}</span>` +
+        `<span class="qualifying-board-driver"><span class="qualifying-board-code" style="background:${color}">${escapeHtml(code)}</span>` +
+        `<span class="qualifying-board-name">${escapeHtml(name)}</span></span>` +
+        `<span class="qualifying-board-time">${formatLapTime(entry.time)}</span>` +
+        `<span class="qualifying-board-gap">${escapeHtml(gap)}</span></div>`
+      );
+    })
+    .join("");
+  const actionLabel = champRound === null ? "START RACE" : `START ROUND ${champRound + 1}`;
+  return (
+    `<section class="qualifying-result" aria-label="Qualifying result">` +
+    `<div class="qualifying-result-kicker">QUALIFYING COMPLETE</div>` +
+    `<div class="qualifying-result-summary"><strong>P${playerPosition}</strong>` +
+    `<span>YOU  ${playerTime === null ? "NO VALID LAP" : formatLapTime(playerTime)}</span>` +
+    `<span>${escapeHtml(summaryGap)}</span></div>` +
+    `<div class="qualifying-result-title">AI LAP TIMES  <small>GAP TO YOU</small></div>` +
+    `<div class="qualifying-result-rows">${rows}</div>` +
+    `<div class="qualifying-result-actions"><a href="${escapeHtml(raceHref)}">${actionLabel} FROM P${playerPosition}</a>` +
+    `<a href="/">MENU</a></div></section>`
+  );
+}
+
 // Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
 // AI opponent that exists today. Lap count comes from the home-screen
 // session-setup slider (lib/race/sessionSetup.ts, plan section 8) via the
@@ -1173,7 +1262,7 @@ export function Car({
     // with AICar.tsx's own best-valid recording. Checked every frame (not
     // just inside the crossedFinishLine block below) since the cars'
     // laps usually finish on different frames.
-    if (qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
+    if (sessionMode !== "qualifying" && qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
       const pole = qualifyingRef?.current ? polePosition(qualifyingRef.current) : null;
       if (pole !== null && qualifyingRef?.current) {
         qualifyingDisplayedRef.current = true;
@@ -1356,11 +1445,11 @@ export function Car({
           .toString()
           .padStart(2, "0");
         lapRef.current.textContent =
-          `QUAL ${mm}:${ss}  BEST ${formatLapTime(bestLapRef.current)}` +
+          `QUAL ${mm}:${ss}  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
           (lapInvalidRef.current ? "  INVALID" : "");
       } else if (sessionMode === "qualifying") {
         lapRef.current.textContent =
-          `QUAL SHOT  LAP ${lap.lapCount + 1}  BEST ${formatLapTime(bestLapRef.current)}` +
+          `QUAL SHOT  LAP ${lap.lapCount + 1}  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
           (lapInvalidRef.current ? "  INVALID" : "");
       } else if (sessionMode === "practice") {
         lapRef.current.textContent =
@@ -1380,10 +1469,11 @@ export function Car({
       }
       if (qualiSessionRef.current.finished && raceResultRef?.current) {
         qualiFinishedRef.current = true;
-        // Rivals' bests arrive through the shared times (see AICar.tsx) -
-        // whatever each has set when the player's session ends counts. The
-        // session machine only ever records the player's own laps, so the
-        // merge is a padded copy of the shared board, not a real merge.
+        // Player-only qualifying keeps the rival reference times in the
+        // shared board (see Scene.tsx); race mode still fills that board
+        // live from AICar. The session machine itself only records the
+        // player's laps, so merge the two sources at the classification
+        // boundary.
         const sharedBests = qualifyingRef?.current?.opponents ?? [];
         const mergedBest = {
           player: qualiSessionRef.current.best.player,
@@ -1401,22 +1491,18 @@ export function Car({
           rivals.map((rival) => rival.code)
         );
         const raceHref = retargetSessionUrl(window.location.search, "race", spot, gridOrder);
-        // Fastest rival lap for the summary line (best of whoever set one).
-        let bestRival: number | null = null;
-        let bestRivalCode = "RIVAL";
-        mergedBest.opponents.forEach((time, k) => {
-          if (time !== null && (bestRival === null || time < bestRival)) {
-            bestRival = time;
-            bestRivalCode = rivals[k]?.code ?? "RIVAL";
-          }
+        // The full hidden AI reference field is now shown as a proper
+        // classification, including each driver's gap to the player's lap.
+        raceResultRef.current.innerHTML = renderQualifyingResultHtml({
+          times: mergedBest,
+          playerCode,
+          playerName,
+          playerColor: bodyColor,
+          rivals,
+          playerPosition: spot,
+          raceHref,
+          champRound,
         });
-        const resultLine =
-          `QUALIFYING COMPLETE - YOU ${formatLapTime(mergedBest.player)}` +
-          `  ${bestRivalCode} ${formatLapTime(bestRival)}  -  YOU START P${spot}`;
-        raceResultRef.current.innerHTML =
-          champRound !== null
-            ? `${resultLine}  //  <a href="${raceHref}">RACE ROUND ${champRound + 1}</a>  //  <a href="/">MENU</a>`
-            : `${resultLine}  //  <a href="${raceHref}">RACE FROM P${spot}</a>  //  <a href="/">MENU</a>`;
       }
     }
 

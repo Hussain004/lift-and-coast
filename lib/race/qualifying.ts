@@ -50,6 +50,58 @@ export type QualifyingFormat = "oneshot" | "timed";
 /** Timed qualifying session length: 10 minutes of open track. */
 export const TIMED_QUALIFYING_SECONDS = 600;
 
+export interface QualifyingLeaderboardEntry {
+  code: string;
+  time: number | null;
+  /** One-based classification position, including no-time entries. */
+  position: number;
+  /** Seconds behind the fastest classified time; null when nobody has a time. */
+  gapToLeaderSeconds: number | null;
+  /** Seconds relative to the player's best; null when the player has no time. */
+  gapToPlayerSeconds: number | null;
+  isPlayer: boolean;
+}
+
+/**
+ * Classifies the complete qualifying field for the post-session result.
+ * Null times sort behind every classified car, and exact ties put the player
+ * first, matching playerGridSpot/sessionGridOrder below.
+ */
+export function qualifyingLeaderboard(
+  times: QualifyingTimes,
+  playerCode: string,
+  rivalCodes: readonly string[]
+): QualifyingLeaderboardEntry[] {
+  const entries = [
+    { code: playerCode, time: times.player, isPlayer: true, tieIndex: -1 },
+    ...rivalCodes.map((code, index) => ({
+      code,
+      time: times.opponents[index] ?? null,
+      isPlayer: false,
+      tieIndex: index,
+    })),
+  ].sort((a, b) => {
+    if (a.time === null && b.time === null) return a.tieIndex - b.tieIndex;
+    if (a.time === null) return 1;
+    if (b.time === null) return -1;
+    if (a.time !== b.time) return a.time - b.time;
+    return a.tieIndex - b.tieIndex;
+  });
+
+  const leaderTime = entries.find((entry) => entry.time !== null)?.time ?? null;
+  const playerTime = times.player;
+  return entries.map((entry, index) => ({
+    code: entry.code,
+    time: entry.time,
+    position: index + 1,
+    gapToLeaderSeconds:
+      leaderTime === null || entry.time === null ? null : entry.time - leaderTime,
+    gapToPlayerSeconds:
+      playerTime === null || entry.time === null ? null : entry.time - playerTime,
+    isPlayer: entry.isPlayer,
+  }));
+}
+
 export type QualifyingSide = "player" | number;
 
 export interface QualifyingSession {
@@ -179,16 +231,5 @@ export function sessionGridOrder(
   playerCode: string,
   rivalCodes: readonly string[]
 ): string[] {
-  const entries: { code: string; time: number | null; index: number }[] = [
-    { code: playerCode, time: best.player, index: -1 },
-    ...rivalCodes.map((code, k) => ({ code, time: best.opponents[k] ?? null, index: k })),
-  ];
-  entries.sort((a, b) => {
-    if (a.time === null && b.time === null) return a.index - b.index;
-    if (a.time === null) return 1;
-    if (b.time === null) return -1;
-    if (a.time !== b.time) return a.time - b.time;
-    return a.index - b.index;
-  });
-  return entries.map((e) => e.code);
+  return qualifyingLeaderboard(best, playerCode, rivalCodes).map((entry) => entry.code);
 }

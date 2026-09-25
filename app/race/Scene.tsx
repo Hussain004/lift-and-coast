@@ -34,6 +34,7 @@ import {
 } from "@/lib/race/orbitCam";
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
+import { createQualifyingReferenceTimes } from "@/lib/race/qualifyingField";
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
 import type { AIDifficulty } from "@/lib/ai/personalities";
@@ -98,13 +99,11 @@ function RaceStartCountdown({
   const elapsedRef = useRef(0);
   const finishedRef = useRef(false);
   const startedRef = useRef(false);
-  const displayValueRef = useRef("");
-  const displayPhaseRef = useRef("");
-
   const showCountdown = (value: string, phase: string): void => {
-    if (displayValueRef.current === value && displayPhaseRef.current === phase) return;
-    displayValueRef.current = value;
-    displayPhaseRef.current = phase;
+    // The page mounts the visible overlay only after the first Canvas frame.
+    // Keep writing the current value even when it has not changed: on the
+    // first frame the ref can be null, and the next tick must hydrate the
+    // newly-mounted "3" span instead of leaving it blank until "2".
     const overlay = countdownRef.current;
     if (overlay) {
       overlay.dataset.active = "true";
@@ -116,6 +115,14 @@ function RaceStartCountdown({
 
   useFrame((_, dt) => {
     if (finishedRef.current) return;
+    // Do not advance the hidden race clock while the page is still showing
+    // its loading layer. The visible overlay is mounted in the same commit
+    // that removes that layer, so this gate prevents a slow first frame from
+    // launching the grid underneath the loader.
+    if (!countdownRef.current || !countdownValueRef.current) {
+      showCountdown("3", "waiting");
+      return;
+    }
     if (!startedRef.current) {
       // Hold the grid (throttle stays locked via raceStartRef) until the
       // room is actually ready to go.
@@ -630,6 +637,7 @@ export function Scene({
   timeOfDay = "day",
   paused = false,
   onPauseToggle,
+  onReady,
   weatherPreset = "clear",
   raceCommandsRef,
   raceOpsSnapshotRef,
@@ -637,6 +645,8 @@ export function Scene({
 }: {
   /** Optional performance readout (F key) - see FrameRateGovernor. */
   perfRef?: React.RefObject<HTMLDivElement | null>;
+  /** Called after the first rendered Canvas frame, when the track is ready. */
+  onReady?: () => void;
   /** Selected circuit - see the home-screen session setup / ?track= param. */
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - team primary for the player. */
@@ -795,7 +805,16 @@ export function Scene({
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
   const sharedRewindActiveRef = useRef(false);
-  const qualifyingRef = useRef<QualifyingTimes>(createQualifyingTimes(rivals.length));
+  // Qualifying is intentionally a player-only track session. Keep the full
+  // roster in the shared board so the final classification and race handoff
+  // still include the hidden reference field, but do not mount AICar bodies
+  // below for this mode.
+  const [initialQualifyingTimes] = useState<QualifyingTimes>(() =>
+    sessionMode === "qualifying"
+      ? createQualifyingReferenceTimes(track, rivals, difficulty)
+      : createQualifyingTimes(rivals.length)
+  );
+  const qualifyingRef = useRef<QualifyingTimes>(initialQualifyingTimes);
   const visualRef = useRef<THREE.Group>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
@@ -840,6 +859,7 @@ export function Scene({
     >
       <QualityContext.Provider value={settings}>
       <FarPlane far={settings.fogFar + 40} />
+      <SceneReady onReady={onReady} />
       <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
       <color attach="background" args={[lighting.sky]} />
       <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
@@ -920,13 +940,14 @@ export function Scene({
           track={track}
           bodyColor={playerBodyColor}
           accentColor={playerAccentColor}
-           weatherRef={weatherRef}
-           raceControlRef={raceControlRef}
-           raceCommandsRef={raceCommandsRef}
-           raceOpsSnapshotRef={raceOpsSnapshotRef}
+          weatherRef={weatherRef}
+          raceControlRef={raceControlRef}
+          raceCommandsRef={raceCommandsRef}
+          raceOpsSnapshotRef={raceOpsSnapshotRef}
           audioRef={audioRef}
         />
         {sessionMode !== "practice" &&
+          sessionMode !== "qualifying" &&
           netRole !== "guest" &&
           rivals.map((rival, k) => {
             // Grid slots fill 1..N+1 around the player's own spot: the
@@ -944,8 +965,8 @@ export function Scene({
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
                 driverCode={rival.code}
-                 weatherRef={weatherRef}
-                 sessionMode={sessionMode}
+                weatherRef={weatherRef}
+                sessionMode={sessionMode}
                 difficulty={difficulty}
                 sessionSeedRef={sessionSeedRef}
                 raceLaps={raceLaps}
@@ -964,6 +985,7 @@ export function Scene({
             );
           })}
         {sessionMode !== "practice" &&
+          sessionMode !== "qualifying" &&
           netRole === "guest" &&
           rivals.map((rival, k) => (
             <RemoteCar
@@ -1024,6 +1046,17 @@ export function Scene({
       </QualityContext.Provider>
     </Canvas>
   );
+}
+
+/** Signals readiness only after the Canvas has presented its first frame. */
+function SceneReady({ onReady }: { onReady?: () => void }) {
+  const notifiedRef = useRef(false);
+  useFrame(() => {
+    if (notifiedRef.current) return;
+    notifiedRef.current = true;
+    onReady?.();
+  });
+  return null;
 }
 
 /** Keeps the camera's far plane matched to the tier's draw distance (the

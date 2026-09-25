@@ -5,6 +5,7 @@ import {
   createQualifyingTimes,
   playerGridSpot,
   polePosition,
+  qualifyingLeaderboard,
   qualifyingWinner,
   recordQualiLap,
   tickQualifyingSession,
@@ -32,6 +33,37 @@ describe("polePosition", () => {
 
   it("breaks an exact tie in favor of the player, matching computeRacePositions", () => {
     expect(polePosition({ player: 90, opponents: [90] })).toBe("player");
+  });
+});
+
+describe("qualifyingLeaderboard", () => {
+  it("classifies the player and rivals with leader/player gaps", () => {
+    const board = qualifyingLeaderboard(
+      { player: 90, opponents: [92, 88, null] },
+      "YOU",
+      ["VER", "LEC", "NOR"]
+    );
+    expect(board.map((entry) => [entry.position, entry.code])).toEqual([
+      [1, "LEC"],
+      [2, "YOU"],
+      [3, "VER"],
+      [4, "NOR"],
+    ]);
+    expect(board[0].gapToLeaderSeconds).toBe(0);
+    expect(board[1].gapToLeaderSeconds).toBeCloseTo(2, 6);
+    expect(board[1].gapToPlayerSeconds).toBe(0);
+    expect(board[2].gapToPlayerSeconds).toBeCloseTo(2, 6);
+    expect(board[3].gapToPlayerSeconds).toBeNull();
+  });
+
+  it("keeps no-time entries behind the classified field", () => {
+    const board = qualifyingLeaderboard(
+      { player: null, opponents: [null, 95] },
+      "YOU",
+      ["A", "B"]
+    );
+    expect(board.map((entry) => entry.code)).toEqual(["B", "YOU", "A"]);
+    expect(board.every((entry) => entry.gapToPlayerSeconds === null)).toBe(true);
   });
 });
 

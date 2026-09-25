@@ -62,7 +62,7 @@ function TrackLoadingFallback() {
 
 const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   ssr: false,
-  loading: () => <TrackLoadingFallback />,
+  loading: () => null,
 });
 
 const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
@@ -90,9 +90,9 @@ function RaceContent() {
   const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
   const rivalCount = parseRivals(searchParams.get("rivals"));
   // AI field character (see lib/ai/personalities.ts): the meeting
-  // difficulty tier travels on ?diff=, defaulting to Pro (today's
-  // reference pace) so every existing link drives exactly as before. In
-  // net rooms the host simulates, so the host's tier sets the field.
+  // difficulty tier travels on ?diff=, defaulting to Pro's calibrated
+  // fast-line reference. In net rooms the host simulates, so the host's
+  // tier sets the field.
   const difficulty = parseDifficulty(searchParams.get("diff"));
   // Plan section 16 (online multiplayer): a live room turns this visit
   // into a net session (?room= + ?role= + ?slot=, all set by the lobby's
@@ -159,6 +159,7 @@ function RaceContent() {
           .map(({ entry }) => entry);
       })();
   const sessionMode = netActive && netValid ? "race" : parseSessionMode(searchParams.get("mode"));
+  const qualifyingSession = sessionMode === "qualifying";
   const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
   // Random grid for quick races (?seed= from the home Drive link): the
   // whole field - player included - shuffles, so nobody is gifted pole.
@@ -279,17 +280,21 @@ function RaceContent() {
   const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
   const [paused, setPaused] = useState(false);
+  const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
   const singlePlayer = !netActive;
+  const sceneKey = `${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${weatherPreset}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
+  const sceneReady = readySceneKey === sceneKey;
+  const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
 
   return (
     <div className={styles.wrap}>
       <div className={styles.gameStage}>
         <Scene
-        key={`${track.id}-${rivals.length}-${sessionMode}-${difficulty}-${playerGridSpot}-${weatherPreset}-${fullOrder?.join("") ?? gridSeed ?? "pole"}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`}
+        key={sceneKey}
         track={track}
         playerBodyColor={team.primaryColor}
         playerAccentColor={team.secondaryColor}
@@ -337,14 +342,16 @@ function RaceContent() {
         timeOfDay={timeOfDay}
         paused={singlePlayer ? paused : false}
         onPauseToggle={singlePlayer ? togglePaused : undefined}
+        onReady={handleSceneReady}
         weatherPreset={weatherPreset}
         raceCommandsRef={raceCommandsRef}
         raceOpsSnapshotRef={raceOpsSnapshotRef}
         perfRef={perfRef}
       />
+      {!sceneReady && <TrackLoadingFallback />}
       <div className={styles.raceDataStrip}>
         <div ref={lapRef} className={styles.raceDataLap}>LAP 1</div>
-        <div ref={positionRef} className={styles.raceDataPosition}>P1</div>
+        {!qualifyingSession && <div ref={positionRef} className={styles.raceDataPosition}>P1</div>}
         <div ref={deltaRef} className={styles.delta} />
         <div ref={sectorsRef} className={styles.sectors} />
       </div>
@@ -354,6 +361,7 @@ function RaceContent() {
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}
+      {!qualifyingSession && (
       <div className={styles.tower}>
         <div className={styles.towerEvent}>{trackName}</div>
         <div className={styles.towerColumns} aria-hidden="true">
@@ -381,6 +389,7 @@ function RaceContent() {
           ))}
         </div>
       </div>
+      )}
       {/* F1-style broadcast telemetry: a compact carbon strip with the
           gear and speed hierarchy first, then driver inputs and car state. */}
       <div className={styles.bottomBar}>
@@ -419,36 +428,38 @@ function RaceContent() {
       </div>
       <div className={styles.raceResult} ref={raceResultRef} />
       <div className={styles.qualifying} ref={qualifyingDisplayRef} />
-      <div
-        className={styles.startSequence}
-        ref={countdownRef}
-        data-active="true"
-        data-phase="waiting"
-        data-value="3"
-      >
-        <div className={styles.startSequencePanel}>
-          <div className={styles.startSequenceHeader}>
-            <span>LIGHTS OUT</span>
-            <span>{trackName}</span>
-          </div>
-          <div className={styles.startLights} aria-hidden="true">
-            {Array.from({ length: 5 }, (_, index) => (
-              <span className={styles.startLight} key={index} />
-            ))}
-          </div>
-          <span
-            className={styles.startCountdownValue}
-            ref={countdownValueRef}
-            aria-live="assertive"
-            aria-atomic="true"
-          />
-          <div className={styles.startSequenceFooter}>
-            <span>GRID START</span>
-            <span className={styles.startSignal} aria-hidden="true" />
-            <span>FULL THROTTLE ON GO</span>
+      {sceneReady && (
+        <div
+          className={styles.startSequence}
+          ref={countdownRef}
+          data-active="true"
+          data-phase="waiting"
+          data-value="3"
+        >
+          <div className={styles.startSequencePanel}>
+            <div className={styles.startSequenceHeader}>
+              <span>LIGHTS OUT</span>
+              <span>{trackName}</span>
+            </div>
+            <div className={styles.startLights} aria-hidden="true">
+              {Array.from({ length: 5 }, (_, index) => (
+                <span className={styles.startLight} key={index} />
+              ))}
+            </div>
+            <span
+              className={styles.startCountdownValue}
+              ref={countdownValueRef}
+              aria-live="assertive"
+              aria-atomic="true"
+            />
+            <div className={styles.startSequenceFooter}>
+              <span>GRID START</span>
+              <span className={styles.startSignal} aria-hidden="true" />
+              <span>FULL THROTTLE ON GO</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className={styles.trackLimit} ref={trackLimitRef} />
       <div className={styles.penaltyToast} ref={penaltyToastRef} />
       <svg
@@ -463,7 +474,7 @@ function RaceContent() {
           {/* One dot per rival, written by aiIndex (see AICar.tsx) - plain
               world-space dots inside the same rotating group as the track
               path, so they inherit the egocentric transform for free. */}
-          {rivals.map((rival, k) => (
+          {!qualifyingSession && rivals.map((rival, k) => (
             <circle
               key={rival.code}
               ref={(el) => {
