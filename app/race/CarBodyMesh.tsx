@@ -2,10 +2,17 @@
 
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { useFrame } from "@react-three/fiber";
 import { CAR_WHEELS } from "@/lib/physics/vehicle";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 import { FLAP_CLOSED_INCLINE_RAD, computeAccentColor } from "@/lib/race/carBody";
+import {
+  STEERING_WHEEL_CENTER_Y,
+  STEERING_WHEEL_CENTER_Z,
+  STEERING_WHEEL_HALF_HEIGHT,
+  STEERING_WHEEL_HALF_WIDTH,
+} from "@/lib/race/helmetView";
 import {
   COMPOUND_STRIPE_COLOR,
   FLAP_PIVOT,
@@ -117,26 +124,156 @@ export function SteeringWheel({
 }: {
   wheelRef: React.RefObject<THREE.Group | null>;
 }) {
-  const rim = useMemo(() => new THREE.TorusGeometry(0.15, 0.024, 8, 24), []);
-  const spoke = useMemo(() => new THREE.BoxGeometry(0.27, 0.024, 0.022), []);
-  const hub = useMemo(() => {
-    const geometry = new THREE.CylinderGeometry(0.045, 0.045, 0.045, 12);
+  // A modern F1 wheel is a squared-off rectangular rim, not a thin car
+  // steering-wheel torus: separate grips, a wide carbon frame, a small driver
+  // display, colored buttons and rear paddle shifters make the rotation read
+  // clearly from the helmet camera. Overall size comes from helmetView.ts, the
+  // same constants the camera framing test measures against.
+  const rimSpanX = STEERING_WHEEL_HALF_WIDTH * 2;
+  const rimSpanY = STEERING_WHEEL_HALF_HEIGHT * 2;
+  const gripThickness = rimSpanX * 0.14;
+  const horizontalRim = useMemo(
+    () => new RoundedBoxGeometry(rimSpanX - 0.02, rimSpanY * 0.18, 0.05, 3, 0.018),
+    [rimSpanX, rimSpanY]
+  );
+  const grip = useMemo(
+    () => new RoundedBoxGeometry(gripThickness, rimSpanY * 0.84, 0.058, 3, 0.022),
+    [gripThickness, rimSpanY]
+  );
+  const spoke = useMemo(
+    () => new RoundedBoxGeometry(rimSpanX * 0.07, rimSpanY * 0.68, 0.03, 2, 0.01),
+    [rimSpanX, rimSpanY]
+  );
+  const hub = useMemo(
+    () => new RoundedBoxGeometry(rimSpanX * 0.35, rimSpanY * 0.3, 0.055, 3, 0.02),
+    [rimSpanX, rimSpanY]
+  );
+  const display = useMemo(
+    () => new RoundedBoxGeometry(rimSpanX * 0.26, rimSpanY * 0.17, 0.014, 2, 0.006),
+    [rimSpanX, rimSpanY]
+  );
+  const button = useMemo(() => {
+    const geometry = new THREE.CylinderGeometry(0.012, 0.012, 0.016, 8);
     geometry.rotateX(Math.PI / 2);
     return geometry;
   }, []);
+  const paddle = useMemo(
+    () => new RoundedBoxGeometry(rimSpanX * 0.08, rimSpanY * 0.42, 0.02, 2, 0.008),
+    [rimSpanX, rimSpanY]
+  );
+  const buttonPositions: [number, number, string][] = [
+    [-rimSpanX * 0.21, rimSpanY * 0.14, "#e10600"],
+    [-rimSpanX * 0.11, rimSpanY * 0.14, "#ffd23f"],
+    [rimSpanX * 0.11, rimSpanY * 0.14, "#39ff88"],
+    [rimSpanX * 0.21, rimSpanY * 0.14, "#6bd1ff"],
+    [-rimSpanX * 0.21, -rimSpanY * 0.08, "#6bd1ff"],
+    [rimSpanX * 0.21, -rimSpanY * 0.08, "#e10600"],
+  ];
+  const gripX = rimSpanX / 2 - gripThickness / 2;
+  const rimY = rimSpanY / 2 - rimSpanY * 0.09;
 
   return (
-    <group ref={wheelRef} position={[0, 0.27, -0.08]} visible={false}>
-      <mesh geometry={rim} castShadow>
-        <meshStandardMaterial color="#252a31" roughness={0.48} metalness={0.35} />
+    <group
+      ref={wheelRef}
+      position={[0, STEERING_WHEEL_CENTER_Y, STEERING_WHEEL_CENTER_Z]}
+      visible={false}
+    >
+      <mesh geometry={horizontalRim} position={[0, rimY, 0]} castShadow>
+        <meshStandardMaterial color="#20252c" roughness={0.52} metalness={0.32} />
       </mesh>
-      {[0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].map((angle) => (
-        <mesh key={angle} geometry={spoke} rotation={[0, 0, angle]} castShadow>
-          <meshStandardMaterial color="#3a414b" roughness={0.42} metalness={0.4} />
+      <mesh geometry={horizontalRim} position={[0, -rimY, 0]} castShadow>
+        <meshStandardMaterial color="#20252c" roughness={0.52} metalness={0.32} />
+      </mesh>
+      <mesh geometry={grip} position={[-gripX, 0, 0]} rotation={[0, 0, -0.1]} castShadow>
+        <meshStandardMaterial color="#101216" roughness={0.86} metalness={0.05} />
+      </mesh>
+      <mesh geometry={grip} position={[gripX, 0, 0]} rotation={[0, 0, 0.1]} castShadow>
+        <meshStandardMaterial color="#101216" roughness={0.86} metalness={0.05} />
+      </mesh>
+      <mesh
+        geometry={spoke}
+        position={[-rimSpanX * 0.13, 0, 0.006]}
+        rotation={[0, 0, -0.08]}
+        castShadow
+      >
+        <meshStandardMaterial color="#454d59" roughness={0.4} metalness={0.45} />
+      </mesh>
+      <mesh
+        geometry={spoke}
+        position={[rimSpanX * 0.13, 0, 0.006]}
+        rotation={[0, 0, 0.08]}
+        castShadow
+      >
+        <meshStandardMaterial color="#454d59" roughness={0.4} metalness={0.45} />
+      </mesh>
+      <mesh geometry={hub} position={[0, 0, 0.018]} castShadow>
+        <meshStandardMaterial color="#0b0d10" roughness={0.34} metalness={0.55} />
+      </mesh>
+      <mesh geometry={display} position={[0, rimSpanY * 0.21, 0.052]} castShadow>
+        <meshStandardMaterial
+          color="#0b1c2c"
+          emissive="#0b3550"
+          emissiveIntensity={0.7}
+          roughness={0.22}
+          metalness={0.15}
+        />
+      </mesh>
+      {buttonPositions.map(([x, y, color]) => (
+        <mesh key={`${x}-${y}`} geometry={button} position={[x, y, 0.055]} castShadow>
+          <meshStandardMaterial color={color} roughness={0.35} metalness={0.2} />
         </mesh>
       ))}
-      <mesh geometry={hub} castShadow>
-        <meshStandardMaterial color="#0b0d10" roughness={0.35} metalness={0.55} />
+      <mesh geometry={paddle} position={[-rimSpanX * 0.325, 0, -0.045]} castShadow>
+        <meshStandardMaterial color="#1a1e24" roughness={0.6} metalness={0.3} />
+      </mesh>
+      <mesh geometry={paddle} position={[rimSpanX * 0.325, 0, -0.045]} castShadow>
+        <meshStandardMaterial color="#1a1e24" roughness={0.6} metalness={0.3} />
+      </mesh>
+    </group>
+  );
+}
+
+export function HelmetCockpit({
+  interiorRef,
+}: {
+  interiorRef: React.RefObject<THREE.Group | null>;
+}) {
+  // Cockpit furniture the sculpted shell can't provide from the driver's own
+  // eye point: the shell is a closed surface, so only the nose, halo, mirror
+  // housings and wheels read from inside it. The dash and side rails are
+  // placed relative to the same wheel constants the camera framing test uses.
+  const dashWidth = STEERING_WHEEL_HALF_WIDTH * 2.5;
+  const dash = useMemo(
+    () => new RoundedBoxGeometry(dashWidth, 0.07, 0.16, 3, 0.025),
+    [dashWidth]
+  );
+  const rail = useMemo(() => new RoundedBoxGeometry(0.045, 0.2, 0.3, 3, 0.018), []);
+  const railX = STEERING_WHEEL_HALF_WIDTH + 0.045;
+  return (
+    <group ref={interiorRef} visible={false}>
+      <mesh
+        geometry={dash}
+        position={[0, STEERING_WHEEL_CENTER_Y - 0.1, STEERING_WHEEL_CENTER_Z - 0.12]}
+        rotation={[-0.16, 0, 0]}
+        castShadow
+      >
+        <meshStandardMaterial color="#101318" roughness={0.62} metalness={0.28} />
+      </mesh>
+      <mesh
+        geometry={rail}
+        position={[-railX, STEERING_WHEEL_CENTER_Y, STEERING_WHEEL_CENTER_Z - 0.02]}
+        rotation={[0, 0, -0.08]}
+        castShadow
+      >
+        <meshStandardMaterial color="#171b21" roughness={0.55} metalness={0.35} />
+      </mesh>
+      <mesh
+        geometry={rail}
+        position={[railX, STEERING_WHEEL_CENTER_Y, STEERING_WHEEL_CENTER_Z - 0.02]}
+        rotation={[0, 0, 0.08]}
+        castShadow
+      >
+        <meshStandardMaterial color="#171b21" roughness={0.55} metalness={0.35} />
       </mesh>
     </group>
   );

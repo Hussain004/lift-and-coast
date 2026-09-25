@@ -21,6 +21,13 @@ import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import {
+  HELMET_AIM_DISTANCE_METERS,
+  HELMET_AIM_DROP_METERS,
+  HELMET_EYE_Y,
+  HELMET_EYE_Z,
+  HELMET_FOV_DEG,
+} from "@/lib/race/helmetView";
 import type { TouchDriveInput } from "@/lib/input/touch";
 import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
@@ -279,11 +286,18 @@ function WeatherFX({ weatherRef, target, fogFar }: { weatherRef: React.RefObject
 // real T-cam frames the nose.
 const CHASE_OFFSET = new THREE.Vector3(0, 2.6, 8.5);
 const COCKPIT_OFFSET = new THREE.Vector3(0, 0.65, -0.3);
-const HELMET_OFFSET = new THREE.Vector3(0, 0.56, 0.22);
+// Helmet: the driver's eye point, INSIDE the sculpted helmet sphere at
+// (0, 0.42, 0.3) r=0.16. Sitting inside that closed shell is deliberate -
+// the driver's own helmet and visor cull away as backfaces, while the
+// bodywork ahead (nose, halo, mirror housings, front tyres, wings) stays
+// outside the shell and keeps the view anchored to the car. See Car.tsx,
+// which therefore keeps the chassis visible in this mode. The eye/wheel/FOV
+// relationship is measured and regression-tested in lib/race/helmetView.ts.
+const HELMET_OFFSET = new THREE.Vector3(0, HELMET_EYE_Y, HELMET_EYE_Z);
 const TCAM_OFFSET = new THREE.Vector3(0, 2.2, 5.0);
 const CHASE_FOV = 65;
 const COCKPIT_FOV = 85;
-const HELMET_FOV = 90;
+const HELMET_FOV = HELMET_FOV_DEG;
 const TCAM_FOV = 70;
 const TV_FOV = 55;
 const ORBIT_FOV = 60;
@@ -505,18 +519,20 @@ function ChaseCamera({
     // future camera mode must keep this unsmoothed - it's the fix for a
     // real, previously-shipped bug, not a style choice.
     if (mode === "helmet") {
-      // Helmet view sits at the driver's head, behind the wheel plane. The
-      // normal chassis is hidden by Car.tsx, while the separate wheel visual
-      // remains a sibling of that hidden group and therefore stays visible.
+      // Helmet view sits at the driver's eye (see HELMET_OFFSET). The wheel,
+      // dash and rails are siblings of the visible chassis, and the chassis
+      // itself stays visible here - Car.tsx only hides it for cockpit mode -
+      // so the nose, halo and mirror housings frame the view. The small
+      // downward aim bias keeps the wheel rim off the very bottom edge.
       offset.current.copy(HELMET_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       camera.position.copy(desiredPos.current);
 
       forward.current.set(0, 0, -1).applyEuler(setCamEuler(yawEuler.current, yaw));
       lookAt.current.set(
-        desiredPos.current.x + forward.current.x * 20,
-        desiredPos.current.y - 0.08,
-        desiredPos.current.z + forward.current.z * 20
+        desiredPos.current.x + forward.current.x * HELMET_AIM_DISTANCE_METERS,
+        desiredPos.current.y - HELMET_AIM_DROP_METERS,
+        desiredPos.current.z + forward.current.z * HELMET_AIM_DISTANCE_METERS
       );
       camera.lookAt(lookAt.current);
       setPerspectiveFov(camera, HELMET_FOV);

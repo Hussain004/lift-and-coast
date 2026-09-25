@@ -4,10 +4,14 @@ import { useEffect, useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
-const MIRROR_WIDTH = 256;
-const MIRROR_HEIGHT = 128;
+const MIRROR_WIDTH = 320;
+const MIRROR_HEIGHT = 124;
 const MIRROR_ASPECT = MIRROR_WIDTH / MIRROR_HEIGHT;
 const DISPLAY_DISTANCE_METERS = 1;
+/** On-screen frame size in camera-space metres at the 1m overlay distance. */
+const FRAME_WIDTH = 0.42;
+const FRAME_HEIGHT = FRAME_WIDTH / MIRROR_ASPECT;
+const GLASS_INSET = 0.03;
 
 function makeMirrorTarget() {
   const target = new THREE.WebGLRenderTarget(MIRROR_WIDTH, MIRROR_HEIGHT, {
@@ -22,12 +26,17 @@ function makeMirrorTarget() {
 }
 
 /**
- * Two small live side-camera views drawn over the main camera. Each mirror
- * gets a low-resolution render target and its own camera mounted just outside
- * the car, aimed rearward/outward. The display planes are positioned in the
- * main camera's local frame every frame, so they stay pinned to the top-left
- * and top-right corners without coupling the driving camera to screen-space
- * DOM layout.
+ * Two live side-camera views drawn over the main camera. Each mirror gets a
+ * render target and its own camera mounted just outside the car, aimed
+ * rearward/outward. The display planes are positioned in the main camera's
+ * local frame every frame, so they stay pinned to the top-left and top-right
+ * corners without coupling the driving camera to screen-space DOM layout.
+ *
+ * Sizing: FRAME_WIDTH is the on-screen width in camera-space metres at the 1m
+ * overlay distance, so a wider FOV or a narrower viewport shrinks the mirror
+ * rather than letting it overflow the frame. The render target is 320x160 (a
+ * little above the display size) so the glass stays sharp when the frame is
+ * scaled up on wide screens.
  */
 export function SideMirrors({
   target,
@@ -36,7 +45,7 @@ export function SideMirrors({
   target: RefObject<THREE.Object3D | null>;
   enabled: boolean;
 }) {
-  const { gl, scene, camera } = useThree();
+  const { gl, scene, camera, size } = useThree();
   const rendererRef = useRef(gl);
   const targetRef = useRef(target);
   const targets = useMemo(() => [makeMirrorTarget(), makeMirrorTarget()], []);
@@ -47,8 +56,11 @@ export function SideMirrors({
     ],
     []
   );
-  const frameGeometry = useMemo(() => new THREE.PlaneGeometry(0.36, 0.2), []);
-  const glassGeometry = useMemo(() => new THREE.PlaneGeometry(0.32, 0.16), []);
+  const frameGeometry = useMemo(() => new THREE.PlaneGeometry(FRAME_WIDTH, FRAME_HEIGHT), []);
+  const glassGeometry = useMemo(
+    () => new THREE.PlaneGeometry(FRAME_WIDTH - GLASS_INSET * 2, FRAME_HEIGHT - GLASS_INSET * 2),
+    []
+  );
   const frameMaterial = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -137,15 +149,35 @@ export function SideMirrors({
       ? Math.tan(THREE.MathUtils.degToRad(perspective.fov * 0.5)) * DISPLAY_DISTANCE_METERS
       : 0.6;
     const halfWidth = perspective ? halfHeight * perspective.aspect : 1;
-    const displayWidth = Math.min(0.36, halfWidth * 0.42);
+    // Mirrors are sized off the narrower screen axis first: the FRAME_WIDTH cap
+    // reads well on desktop, and the 52% rule keeps them usable (not slivers)
+    // on narrow landscape phones.
+    const displayWidth = Math.min(FRAME_WIDTH, halfWidth * 0.52);
     const displayHeight = displayWidth / MIRROR_ASPECT;
+    // The DOM HUD paints above this canvas and the minimap owns the top-right
+    // corner (170px at 16px inset on desktop, 96px on coarse pointers), so a
+    // mirror pinned flush to the corner would sit behind it. Inset by a
+    // viewport-proportional margin instead - a pixel margin, not a fraction of
+    // the frustum, so the gap looks the same on a 4K monitor and a phone. The
+    // cap is the desktop minimap height plus its inset and a small gap; short
+    // viewports clamp to the lower bound and accept a sliver of overlap
+    // rather than pushing the mirrors halfway down the screen.
+    const topMarginPx = THREE.MathUtils.clamp(size.height * 0.185, 112, 200);
+    const sideMarginPx = THREE.MathUtils.clamp(size.width * 0.022, 10, 26);
+    // NDC of the gap edges: +1 is the right/top of the frame, so an inset of
+    // `m` pixels on an `s`-pixel axis sits at 1 - 2m/s.
+    const topEdgeNdc = 1 - (2 * topMarginPx) / Math.max(1, size.height);
+    const outerEdgeNdc = 1 - (2 * sideMarginPx) / Math.max(1, size.width);
+    // Back out from the edge to the plane's centre, in camera-space metres.
+    const centerX = (outerEdgeNdc - displayWidth / halfWidth / 2) * halfWidth;
+    const centerY = (topEdgeNdc - displayHeight / halfHeight / 2) * halfHeight;
     const leftDisplay = leftDisplayRef.current;
     const rightDisplay = rightDisplayRef.current;
     if (leftDisplay && rightDisplay) {
-      leftDisplay.position.set(-halfWidth + displayWidth * 0.62, halfHeight - displayHeight * 0.62, -DISPLAY_DISTANCE_METERS);
-      rightDisplay.position.set(halfWidth - displayWidth * 0.62, halfHeight - displayHeight * 0.62, -DISPLAY_DISTANCE_METERS);
-      leftDisplay.scale.set(displayWidth / 0.36, displayHeight / 0.2, 1);
-      rightDisplay.scale.set(displayWidth / 0.36, displayHeight / 0.2, 1);
+      leftDisplay.position.set(-centerX, centerY, -DISPLAY_DISTANCE_METERS);
+      rightDisplay.position.set(centerX, centerY, -DISPLAY_DISTANCE_METERS);
+      leftDisplay.scale.set(displayWidth / FRAME_WIDTH, displayHeight / FRAME_HEIGHT, 1);
+      rightDisplay.scale.set(displayWidth / FRAME_WIDTH, displayHeight / FRAME_HEIGHT, 1);
     }
 
     // A 30Hz mirror refresh is plenty for rear-quarter views and keeps two

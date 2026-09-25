@@ -92,7 +92,7 @@ import { weatherLabel } from "@/lib/physics/weather";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { F1CarBody } from "./F1CarBody";
-import { SteeringWheel } from "./CarBodyMesh";
+import { HelmetCockpit, SteeringWheel } from "./CarBodyMesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import { FLAP_OPEN_RAD, steeringWheelAngle, stepFlapAngle } from "@/lib/race/carBody";
@@ -415,6 +415,9 @@ export function Car({
   const steerRefs = useRef<(THREE.Group | null)[]>([]);
   const spinRefs = useRef<(THREE.Group | null)[]>([]);
   const steeringWheelRef = useRef<THREE.Group | null>(null);
+  // Dashboard/cockpit rails drawn only in helmet view, as a sibling of the
+  // hidden-chassis group so the camera still sees them.
+  const helmetCockpitRef = useRef<THREE.Group | null>(null);
   // Rear-wing flap pivot (see app/race/F1CarBody.tsx) - rotated open in
   // low-drag mode, like the real active-aero flap.
   const flapRef = useRef<THREE.Group | null>(null);
@@ -1105,7 +1108,13 @@ export function Car({
     // transient null (a remount, a track change) while in cockpit mode
     // can't leave the car permanently invisible with nothing left to
     // restore it.
-    const interiorCamera = cameraMode.current === "cockpit" || cameraMode.current === "helmet";
+    //
+    // The helmet view deliberately KEEPS the body visible: the sculpted
+    // shell is a closed surface, so from the driver's eye the near-side
+    // faces cull away and the nose, halo, cockpit rim and far bodywork read
+    // as the car's own structure around the wheel instead of a floating
+    // wheel in a void.
+    const interiorCamera = cameraMode.current === "cockpit";
     if (visualRef?.current) {
       visualRef.current.visible = !interiorCamera;
     }
@@ -1116,6 +1125,9 @@ export function Car({
     if (steeringWheelRef.current) {
       steeringWheelRef.current.visible = cameraMode.current === "helmet";
       steeringWheelRef.current.rotation.z = steeringWheelAngle(input.current.steer);
+    }
+    if (helmetCockpitRef.current) {
+      helmetCockpitRef.current.visible = cameraMode.current === "helmet";
     }
     CAR_WHEELS.forEach((wheel, i) => {
       const steerGroup = steerRefs.current[i];
@@ -1671,6 +1683,7 @@ export function Car({
           />
         </group>
         <SteeringWheel wheelRef={steeringWheelRef} />
+        <HelmetCockpit interiorRef={helmetCockpitRef} />
       </RigidBody>
     </>
   );
