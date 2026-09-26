@@ -48,3 +48,7 @@ AGENTS.md
 # scratch/ad-hoc test scripts (not the real test suite in /tests)
 /scratch/
 *.scratch.*
+
+# generated launch-video artifacts (local scratch output)
+/brag-output/
+/brag-output-chaotic/
