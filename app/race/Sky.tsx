@@ -134,7 +134,7 @@ export function SkyDome({
       });
     }
     return { dome, ring, sun, halo, clouds };
-  }, [zenith, horizon, hills, sunDirection, cloudCover, cloudColor]);
+  }, [zenith, horizon, hills, sunDirection, cloudCover]);
 
   useFrame(({ camera }) => {
     group.current?.position.copy(camera.position);

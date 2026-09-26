@@ -15,16 +15,17 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Seven-speed sequential manual gears with an auto-gear assist
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
 - Dynamic clear, cloudy, and rain weather with changing grip, drag, visibility, and track temperature
-- Race strategy with fuel burn, tire age, tire temperature, blankets, compound selection, and pit service
+- Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, compound selection, and pit service
+- Knockout qualifying in the real F1 format: Q1/Q2/Q3 with eliminations between phases
 - Track-derived 2026 overtake zones with race proximity and practice/qualifying access
-- Race Ops telemetry, steward decisions, penalties, invalid laps, and disqualification status
+- Race Ops telemetry, steward decisions, FIA-style penalties (5s/10s/drive-through/stop-go), license points, the 12-point race ban, invalid laps, and disqualification status
 - Rolling instant replay with a synchronized TV camera, seek controls, and a speed trace
 - Active Aero with high-downforce and low-drag modes
 - Tire compounds, wear, grip changes, damage, and per-wheel surface effects
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
-- Practice, qualifying, quick races, and full championship weekends
+- Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends
 - Multiplayer rooms with synchronized timing and race-control telemetry
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
 - Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass
@@ -55,6 +56,10 @@ That command runs the quality gates and hot-laps every registered circuit with t
 Open the Race Ops panel during a session to change weather, ERS mode, strategy mode, and compound. Request a pit service with `O`, arm 2026 overtake mode with `X`, pause singleplayer with `P`, and toggle instant replay with `J`. The panel shows fuel, tire temperature, grip, overtake state, steward decisions, penalties, and a rolling speed trace.
 
 Weather is shared by the track, player, and AI. Rain reduces grip and increases drag while the scene adds rain particles, lower visibility, and a darker atmospheric feel. Overtake zones are derived from long, low-curvature sections of each circuit. In a race they activate only within one second of the car ahead; in practice and qualifying they can be armed throughout the zone.
+
+## Penalties and the super-license
+
+Track limits follow the FIA ladder: three warnings, then a black-and-white flag, then escalating time penalties for repeat offenses (+5s, +10s, a drive-through, a stop-go). Unsafe rejoins and pit-lane speeding are drive-through penalties. Every penalty carries super-license points, and a driver who collects 12 points in a season receives an automatic race ban. The five red start lights illuminate one by one, then extinguish - lights out and away we go.
 
 Pit service currently uses the marked start-finish service window as a playable vertical slice. A full drivable pit-lane route and route-aware championship classification are the next simulation milestone.
 
