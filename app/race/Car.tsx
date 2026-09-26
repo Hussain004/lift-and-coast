@@ -543,6 +543,8 @@ export function Car({
   const replayCameraRestoreRef = useRef<CameraMode | null>(null);
   const overtakeRequestedRef = useRef(false);
   const energyStatusRef = useRef(energySystemRef.current.snapshot());
+  /** True only while the hybrid is deploying; drives the MGU-K whine. */
+  const deployRef = useRef(false);
   const strategyStateRef = useRef(strategyRef.current.snapshot());
   const overtakeStateRef = useRef(overtakeSystem.snapshot());
   const weatherStateRef = useRef(effectiveWeatherRef.current.snapshot());
@@ -967,6 +969,9 @@ export function Car({
       world.timestep
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
+    // Kept as a plain flag for the audio rig: the MGU-K whine should be gated
+    // on the sim actually deploying, not on a re-derived approximation of it.
+    deployRef.current = energyStatus.isDeploying;
     energyStatusRef.current = energyStatus;
     strategyStateRef.current = strategyState;
     overtakeStateRef.current = overtakeState;
@@ -1229,6 +1234,9 @@ export function Car({
         gear: gearboxRef.current.gear,
         kerb01: kerbContactRef.current,
         shiftSerial: shiftSerialRef.current,
+        // MGU-K whine, from the sim's real deployment state rather than
+        // guessed from throttle (see lib/audio/raceAudio.ts).
+        deploy01: deployRef.current ? 1 : 0,
       };
     }
 

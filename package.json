@@ -12,7 +12,8 @@
     "diagnose:line": "LINE_BENCHMARK=1 vitest run tests/racingLineQuality.test.ts",
     "diagnose:ace": "ACE_BENCHMARK=1 vitest run --pool=threads --maxWorkers=1 tests/aceTrackBenchmark.test.ts",
     "diagnose:ace-field": "ACE_FIELD_BENCHMARK=1 vitest run --pool=threads --maxWorkers=1 tests/aceFieldBenchmark.test.ts",
-    "build:track": "node --experimental-strip-types scripts/build-track.mts"
+    "build:track": "node --experimental-strip-types scripts/build-track.mts",
+    "build:audio": "node --experimental-strip-types scripts/generate-audio.mts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.2",

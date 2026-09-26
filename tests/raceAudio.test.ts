@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDIO_RPM_POINTS,
   clamp01,
   createRaceAudio,
+  crossfadeWeights,
   defaultCarSnapshot,
   dopplerFactor,
   engineCutoffHz,
@@ -11,14 +13,19 @@ import {
   kerbRumbleHz,
   limiterAmount,
   loadMuted,
+  mguFrequencyHz,
+  mguGain01,
   opponentGain01,
   opponentPanLR,
   pickVoicedOpponents,
+  rpmBracket,
   rpmTo01,
   saveMuted,
   smoothRpm01,
   skidAmount01,
   skidGain01,
+  turboGain01,
+  turboLagCoefficient,
   windGain01,
 } from "../lib/audio/raceAudio";
 import { IDLE_RPM, REDLINE_RPM, REV_LIMITER_RPM } from "../lib/physics/gearbox";
@@ -42,12 +49,46 @@ describe("race audio mappings", () => {
     expect(engineFrequencyHz(0.5)).toBeGreaterThan(60);
   });
 
-  it("keeps limiter load smooth and the synth fundamental bounded", () => {
+  it("keeps limiter load smooth and the fundamental on the V6 firing rate", () => {
     expect(limiterAmount(REDLINE_RPM)).toBe(0);
     expect(limiterAmount(REV_LIMITER_RPM)).toBe(1);
     expect(limiterAmount(REV_LIMITER_RPM + 5000)).toBe(1);
     expect(limiterAmount(REDLINE_RPM + 400)).toBeGreaterThan(0);
-    expect(engineFrequencyHz(1)).toBeLessThanOrEqual(320);
+    // A four-stroke V6 fires three times per crank revolution, so the
+    // fundamental is rpm/60 x 3: 150Hz at this sim's 3000rpm idle and 600Hz
+    // at its 12000rpm redline. This used to be rpm/60 x 1.5 (an octave low)
+    // and was then capped at 320Hz, which flattened the top of the rev range
+    // entirely - two separate reasons the engine never sounded like an F1.
+    expect(engineFrequencyHz(0)).toBeCloseTo(IDLE_RPM / 20, 6);
+    expect(engineFrequencyHz(1)).toBeCloseTo(REDLINE_RPM / 20, 6);
+    expect(engineFrequencyHz(1)).toBeGreaterThan(500);
+  });
+
+  it("brackets the bank by rpm and crossfades equal-power", () => {
+    expect(rpmBracket(0)).toEqual({ lo: 0, hi: 0, t: 0 });
+    expect(rpmBracket(1)).toEqual({ lo: 5, hi: 5, t: 0 });
+    const mid = rpmBracket(0.5);
+    expect(AUDIO_RPM_POINTS[mid.lo]).toBeLessThanOrEqual(IDLE_RPM + (REDLINE_RPM - IDLE_RPM) * 0.5);
+    expect(AUDIO_RPM_POINTS[mid.hi]).toBeGreaterThanOrEqual(IDLE_RPM + (REDLINE_RPM - IDLE_RPM) * 0.5);
+    // Equal power: the sum of squares is flat, so a crossfade does not dip in
+    // the middle the way a linear one does.
+    const [a, b] = crossfadeWeights(0.37);
+    expect(a * a + b * b).toBeCloseTo(1, 9);
+    expect(a).toBeGreaterThan(b);
+  });
+
+  it("lags the turbo spooling up less than it dumps it", () => {
+    // Wastegate dumps boost far faster than the turbine recovers it, so the
+    // lag coefficient must be larger on the way down.
+    expect(turboLagCoefficient(false)).toBeGreaterThan(turboLagCoefficient(true));
+    expect(turboGain01(0, 1)).toBe(0);
+    expect(turboGain01(1, 1)).toBeGreaterThan(0);
+  });
+
+  it("drives the MGU-K whine only from real deployment", () => {
+    expect(mguGain01(0)).toBe(0);
+    expect(mguGain01(1)).toBeGreaterThan(0);
+    expect(mguFrequencyHz(1)).toBeGreaterThan(mguFrequencyHz(0));
   });
 
   it("smooths rpm toward a new target without overshooting", () => {

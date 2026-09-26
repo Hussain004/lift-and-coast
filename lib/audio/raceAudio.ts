@@ -1,7 +1,20 @@
-// Plan section 12 (Audio Design): fully synthesized race audio over the Web
-// Audio API - zero sample assets, nothing to download. Every voice runs on
-// the browser's audio thread, so the cost to the frame is the few
-// parameter writes a tick below.
+// Plan section 12 (Audio Design): race audio over the Web Audio API.
+//
+// The engine, turbo and one-shots are GENERATED, not recorded - see
+// scripts/generate-audio.mts, which is the source of truth for the
+// public/audio/*.wav bank and can regenerate it byte-for-byte. That was a deliberate
+// change from "zero sample assets": the engine used to be a handful of
+// oscillators, and three things about it were simply wrong in a way no amount
+// of mixing could fix - it was pitched an octave below the V6's real firing
+// rate, its pitch was capped flat across the top of the rev range, and its
+// "turbo" was a sine at 0.006 gain under a 0.16 engine, i.e. inaudible.
+// Rendering the engine offline buys 40 load-dependent harmonics, per-cycle
+// mechanical jitter and banded combustion roar for the price of a few hundred
+// KB, and costs the browser nothing but two crossfades.
+//
+// Everything else (tyre squeal, wind, kerbs, impacts, the MGU-K whine) is
+// still synthesised live, and every voice runs on the audio thread, so the
+// cost to the frame is the few parameter writes a tick below.
 //
 // - Engine: a custom harmonic waveform tuned to a V6's firing order (a
 //   half-order fundamental with a strong firing harmonic), soft-clipped for
@@ -34,6 +47,12 @@ export interface AudioCarSnapshot {
   /** 0..1 limiter/load state derived from raw rpm; keeps the top gear from
    * sounding like a permanently flat, full-throttle tone. */
   limiter01: number;
+  /**
+   * 0..1 hybrid motor deployment, straight from the sim's energy system
+   * (energyStatus.isDeploying). Drives the MGU-K whine, which is a large part
+   * of a modern F1 engine note and did not exist here at all before.
+   */
+  deploy01?: number;
   /** Monotonic player shift event counter, so audio never guesses from a
    * render-sampled gear delta. Remote/AI sources may leave this at zero. */
   shiftSerial: number;
@@ -106,14 +125,54 @@ export function skidAmount01(lateralMs: number, forwardMs: number): number {
   return clamp01((Math.abs(lateralMs) - 2) / 6);
 }
 
-/** Oscillator fundamental: a V6 four-stroke fires three times a crank
- * revolution; the waveform's fundamental sits at half the firing rate
- * (rpm/60 x 1.5), 75 Hz at idle to 300 Hz at the limiter. */
+/**
+ * Engine fundamental.
+ *
+ * A four-stroke V6 has six cylinders, each firing once every two crank
+ * revolutions, so the exhaust fires THREE times per revolution. That firing
+ * rate is the real fundamental of the note: 150 Hz at this sim's 3000 rpm
+ * idle and 600 Hz at its 12000 rpm redline.
+ *
+ * This used to be rpm/60 x 1.5 - exactly one octave low, with a 320Hz ceiling
+ * on top that flattened the entire top of the rev range. Both were wrong, and
+ * the pitch being an octave down is most of why the engine read as a generic
+ * tone rather than an F1 V6. The generated sample bank (see
+ * scripts/generate-audio.mts) is built on the same rule, and
+ * tests/audioBank.test.ts pins it.
+ */
 export function engineFrequencyHz(rpm01: number): number {
   const rpm = IDLE_RPM + clamp01(rpm01) * (REDLINE_RPM - IDLE_RPM);
-  // Keep the fundamental in a musical, non-aliasing band even if a remote
-  // snapshot reports a nonsensical normalized rpm.
-  return Math.min(320, (rpm / 60) * 1.5);
+  return (rpm / 60) * 3;
+}
+
+/** The rpm the bank and this mapping both work in. */
+export function rpmFor01(rpm01: number): number {
+  return IDLE_RPM + clamp01(rpm01) * (REDLINE_RPM - IDLE_RPM);
+}
+
+/** The generated bank's rpm crossfade points, in the sim's own range. */
+export const AUDIO_RPM_POINTS = [3000, 5000, 7000, 9000, 10800, 12000] as const;
+
+/**
+ * Which two bank loops to crossfade between for a given rpm, and by how much.
+ * Returns the two indices and the position between them, 0..1.
+ */
+export function rpmBracket(rpm01: number): { lo: number; hi: number; t: number } {
+  const rpm = rpmFor01(rpm01);
+  const points = AUDIO_RPM_POINTS;
+  if (rpm <= points[0]) return { lo: 0, hi: 0, t: 0 };
+  const last = points.length - 1;
+  if (rpm >= points[last]) return { lo: last, hi: last, t: 0 };
+  let i = 0;
+  while (i < last && rpm > points[i + 1]) i++;
+  const span = points[i + 1] - points[i];
+  return { lo: i, hi: i + 1, t: span > 0 ? (rpm - points[i]) / span : 0 };
+}
+
+/** Equal-power pair for a crossfade position. */
+export function crossfadeWeights(t: number): [number, number] {
+  const x = clamp01(t) * (Math.PI / 2);
+  return [Math.cos(x), Math.sin(x)];
 }
 
 /** Throttle opens the lowpass: coasting muted and dark, full power bright. */
@@ -124,6 +183,44 @@ export function engineCutoffHz(rpm01: number, throttle01: number): number {
 /** Audible at idle, present under power, never a bed of noise. */
 export function engineGain01(throttle01: number): number {
   return 0.05 + 0.11 * clamp01(throttle01);
+}
+
+/**
+ * Turbo spool. Real turbo pressure lags the engine by a few hundred
+ * milliseconds - that lag IS the turbo character, and feeding the whine
+ * straight from rpm makes it sound like a sine oscillator bolted to the
+ * engine. This is the one-pole coefficient for that lag, in the same
+ * setTargetAtTime units the rest of the mix uses. Spooling up is quicker
+ * than spooling down, because the wastegate dumps pressure far faster than
+ * the turbine recovers it.
+ */
+export function turboLagCoefficient(spoolingUp: boolean): number {
+  // The third argument to setTargetAtTime is a TIME CONSTANT, so larger is
+  // slower. Spooling up is the quicker of the two; the wastegate dumps
+  // pressure far faster than the turbine recovers it, so the way down is the
+  // one that should lag.
+  return spoolingUp ? 0.1 : 0.28;
+}
+
+/** Turbo level from the driver's right foot: nothing off throttle, loud on. */
+export function turboGain01(throttle01: number, boost01: number): number {
+  return 0.1 * clamp01(throttle01) * clamp01(boost01);
+}
+
+/**
+ * MGU-K. The hybrid motor is a big part of why a modern F1 car sounds the way
+ * it does, and it is a completely different sound to the engine: a thin,
+ * slightly detuned electric whine a couple of octaves above the exhaust note.
+ * Driven from the sim's real deployment state rather than guessed from
+ * throttle, so it appears only when the driver is actually deploying.
+ */
+export function mguGain01(deploy01: number): number {
+  return 0.055 * clamp01(deploy01);
+}
+
+/** MGU-K pitch, in Hz, against rpm. */
+export function mguFrequencyHz(rpm01: number): number {
+  return 1400 + 2100 * clamp01(rpm01);
 }
 
 /** Audible slide hiss, full slide clearly over the engine. */
@@ -217,21 +314,6 @@ function makeNoiseBuffer(context: BaseAudioContext): AudioBuffer {
   return buffer;
 }
 
-/** Harmonic amplitudes over the half-order fundamental: the 2nd (the
- * firing frequency) dominates, even orders carry the V6 buzz, odd half-
- * orders the growl. */
-const ENGINE_HARMONICS = [0, 0.4, 1.0, 0.5, 0.62, 0.28, 0.42, 0.16, 0.25, 0.1, 0.15, 0.07, 0.09, 0.04, 0.05];
-
-function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
-  const n = 1024;
-  const curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 2 - 1;
-    curve[i] = Math.tanh(x * amount) / Math.tanh(amount);
-  }
-  return curve;
-}
-
 interface EngineVoice {
   /** holdGain leaves the output gain alone (a scheduled shift cut owns it). */
   setState(
@@ -246,92 +328,251 @@ interface EngineVoice {
   output: GainNode;
 }
 
-function makeEngineVoice(
+/** Decoded bank: file stem -> buffer, plus the axes the loops are cut on. */
+export interface AudioBank {
+  get(name: string): AudioBuffer | undefined;
+  rpm: readonly number[];
+  loads: readonly string[];
+}
+
+/**
+ * Load and decode the generated sample bank.
+ *
+ * Fetched in parallel and decoded once, then every voice crossfades between
+ * already-decoded buffers - decoding on demand would stutter on the first
+ * blip of throttle. A missing or unreadable file is not fatal: the bank is an
+ * enhancement over a synthesised fallback, and a race that cannot start
+ * because an asset 404'd would be a far worse outcome than a plainer engine.
+ */
+export async function loadAudioBank(
   context: BaseAudioContext,
-  destination: AudioNode,
-  wave: PeriodicWave,
-  noise: AudioBuffer,
-  rich: boolean
-): EngineVoice {
-  const osc = context.createOscillator();
-  osc.setPeriodicWave(wave);
-  // A second, slightly detuned copy thickens the tone like the two banks.
-  const bank = context.createOscillator();
-  bank.setPeriodicWave(wave);
-  bank.detune.value = 3;
-  const shaper = context.createWaveShaper();
-  shaper.curve = softClipCurve(2.2);
-  const filter = context.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.Q.value = 0.9;
-  const gain = context.createGain();
-  gain.gain.value = 0;
-  osc.connect(shaper);
-  bank.connect(shaper);
-  shaper.connect(filter);
-  filter.connect(gain);
-  gain.connect(destination);
-  osc.start();
-  bank.start();
+  base = "/audio/"
+): Promise<AudioBank> {
+  const rpm = [...AUDIO_RPM_POINTS];
+  const loads = ["off", "mid", "on"];
+  const names = [
+    ...rpm.flatMap((r) => loads.map((l) => `engine-${r}-${l}`)),
+    "turbo-0",
+    "turbo-50",
+    "turbo-100",
+    "bov",
+    "crack-0",
+    "crack-1",
+    "crack-2",
+  ];
+  const buffers = new Map<string, AudioBuffer>();
+  await Promise.all(
+    names.map(async (name) => {
+      try {
+        const response = await fetch(`${base}${name}.wav`);
+        if (!response.ok) return;
+        buffers.set(name, await context.decodeAudioData(await response.arrayBuffer()));
+      } catch {
+        // Left absent; the voice simply has nothing to fade to.
+      }
+    })
+  );
+  return { get: (name) => buffers.get(name), rpm, loads };
+}
+
+/**
+ * A sample-based engine voice.
+ *
+ * One looping buffer per (rpm point x load point) in the bank, equal-power
+ * crossfaded between the two rpm brackets and the two load brackets. The
+ * loops are the real thing (rendered offline by scripts/generate-audio.mts),
+ * so all the things a handful of oscillators could not do - 40 load-dependent
+ * harmonics, per-cycle mechanical jitter, banded combustion roar, the F1
+ * firing rate - are already in the samples. The browser's whole job here is to
+ * choose two of them and fade.
+ *
+ * Rivals use the same voice, so every car in the field is the same engine at
+ * a different pitch and load, exactly as they should be.
+ *
+ * The gain matrix is built immediately but the sources are attached later, via
+ * `attach(bank)` once the fetch and decode finish. Building them up front
+ * would mean decoding on demand the first time the throttle moved, which is
+ * precisely when a stutter would be most obvious.
+ */
+function makeSampleEngineVoice(
+  context: BaseAudioContext,
+  destination: AudioNode
+): EngineVoice & { attach(bank: AudioBank): void } {
+  const output = context.createGain();
+  output.gain.value = 0;
+  // A gentle lowpass the mix opens with load, so a distant car sits further
+  // back without needing a separate sample set.
+  const tone = context.createBiquadFilter();
+  tone.type = "lowpass";
+  tone.frequency.value = 12000;
+  tone.Q.value = 0.6;
+  tone.connect(output);
+  output.connect(destination);
+
+  // [loadIndex][rpmIndex] -> gain
+  const LOAD_COUNT = 3;
+  const gains: GainNode[][] = [];
+  for (let li = 0; li < LOAD_COUNT; li++) {
+    const row: GainNode[] = [];
+    for (let ri = 0; ri < AUDIO_RPM_POINTS.length; ri++) {
+      const g = context.createGain();
+      g.gain.value = 0;
+      g.connect(tone);
+      row.push(g);
+    }
+    gains.push(row);
+  }
+  const attach = (bank: AudioBank): void => {
+    for (let li = 0; li < LOAD_COUNT; li++) {
+      const loadName = bank.loads[li] ?? bank.loads[0];
+      for (let ri = 0; ri < AUDIO_RPM_POINTS.length; ri++) {
+        const buffer = bank.get(`engine-${AUDIO_RPM_POINTS[ri]}-${loadName}`);
+        if (!buffer) continue;
+        const src = context.createBufferSource();
+        src.buffer = buffer;
+        src.loop = true;
+        src.connect(gains[li][ri]);
+        src.start();
+      }
+    }
+  };
 
   let smoothedRpm01 = 0;
-  // Combustion roar: noise banded around the firing frequency.
-  let roarFilter: BiquadFilterNode | null = null;
-  let roarGain: GainNode | null = null;
-  // Hybrid/turbo whine: a thin high sine that climbs with the revs.
-  let whine: OscillatorNode | null = null;
-  let whineGain: GainNode | null = null;
-  if (rich) {
-    const roar = context.createBufferSource();
-    roar.buffer = noise;
-    roar.loop = true;
-    roarFilter = context.createBiquadFilter();
-    roarFilter.type = "bandpass";
-    roarFilter.Q.value = 1.4;
-    roarGain = context.createGain();
-    roarGain.gain.value = 0;
-    roar.connect(roarFilter);
-    roarFilter.connect(roarGain);
-    roarGain.connect(gain);
-    roar.start();
-    whine = context.createOscillator();
-    whine.type = "sine";
-    whineGain = context.createGain();
-    whineGain.gain.value = 0;
-    whine.connect(whineGain);
-    whineGain.connect(gain);
-    whine.start();
-  }
-
+  let smoothedLoad01 = 0;
   return {
-    output: gain,
+    output,
+    attach,
     setState(rpm01, throttle01, gainScale, pitch, when, limiter01 = 0, holdGain = false) {
       smoothedRpm01 = smoothRpm01(smoothedRpm01, rpm01);
-      const limiter = clamp01(limiter01);
-      const freq = engineFrequencyHz(smoothedRpm01) * pitch;
-      osc.frequency.setTargetAtTime(freq, when, 0.03);
-      bank.frequency.setTargetAtTime(freq, when, 0.03);
-      filter.frequency.setTargetAtTime(engineCutoffHz(smoothedRpm01, throttle01), when, 0.05);
+      // Load follows the throttle but slower, which is what makes a lift feel
+      // like a moment rather than an instant.
+      smoothedLoad01 = smoothRpm01(smoothedLoad01, throttle01, 0.25);
+
+      const { lo, hi, t } = rpmBracket(smoothedRpm01);
+      const [wLo, wHi] = crossfadeWeights(t);
+      // Three bank load points, so two brackets.
+      const loadPos = clamp01(smoothedLoad01) * (LOAD_COUNT - 1);
+      const l0 = Math.min(LOAD_COUNT - 1, Math.floor(loadPos));
+      const l1 = Math.min(LOAD_COUNT - 1, l0 + 1);
+      const [lw0, lw1] = crossfadeWeights(loadPos - l0);
+
+      for (let li = 0; li < LOAD_COUNT; li++) {
+        for (let ri = 0; ri < AUDIO_RPM_POINTS.length; ri++) {
+          const rpmWeight = ri === lo ? wLo : ri === hi ? wHi : 0;
+          const loadWeight = li === l0 ? lw0 : li === l1 ? lw1 : 0;
+          const g = gains[li][ri];
+          g.gain.setTargetAtTime(rpmWeight * loadWeight, when, 0.04);
+        }
+      }
+
       if (!holdGain) {
-        const limiterCut = 1 - 0.2 * limiter;
-        gain.gain.setTargetAtTime(engineGain01(throttle01) * gainScale * limiterCut, when, 0.05);
-      }
-      if (roarFilter && roarGain) {
-        roarFilter.frequency.setTargetAtTime(freq * 2, when, 0.04);
-        roarGain.gain.setTargetAtTime(
-          0.9 * clamp01(throttle01) * (0.3 + smoothedRpm01) * (1 - 0.25 * limiter),
+        const limiterCut = 1 - 0.2 * clamp01(limiter01);
+        output.gain.setTargetAtTime(
+          engineGain01(throttle01) * gainScale * limiterCut,
           when,
-          0.06
+          0.05
         );
       }
-      if (whine && whineGain) {
-        whine.frequency.setTargetAtTime((2400 + 2600 * smoothedRpm01) * pitch, when, 0.05);
-        whineGain.gain.setTargetAtTime(
-          0.006 * gainScale * (0.3 + clamp01(throttle01)) * (1 - 0.35 * limiter),
-          when,
-          0.08
-        );
-      }
+      tone.frequency.setTargetAtTime(
+        engineCutoffHz(smoothedRpm01, throttle01) * pitch,
+        when,
+        0.06
+      );
+    },
+  };
+}
+
+/**
+ * The turbo, as its own voice with real spool lag. Two bank loops crossfaded
+ * by a lagging boost value, so the whine arrives slightly after the power -
+ * which is the single most recognisable thing about a turbocharged engine
+ * after the firing rate itself.
+ */
+function makeTurboVoice(
+  context: BaseAudioContext,
+  destination: AudioNode
+): { setState(boost01: number, rpm01: number, when: number): void; output: GainNode; attach(bank: AudioBank): void } {
+  const output = context.createGain();
+  output.gain.value = 0;
+  output.connect(destination);
+  const names = ["turbo-0", "turbo-50", "turbo-100"];
+  const gains: GainNode[] = names.map(() => {
+    const g = context.createGain();
+    g.gain.value = 0;
+    g.connect(output);
+    return g;
+  });
+  const attach = (bank: AudioBank): void => {
+    names.forEach((name, i) => {
+      const buffer = bank.get(name);
+      if (!buffer) return;
+      const src = context.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.connect(gains[i]);
+      src.start();
+    });
+  };
+  // Spool state, lagged.
+  let boost = 0;
+  let previousBoost = 0;
+  return {
+    output,
+    attach,
+    setState(boost01, rpm01, when) {
+      previousBoost = boost;
+      boost = clamp01(boost01);
+      const lag = turboLagCoefficient(boost >= previousBoost);
+      const pos = boost * (gains.length - 1);
+      const i0 = Math.min(gains.length - 1, Math.floor(pos));
+      const i1 = Math.min(gains.length - 1, i0 + 1);
+      const [w0, w1] = crossfadeWeights(pos - i0);
+      gains.forEach((g, i) => {
+        const w = i === i0 ? w0 : i === i1 ? w1 : 0;
+        g.gain.setTargetAtTime(w, when, lag);
+      });
+      // Also fades out at the very top of the range, where the real car is
+      // on the limiter and the engine, not the turbo, is what you hear.
+      output.gain.setTargetAtTime(
+        0.5 * (0.55 + 0.45 * clamp01(rpm01)),
+        when,
+        lag
+      );
+    },
+  };
+}
+
+/**
+ * MGU-K: two detuned sines through a bandpass, gated on the sim's real
+ * deployment state. Cheap, and correct - it is a pure electrical whine, not
+ * something a sample loop of combustion would capture.
+ */
+function makeMguVoice(context: BaseAudioContext, destination: AudioNode) {
+  const output = context.createGain();
+  output.gain.value = 0;
+  const filter = context.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 2000;
+  filter.Q.value = 2.4;
+  filter.connect(output);
+  output.connect(destination);
+  const a = context.createOscillator();
+  const b = context.createOscillator();
+  a.type = "sine";
+  b.type = "sine";
+  a.connect(filter);
+  b.connect(filter);
+  a.start();
+  b.start();
+  return {
+    setState(deploy01: number, rpm01: number, when: number) {
+      const f = mguFrequencyHz(rpm01);
+      a.frequency.setTargetAtTime(f, when, 0.05);
+      // The two inverter halves never sit at exactly the same frequency; the
+      // beat between them is most of the character.
+      b.frequency.setTargetAtTime(f * 1.011, when, 0.05);
+      filter.frequency.setTargetAtTime(f * 1.1, when, 0.05);
+      output.gain.setTargetAtTime(mguGain01(deploy01), when, deploy01 > 0.05 ? 0.04 : 0.12);
     },
   };
 }
@@ -362,9 +603,10 @@ export function createRaceAudio(): RaceAudioEngine | null {
   compressor.connect(context.destination);
 
   const noise = makeNoiseBuffer(context);
-  const imag = new Float32Array(ENGINE_HARMONICS);
-  const wave = context.createPeriodicWave(new Float32Array(imag.length), imag);
-  const playerVoice = makeEngineVoice(context, master, wave, noise, true);
+
+  const playerVoice = makeSampleEngineVoice(context, master);
+  const turbo = makeTurboVoice(context, master);
+  const mgu = makeMguVoice(context, master);
 
   // Rival voices: each its own pan, and a shared per-voice gain for the
   // distance fade (the engine voice's own gain carries the throttle).
@@ -372,9 +614,22 @@ export function createRaceAudio(): RaceAudioEngine | null {
   const rivals = Array.from({ length: OPPONENT_VOICES }, () => {
     const pan = context.createStereoPanner();
     pan.connect(master);
-    return { pan, voice: makeEngineVoice(context, pan, wave, noise, false), car: -1 };
+    return { pan, voice: makeSampleEngineVoice(context, pan), car: -1 };
   });
   let voiced: number[] = [];
+
+  // One fetch for every voice. Until it resolves the engine and turbo are
+  // simply silent - the context is still suspended at this point (autoplay
+  // policy) and the player cannot have moved the car yet, so the gap is not
+  // audible in practice. A missing file degrades to a quieter car rather than
+  // a race that will not start.
+  // Fire and forget: every voice is silent until its buffers land.
+  void loadAudioBank(context).then((bank) => {
+    playerVoice.attach(bank);
+    turbo.attach(bank);
+    for (const slot of rivals) slot.voice.attach(bank);
+    oneShots.bank = bank;
+  });
 
   const loopNoise = (type: BiquadFilterType, freq: number, q: number): { gain: GainNode; filter: BiquadFilterNode } => {
     const src = context.createBufferSource();
@@ -414,8 +669,10 @@ export function createRaceAudio(): RaceAudioEngine | null {
   let lastShiftSerial = 0;
   let lastPopAt = 0;
   let shiftCutUntil = 0;
+  /** Where the one-shot buffers live once the bank lands. */
+  const oneShots: { bank?: AudioBank } = {};
 
-  /** A short filtered noise burst - impacts, shift cracks, exhaust pops. */
+  /** A short filtered noise burst - impacts and shift cracks. */
   const burst = (gainPeak: number, cutoffHz: number, seconds: number, rate = 0.8) => {
     const when = context.currentTime;
     const source = context.createBufferSource();
@@ -433,6 +690,25 @@ export function createRaceAudio(): RaceAudioEngine | null {
     source.start(when, Math.random() * 1.5);
     source.stop(when + seconds + 0.05);
   };
+
+  /** Play a generated one-shot (blow-off valve, anti-lag crack). */
+  const oneShot = (name: string, peak: number, rate = 1) => {
+    const buffer = oneShots.bank?.get(name);
+    if (!buffer) return;
+    const when = context.currentTime;
+    const src = context.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = rate;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(peak, when);
+    gain.gain.exponentialRampToValueAtTime(0.0005, when + buffer.duration);
+    src.connect(gain);
+    gain.connect(master);
+    src.start(when);
+    src.stop(when + buffer.duration + 0.02);
+  };
+
+  let previousThrottle = 0;
 
   return {
     update(snapshot) {
@@ -463,10 +739,35 @@ export function createRaceAudio(): RaceAudioEngine | null {
         when < shiftCutUntil
       );
 
+      // Lift-off: a hard lift off boost is where a real turbo dumps pressure -
+      // the blow-off valve chirp, then the anti-lag cracks that hold the boost
+      // up on the way back down. Both were missing entirely before, and they
+      // are a large part of why an on-throttle/off-throttle F1 engine sounds
+      // like a machine rather than a recording.
+      const lifted = previousThrottle > 0.45 && p.throttle01 < 0.12;
+      if (lifted && p.rpm01 > 0.3) {
+        oneShot("bov", 0.16 + 0.2 * p.rpm01, 0.95 + Math.random() * 0.12);
+        // A short burst of cracks, tightening as the revs fall.
+        for (let k = 0; k < 3; k++) {
+          const crack = 0.06 + Math.random() * 0.09;
+          window.setTimeout(() => {
+            if (context.state === "running") {
+              oneShot(`crack-${Math.floor(Math.random() * 3)}`, crack, 0.85 + Math.random() * 0.3);
+            }
+          }, 40 + k * (55 + Math.random() * 60));
+        }
+      }
+      previousThrottle = p.throttle01;
+
+      // Turbo: spooled by the right foot, with the voice's own lag.
+      turbo.setState(p.throttle01, p.rpm01, when);
+      // MGU-K: only when the sim says the hybrid is actually deploying.
+      mgu.setState(p.deploy01 ?? 0, p.rpm01, when);
+
       // Overrun: off the throttle at high revs the exhaust pops and bangs.
       if (p.throttle01 < 0.08 && p.rpm01 > 0.45 && speed > 20 && when - lastPopAt > 0.07 && Math.random() < 0.18) {
         lastPopAt = when;
-        burst(0.1 + Math.random() * 0.12, 700 + Math.random() * 900, 0.05 + Math.random() * 0.05, 0.5);
+        oneShot(`crack-${Math.floor(Math.random() * 3)}`, 0.1 + Math.random() * 0.12, 0.5 + Math.random() * 0.2);
       }
 
       squealLow.gain.gain.setTargetAtTime(skidGain01(p.skid01), when, 0.05);
