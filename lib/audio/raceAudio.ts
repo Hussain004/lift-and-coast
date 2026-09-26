@@ -278,6 +278,11 @@ function makeEngineVoice(
   // Combustion roar: noise banded around the firing frequency.
   let roarFilter: BiquadFilterNode | null = null;
   let roarGain: GainNode | null = null;
+  // Intake/induction roar: a tighter noise band tracked just above the
+  // fundamental, giving the throttle a physical induction sound that fills
+  // the mid-range between the combustion roar and the turbo whine.
+  let intakeFilter: BiquadFilterNode | null = null;
+  let intakeGain: GainNode | null = null;
   // Hybrid/turbo whine: a thin high sine that climbs with the revs.
   let whine: OscillatorNode | null = null;
   let whineGain: GainNode | null = null;
@@ -294,6 +299,19 @@ function makeEngineVoice(
     roarFilter.connect(roarGain);
     roarGain.connect(gain);
     roar.start();
+    const intake = context.createBufferSource();
+    intake.buffer = noise;
+    intake.loop = true;
+    intake.playbackRate.value = 0.85;
+    intakeFilter = context.createBiquadFilter();
+    intakeFilter.type = "bandpass";
+    intakeFilter.Q.value = 3;
+    intakeGain = context.createGain();
+    intakeGain.gain.value = 0;
+    intake.connect(intakeFilter);
+    intakeFilter.connect(intakeGain);
+    intakeGain.connect(gain);
+    intake.start();
     whine = context.createOscillator();
     whine.type = "sine";
     whineGain = context.createGain();
@@ -322,6 +340,14 @@ function makeEngineVoice(
           0.9 * clamp01(throttle01) * (0.3 + smoothedRpm01) * (1 - 0.25 * limiter),
           when,
           0.06
+        );
+      }
+      if (intakeFilter && intakeGain) {
+        intakeFilter.frequency.setTargetAtTime(freq * 1.5, when, 0.04);
+        intakeGain.gain.setTargetAtTime(
+          0.5 * clamp01(throttle01) * (0.25 + 0.75 * smoothedRpm01) * (1 - 0.3 * limiter),
+          when,
+          0.05
         );
       }
       if (whine && whineGain) {
@@ -412,6 +438,7 @@ export function createRaceAudio(): RaceAudioEngine | null {
   let muted = false;
   let lastImpactAt = -Infinity;
   let lastShiftSerial = 0;
+  let lastGear = 1;
   let lastPopAt = 0;
   let shiftCutUntil = 0;
 
@@ -441,18 +468,25 @@ export function createRaceAudio(): RaceAudioEngine | null {
       const p = snapshot.player;
       const speed = Math.hypot(p.vx, p.vz);
 
-      // Upshift: the ignition cut dips the engine for a few hundredths and
-      // the exhaust cracks.
-      if (p.shiftSerial > lastShiftSerial && p.throttle01 > 0.3) {
-        const g = playerVoice.output.gain;
-        g.cancelScheduledValues(when);
-        g.setValueAtTime(g.value, when);
-        g.linearRampToValueAtTime(g.value * 0.25, when + 0.025);
-        g.linearRampToValueAtTime(engineGain01(p.throttle01), when + 0.09);
-        shiftCutUntil = when + 0.09;
-        burst(0.22, 2200, 0.08, 1.1);
+      // Shift events fire once per shiftSerial increment, and the gear number
+      // gives the direction: an upshift gets the ignition cut (the engine
+      // drops out for a few hundredths), a downshift gets the auto-blip
+      // rev-match crack as the revs rise to the lower gear.
+      if (p.shiftSerial > lastShiftSerial) {
+        if (p.gear > lastGear && p.throttle01 > 0.3) {
+          const g = playerVoice.output.gain;
+          g.cancelScheduledValues(when);
+          g.setValueAtTime(g.value, when);
+          g.linearRampToValueAtTime(g.value * 0.25, when + 0.025);
+          g.linearRampToValueAtTime(engineGain01(p.throttle01), when + 0.09);
+          shiftCutUntil = when + 0.09;
+          burst(0.22, 2200, 0.08, 1.1);
+        } else if (p.gear < lastGear) {
+          burst(0.16, 1500 + Math.random() * 500, 0.08, 0.9);
+        }
+        lastShiftSerial = Math.max(lastShiftSerial, p.shiftSerial);
       }
-      lastShiftSerial = Math.max(lastShiftSerial, p.shiftSerial);
+      lastGear = p.gear;
       playerVoice.setState(
         p.rpm01,
         p.throttle01,
