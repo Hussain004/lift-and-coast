@@ -58,10 +58,10 @@ import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
 import {
-  TRACK_LIMIT_PENALTY_SECONDS,
   createTrackLimitSequence,
   resetTrackLimitLap,
   resetTrackLimitSequence,
+  trackLimitPenaltyLabel,
   trackLimitStageLabel,
   updateTrackLimitSequence,
 } from "@/lib/race/trackLimitSequence";
@@ -1258,8 +1258,7 @@ export function Car({
     const allFourWheelsOff = allWheelsOffTrack(track, wheelWorldPositions, CAR_WHEELS[0].radius);
     const limitUpdate = updateTrackLimitSequence(
       trackLimitSequenceRef.current,
-      allFourWheelsOff,
-      dt
+      allFourWheelsOff
     );
     if (allFourWheelsOff && !lapInvalidRef.current) {
       lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
@@ -1268,13 +1267,19 @@ export function Car({
     if (limitUpdate.penaltyJustApplied) {
       if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
       lapInvalidRef.current = true;
+      // The ladder in trackLimitSequence escalates repeat penalties
+      // (5s -> 10s -> drive-through -> stop-go); charge whatever the steward
+      // decided, not a flat five seconds.
+      const penaltySeconds = trackLimitSequenceRef.current.lastPenaltySeconds;
+      const penaltyLabel = trackLimitPenaltyLabel(trackLimitSequenceRef.current.penaltyCount);
       effectiveRaceControlRef.current.reportIncident("track-limits", raceElapsedSecondsRef.current, {
-        penaltySeconds: TRACK_LIMIT_PENALTY_SECONDS,
+        penaltySeconds,
+        severity: penaltySeconds > 10 ? "stop-go" : penaltySeconds > 5 ? "drive-through" : "time",
       });
       if (!raceFinishedRef.current) {
-        raceElapsedSecondsRef.current += TRACK_LIMIT_PENALTY_SECONDS;
+        raceElapsedSecondsRef.current += penaltySeconds;
         if (penaltyToastRef?.current) {
-          penaltyToastRef.current.textContent = `+${TRACK_LIMIT_PENALTY_SECONDS}s PENALTY`;
+          penaltyToastRef.current.textContent = penaltyLabel;
         }
         penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
       }
@@ -1412,7 +1417,7 @@ export function Car({
         const shownPosition = netPositions?.[String(netSlot)] ?? finalPosition;
         const control = effectiveRaceControlRef.current.snapshot();
         const controlSuffix = control.disqualified
-          ? "  //  DSQ"
+          ? "  //  RACE BAN (12 PT)"
           : control.penaltySeconds > 0
             ? `  //  PENALTY +${control.penaltySeconds}s`
             : "";

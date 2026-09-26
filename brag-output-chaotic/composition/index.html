@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=2560, height=1440" />
+    <title>LIFT &amp; COAST — chaotic cut</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: 'Archivo'; font-style: normal; font-weight: 800; font-display: block; src: url('assets/fonts/archivo-800.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: normal; font-weight: 900; font-display: block; src: url('assets/fonts/archivo-900.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: italic; font-weight: 800; font-display: block; src: url('assets/fonts/archivo-800i.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: italic; font-weight: 900; font-display: block; src: url('assets/fonts/archivo-900i.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 400; font-display: block; src: url('assets/fonts/geist-400.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 500; font-display: block; src: url('assets/fonts/geist-500.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 600; font-display: block; src: url('assets/fonts/geist-600.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 700; font-display: block; src: url('assets/fonts/geist-700.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 400; font-display: block; src: url('assets/fonts/geistmono-400.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 500; font-display: block; src: url('assets/fonts/geistmono-500.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 600; font-display: block; src: url('assets/fonts/geistmono-600.woff2') format('woff2'); }
+    </style>
+    <style>
+      :root {
+        --bg: #040509;
+        --red: #e10600;
+        --red-text: #ff3b2f;
+        --gold: #d3ab63;
+        --text: #f4f1e8;
+        --muted: #9aa0ac;
+        --line: rgba(244, 241, 232, 0.16);
+        --z-throttle: #14c78c;
+        --z-lift: #f2ad1f;
+        --z-brake-m: #fa5110;
+        --z-brake-h: #c7071f;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { background: var(--bg); }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        font-family: 'Geist', Arial, sans-serif;
+        color: var(--text);
+      }
+
+      .clip { position: absolute; inset: 0; }
+
+      /* 1920x1080 design units, re-rasterised at 2K */
+      .stage {
+        position: absolute;
+        left: 0; top: 0;
+        width: 1920px; height: 1080px;
+        zoom: 1.3333;
+      }
+
+      .frame-wrap { position: absolute; inset: 0; overflow: hidden; }
+      .frame {
+        position: absolute;
+        left: 1280px; top: 720px;
+        width: 2560px; height: 1440px;
+        margin-left: -1280px; margin-top: -720px;
+        display: block;
+      }
+
+      /* red flash frame — above the picture, below the type */
+      .flash { position: absolute; inset: 0; background: var(--red); opacity: 0; }
+      .cut-black { position: absolute; inset: 0; background: #000; opacity: 0; }
+
+      /* ---------- chaotic type kit ---------- */
+      .blast {
+        position: absolute;
+        font-family: 'Archivo', 'Arial Black', sans-serif;
+        font-style: italic;
+        font-weight: 900;
+        text-transform: uppercase;
+        line-height: 0.88;
+        letter-spacing: -3px;
+        color: var(--text);
+        text-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+      }
+      .red { color: var(--red-text); }
+
+      /* every line sits on a hard scrim so 200px type stays legible over any frame */
+      .slab {
+        position: absolute;
+        left: 0; right: 0;
+        background: linear-gradient(90deg, rgba(4, 5, 9, 0.94) 0%, rgba(4, 5, 9, 0.86) 62%, rgba(4, 5, 9, 0.2) 100%);
+      }
+
+      .tag {
+        position: absolute;
+        right: 54px; top: 40px;
+        padding: 11px 18px;
+        background: rgba(4, 5, 9, 0.88);
+        border: 1px solid var(--line);
+        font-family: 'Geist Mono', monospace;
+        font-size: 21px;
+        font-weight: 500;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .tag b { color: rgb(255, 104, 94); font-weight: 600; }
+
+      .zone-chips { position: absolute; left: 96px; top: 812px; display: flex; gap: 14px; }
+      .chip {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 20px;
+        background: rgba(4, 5, 9, 0.9);
+        border: 1px solid var(--line);
+        font-family: 'Archivo', sans-serif;
+        font-weight: 800;
+        font-style: normal;
+        font-size: 25px;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .chip i { display: block; width: 10px; height: 34px; border-radius: 1px; }
+
+      .tow {
+        position: absolute;
+        right: 54px; top: 300px;
+        width: 340px;
+        padding: 12px;
+        background: rgba(4, 5, 9, 0.94);
+        border: 1px solid var(--line);
+        border-top: 4px solid var(--red);
+        font-family: 'Geist Mono', monospace;
+      }
+      .tow-row {
+        display: grid;
+        grid-template-columns: 40px 1fr 62px;
+        align-items: center;
+        gap: 8px;
+        min-height: 30px;
+        margin-top: 2px;
+        padding: 3px 6px;
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 15px;
+        color: #aeb8c5;
+      }
+      .tow-row i { display: block; width: 8px; height: 18px; border-radius: 1px; }
+      .tow-code { display: flex; align-items: center; gap: 8px; color: #fff; font-weight: 600; }
+      .tow-gap { text-align: right; color: #9ca8b6; }
+
+      .banner {
+        position: absolute;
+        left: 960px; top: 74px;
+        margin-left: -280px;
+        width: 560px;
+        padding: 10px 0 11px;
+        background: #c7071f;
+        color: #fff;
+        text-align: center;
+        font-family: 'Geist Mono', monospace;
+        font-size: 24px; font-weight: 600; letter-spacing: 2.6px;
+        text-transform: uppercase;
+        border-radius: 3px;
+      }
+      .banner b { font-weight: 700; }
+
+      .credit {
+        position: absolute;
+        left: 0; bottom: 96px;
+        width: 1920px;
+        text-align: center;
+        font-family: 'Geist Mono', monospace;
+        font-size: 22px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .glow-hot {
+        position: absolute;
+        left: 40%; top: 30%;
+        width: 1200px; height: 700px;
+        margin: -350px 0 0 -480px;
+        background: radial-gradient(50% 50% at 50% 50%, rgba(225, 6, 0, 0.4) 0%, rgba(225, 6, 0, 0) 70%);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lc-chaos"
+      data-start="0"
+      data-width="2560"
+      data-height="1440"
+      data-duration="16.93"
+      data-fps="30"
+    >
+      <!-- ===== 1 — 27 CIRCUITS ===== -->
+      <section id="c1" class="clip" data-start="0" data-duration="1.37" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c1-img" class="frame" src="assets/frames/01-pack-rain.png" alt="Twenty-car pack stacked on a crimson braking zone at Eau Rouge in the rain" />
+        </div>
+        <div class="stage">
+          <div id="c1-slab" class="slab" style="top: 452px; height: 420px"></div>
+          <div id="c1-glow" class="glow-hot"></div>
+          <h1 id="c1-h" class="blast" style="left: 96px; top: 520px; font-size: 200px">27 <span class="red">CIRCUITS.</span></h1>
+          <div id="c1-tag" class="tag">Circuit de Spa-Francorchamps <b>///</b> 19 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 2 — REAL GPS CENTERLINES ===== -->
+      <section id="c2" class="clip" data-start="1.37" data-duration="1.09" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c2-img" class="frame" src="assets/frames/02-monza.png" alt="Monza at sunset with a pack ahead on the racing line" />
+        </div>
+        <div class="stage">
+          <div id="c2-slab" class="slab" style="top: 470px; height: 330px"></div>
+          <h1 id="c2-h" class="blast" style="left: 96px; top: 546px; font-size: 116px">REAL GPS<br /><span class="red">CENTERLINES.</span></h1>
+          <div id="c2-tag" class="tag">Autodromo Nazionale Monza <b>///</b> 11 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 3 — NOT A FLAT PLANE ===== -->
+      <section id="c3" class="clip" data-start="2.46" data-duration="1.09" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c3-img" class="frame" src="assets/frames/03-baku.png" alt="Baku City Circuit with a steep gradient between the two arms of the course" />
+        </div>
+        <div class="stage">
+          <div id="c3-slab" class="slab" style="top: 452px; height: 340px"></div>
+          <h1 id="c3-h" class="blast" style="left: 96px; top: 528px; font-size: 140px">NOT A FLAT<br /><span class="red">PLANE.</span></h1>
+          <div id="c3-tag" class="tag">Baku City Circuit <b>///</b> 20 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 4 — SO WHERE DO I LIFT? ===== -->
+      <section id="c4" class="clip" data-start="3.55" data-duration="1.64" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c4-img" class="frame" src="assets/frames/04-spa-tv.png" alt="Spa broadcast camera at sunset, the whole pack on the colour-banded racing line" />
+        </div>
+        <div class="stage">
+          <div id="c4-slab" class="slab" style="top: 452px; height: 480px"></div>
+          <h1 id="c4-h" class="blast" style="left: 96px; top: 520px; font-size: 132px">SO WHERE DO<br />I <span class="red">LIFT?</span></h1>
+          <div id="c4-rule" style="position:absolute; left:96px; top:776px; width:520px; height:8px; background:#e10600"></div>
+          <div id="c4-chips" class="zone-chips">
+            <span id="chip-1" class="chip"><i style="background:#14c78c"></i>Throttle</span>
+            <span id="chip-2" class="chip"><i style="background:#f2ad1f"></i>Lift</span>
+            <span id="chip-3" class="chip"><i style="background:#fa5110"></i>Brake</span>
+            <span id="chip-4" class="chip"><i style="background:#c7071f"></i>Brake hard</span>
+          </div>
+          <div id="c4-tag" class="tag">Circuit de Spa-Francorchamps <b>///</b> 19 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 5 — 20 CARS. ONE LINE. ===== -->
+      <section id="c5" class="clip" data-start="5.19" data-duration="1.63" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c5-img" class="frame" src="assets/frames/05-pack-chase.png" alt="Chase camera with a pack of cars ahead on the racing line" />
+        </div>
+        <div class="stage">
+          <div id="c5-slab" class="slab" style="top: 452px; height: 400px"></div>
+          <h1 id="c5-h" class="blast" style="left: 96px; top: 512px; font-size: 168px">20 <span class="red">CARS.</span></h1>
+          <h1 id="c5-h2" class="blast" style="left: 96px; top: 690px; font-size: 76px">ONE LINE.</h1>
+          <div id="c5-tow" class="tow">
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P1</span><span class="tow-code"><i style="background:#ff8000"></i>NOR</span><span class="tow-gap">LEADER</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P2</span><span class="tow-code"><i style="background:#3640a0"></i>VER</span><span class="tow-gap">+0.3</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P3</span><span class="tow-code"><i style="background:#ff2800"></i>LEC</span><span class="tow-gap">+0.9</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P4</span><span class="tow-code"><i style="background:#ff2800"></i>HAM</span><span class="tow-gap">+1.8</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P5</span><span class="tow-code"><i style="background:#00a19b"></i>RUS</span><span class="tow-gap">+2.9</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P6</span><span class="tow-code"><i style="background:#ff8000"></i>PIA</span><span class="tow-gap">+4.3</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P7</span><span class="tow-code"><i style="background:#00a19b"></i>ANT</span><span class="tow-gap">+6.0</span></div>
+            <div class="tow-row"><span class="tow-code" style="color:#fff; font-weight:600">P8</span><span class="tow-code"><i style="background:#6aa5e0"></i>LAW</span><span class="tow-gap">+7.9</span></div>
+          </div>
+          <div id="c5-tag" class="tag">Circuit de Spa-Francorchamps <b>///</b> 19 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 6 — CHANGE THE WEATHER MID-LAP ===== -->
+      <section id="c6" class="clip" data-start="6.82" data-duration="1.4" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c6-img" class="frame" src="assets/frames/06-ops-rain.png" alt="Race Ops panel open in the rain with grip at 70 percent" />
+        </div>
+        <div class="stage">
+          <div id="c6-slab" class="slab" style="top: 470px; height: 400px"></div>
+          <h1 id="c6-h" class="blast" style="left: 96px; top: 524px; font-size: 108px">CHANGE THE<br />WEATHER</h1>
+          <h1 id="c6-h2" class="blast" style="left: 96px; top: 760px; font-size: 108px"><span class="red">MID-LAP.</span></h1>
+          <div id="c6-tag" class="tag">Race Ops <b>///</b> press H</div>
+        </div>
+      </section>
+
+      <!-- ===== 7 — STEWARDS SEE EVERYTHING ===== -->
+      <section id="c7" class="clip" data-start="8.22" data-duration="1.61" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c7-img" class="frame" src="assets/frames/07-cockpit.png" alt="Cockpit camera at 191 km/h with a car ahead" />
+        </div>
+        <div class="stage">
+          <div id="c7-slab" class="slab" style="top: 452px; height: 340px"></div>
+          <div id="c7-banner" class="banner">Track limits warning <b>2/3</b></div>
+          <h1 id="c7-h" class="blast" style="left: 96px; top: 540px; font-size: 120px">STEWARDS SEE<br /><span class="red">EVERYTHING.</span></h1>
+          <div id="c7-tag" class="tag">Circuit de Spa-Francorchamps <b>///</b> 19 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 8 — IT RUNS IN A TAB ===== -->
+      <section id="c8" class="clip" data-start="9.83" data-duration="1.64" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c8-img" class="frame" src="assets/frames/08-singapore.png" alt="Marina Bay traffic, a wall of cars ahead at 90 km/h" />
+        </div>
+        <div class="stage">
+          <div id="c8-slab" class="slab" style="top: 452px; height: 400px"></div>
+          <h1 id="c8-h" class="blast" style="left: 96px; top: 512px; font-size: 176px">IT RUNS<br /><span class="red">IN A TAB.</span></h1>
+          <div id="c8-tag" class="tag">Marina Bay Street Circuit <b>///</b> 19 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 9a — LIFT & COAST slam over Madring ===== -->
+      <section id="c9a" class="clip" data-start="11.47" data-duration="2.73" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c9a-img" class="frame" src="assets/frames/09-madrid.png" alt="Circuito de Madring, the banked corner at sunset" />
+        </div>
+        <div class="stage">
+          <div id="c9a-slab" class="slab" style="top: 400px; height: 480px"></div>
+          <div id="c9a-glow" class="glow-hot"></div>
+          <h1 id="c9a-h" class="blast" style="left: 96px; top: 452px; font-size: 176px">LIFT <span class="red">&amp;</span> COAST</h1>
+          <h1 id="c9a-h2" class="blast" style="left: 96px; top: 686px; font-size: 62px; letter-spacing: -1px">SAVE THE JUICE. SEND THE APEX.</h1>
+          <div id="c9a-tag" class="tag">Circuito de Madring <b>///</b> 22 corners</div>
+        </div>
+      </section>
+
+      <!-- ===== 9b — NO SERVER. NO INSTALL. NO EXCUSES. ===== -->
+      <section id="c9b" class="clip" data-start="14.2" data-duration="2.73" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img id="c9b-img" class="frame" src="assets/frames/10-hero.png" alt="The Lift and Coast home screen" />
+        </div>
+        <div class="stage">
+          <div id="c9b-slab" class="slab" style="top: 300px; height: 560px; background: linear-gradient(90deg, rgba(4,5,9,0.97) 0%, rgba(4,5,9,0.95) 68%, rgba(4,5,9,0.6) 100%)"></div>
+          <h1 id="c9b-h1" class="blast" style="left: 96px; top: 352px; font-size: 124px">NO SERVER.</h1>
+          <h1 id="c9b-h2" class="blast" style="left: 96px; top: 520px; font-size: 124px">NO INSTALL.</h1>
+          <h1 id="c9b-h3" class="blast red" style="left: 96px; top: 688px; font-size: 124px">NO EXCUSES.</h1>
+          <p id="c9b-credit" class="credit">React Three Fiber · Rapier physics · 27 circuits from real GPS centerlines</p>
+        </div>
+      </section>
+
+      <!-- ===== full-frame flash + cut overlays ===== -->
+      <div id="flashes" class="stage" data-start="0" data-duration="16.93" data-track-index="2">
+        <div id="f1" class="flash"></div>
+        <div id="f2" class="flash"></div>
+        <div id="f3" class="flash"></div>
+        <div id="f4" class="flash"></div>
+        <div id="f5" class="flash"></div>
+        <div id="f6" class="flash"></div>
+        <div id="blk" class="cut-black"></div>
+      </div>
+
+      <!-- ===== AUDIO ===== -->
+      <audio id="bgm" data-start="0" data-duration="16.93" data-track-index="10" data-volume="0.38" src="assets/music/happy-beats-business-moves-vol-10-by-ende-dot-app.mp3"></audio>
+      <audio id="s1" data-start="0.1" data-duration=0.55" data-track-index="11" data-volume="0.8" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s2" data-start="1.37" data-duration=0.55" data-track-index="11" data-volume="0.78" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s3" data-start="2.46" data-duration=0.55" data-track-index="11" data-volume="0.78" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s4" data-start="3.55" data-duration="0.04" data-track-index="12" data-volume="0.6" src="assets/sfx/interface/glitch_002.ogg"></audio>
+      <audio id="s5" data-start="3.6" data-duration=0.41" data-track-index="12" data-volume="0.8" src="assets/sfx/impact/impactPunch_medium_001.ogg"></audio>
+      <audio id="s6" data-start="4.07" data-duration="0.02" data-track-index="13" data-volume="0.5" src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="s7" data-start="4.31" data-duration="0.02" data-track-index="13" data-volume="0.5" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="s8" data-start="5.19" data-duration=0.55" data-track-index="11" data-volume="0.8" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s9" data-start="5.3" data-duration=0.06" data-track-index="14" data-volume="0.5" src="assets/sfx/interface/select_008.ogg"></audio>
+      <audio id="s10" data-start="6.82" data-duration=0.55" data-track-index="11" data-volume="0.8" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s11" data-start="8.22" data-duration=0.5" data-track-index="15" data-volume="0.7" src="assets/sfx/impact/impactPlate_heavy_000.ogg"></audio>
+      <audio id="s12" data-start="9.83" data-duration=0.55" data-track-index="11" data-volume="0.8" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s13" data-start="11.47" data-duration="1.5" data-track-index="16" data-volume="0.7" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+      <audio id="s14" data-start="14.73" data-duration=0.55" data-track-index="11" data-volume="0.75" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s15" data-start="15.28" data-duration="0.02" data-track-index="13" data-volume="0.5" src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="s16" data-start="15.82" data-duration=0.55" data-track-index="11" data-volume="0.8" src="assets/sfx/impact/impactPunch_heavy_001.ogg"></audio>
+      <audio id="s17" data-start="16.38" data-duration="0.02" data-track-index="13" data-volume="0.55" src="assets/sfx/interface/click_003.ogg"></audio>
+    </div>
+
+    <script src="assets/audio-data.js"></script>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var id = root.dataset.compositionId;
+        var tl = gsap.timeline({ paused: true });
+
+        /* ---------- shared chaotic entrance: slam from above-left with an overshoot ---------- */
+        function slam(sel, at, opts) {
+          var o = opts || {};
+          tl.fromTo(
+            sel,
+            { opacity: 0, y: o.y === undefined ? 70 : o.y, x: o.x === undefined ? -50 : o.x, scale: o.from === undefined ? 1.14 : o.from, rotate: o.rot === undefined ? -2.4 : o.rot },
+            { opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, duration: o.d === undefined ? 0.24 : o.d, ease: o.ease === undefined ? "back.out(2.2)" : o.ease },
+            at
+          );
+        }
+        function tagIn(sel, at) {
+          tl.fromTo(sel, { opacity: 0, x: 34 }, { opacity: 1, x: 0, duration: 0.2, ease: "power3.out" }, at);
+        }
+
+        /* ================= SCENE 1 — 27 CIRCUITS (0.00 -> 1.37) ================= */
+        tl.fromTo("#c1-img", { scale: 1.18 }, { scale: 1.0, duration: 1.37, ease: "power2.out" }, 0);
+        tl.fromTo("#c1-slab", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, 0);
+        slam("#c1-h", 0.1);
+        tagIn("#c1-tag", 0.16);
+
+        /* ================= SCENE 2 — REAL GPS CENTERLINES (1.37 -> 2.46) ================= */
+        tl.fromTo("#c2-img", { scale: 1.14 }, { scale: 1.0, duration: 1.09, ease: "power2.out" }, 1.37);
+        tl.fromTo("#c2-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 1.37);
+        slam("#c2-h", 1.42);
+        tagIn("#c2-tag", 1.48);
+
+        /* ================= SCENE 3 — NOT A FLAT PLANE (2.46 -> 3.55) ================= */
+        tl.fromTo("#c3-img", { scale: 1.14 }, { scale: 1.0, duration: 1.09, ease: "power2.out" }, 2.46);
+        tl.fromTo("#c3-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 2.46);
+        slam("#c3-h", 2.51);
+        tagIn("#c3-tag", 2.57);
+
+        /* ================= SCENE 4 — SO WHERE DO I LIFT? (3.55 -> 5.19) ================= */
+        // the only beat that breathes: a slow drift instead of a zoom cut
+        tl.fromTo("#c4-img", { scale: 1.06, x: 40 }, { scale: 1.0, x: -30, duration: 1.64, ease: "power1.inOut" }, 3.55);
+        tl.fromTo("#c4-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 3.55);
+        slam("#c4-h", 3.6);
+        tl.fromTo("#c4-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.22, ease: "power3.out" }, 3.95);
+        tagIn("#c4-tag", 3.66);
+        // all four chips land as a fast cascade and then hold as a set for ~0.9s
+        tl.fromTo("#chip-1", { opacity: 0, y: 40, scale: 1.1 }, { opacity: 1, y: 0, scale: 1, duration: 0.16, ease: "back.out(2.4)" }, 3.95);
+        tl.fromTo("#chip-2", { opacity: 0, y: 40, scale: 1.1 }, { opacity: 1, y: 0, scale: 1, duration: 0.16, ease: "back.out(2.4)" }, 4.07);
+        tl.fromTo("#chip-3", { opacity: 0, y: 40, scale: 1.1 }, { opacity: 1, y: 0, scale: 1, duration: 0.16, ease: "back.out(2.4)" }, 4.19);
+        tl.fromTo("#chip-4", { opacity: 0, y: 40, scale: 1.1 }, { opacity: 1, y: 0, scale: 1, duration: 0.16, ease: "back.out(2.4)" }, 4.31);
+
+        /* ================= SCENE 5 — 20 CARS. ONE LINE. (5.19 -> 6.82) ================= */
+        tl.fromTo("#c5-img", { scale: 1.12 }, { scale: 1.0, duration: 1.63, ease: "power2.out" }, 5.19);
+        tl.fromTo("#c5-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 5.19);
+        slam("#c5-h", 5.24, { y: 60, from: 1.12 });
+        slam("#c5-h2", 5.78, { y: 34, from: 1.08, rot: -1.2 });
+        tagIn("#c5-tag", 5.3);
+        tl.fromTo("#c5-tow", { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.2, ease: "power3.out" }, 5.35);
+        var rows = document.querySelectorAll("#c5-tow .tow-row");
+        for (var r = 0; r < rows.length; r++) {
+          tl.fromTo(rows[r], { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.14, ease: "power2.out" }, 5.35 + r * 0.08);
+        }
+
+        /* ================= SCENE 6 — CHANGE THE WEATHER (6.82 -> 8.22) ================= */
+        tl.fromTo("#c6-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 6.82);
+        // punch in fast and settle — a 1.4s scene can't afford a slow power2.in arrival
+        tl.fromTo(
+          "#c6-img",
+          { scale: 1.8, x: -400, y: -20, transformOrigin: "2400px 738px" },
+          { scale: 1.45, duration: 1.4, ease: "power2.out" },
+          6.82
+        );
+        slam("#c6-h", 6.87, { y: 50, from: 1.1 });
+        slam("#c6-h2", 7.4, { y: 40, from: 1.1 });
+        tagIn("#c6-tag", 6.93);
+
+        /* ================= SCENE 7 — STEWARDS SEE EVERYTHING (8.22 -> 9.83) ================= */
+        tl.fromTo("#c7-img", { scale: 1.1 }, { scale: 1.0, duration: 1.61, ease: "power2.out" }, 8.22);
+        tl.fromTo("#c7-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 8.22);
+        tl.fromTo("#c7-banner", { opacity: 0, y: -26 }, { opacity: 1, y: 0, duration: 0.14, ease: "power4.out" }, 8.24);
+        slam("#c7-h", 8.3, { y: 54, from: 1.12 });
+        tagIn("#c7-tag", 8.36);
+        tl.to("#c7-banner", { opacity: 0, duration: 0.12, ease: "power2.in" }, 9.5);
+
+        /* ================= SCENE 8 — IT RUNS IN A TAB (9.83 -> 11.47) ================= */
+        tl.fromTo("#c8-img", { scale: 1.12 }, { scale: 1.0, duration: 1.64, ease: "power2.out" }, 9.83);
+        tl.fromTo("#c8-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 9.83);
+        slam("#c8-h", 9.88, { y: 64, from: 1.14 });
+        tagIn("#c8-tag", 9.94);
+
+        /* ================= SCENE 9a — LIFT & COAST slam (11.47 -> 14.20) ================= */
+        tl.fromTo("#c9a-img", { scale: 1.12 }, { scale: 1.0, duration: 2.73, ease: "power1.out" }, 11.47);
+        tl.fromTo("#c9a-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 11.47);
+        // beat-locked: 11.47s on the grid, bell underneath
+        slam("#c9a-h", 11.47, { y: 90, from: 1.2, rot: -3.2, d: 0.3, ease: "back.out(2.6)" });
+        slam("#c9a-h2", 12.56, { y: 30, from: 1.06, rot: -1, d: 0.22 });
+        tagIn("#c9a-tag", 11.53);
+
+        /* ================= SCENE 9b — NO SERVER. NO INSTALL. NO EXCUSES. (14.20 -> 16.93) ================= */
+        tl.fromTo("#c9b-img", { scale: 1.05 }, { scale: 1.0, duration: 2.73, ease: "power1.out" }, 14.2);
+        tl.fromTo("#c9b-slab", { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "none" }, 14.2);
+        // beat-grid: 14.73 / 15.28 / 15.82
+        slam("#c9b-h1", 14.73, { y: 60, from: 1.12, rot: -2.6 });
+        slam("#c9b-h2", 15.28, { y: 60, from: 1.12, rot: -2.6 });
+        slam("#c9b-h3", 15.82, { y: 60, from: 1.12, rot: -2.6 });
+        tl.fromTo("#c9b-credit", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.24, ease: "power2.out" }, 15.5);
+        // hard cut to black
+        tl.to("#blk", { opacity: 1, duration: 0.1, ease: "power2.in" }, 16.38);
+
+        /* ================= red flash frames on the cuts ================= */
+        var cuts = [0, 1.37, 2.46, 3.55, 5.19, 6.82, 8.22, 9.83, 11.47, 14.2];
+        var fl = document.querySelectorAll(".flash");
+        for (var q = 0; q < cuts.length && q < fl.length; q++) {
+          tl.fromTo(fl[q], { opacity: 0 }, { opacity: 0.4, duration: 0.04, ease: "none" }, cuts[q]);
+          tl.to(fl[q], { opacity: 0, duration: 0.07, ease: "none" }, cuts[q] + 0.04);
+        }
+
+        /* ================= AUDIO-REACTIVE (expressive but not literal) ================= */
+        var AD = window.AUDIO_DATA;
+        if (AD && AD.frames) {
+          var g1 = document.getElementById("c1-glow");
+          var g9 = document.getElementById("c9a-glow");
+          var word = document.getElementById("c9a-h");
+          for (var f = 0; f < AD.totalFrames; f++) {
+            (function (bands, idx) {
+              tl.call(function () {
+                var sum = 0;
+                for (var i = 0; i < bands.length; i++) sum += bands[i];
+                var amp = sum / bands.length;
+                var o = 0.2 + amp * 0.9;
+                if (idx < 45) g1.style.opacity = o.toFixed(3);
+                if (idx > 345 && idx < 410) {
+                  g9.style.opacity = (o * 0.75).toFixed(3);
+                  // 3-6% breath on the wordmark only
+                  word.style.transform = "scale(" + (1 + bands[0] * 0.05).toFixed(4) + ")";
+                }
+              }, [], idx / AD.fps);
+            })(AD.frames[f].bands, f);
+          }
+        }
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines[id] = tl;
+      })();
+    </script>
+  </body>
+</html>

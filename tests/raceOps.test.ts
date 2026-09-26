@@ -144,16 +144,27 @@ describe("race operations systems", () => {
     }
   });
 
-  it("race control accumulates steward decisions and can disqualify", () => {
+  it("race control accumulates steward decisions without an early ban", () => {
     const control = createRaceControlSystem();
     control.reportIncident("track-limits", 10);
     control.reportIncident("unsafe-rejoin", 20);
     control.reportIncident("pit-speeding", 30);
     const state = control.snapshot();
-    expect(state.penaltySeconds).toBe(10);
+    // 5s + 20s drive-through + 20s drive-through, 2 + 2 + 1 license points.
+    expect(state.penaltySeconds).toBe(45);
     expect(state.penaltyPoints).toBe(5);
+    expect(state.disqualified).toBe(false);
+    expect(state.decisions[1]?.severity).toBe("drive-through");
+  });
+
+  it("bans a driver who reaches the FIA 12-point license threshold", () => {
+    const control = createRaceControlSystem();
+    // Six track-limits penalties at 2 points each reach the 12-point ban.
+    for (let i = 0; i < 6; i++) control.reportIncident("track-limits", 10 * (i + 1));
+    const state = control.snapshot();
+    expect(state.penaltyPoints).toBe(12);
     expect(state.disqualified).toBe(true);
-    expect(state.decisions.at(-1)?.message).toContain("DSQ");
+    expect(state.decisions.at(-1)?.message).toContain("RACE BAN");
   });
 
   it("replay controller records telemetry and scrubs a timeline", () => {

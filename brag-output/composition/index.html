@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>LIFT &amp; COAST — 2026 browser formula racing</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      /* ---- local fonts (the project's own faces: Archivo display, Geist UI, Geist Mono data) ---- */
+      @font-face { font-family: 'Archivo'; font-style: normal; font-weight: 800; font-display: block; src: url('assets/fonts/archivo-800.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: normal; font-weight: 900; font-display: block; src: url('assets/fonts/archivo-900.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: italic; font-weight: 800; font-display: block; src: url('assets/fonts/archivo-800i.woff2') format('woff2'); }
+      @font-face { font-family: 'Archivo'; font-style: italic; font-weight: 900; font-display: block; src: url('assets/fonts/archivo-900i.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 400; font-display: block; src: url('assets/fonts/geist-400.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 500; font-display: block; src: url('assets/fonts/geist-500.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 600; font-display: block; src: url('assets/fonts/geist-600.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist'; font-style: normal; font-weight: 700; font-display: block; src: url('assets/fonts/geist-700.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 400; font-display: block; src: url('assets/fonts/geistmono-400.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 500; font-display: block; src: url('assets/fonts/geistmono-500.woff2') format('woff2'); }
+      @font-face { font-family: 'Geist Mono'; font-style: normal; font-weight: 600; font-display: block; src: url('assets/fonts/geistmono-600.woff2') format('woff2'); }
+    </style>
+    <style>
+      :root {
+        --bg: #040509;
+        --panel: #0a0c12;
+        --red: #e10600;
+        --red-text: #ff3b2f;
+        --gold: #d3ab63;
+        --text: #f4f1e8;
+        --muted: #9aa0ac;
+        --faint: #6b7280;
+        --line: rgba(244, 241, 232, 0.14);
+        --z-throttle: #14c78c;
+        --z-lift: #f2ad1f;
+        --z-brake-m: #fa5110;
+        --z-brake-h: #c7071f;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body { background: var(--bg); }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        font-family: 'Geist', Arial, sans-serif;
+        color: var(--text);
+      }
+
+      .clip { position: absolute; inset: 0; }
+
+      /* Overlay chrome is authored in 1920x1080 design units. `zoom` (never
+         `transform: scale`) re-rasterises type at full 2K resolution instead of
+         compositing a 1080p layer up — the whole point of the 2K pass. */
+      .stage {
+        position: absolute;
+        left: 0; top: 0;
+        width: 1920px; height: 1080px;
+        zoom: 1.3333;
+      }
+
+      /* the real gameplay capture, centred with margins so GSAP owns the transform outright */
+      .frame-wrap { position: absolute; inset: 0; overflow: hidden; }
+      .frame {
+        position: absolute;
+        left: 1280px; top: 720px;
+        width: 2560px; height: 1440px;
+        margin-left: -1280px; margin-top: -720px;
+        display: block;
+      }
+
+      /* ---- broadcast type kit ---- */
+      .kicker {
+        font-family: 'Geist Mono', monospace;
+        text-transform: uppercase;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .kicker-gold { color: var(--gold); }
+      .kicker-sm { font-size: 22px; letter-spacing: 4.5px; line-height: 1; }
+      .kicker-wrap { white-space: normal; line-height: 1.5; max-width: 100%; }
+      .kicker-md { font-size: 26px; letter-spacing: 6px; line-height: 1; }
+
+      .display {
+        font-family: 'Archivo', 'Arial Black', sans-serif;
+        font-style: italic;
+        font-weight: 900;
+        letter-spacing: -1px;
+        line-height: 0.92;
+        text-transform: uppercase;
+      }
+
+      /* dark broadcast panel — the app's own panel language */
+      .panel {
+        position: absolute;
+        background: rgba(5, 7, 12, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+      }
+
+      .rule { height: 2px; background: var(--gold); transform-origin: left center; }
+
+      /* ================= SCENE 1 — hook ================= */
+      .s1-band {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        height: 240px;
+        padding: 24px 64px 20px;
+        background: linear-gradient(180deg, rgba(4, 5, 9, 0.5) 0%, rgba(4, 5, 9, 0.93) 24%, #040509 62%);
+        border-top: 4px solid var(--red);
+      }
+      .s1-band-kicker { position: relative; z-index: 2; margin-bottom: 14px; }
+      .s1-hook {
+        position: relative; z-index: 2;
+        font-size: 86px;
+        color: var(--text);
+      }
+      .s1-hook-red { color: var(--red-text); }
+      .s1-glow {
+        position: absolute;
+        left: -140px; bottom: -40px;
+        width: 1500px; height: 460px;
+        background: radial-gradient(60% 70% at 22% 70%, rgba(225, 6, 0, 0.42) 0%, rgba(225, 6, 0, 0) 70%);
+        pointer-events: none;
+      }
+
+      /* ================= SCENE 2 — the line ================= */
+      .s2-card {
+        right: 40px; top: 100px;
+        width: 620px;
+        padding: 32px 34px 30px 30px;
+        border-left: 6px solid var(--z-throttle);
+      }
+      .s2-head {
+        margin: 16px 0 22px;
+        font-size: 46px;
+        color: var(--text);
+      }
+      .s2-rule { width: 100%; margin-bottom: 22px; }
+      .zone {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        height: 66px;
+      }
+      .zone i { display: block; width: 12px; height: 48px; border-radius: 2px; }
+      .zone b {
+        font-family: 'Archivo', sans-serif;
+        font-weight: 800;
+        font-size: 29px;
+        letter-spacing: 1.6px;
+        color: var(--text);
+      }
+      .zone em {
+        margin-left: auto;
+        font-family: 'Geist Mono', monospace;
+        font-style: normal;
+        font-size: 19px;
+        letter-spacing: 2px;
+        color: var(--muted);
+      }
+
+      /* ================= SCENE 3 — the grid ================= */
+      .s3-head-card {
+        left: 36px; top: 52px;
+        width: 762px;
+        padding: 16px 28px 18px 24px;
+        border-left: 6px solid var(--red);
+      }
+      .s3-head { font-size: 60px; color: var(--text); white-space: nowrap; }
+      .s3-sub { margin-top: 10px; }
+
+      .tower {
+        left: 24px; top: 356px;
+        width: 358px;
+        padding: 12px 10px 12px;
+        font-family: 'Geist Mono', monospace;
+        letter-spacing: 0.6px;
+      }
+      .tw-top { display: flex; align-items: center; gap: 10px; }
+      .tw-event {
+        font-size: 14px; font-weight: 600; letter-spacing: 1px; color: #f2f5f8;
+        white-space: nowrap;
+      }
+      .tw-live {
+        margin-left: auto;
+        background: var(--red);
+        color: #fff;
+        font-size: 13px; font-weight: 700; letter-spacing: 1.4px;
+        padding: 3px 7px;
+      }
+      .tw-cols, .tw-row {
+        display: grid;
+        grid-template-columns: 40px 1fr 66px 66px;
+        align-items: center;
+        gap: 6px;
+      }
+      .tw-cols {
+        margin-top: 8px; padding: 0 8px 5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        font-size: 12px; font-weight: 600; letter-spacing: 1.4px; color: #8d9aaa;
+        text-align: right;
+      }
+      .tw-cols span:nth-child(1), .tw-cols span:nth-child(2) { text-align: left; }
+      .tw-row {
+        min-height: 31px;
+        margin-top: 2px;
+        padding: 3px 8px;
+        border-left: 4px solid transparent;
+        background: rgba(255, 255, 255, 0.028);
+        font-size: 15px;
+        color: #aeb8c5;
+      }
+      .tw-row-you {
+        border-left-color: #39ff88;
+        background: rgba(57, 255, 136, 0.1);
+        color: #fff;
+      }
+      .tw-pos { font-weight: 700; text-align: left; color: #fff; }
+      .tw-code { display: flex; align-items: center; gap: 9px; }
+      .tw-code i { display: block; width: 9px; height: 20px; border-radius: 1px; }
+      .tw-int { text-align: right; color: #d8e0e8; }
+      .tw-gap { text-align: right; color: #9ca8b6; }
+
+      /* ================= SCENE 4 — race ops ================= */
+      .s4-ops {
+        position: absolute;
+        left: 56px; bottom: 200px;
+        display: flex; align-items: center; gap: 16px;
+        padding: 12px 18px;
+        background: rgba(5, 7, 12, 0.9);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--red);
+        border-radius: 3px;
+      }
+      .s4-ops span { font-size: 22px; letter-spacing: 5px; }
+      .s4-key {
+        font-family: 'Geist Mono', monospace;
+        font-size: 19px; font-weight: 600;
+        color: var(--text);
+        background: rgba(244, 241, 232, 0.12);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 3px 10px;
+      }
+      .s4-banner {
+        position: absolute;
+        left: 960px; top: 58px;
+        margin-left: -270px;
+        width: 540px;
+        padding: 9px 0 10px;
+        background: var(--red);
+        color: #fff;
+        text-align: center;
+        font-family: 'Geist Mono', monospace;
+        font-size: 23px; font-weight: 600; letter-spacing: 2.6px;
+        text-transform: uppercase;
+        border-radius: 3px;
+      }
+      .s4-banner b { font-weight: 700; }
+      .s4-stewards {
+        position: absolute;
+        left: 56px; bottom: 200px;
+        padding: 12px 20px;
+        background: rgba(5, 7, 12, 0.9);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--red);
+        border-radius: 3px;
+        font-family: 'Geist Mono', monospace;
+        font-size: 23px; letter-spacing: 4px;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      /* ================= SCENE 5 — lights out ================= */
+      .s5-glow {
+        position: absolute;
+        left: 962px; top: 501px;
+        width: 1240px; height: 620px;
+        margin: -310px 0 0 -620px;
+        background: radial-gradient(50% 50% at 50% 50%, rgba(225, 6, 0, 0.34) 0%, rgba(225, 6, 0, 0) 72%);
+        pointer-events: none;
+      }
+      .lights {
+        position: absolute;
+        left: 750px; top: 167px;
+        width: 420px; height: 86px;
+        display: flex; align-items: center; justify-content: center; gap: 22px;
+        background: rgba(4, 5, 9, 0.86);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      .lt { position: relative; display: block; width: 46px; height: 46px; }
+      .lt i {
+        position: absolute; inset: 0;
+        display: block;
+        border-radius: 50%;
+        background: #1a1f2a;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      }
+      .lt b {
+        position: absolute; inset: 0;
+        display: block;
+        border-radius: 50%;
+        background: #ff2a1f;
+        box-shadow: 0 0 26px rgba(255, 42, 31, 0.75);
+        opacity: 0;
+      }
+      .credit-rule {
+        position: absolute;
+        left: 750px; top: 828px;
+        width: 420px; height: 2px;
+        background: var(--gold);
+        transform-origin: left center;
+      }
+      .credit {
+        position: absolute;
+        left: 0; top: 852px;
+        width: 1920px;
+        text-align: center;
+        font-family: 'Geist Mono', monospace;
+        font-size: 23px;
+        letter-spacing: 4.5px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .drive-pulse {
+        position: absolute;
+        left: 752px; top: 642px;
+        width: 163px; height: 45px;
+        border-radius: 24px;
+        box-shadow: 0 0 40px 12px rgba(225, 6, 0, 0.5);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .outro-fade { position: absolute; inset: 0; background: var(--bg); opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="lift-coast"
+      data-start="0"
+      data-width="2560"
+      data-height="1440"
+      data-duration="21.28"
+      data-fps="30"
+    >
+      <!-- ============ SCENE 1 — HOOK ============ -->
+      <section id="s1" class="clip" data-start="0" data-duration="2.73" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s1-img"
+            class="frame"
+            src="assets/frames/01-spa-tv-corner.png"
+            alt="TV broadcast camera at Spa-Francorchamps at sunset, the racing line braking through the corner"
+          />
+        </div>
+        <div class="stage">
+        <div id="s1-band" class="s1-band">
+          <div id="s1-glow" class="s1-glow"></div>
+          <p id="s1-kicker" class="kicker kicker-md s1-band-kicker kicker-gold">
+            2026 regulation era · browser formula racing
+          </p>
+          <h1 id="s1-l1" class="display s1-hook">IT'S NOT SLOW.</h1>
+          <h1 id="s1-l2" class="display s1-hook s1-hook-red">IT'S STRATEGIC.</h1>
+        </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 2 — THE LINE ============ -->
+      <section id="s2" class="clip" data-start="2.43" data-duration="5.21" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s2-img"
+            class="frame"
+            src="assets/frames/08-clean-line.png"
+            alt="Chase camera behind the car, the racing line changing from teal to amber to crimson into the corner"
+          />
+        </div>
+        <div class="stage">
+        <div id="s2-card" class="panel s2-card">
+          <p id="s2-kicker" class="kicker kicker-sm kicker-gold kicker-wrap">
+            27 circuits from real GPS centerlines
+          </p>
+          <h2 id="s2-head" class="display s2-head">
+            A racing line<br />that tells you<br />where to lift
+          </h2>
+          <div id="s2-rule" class="rule s2-rule"></div>
+          <ul class="zones">
+            <li id="zone-1" class="zone">
+              <i style="background: #14c78c"></i><b>THROTTLE</b><em>01</em>
+            </li>
+            <li id="zone-2" class="zone">
+              <i style="background: #f2ad1f"></i><b>LIFT</b><em>02</em>
+            </li>
+            <li id="zone-3" class="zone">
+              <i style="background: #fa5110"></i><b>BRAKE</b><em>03</em>
+            </li>
+            <li id="zone-4" class="zone">
+              <i style="background: #c7071f"></i><b>BRAKE HARD</b><em>04</em>
+            </li>
+          </ul>
+        </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 3 — THE GRID ============ -->
+      <section id="s3" class="clip" data-start="7.34" data-duration="4.68" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s3-img"
+            class="frame"
+            src="assets/frames/09-clean-straight.png"
+            alt="Chase camera on the main straight at Spa at sunset, 199 km/h in seventh, the racing line running to the horizon"
+          />
+        </div>
+        <div class="stage">
+        <div id="s3-head-card" class="panel s3-head-card">
+          <h2 id="s3-head" class="display s3-head">A twenty-car grid</h2>
+          <p id="s3-sub" class="kicker kicker-sm kicker-gold s3-sub">wheel-to-wheel AI · rookie to ace</p>
+        </div>
+        <div id="s3-tower" class="panel tower">
+          <div class="tw-top">
+            <span class="tw-event">Circuit de Spa-Francorchamps</span>
+            <span class="tw-live">LIVE</span>
+          </div>
+          <div class="tw-cols">
+            <span>POS</span><span>DRIVER</span><span>INT</span><span>GAP</span>
+          </div>
+          <div class="tw-row"><span class="tw-pos">P1</span><span class="tw-code"><i style="background:#ff8000"></i>NOR</span><span class="tw-int">LEADER</span><span class="tw-gap">LEADER</span></div>
+          <div class="tw-row"><span class="tw-pos">P2</span><span class="tw-code"><i style="background:#3640a0"></i>VER</span><span class="tw-int">+0.3</span><span class="tw-gap">+0.3</span></div>
+          <div class="tw-row"><span class="tw-pos">P3</span><span class="tw-code"><i style="background:#ff2800"></i>LEC</span><span class="tw-int">+0.6</span><span class="tw-gap">+0.9</span></div>
+          <div class="tw-row"><span class="tw-pos">P4</span><span class="tw-code"><i style="background:#ff2800"></i>HAM</span><span class="tw-int">+0.9</span><span class="tw-gap">+1.8</span></div>
+          <div class="tw-row"><span class="tw-pos">P5</span><span class="tw-code"><i style="background:#00a19b"></i>RUS</span><span class="tw-int">+1.1</span><span class="tw-gap">+2.9</span></div>
+          <div class="tw-row"><span class="tw-pos">P6</span><span class="tw-code"><i style="background:#ff8000"></i>PIA</span><span class="tw-int">+1.4</span><span class="tw-gap">+4.3</span></div>
+          <div class="tw-row"><span class="tw-pos">P7</span><span class="tw-code"><i style="background:#00a19b"></i>ANT</span><span class="tw-int">+1.7</span><span class="tw-gap">+6.0</span></div>
+          <div class="tw-row"><span class="tw-pos">P8</span><span class="tw-code"><i style="background:#6aa5e0"></i>LAW</span><span class="tw-int">+1.9</span><span class="tw-gap">+7.9</span></div>
+          <div class="tw-row"><span class="tw-pos">P9</span><span class="tw-code"><i style="background:#00695c"></i>ALO</span><span class="tw-int">+2.2</span><span class="tw-gap">+9.8</span></div>
+          <div class="tw-row"><span class="tw-pos">P10</span><span class="tw-code"><i style="background:#00695c"></i>STR</span><span class="tw-int">+2.4</span><span class="tw-gap">+12.0</span></div>
+          <div class="tw-row"><span class="tw-pos">P11</span><span class="tw-code"><i style="background:#3640a0"></i>HAD</span><span class="tw-int">+2.7</span><span class="tw-gap">+14.4</span></div>
+          <div class="tw-row"><span class="tw-pos">P12</span><span class="tw-code"><i style="background:#7e1b24"></i>BOR</span><span class="tw-int">+3.0</span><span class="tw-gap">+17.1</span></div>
+          <div class="tw-row"><span class="tw-pos">P13</span><span class="tw-code"><i style="background:#7e1b24"></i>HUL</span><span class="tw-int">+3.3</span><span class="tw-gap">+20.1</span></div>
+          <div class="tw-row"><span class="tw-pos">P14</span><span class="tw-code"><i style="background:#d9d9d9"></i>OCO</span><span class="tw-int">+3.6</span><span class="tw-gap">+23.4</span></div>
+          <div class="tw-row"><span class="tw-pos">P15</span><span class="tw-code"><i style="background:#d9d9d9"></i>BEA</span><span class="tw-int">+3.9</span><span class="tw-gap">+27.0</span></div>
+          <div class="tw-row tw-row-you"><span class="tw-pos">P20</span><span class="tw-code"><i style="background:#2293d1"></i>GAS</span><span class="tw-int">+30.9</span><span class="tw-gap">+1 LAP</span></div>
+        </div>
+        </div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 4 — RACE OPS / STEWARDS ============ -->
+      <section id="s4" class="clip" data-start="11.72" data-duration="5.21" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s4a-img"
+            class="frame"
+            src="assets/frames/10-ops-rain.png"
+            alt="Race Ops panel open in the rain at Spa: grip down to 70 percent, weather set to rain, pit stop, overtake, replay and steward controls"
+          />
+        </div>
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s4b-img"
+            class="frame"
+            src="assets/frames/11-helmet-clean.png"
+            alt="Helmet camera through the halo at Spa"
+          />
+        </div>
+        <div class="stage">
+        <div id="s4-ops" class="s4-ops">
+          <span class="kicker kicker-gold">Race Ops</span>
+          <span class="s4-key">H</span>
+        </div>
+        <div id="s4-banner" class="s4-banner">Track limits warning <b>2/3</b></div>
+        <div id="s4-stewards" class="s4-stewards">Stewards · penalties · invalid laps</div>
+        </div>
+      </section>
+
+      <!-- ============ SCENE 5 — LIGHTS OUT ============ -->
+      <section id="s5" class="clip" data-start="16.63" data-duration="4.65" data-track-index="1">
+        <div class="frame-wrap" data-layout-allow-overflow>
+          <img
+            id="s5-img"
+            class="frame"
+            src="assets/frames/06-hero.png"
+            alt="The Lift and Coast home screen: wordmark, tagline, Drive button, 27 circuits, 11 teams, 22 drivers, 20-car grid"
+          />
+        </div>
+        <div class="stage">
+        <div id="s5-glow" class="s5-glow"></div>
+        <div id="s5-lights" class="lights">
+          <span class="lt"><i></i><b></b></span>
+          <span class="lt"><i></i><b></b></span>
+          <span class="lt"><i></i><b></b></span>
+          <span class="lt"><i></i><b></b></span>
+          <span class="lt"><i></i><b></b></span>
+        </div>
+        <div id="s5-rule" class="credit-rule"></div>
+        <p id="s5-credit" class="credit">
+          React Three Fiber · Rapier physics · 27 circuits from real GPS centerlines
+        </p>
+        <div id="s5-pulse" class="drive-pulse"></div>
+        <div id="s5-fade" class="outro-fade"></div>
+        </div>
+      </section>
+
+      <!-- ============ AUDIO ============ -->
+      <audio
+        id="bgm"
+        data-start="0"
+        data-duration="21.28"
+        data-track-index="10"
+        data-volume="0.3"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":0.35,"v":1},{"t":20.2,"v":1},{"t":21.2,"v":0}]}]}'
+        src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"
+      ></audio>
+      <audio id="sfx-hook" data-start="0.44" data-duration="0.19" data-track-index="11" data-volume="0.6" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-z1" data-start="4.38" data-duration="0.07" data-track-index="12" data-volume="0.4" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-z2" data-start="4.9" data-duration="0.07" data-track-index="12" data-volume="0.4" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-z3" data-start="5.33" data-duration="0.07" data-track-index="12" data-volume="0.4" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-z4" data-start="5.99" data-duration="0.07" data-track-index="12" data-volume="0.4" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-tw-a" data-start="8.73" data-duration="0.13" data-track-index="13" data-volume="0.42" src="assets/sfx/interface/bong_001.ogg"></audio>
+      <audio id="sfx-tw-b" data-start="10.83" data-duration="0.07" data-track-index="13" data-volume="0.3" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-flag" data-start="13.1" data-duration="0.55" data-track-index="14" data-volume="0.45" src="assets/sfx/impact/impactPlate_light_000.ogg"></audio>
+      <audio id="sfx-l1" data-start="17.46" data-duration="0.02" data-track-index="15" data-volume="0.3" src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-l2" data-start="17.89" data-duration="0.02" data-track-index="15" data-volume="0.3" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-l3" data-start="18.29" data-duration="0.02" data-track-index="15" data-volume="0.3" src="assets/sfx/interface/click_004.ogg"></audio>
+      <audio id="sfx-l4" data-start="18.55" data-duration="0.02" data-track-index="15" data-volume="0.3" src="assets/sfx/interface/click_005.ogg"></audio>
+      <audio id="sfx-l5" data-start="18.89" data-duration="0.02" data-track-index="15" data-volume="0.3" src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-bell" data-start="20.19" data-duration="1.5" data-track-index="16" data-volume="0.5" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+    </div>
+
+    <script src="assets/audio-data.js"></script>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var id = root.dataset.compositionId;
+        var tl = gsap.timeline({ paused: true });
+
+        /* ---------- shared scene crossfade helper (polished: 0.30s soft dissolves) ---------- */
+        function sceneFade(clipSel, innerSels, inAt, outAt) {
+          tl.fromTo(innerSels, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out", immediateRender: true }, inAt);
+          tl.to(innerSels, { opacity: 0, duration: 0.3, ease: "power2.in" }, outAt);
+        }
+
+        /* ================= SCENE 1 — HOOK (0.00 -> 2.73) ================= */
+        // slow push-in on the real broadcast-camera frame
+        tl.fromTo("#s1-img", { scale: 1.05 }, { scale: 1.0, duration: 2.73, ease: "none" }, 0);
+        tl.fromTo("#s1-band", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power2.out" }, 0.06);
+        tl.fromTo("#s1-kicker", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 0.3);
+        // hook line slams on the first beat (0.56s), second line on the next (1.09s)
+        tl.fromTo("#s1-l1", { opacity: 0, y: 46, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "power4.out" }, 0.56);
+        tl.fromTo("#s1-l2", { opacity: 0, y: 46, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "power4.out" }, 1.09);
+        tl.to(["#s1-img", "#s1-band"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 2.43);
+
+        /* ================= SCENE 2 — THE LINE (2.43 -> 7.64) ================= */
+        tl.fromTo("#s2-img", { scale: 1.035, x: -24 }, { scale: 1.0, x: 34.7, duration: 5.21, ease: "power1.inOut" }, 2.43);
+        tl.fromTo(
+          "#s2-img",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.3, ease: "power2.out", immediateRender: false },
+          2.43
+        );
+        tl.fromTo("#s2-card", { opacity: 0, x: 46 }, { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" }, 2.72);
+        tl.fromTo("#s2-kicker", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 2.9);
+        tl.fromTo("#s2-head", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 2.98);
+        tl.fromTo("#s2-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.42, ease: "power2.inOut" }, 3.7);
+        // beat-grid: 4.39 / 4.91 / 5.34 / 6.00 — each callout holds well past the 0.8s read floor
+        tl.fromTo("#zone-1", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" }, 4.39);
+        tl.fromTo("#zone-2", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" }, 4.91);
+        tl.fromTo("#zone-3", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" }, 5.34);
+        tl.fromTo("#zone-4", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.34, ease: "power3.out" }, 6.0);
+        tl.to(["#s2-img", "#s2-card"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 7.34);
+
+        /* ================= SCENE 3 — THE GRID (7.34 -> 12.02) ================= */
+        tl.fromTo("#s3-img", { scale: 1.03 }, { scale: 1.0, duration: 4.68, ease: "power1.out" }, 7.34);
+        tl.fromTo(
+          "#s3-img",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.3, ease: "power2.out", immediateRender: false },
+          7.34
+        );
+        tl.fromTo("#s3-head-card", { opacity: 0, y: -26 }, { opacity: 1, y: 0, duration: 0.42, ease: "power3.out" }, 7.5);
+        tl.fromTo("#s3-head", { opacity: 0, x: -26 }, { opacity: 1, x: 0, duration: 0.44, ease: "power3.out" }, 7.62);
+        tl.fromTo("#s3-sub", { opacity: 0 }, { opacity: 1, duration: 0.34, ease: "power2.out" }, 7.98);
+        tl.fromTo("#s3-tower", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" }, 7.66);
+        // beat-locked: 8.74s is a strong cue in the bundled preset — the field starts landing here
+        var rows = document.querySelectorAll("#s3-tower .tw-row");
+        for (var r = 0; r < rows.length; r++) {
+          tl.fromTo(
+            rows[r],
+            { opacity: 0, x: -26 },
+            { opacity: 1, x: 0, duration: 0.26, ease: "power2.out" },
+            8.74 + r * 0.14
+          );
+        }
+        tl.to(["#s3-img", "#s3-head-card", "#s3-tower"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 11.72);
+
+        /* ================= SCENE 4 — RACE OPS / STEWARDS (11.72 -> 16.93) ================= */
+        // 4b sits on top of 4a in the DOM, so it must start hidden
+        tl.set("#s4b-img", { opacity: 0 }, 0);
+        // 4a: Race Ops in the rain, pushing in on the panel
+        // 4a: Race Ops in the rain. At 2K the panel is ~10% of frame width, so this is a
+        // deliberate 2x broadcast push onto it — scale is anchored on the panel's own
+        // centre (in the 2560px image's coordinate space) so it grows without drifting.
+        tl.fromTo(
+          "#s4a-img",
+          { scale: 1.0, x: 0, y: 0, transformOrigin: "2400px 738px" },
+          { scale: 1.6, x: -400, y: -20, duration: 1.39, ease: "power2.in" },
+          11.72
+        );
+        tl.fromTo(
+          "#s4a-img",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.3, ease: "power2.out", immediateRender: false },
+          11.72
+        );
+        tl.fromTo("#s4-ops", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 11.95);
+        // beat-locked: 13.11s strong cue — hard cut to the helmet cam with the steward flag
+        tl.set("#s4a-img", { opacity: 0 }, 13.11);
+        tl.fromTo(
+          "#s4-ops",
+          { opacity: 1, y: 0 },
+          { opacity: 0, duration: 0.16, ease: "power2.in", immediateRender: false },
+          13.05
+        );
+        // 4b: helmet camera
+        tl.to("#s4b-img", { opacity: 1, duration: 0.1, ease: "none" }, 13.11);
+        tl.fromTo("#s4b-img", { scale: 1.05 }, { scale: 1.0, duration: 3.82, ease: "power1.out", immediateRender: false }, 13.11);
+        tl.fromTo("#s4-banner", { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.2, ease: "power4.out" }, 13.12);
+        tl.to("#s4-banner", { opacity: 0, y: -12, duration: 0.24, ease: "power2.in" }, 14.9);
+        tl.fromTo("#s4-stewards", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.36, ease: "power3.out" }, 13.5);
+        tl.to(["#s4b-img", "#s4-stewards"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 16.63);
+
+        /* ================= SCENE 5 — LIGHTS OUT (16.63 -> 21.28) ================= */
+        tl.fromTo("#s5-img", { scale: 1.028 }, { scale: 1.0, duration: 4.65, ease: "power1.out" }, 16.63);
+        tl.fromTo(
+          "#s5-img",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.34, ease: "power2.out", immediateRender: false },
+          16.63
+        );
+        tl.fromTo("#s5-lights", { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 16.9);
+        var lamps = document.querySelectorAll("#s5-lights .lt b");
+        // beat-locked: 18.56s strong cue sits on the fourth light
+        var lightAt = [17.47, 17.9, 18.3, 18.56, 18.9];
+        for (var L = 0; L < lamps.length; L++) {
+          tl.fromTo(lamps[L], { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power2.out" }, lightAt[L]);
+        }
+        // lights out on the beat at 20.19 — instant, the way a grid actually goes
+        tl.to(lamps, { opacity: 0, duration: 0.07, ease: "none" }, 20.19);
+        tl.fromTo("#s5-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power2.inOut" }, 19.66);
+        tl.fromTo("#s5-credit", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.36, ease: "power3.out" }, 19.78);
+        tl.fromTo("#s5-pulse", { opacity: 0 }, { opacity: 0.95, duration: 0.1, ease: "power2.out" }, 20.2);
+        tl.to("#s5-pulse", { opacity: 0, duration: 0.55, ease: "power2.out" }, 20.3);
+        tl.fromTo("#s5-fade", { opacity: 0 }, { opacity: 1, duration: 0.72, ease: "power2.inOut" }, 20.5);
+
+        /* ================= AUDIO-REACTIVE (subtle) ================= */
+        // Pre-extracted band data (hyperframes-creative/scripts/extract-audio-data.py).
+        // Music RMS breathes the red accent glow behind the hook line and the wordmark.
+        // Glows only — no waveform, no equalizer, no text scaling.
+        var AD = window.AUDIO_DATA;
+        if (AD && AD.frames) {
+          var g1 = document.getElementById("s1-glow");
+          var g5 = document.getElementById("s5-glow");
+          for (var f = 0; f < AD.totalFrames; f++) {
+            (function (bands, idx) {
+              tl.call(function () {
+                var sum = 0;
+                for (var i = 0; i < bands.length; i++) sum += bands[i];
+                var amp = sum / bands.length;
+                var o = 0.16 + amp * 0.34;
+                if (idx < 90) g1.style.opacity = o.toFixed(3);
+                if (idx > 495) g5.style.opacity = (o * 0.8).toFixed(3);
+              }, [], idx / AD.fps);
+            })(AD.frames[f].bands, f);
+          }
+        }
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines[id] = tl;
+      })();
+    </script>
+  </body>
+</html>

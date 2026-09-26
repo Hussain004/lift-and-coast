@@ -1,0 +1,2 @@
+Introducing LIFT & COAST: a 2026-regulation formula racing game that runs entirely in a browser tab.
+27 circuits from real GPS centerlines. A racing line that paints itself to show you where to lift. React Three Fiber, Rapier physics, no server.
