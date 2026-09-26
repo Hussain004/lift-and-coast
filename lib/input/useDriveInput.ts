@@ -85,8 +85,8 @@ export interface DriveInput {
   shiftDown: boolean;
 }
 
-const STEER_RATE = 4;
-const STEER_CENTER_RATE = 6;
+const STEER_RATE = 5;
+const STEER_CENTER_RATE = 7;
 // Ramp brake input up to full over half a second instead of snapping to 1
 // instantly. Found via headless testing at the current (much higher) engine
 // force: slamming full brake the instant the key is pressed, after building
