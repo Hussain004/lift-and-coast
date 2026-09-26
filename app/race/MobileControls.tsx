@@ -33,12 +33,32 @@ function Joystick({
   size: TouchStickSize;
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
+  const knobRef = useRef<HTMLDivElement>(null);
   const pointerIdRef = useRef<number | null>(null);
-  const [stick, setStick] = useState({ x: 0, y: 0, value: 0 });
+  // Pointer geometry is captured on pointer-down, not read per move: a
+  // getBoundingClientRect on every pointermove forces layout at touch rate.
+  const geometryRef = useRef({ centerX: 0, centerY: 0, radius: 1 });
 
-  const release = useCallback((updateVisual = true) => {
+  const paint = useCallback((x: number, y: number, value: number) => {
+    const knob = knobRef.current;
+    if (knob) {
+      knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    }
+    const base = baseRef.current;
+    if (base) {
+      base.setAttribute("aria-valuenow", value.toFixed(2));
+      base.setAttribute(
+        "aria-valuetext",
+        mode === "steer"
+          ? `${Math.round(value * 100)} percent steering`
+          : `${Math.round(Math.max(0, value) * 100)} percent throttle, ${Math.round(Math.max(0, -value) * 100)} percent brake`
+      );
+    }
+  }, [mode]);
+
+  const release = useCallback(() => {
     pointerIdRef.current = null;
-    if (updateVisual) setStick({ x: 0, y: 0, value: 0 });
+    paint(0, 0, 0);
     const input = inputRef.current;
     if (!input) return;
     if (mode === "steer") {
@@ -49,18 +69,14 @@ function Joystick({
       input.brake = 0;
       input.pedalActive = false;
     }
-  }, [inputRef, mode]);
+  }, [inputRef, mode, paint]);
 
-  useEffect(() => () => release(false), [release]);
+  useEffect(() => () => release(), [release]);
 
   const updateFromPointer = (clientX: number, clientY: number) => {
-    const base = baseRef.current;
     const input = inputRef.current;
-    if (!base || !input) return;
-    const rect = base.getBoundingClientRect();
-    const radius = Math.max(1, rect.width * 0.34);
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    if (!input) return;
+    const { centerX, centerY, radius } = geometryRef.current;
     const deltaX = clientX - centerX;
     const deltaY = clientY - centerY;
     const visualX = clamp(deltaX, -radius, radius);
@@ -77,7 +93,7 @@ function Joystick({
       input.brake = pedals.brake;
       value = pedals.throttle - pedals.brake;
     }
-    setStick({ x: visualX, y: visualY, value });
+    paint(visualX, visualY, value);
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -85,6 +101,12 @@ function Joystick({
     event.preventDefault();
     pointerIdRef.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    geometryRef.current = {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      radius: Math.max(1, rect.width * 0.34),
+    };
     updateFromPointer(event.clientX, event.clientY);
   };
 
@@ -100,7 +122,6 @@ function Joystick({
     release();
   };
 
-  const value = stick.value;
   const label = mode === "steer" ? "STEER" : "PEDAL";
 
   return (
@@ -113,8 +134,7 @@ function Joystick({
       aria-orientation={mode === "steer" ? "horizontal" : "vertical"}
       aria-valuemin={-1}
       aria-valuemax={1}
-      aria-valuenow={Number(value.toFixed(2))}
-      aria-valuetext={mode === "steer" ? `${Math.round(value * 100)} percent steering` : `${Math.round(Math.max(0, value) * 100)} percent throttle, ${Math.round(Math.max(0, -value) * 100)} percent brake`}
+      aria-valuenow={0}
       tabIndex={-1}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -124,10 +144,7 @@ function Joystick({
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className={styles.mobileStickCrosshair} />
-      <div
-        className={styles.mobileStickKnob}
-        style={{ transform: `translate(calc(-50% + ${stick.x}px), calc(-50% + ${stick.y}px))` }}
-      />
+      <div ref={knobRef} className={styles.mobileStickKnob} />
       <span className={styles.mobileStickLabel}>{label}</span>
     </div>
   );

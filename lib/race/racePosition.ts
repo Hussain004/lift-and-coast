@@ -196,7 +196,13 @@ export function buildTowerEntries(
   const progresses = drivers.map((entry) => entry.progress);
   const safeTrackLength = Math.max(1, trackLengthMeters);
   const positions = computeRacePositions(progresses, safeTrackLength);
-  const leaderTotal = Math.max(...progresses.map((p) => totalDistance(p, safeTrackLength)));
+  // Loop instead of Math.max(...map): the tower rebuilds at ~10Hz and the
+  // spread allocates a fresh array every call.
+  let leaderTotal = 0;
+  for (const progress of progresses) {
+    const total = totalDistance(progress, safeTrackLength);
+    if (total > leaderTotal) leaderTotal = total;
+  }
   const bestLap = progresses.reduce<number | null>((best, progress) => {
     const value = progress.bestLapSeconds;
     return value !== null && value !== undefined && Number.isFinite(value) && (best === null || value < best)
@@ -228,22 +234,26 @@ export function buildTowerEntries(
     } satisfies TowerEntry;
   });
 
-  const ordered = entries.slice().sort((a, b) => a.position - b.position);
-  for (let i = 1; i < ordered.length; i++) {
-    const ahead = ordered[i - 1];
-    const entry = ordered[i];
-    const aheadProgress = progresses[entries.indexOf(ahead)];
-    const entryProgress = progresses[entries.indexOf(entry)];
+  // Pair each entry with its own progress so the interval pass below never
+  // has to indexOf back into the unsorted arrays (O(n^2) per tower build
+  // at every position). Sorting the pairs by position yields the same order
+  // as sorting the entries alone.
+  const paired = entries.map((entry, index) => ({ entry, progress: progresses[index] }));
+  paired.sort((a, b) => a.entry.position - b.entry.position);
+  for (let i = 1; i < paired.length; i++) {
+    const ahead = paired[i - 1];
+    const entry = paired[i];
     const meters = Math.max(
       0,
-      totalDistance(aheadProgress, safeTrackLength) - totalDistance(entryProgress, safeTrackLength)
+      totalDistance(ahead.progress, safeTrackLength) -
+        totalDistance(entry.progress, safeTrackLength)
     );
     const effectiveSpeed = Math.max(
       5,
-      (Math.abs(aheadProgress.speedMs ?? 0) + Math.abs(entryProgress.speedMs ?? 0)) / 2
+      (Math.abs(ahead.progress.speedMs ?? 0) + Math.abs(entry.progress.speedMs ?? 0)) / 2
     );
-    entry.intervalSeconds = meters / effectiveSpeed;
-    entry.intervalLapsDown = Math.floor(meters / safeTrackLength);
+    entry.entry.intervalSeconds = meters / effectiveSpeed;
+    entry.entry.intervalLapsDown = Math.floor(meters / safeTrackLength);
   }
-  return ordered;
+  return paired.map((pair) => pair.entry);
 }

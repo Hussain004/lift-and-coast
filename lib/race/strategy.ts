@@ -58,6 +58,14 @@ const FUEL_BURN_THROTTLE_KG_PER_SECOND = 0.08;
 const LOW_FUEL_WARNING_FRACTION = 0.2;
 const PIT_STOP_FUEL_REFILL_KG = 100;
 const TIRE_AMBIENT_C = 24;
+/**
+ * Fuel mass pace cost. A real F1 car loses roughly 0.3s/lap per 10kg of
+ * fuel aboard (heavier car, worse tire wear); this game's 100kg tank over a
+ * minute-scale lap works out to about 3.5% total pace loss from full to
+ * empty, applied linearly. Felt as a gradual lightening across the stint,
+ * not a cliff.
+ */
+const FUEL_MASS_PACE_LOSS_AT_FULL_TANK = 0.035;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -111,7 +119,10 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     state.compoundGripMultiplier = Math.min(1, wearGrip * thermalGrip);
     const fuelFraction = state.fuelKg / state.fuelCapacityKg;
     state.engineMultiplier = fuelFraction <= 0 ? 0.18 : fuelFraction < 0.06 ? 0.45 : 1;
-    state.paceMultiplier = state.mode === "save" ? 0.985 : state.mode === "push" ? 1.015 : 1;
+    const modePace = state.mode === "save" ? 0.985 : state.mode === "push" ? 1.015 : 1;
+    // Fuel mass: a full tank costs real pace (see FUEL_MASS_PACE_LOSS_AT_FULL_TANK),
+    // fading linearly as it burns off.
+    state.paceMultiplier = modePace * (1 - FUEL_MASS_PACE_LOSS_AT_FULL_TANK * fuelFraction);
     state.fuelWarning = fuelFraction <= LOW_FUEL_WARNING_FRACTION;
   }
 
