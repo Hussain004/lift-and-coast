@@ -861,6 +861,20 @@ export function Scene({
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
   const lighting = TIME_OF_DAY_LIGHTING[timeOfDay] ?? TIME_OF_DAY_LIGHTING.day;
+  // Cloud cover for the sky dome (see Sky.tsx): the weather preset dominates,
+  // with the overcast time-of-day adding a baseline ceiling of its own.
+  const cloudCover =
+    weatherPreset === "rain"
+      ? 0.92
+      : weatherPreset === "cloudy"
+        ? timeOfDay === "overcast"
+          ? 0.95
+          : 0.62
+        : timeOfDay === "overcast"
+          ? 0.85
+          : 0.15;
+  const cloudColor =
+    weatherPreset === "rain" ? "#9aa4ae" : timeOfDay === "sunset" ? "#f5d9c8" : "#e8ecf2";
   // Graphics tier (see lib/render/quality.ts): resolved once at mount -
   // antialiasing is a context-creation flag - then live: K cycles the
   // preference, and "auto" can step itself down (FrameRateGovernor).
@@ -911,6 +925,8 @@ export function Scene({
         hills={lighting.hills}
         sunDirection={lighting.sunPosition}
         sunColor={lighting.sunColor}
+        cloudCover={cloudCover}
+        cloudColor={cloudColor}
       />
       <Sun
         direction={lighting.sunPosition}
