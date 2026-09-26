@@ -878,6 +878,15 @@ function nearestPointIndex(
 const LIVE_REACTION_DISTANCE_METERS = 10;
 const LIVE_OVERSPEED_WINDOW_METERS = 35;
 const LIVE_SPEED_TOLERANCE_FRACTION = 0.05;
+/**
+ * Target speeds below this are corner targets (the car genuinely needs to
+ * slow down); at/above it the point is a flat-out straight where the line's
+ * own cap is the binding "target". The overspeed escalation must only fire
+ * on corner targets: the line's straight cap is a conservative AI target, not
+ * the car's real top speed - with low-drag mode the car legally exceeds it on
+ * every straight - so an ungated comparison turned flat-out straights red.
+ */
+const LIVE_CORNER_SPEED_THRESHOLD_MS = 70;
 const ZONE_SEVERITY: Record<ThrottleZone, number> = {
   throttle: 0,
   lift: 1,
@@ -925,12 +934,20 @@ export function updateLiveZoneColors(
     // short reaction window is allowed to escalate it when the car is
     // genuinely carrying too much speed right now; the old all-distance
     // calculation repainted a fast straight red from end to end.
+    //
+    // The escalation is gated to corner targets only (see
+    // LIVE_CORNER_SPEED_THRESHOLD_MS): on a flat-out straight the line's own
+    // cap is the "target" and the car legally exceeds it, so there is no
+    // overspeed to warn about - only a real corner target below the threshold
+    // can be overshot.
     let zone = line[i].displayZone ?? line[i].zone;
     if (distance <= LIVE_OVERSPEED_WINDOW_METERS) {
       const driverTarget = line[i].displayTargetSpeedMs ?? line[i].targetSpeedMs;
-      const toleratedTarget = driverTarget * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
-      const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
-      zone = mostSevereZone(zone, classifyDisplayZone(decelNeeded));
+      if (driverTarget < LIVE_CORNER_SPEED_THRESHOLD_MS) {
+        const toleratedTarget = driverTarget * (1 + LIVE_SPEED_TOLERANCE_FRACTION);
+        const decelNeeded = Math.max(0, (currentSpeedMs ** 2 - toleratedTarget ** 2) / (2 * d));
+        zone = mostSevereZone(zone, classifyDisplayZone(decelNeeded));
+      }
     }
     const [r, g, b] = zoneColor[zone];
     const idx = i * 6;
