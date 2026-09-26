@@ -53,6 +53,7 @@ const SESSION_MODES: { id: SessionMode; label: string }[] = [
 ];
 
 const QUALI_FORMATS: { id: QualifyingFormat; label: string }[] = [
+  { id: "knockout", label: "Knockout Q1-Q3" },
   { id: "timed", label: "10 min" },
   { id: "oneshot", label: "One-shot" },
 ];

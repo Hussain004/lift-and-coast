@@ -176,7 +176,7 @@ export function Championship() {
               {(stage === "qualifying" || stage === "race") && (
                 <Link
                   className={styles.championshipButton}
-                  href={buildRaceUrl({ ...base, mode: "qualifying", qformat: "timed" })}
+                  href={buildRaceUrl({ ...base, mode: "qualifying", qformat: "knockout" })}
                 >
                   {round.qualiSpot === null ? "Qualifying" : `Re-qualify (Q${round.qualiSpot})`}
                 </Link>

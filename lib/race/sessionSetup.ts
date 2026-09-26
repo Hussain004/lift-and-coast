@@ -31,12 +31,13 @@ export function parseSessionMode(raw: string | null): SessionMode {
 }
 
 // Qualifying formats (see qualifying.ts): one flying lap after the timer
-// starts at the first line crossing, or a 10-minute open session where the
-// best valid lap counts. Unknown values fall back to the timed session.
-export type QualifyingFormat = "oneshot" | "timed";
+// starts at the first line crossing, a 10-minute open session where the
+// best valid lap counts, or the real F1 knockout (Q1/Q2/Q3 with cuts).
+// Unknown values fall back to the timed session.
+export type QualifyingFormat = "oneshot" | "timed" | "knockout";
 
 export function parseQualifyingFormat(raw: string | null): QualifyingFormat {
-  if (raw === "oneshot") return "oneshot";
+  if (raw === "oneshot" || raw === "knockout") return raw;
   return "timed";
 }
 

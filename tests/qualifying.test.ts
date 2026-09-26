@@ -6,6 +6,7 @@ import {
   isQualifyingLapValid,
   playerGridSpot,
   polePosition,
+  QUALIFYING_PHASE_SECONDS,
   qualifyingLeaderboard,
   qualifyingWinner,
   recordQualiLap,
@@ -194,5 +195,90 @@ describe("sessionGridOrder", () => {
       ["A", "B"]
     );
     expect(order).toEqual(["B", "YOU", "A"]);
+  });
+});
+
+describe("knockout qualifying (Q1/Q2/Q3)", () => {
+  it("starts in Q1 with the full field on the clock", () => {
+    const session = createQualifyingSession("knockout", 3);
+    expect(session.phase).toBe("Q1");
+    expect(session.phaseTimeLeftSeconds).toBe(QUALIFYING_PHASE_SECONDS.Q1);
+    expect(session.eliminated).toEqual([false, false, false, false]);
+    expect(session.finished).toBe(false);
+  });
+
+  it("cuts the slowest share at each phase boundary and advances the clock", () => {
+    // 4 sides: player + 3 rivals. Q1 cuts max(1, floor(4/4)) = 1.
+    let session = createQualifyingSession("knockout", 3);
+    session = recordQualiLap(session, "player", 90);
+    session = recordQualiLap(session, 0, 80);
+    session = recordQualiLap(session, 1, 95);
+    session = recordQualiLap(session, 2, 85);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q1 + 1);
+    expect(session.phase).toBe("Q2");
+    expect(session.phaseTimeLeftSeconds).toBe(QUALIFYING_PHASE_SECONDS.Q2);
+    // Rival 1 (95s, slowest) is out; the rest survive. Eliminated is indexed
+    // [player, rival0, rival1, rival2].
+    expect(session.eliminated).toEqual([false, false, true, false]);
+    expect(session.lastEliminatedSides).toEqual([1]);
+    expect(session.finished).toBe(false);
+  });
+
+  it("finishes at the end of Q3 with the final classification", () => {
+    let session = createQualifyingSession("knockout", 3);
+    // Player posts the fastest Q1 time so they survive to the shootout.
+    session = recordQualiLap(session, "player", 80);
+    session = recordQualiLap(session, 0, 90);
+    session = recordQualiLap(session, 1, 95);
+    session = recordQualiLap(session, 2, 85);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q1 + 1);
+    expect(session.eliminated).toEqual([false, false, true, false]);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q2 + 1);
+    expect(session.phase).toBe("Q3");
+    // Rival 0 (90s) is the Q2 cut; the player and rival 2 reach Q3.
+    expect(session.eliminated).toEqual([false, true, true, false]);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q3 + 1);
+    expect(session.finished).toBe(true);
+    expect(session.phaseTimeLeftSeconds).toBe(0);
+    // Best times across all phases decide the grid: player 80 is pole.
+    expect(playerGridSpot(session)).toBe(1);
+  });
+
+  it("ends the session immediately when the player is eliminated", () => {
+    let session = createQualifyingSession("knockout", 3);
+    // Player posts the slowest time of Q1.
+    session = recordQualiLap(session, 0, 80);
+    session = recordQualiLap(session, 1, 85);
+    session = recordQualiLap(session, 2, 88);
+    session = recordQualiLap(session, "player", 95);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q1 + 1);
+    expect(session.playerEliminated).toBe(true);
+    expect(session.finished).toBe(true);
+    expect(session.phase).toBe("Q1");
+    expect(playerGridSpot(session)).toBe(4);
+  });
+
+  it("never cuts so deep that Q3 runs with fewer than two cars", () => {
+    // Two sides total: no elimination at all, both reach Q3.
+    let session = createQualifyingSession("knockout", 1);
+    session = recordQualiLap(session, "player", 90);
+    session = recordQualiLap(session, 0, 80);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q1 + 1);
+    expect(session.phase).toBe("Q2");
+    expect(session.eliminated).toEqual([false, false]);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q2 + 1);
+    expect(session.phase).toBe("Q3");
+    expect(session.eliminated).toEqual([false, false]);
+  });
+
+  it("sorts no-time sides to the back of the cut order", () => {
+    // 8 sides: Q1 cuts floor(8/4) = 2. Three rivals set no time, so the two
+    // eliminated must come from the no-time group, not the timed cars.
+    let session = createQualifyingSession("knockout", 7);
+    session = recordQualiLap(session, "player", 90);
+    session = recordQualiLap(session, 0, 80);
+    session = tickQualifyingSession(session, QUALIFYING_PHASE_SECONDS.Q1 + 1);
+    expect(session.eliminated).toEqual([false, false, false, false, false, false, true, true]);
+    expect(session.lastEliminatedSides).toEqual([5, 6]);
   });
 });

@@ -1,9 +1,10 @@
 /**
  * Plan section 7's "Playable Qualifying": real grid-setting sessions behind
  * ?mode=qualifying (see QualifyingSession below) - one-shot (a single
- * flying lap) or timed (10 minutes, best valid lap). The grid spot feeds
- * the staggered race start. QualifyingTimes/polePosition below are the
- * older informational overlay (first completed laps, shown during races);
+ * flying lap), timed (open session, best valid lap), or knockout (the real
+ * F1 format: Q1/Q2/Q3 with eliminations between phases). The grid spot
+ * feeds the staggered race start. QualifyingTimes/polePosition below are
+ * the older informational overlay (first completed laps, shown during races);
  * the session machine is the authority wherever a grid is set.
  *
  * Full field: the player (index "player") plus one slot per rival in
@@ -45,7 +46,34 @@ export function polePosition(times: QualifyingTimes): "player" | number | null {
   return best;
 }
 
-export type QualifyingFormat = "oneshot" | "timed";
+export type QualifyingFormat = "oneshot" | "timed" | "knockout";
+
+/**
+ * The three knockout phases, in order. Q1 is the whole field with the
+ * slowest share eliminated, Q2 is the survivors with a second cut, Q3 is
+ * the top-ten shootout for pole.
+ */
+export type QualifyingPhase = "Q1" | "Q2" | "Q3";
+
+export const QUALIFYING_PHASES: readonly QualifyingPhase[] = ["Q1", "Q2", "Q3"];
+
+/**
+ * Phase clocks. Real F1 runs 18/15/12 minutes; this build scales the same
+ * 1.5 : 1.25 : 1 ratio down to game-length sessions (3:00 / 2:30 / 2:00)
+ * so a full knockout weekend still fits a single sitting.
+ */
+export const QUALIFYING_PHASE_SECONDS: Record<QualifyingPhase, number> = {
+  Q1: 180,
+  Q2: 150,
+  Q3: 120,
+};
+
+export function nextPhase(phase: QualifyingPhase): QualifyingPhase | null {
+  const index = QUALIFYING_PHASES.indexOf(phase);
+  return index >= 0 && index < QUALIFYING_PHASES.length - 1
+    ? QUALIFYING_PHASES[index + 1]
+    : null;
+}
 
 /**
  * Validity for the player's classified lap. A rewind is allowed when the
@@ -121,20 +149,43 @@ export interface QualifyingSession {
   format: QualifyingFormat;
   /** Best VALID lap per side; null means no clean lap yet. */
   best: { player: number | null; opponents: (number | null)[] };
-  /** Seconds left (timed) - hits 0 exactly when the session ends. */
+  /** Seconds left (timed/knockout) - hits 0 exactly when the session ends. */
   timeLeftSeconds: number;
   /** Completed laps (oneshot) - the player's first crossing ends the session. */
   lapsDone: number;
   finished: boolean;
+  /** Knockout only: which phase the session is in (null for other formats). */
+  phase: QualifyingPhase | null;
+  /** Knockout only: seconds left in the current phase. */
+  phaseTimeLeftSeconds: number;
+  /** Knockout only: per side, true once knocked out of the session. */
+  eliminated: boolean[];
+  /**
+   * Knockout only: sides cut at the most recent phase boundary (empty until
+   * the first cut), so the HUD can name who went out.
+   */
+  lastEliminatedSides: QualifyingSide[];
+  /** Knockout only: true once the player has been eliminated (session over for them). */
+  playerEliminated: boolean;
+}
+
+function createBest(opponents: number): QualifyingSession["best"] {
+  return { player: null, opponents: Array.from({ length: opponents }, () => null) };
 }
 
 export function createQualifyingSession(format: QualifyingFormat, opponents = 0): QualifyingSession {
+  const knockout = format === "knockout";
   return {
     format,
-    best: { player: null, opponents: Array.from({ length: opponents }, () => null) },
-    timeLeftSeconds: TIMED_QUALIFYING_SECONDS,
+    best: createBest(opponents),
+    timeLeftSeconds: knockout ? QUALIFYING_PHASE_SECONDS.Q1 : TIMED_QUALIFYING_SECONDS,
     lapsDone: 0,
     finished: false,
+    phase: knockout ? "Q1" : null,
+    phaseTimeLeftSeconds: knockout ? QUALIFYING_PHASE_SECONDS.Q1 : 0,
+    eliminated: Array.from({ length: opponents + 1 }, () => false),
+    lastEliminatedSides: [],
+    playerEliminated: false,
   };
 }
 
@@ -187,11 +238,87 @@ export function recordQualiLap(
   };
 }
 
-/** Advances a timed session; the clock floor ends it exactly at zero. */
+/**
+ * How many cars a knockout phase cuts. Real F1 eliminates 5 of 20 in Q1 and
+ * 5 of 15 in Q2 - a quarter, then a third. Scaled to smaller fields, and
+ * never so deep that Q3 would run with fewer than two cars.
+ */
+function eliminationCount(remaining: number): number {
+  const cut = Math.max(1, Math.floor(remaining / 4));
+  return Math.min(cut, Math.max(0, remaining - 2));
+}
+
+/**
+ * Advances a timed session; the clock floor ends it exactly at zero. For a
+ * knockout session each phase boundary cuts the slowest share of the
+ * survivors and starts the next phase's clock; the end of Q3 finishes the
+ * session. A player who is eliminated is done immediately - their grid
+ * spot is locked by the time they did set.
+ */
 export function tickQualifyingSession(session: QualifyingSession, dt: number): QualifyingSession {
-  if (session.finished || session.format !== "timed") return session;
+  if (session.finished) return session;
+  if (session.format === "timed") {
+    const timeLeftSeconds = Math.max(0, session.timeLeftSeconds - dt);
+    return { ...session, timeLeftSeconds, finished: timeLeftSeconds <= 0 };
+  }
+  if (session.format !== "knockout" || session.phase === null) return session;
+
+  const phaseTimeLeftSeconds = Math.max(0, session.phaseTimeLeftSeconds - dt);
   const timeLeftSeconds = Math.max(0, session.timeLeftSeconds - dt);
-  return { ...session, timeLeftSeconds, finished: timeLeftSeconds <= 0 };
+  if (phaseTimeLeftSeconds > 0) {
+    return { ...session, phaseTimeLeftSeconds, timeLeftSeconds };
+  }
+
+  // Phase over: rank the survivors by best valid lap (no-time sides sort
+  // last, roster order breaking ties) and cut the slowest share.
+  const sides: QualifyingSide[] = [
+    "player",
+    ...session.best.opponents.map((_, index) => index as number),
+  ];
+  const survivors = sides.filter((side) => !session.eliminated[sideIndex(side)]);
+  const ranked = [...survivors].sort((a, b) => {
+    const ta = readBest(session, a);
+    const tb = readBest(session, b);
+    if (ta === null && tb === null) return sideIndex(a) - sideIndex(b);
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    if (ta !== tb) return ta - tb;
+    return sideIndex(a) - sideIndex(b);
+  });
+  const cut = eliminationCount(ranked.length);
+  const eliminatedSides = ranked.slice(ranked.length - cut);
+  const eliminated = [...session.eliminated];
+  for (const side of eliminatedSides) eliminated[sideIndex(side)] = true;
+
+  const playerEliminated =
+    session.playerEliminated || eliminatedSides.includes("player");
+
+  const next = nextPhase(session.phase);
+  // Q3's end (or the player being cut) finishes the session.
+  if (next === null || playerEliminated) {
+    return {
+      ...session,
+      eliminated,
+      lastEliminatedSides: eliminatedSides,
+      playerEliminated,
+      phaseTimeLeftSeconds: 0,
+      timeLeftSeconds: 0,
+      finished: true,
+    };
+  }
+  return {
+    ...session,
+    eliminated,
+    lastEliminatedSides: eliminatedSides,
+    playerEliminated,
+    phase: next,
+    phaseTimeLeftSeconds: QUALIFYING_PHASE_SECONDS[next],
+    timeLeftSeconds,
+  };
+}
+
+function sideIndex(side: QualifyingSide): number {
+  return side === "player" ? 0 : side + 1;
 }
 
 /**

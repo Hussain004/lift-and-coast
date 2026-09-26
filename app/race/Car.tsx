@@ -1495,14 +1495,17 @@ export function Car({
     }
 
     if (lapRef?.current) {
-      if (sessionMode === "qualifying" && qualiFormat === "timed") {
-        const remaining = qualiSessionRef.current.timeLeftSeconds;
+      if (sessionMode === "qualifying" && qualiFormat !== "oneshot") {
+        const session = qualiSessionRef.current;
+        const phaseLabel = session.phase ? `${session.phase} ` : "";
+        const remaining =
+          qualiFormat === "knockout" ? session.phaseTimeLeftSeconds : session.timeLeftSeconds;
         const mm = Math.floor(remaining / 60);
         const ss = Math.floor(remaining % 60)
           .toString()
           .padStart(2, "0");
         lapRef.current.textContent =
-          `QUAL ${mm}:${ss}  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
+          `QUAL ${phaseLabel}${mm}:${ss}  BEST ${formatLapTime(session.best.player)}` +
           (lapInvalidRef.current ? "  INVALID" : "");
       } else if (sessionMode === "qualifying") {
         lapRef.current.textContent =
@@ -1521,8 +1524,25 @@ export function Car({
     }
 
     if (sessionMode === "qualifying" && !qualiFinishedRef.current) {
-      if (qualiFormat === "timed") {
+      if (qualiFormat === "timed" || qualiFormat === "knockout") {
+        const prevPhase = qualiSessionRef.current.phase;
+        const wasEliminated = qualiSessionRef.current.playerEliminated;
         qualiSessionRef.current = tickQualifyingSession(qualiSessionRef.current, dt);
+        // Knockout phase-transition toasts: the player's own fate is the
+        // story (cut, or through to the next phase).
+        if (qualiFormat === "knockout") {
+          const session = qualiSessionRef.current;
+          let toast: string | null = null;
+          if (session.playerEliminated && !wasEliminated) {
+            toast = `ELIMINATED IN ${session.phase ?? "Q1"} - P${gridSpotFromSession(session)} ON THE GRID`;
+          } else if (session.phase !== null && session.phase !== prevPhase) {
+            toast = session.phase === "Q3" ? "THROUGH TO Q3 - TOP TEN SHOOTOUT" : `THROUGH TO ${session.phase}`;
+          }
+          if (toast && penaltyToastRef?.current) {
+            penaltyToastRef.current.textContent = toast;
+            penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
+          }
+        }
       }
       if (qualiSessionRef.current.finished && raceResultRef?.current) {
         qualiFinishedRef.current = true;
