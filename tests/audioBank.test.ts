@@ -118,6 +118,32 @@ function analyse(name: string): Analysis {
 const RPM_POINTS = [3000, 5000, 7000, 9000, 10800, 12000];
 const LOADS = ["off", "mid", "on"] as const;
 
+/**
+ * Strongest spectral bin above 3.5kHz divided by the strongest below 1.5kHz.
+ * ~1 for a flat hiss, high for a tone sitting up in the treble.
+ */
+function trebleToBassPeakRatio(name: string): number {
+  const { data, rate } = readWav(name.endsWith(".wav") ? name : `${name}.wav`);
+  const start = 0;
+  const size = 16384;
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  for (let i = 0; i < size; i++) {
+    re[i] = (data[start + i] ?? 0) * (0.5 * (1 - Math.cos((2 * Math.PI * i) / (size - 1))));
+  }
+  fft(re, im);
+  const binHz = rate / size;
+  let bass = 0;
+  let treble = 0;
+  for (let i = 2; i < size >> 1; i++) {
+    const hz = i * binHz;
+    const m = Math.hypot(re[i], im[i]);
+    if (hz < 1500 && m > bass) bass = m;
+    if (hz >= 3500 && m > treble) treble = m;
+  }
+  return bass > 0 ? treble / bass : Infinity;
+}
+
 describe("generated engine audio bank", () => {
   it("has an engine loop at every rpm point and load", () => {
     const files = readdirSync(AUDIO_DIR);
@@ -195,6 +221,27 @@ describe("generated engine audio bank", () => {
     for (const name of readdirSync(AUDIO_DIR).filter((f) => f.endsWith(".wav"))) {
       const a = analyse(name);
       expect(a.peak, `${name} clips`).toBeLessThanOrEqual(0.9);
+    }
+  });
+
+  it("keeps the lift-off one-shots out of the piercing treble", () => {
+    // Reported as "a high pitched sound that hurts my ears whenever I leave
+    // the throttle". The blow-off valve was a descending TONE starting at
+    // 6.1kHz, played at 0.36 gain on every lift - and a lift is the most
+    // repeated input in the game.
+    //
+    // Band share is the wrong measure here: a hiss is broadband, so equal
+    // energy per Hz means the 5-16kHz "air" band dwarfs the 0-300Hz "low"
+    // band purely because it is 37x wider. What separates a painful hiss from
+    // a painful whine is whether there is a DOMINANT TONE up there, so compare
+    // the strongest treble bin against the strongest bass bin. A flat hiss
+    // scores near 1; a 6.1kHz whistle scores far higher.
+    for (const name of ["bov", "crack-0", "crack-1", "crack-2"]) {
+      const ratio = trebleToBassPeakRatio(name);
+      expect(
+        ratio,
+        `${name} has a dominant tone in the treble (${ratio.toFixed(1)}x the bass peak)`
+      ).toBeLessThan(4);
     }
   });
 

@@ -81,14 +81,43 @@ describe("race audio mappings", () => {
     // Wastegate dumps boost far faster than the turbine recovers it, so the
     // lag coefficient must be larger on the way down.
     expect(turboLagCoefficient(false)).toBeGreaterThan(turboLagCoefficient(true));
+  });
+
+  it("keeps the turbo genuinely silent off throttle", () => {
+    // This is the fix for a reported "high pitched sound that hurts my ears"
+    // off throttle. Two separate mistakes combined: the turbo's loop
+    // selector was driven by boost instead of rpm (so a closed throttle
+    // played the LOWEST shaft loop at full weight), and its output gain was a
+    // constant regardless of boost. Either alone leaves a piercing 4kHz tone
+    // on a trailing throttle.
+    expect(turboGain01(0, 0)).toBe(0);
     expect(turboGain01(0, 1)).toBe(0);
-    expect(turboGain01(1, 1)).toBeGreaterThan(0);
+    expect(turboGain01(1, 0)).toBe(0);
+    // Cubic: a light touch must be far quieter than full boost, so the whine
+    // never sits on top of the engine as soon as you ease off.
+    expect(turboGain01(0.3, 1)).toBeLessThan(turboGain01(0.8, 1) * 0.2);
+    // And it must stay a layer BEHIND the engine, not in front of it.
+    expect(turboGain01(1, 1)).toBeLessThan(engineGain01(1) * 0.5);
+  });
+
+  it("keeps the engine filter open enough to not sound muffled", () => {
+    // A 1.6L V6 carries well past 1kHz even at idle. The old floor of 500Hz
+    // is what made the car read as low-pitched and dull.
+    expect(engineCutoffHz(0, 0)).toBeGreaterThan(1000);
+    expect(engineCutoffHz(1, 0)).toBeGreaterThan(engineCutoffHz(0, 0));
+    expect(engineCutoffHz(0.5, 1)).toBeGreaterThan(engineCutoffHz(0.5, 0));
+    // Open enough at full power that the filter is not what you hear.
+    expect(engineCutoffHz(1, 1)).toBeGreaterThan(12000);
+    expect(engineCutoffHz(1, 1)).toBeLessThanOrEqual(18000);
   });
 
   it("drives the MGU-K whine only from real deployment", () => {
     expect(mguGain01(0)).toBe(0);
     expect(mguGain01(1)).toBeGreaterThan(0);
     expect(mguFrequencyHz(1)).toBeGreaterThan(mguFrequencyHz(0));
+    // A pure sine with no broadband content behind it, so it has to stay a
+    // colour on the engine rather than a layer in front of it.
+    expect(mguGain01(1)).toBeLessThan(engineGain01(1) * 0.4);
   });
 
   it("smooths rpm toward a new target without overshooting", () => {

@@ -175,9 +175,17 @@ export function crossfadeWeights(t: number): [number, number] {
   return [Math.cos(x), Math.sin(x)];
 }
 
-/** Throttle opens the lowpass: coasting muted and dark, full power bright. */
+/**
+ * Engine lowpass. The mix opens with revs and throttle, but it must stay
+ * genuinely OPEN - this used to bottom out at 500Hz, which is far too closed
+ * for a 1.6L V6 and made the car sound muffled and low-pitched off throttle
+ * while the turbo's 4kHz whine cut straight through the gap on top of it.
+ * Even at idle the exhaust note carries well past 1kHz.
+ */
 export function engineCutoffHz(rpm01: number, throttle01: number): number {
-  return 500 + 3800 * clamp01(rpm01) * (0.3 + 0.7 * clamp01(throttle01));
+  const rpm = clamp01(rpm01);
+  const throttle = clamp01(throttle01);
+  return Math.min(18000, 1100 + 15000 * rpm * (0.35 + 0.65 * throttle));
 }
 
 /** Audible at idle, present under power, never a bed of noise. */
@@ -202,9 +210,17 @@ export function turboLagCoefficient(spoolingUp: boolean): number {
   return spoolingUp ? 0.1 : 0.28;
 }
 
-/** Turbo level from the driver's right foot: nothing off throttle, loud on. */
+/**
+ * Turbo level. Cubic in the right foot, so a closed throttle is genuinely
+ * silent and the whine only becomes prominent once there is real boost.
+ *
+ * Deliberately small. The turbo loops are the brightest thing in the bank
+ * (most of their energy sits above 5kHz), so even a modest gain here sits
+ * forward in the mix against an engine whose fundamental is 150-600Hz. It is
+ * a layer on top of the engine, not a layer in front of it.
+ */
 export function turboGain01(throttle01: number, boost01: number): number {
-  return 0.1 * clamp01(throttle01) * clamp01(boost01);
+  return 0.05 * Math.pow(clamp01(throttle01), 3) * clamp01(boost01);
 }
 
 /**
@@ -215,7 +231,10 @@ export function turboGain01(throttle01: number, boost01: number): number {
  * throttle, so it appears only when the driver is actually deploying.
  */
 export function mguGain01(deploy01: number): number {
-  return 0.055 * clamp01(deploy01);
+  // Kept low: this is a pure 1.4-3.5kHz sine, so it is the one layer with no
+  // broadband content to hide behind. It should colour the engine, never sit
+  // on top of it.
+  return 0.03 * clamp01(deploy01);
 }
 
 /** MGU-K pitch, in Hz, against rpm. */
@@ -523,21 +542,30 @@ function makeTurboVoice(
       previousBoost = boost;
       boost = clamp01(boost01);
       const lag = turboLagCoefficient(boost >= previousBoost);
-      const pos = boost * (gains.length - 1);
+
+      // SELECT BY RPM, LEVEL BY BOOST.
+      //
+      // These are two different jobs and swapping them is what produced a
+      // piercing 3.9kHz whine that never stopped. The three bank loops are
+      // cut at three turbo SHAFT SPEEDS, so which loop you hear is a pitch
+      // question - that is rpm. How loud the turbo is at all is a pressure
+      // question - that is the driver's right foot. Driving the crossfade
+      // from boost meant that at a closed throttle the selector sat at index
+      // 0, i.e. the LOWEST shaft loop playing at FULL weight: exactly backwards,
+      // and it is the most treble-heavy sound in the bank.
+      const pos = clamp01(rpm01) * (gains.length - 1);
       const i0 = Math.min(gains.length - 1, Math.floor(pos));
       const i1 = Math.min(gains.length - 1, i0 + 1);
       const [w0, w1] = crossfadeWeights(pos - i0);
       gains.forEach((g, i) => {
         const w = i === i0 ? w0 : i === i1 ? w1 : 0;
-        g.gain.setTargetAtTime(w, when, lag);
+        g.gain.setTargetAtTime(w, when, 0.05);
       });
-      // Also fades out at the very top of the range, where the real car is
-      // on the limiter and the engine, not the turbo, is what you hear.
-      output.gain.setTargetAtTime(
-        0.5 * (0.55 + 0.45 * clamp01(rpm01)),
-        when,
-        lag
-      );
+
+      // Level follows boost, and follows it hard: a closed throttle has to be
+      // genuinely silent, not merely quieter. turboGain01 is cubic in the
+      // throttle, so the whine only becomes prominent with real boost.
+      output.gain.setTargetAtTime(turboGain01(boost01, boost), when, lag);
     },
   };
 }
@@ -746,10 +774,14 @@ export function createRaceAudio(): RaceAudioEngine | null {
       // like a machine rather than a recording.
       const lifted = previousThrottle > 0.45 && p.throttle01 < 0.12;
       if (lifted && p.rpm01 > 0.3) {
-        oneShot("bov", 0.16 + 0.2 * p.rpm01, 0.95 + Math.random() * 0.12);
+        // Restrained on purpose. These were hot enough to be the reported
+        // "hurts my ears" on a trailing throttle, and a lift is the most
+        // repeated input in the game - it fires every time the driver gets
+        // on the brakes or out of a corner.
+        oneShot("bov", 0.07 + 0.07 * p.rpm01, 0.95 + Math.random() * 0.12);
         // A short burst of cracks, tightening as the revs fall.
         for (let k = 0; k < 3; k++) {
-          const crack = 0.06 + Math.random() * 0.09;
+          const crack = 0.025 + Math.random() * 0.04;
           window.setTimeout(() => {
             if (context.state === "running") {
               oneShot(`crack-${Math.floor(Math.random() * 3)}`, crack, 0.85 + Math.random() * 0.3);

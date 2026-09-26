@@ -388,21 +388,30 @@ function renderTurbo(opts: { shaftFraction: number; seconds: number; seed: numbe
   return out;
 }
 
-/** Blow-off valve: a short descending chirp as pressure is dumped. */
+/**
+ * Blow-off valve: pressure dumped on a lift, as a short descending hiss.
+ *
+ * Deliberately a mid-band hiss, not a whistle. This started at 6.1kHz and
+ * played at up to 0.36 gain on every throttle lift, which produced exactly
+ * the reported "high pitched sound that hurts my ears off throttle". A real
+ * BOV is closer to a steam-release sigh than a squeal: the pitched content
+ * lives below 3.5kHz and the energy is mostly broadband.
+ */
 function renderBov(): Float32Array {
-  const length = Math.round(0.22 * SAMPLE_RATE);
+  const length = Math.round(0.2 * SAMPLE_RATE);
   const out = new Float32Array(length);
   const random = rng(9001);
   let phase = 0;
   for (let i = 0; i < length; i++) {
     const t = i / length;
-    // Falls fast, rings a little.
-    const hz = 5200 * Math.exp(-3.4 * t) + 900;
+    // Falls fast, and stays well clear of the treble.
+    const hz = 1900 * Math.exp(-3.2 * t) + 480;
     // Radians: 2*pi per cycle, same as the engine (see renderEngine).
     phase += (2 * Math.PI * hz) / SAMPLE_RATE;
-    const env = Math.exp(-7 * t) * (1 - Math.exp(-t * 90));
-    const n = (random() * 2 - 1) * 0.35;
-    out[i] = (Math.sin(phase) * 0.8 + Math.sin(phase * 1.5) * 0.2 + n) * env * 0.5;
+    const env = Math.exp(-8 * t) * (1 - Math.exp(-t * 70));
+    // Mostly noise: that is what makes it read as escaping air.
+    const n = (random() * 2 - 1) * 0.85;
+    out[i] = (n + Math.sin(phase) * 0.35) * env * 0.5;
   }
   return out;
 }
