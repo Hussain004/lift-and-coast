@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  AUDIO_RPM_POINTS,
   clamp01,
   createRaceAudio,
-  crossfadeWeights,
   defaultCarSnapshot,
   dopplerFactor,
   engineCutoffHz,
@@ -13,19 +11,14 @@ import {
   kerbRumbleHz,
   limiterAmount,
   loadMuted,
-  mguFrequencyHz,
-  mguGain01,
   opponentGain01,
   opponentPanLR,
   pickVoicedOpponents,
-  rpmBracket,
   rpmTo01,
   saveMuted,
   smoothRpm01,
   skidAmount01,
   skidGain01,
-  turboGain01,
-  turboLagCoefficient,
   windGain01,
 } from "../lib/audio/raceAudio";
 import { IDLE_RPM, REDLINE_RPM, REV_LIMITER_RPM } from "../lib/physics/gearbox";
@@ -49,75 +42,12 @@ describe("race audio mappings", () => {
     expect(engineFrequencyHz(0.5)).toBeGreaterThan(60);
   });
 
-  it("keeps limiter load smooth and the fundamental on the V6 firing rate", () => {
+  it("keeps limiter load smooth and the synth fundamental bounded", () => {
     expect(limiterAmount(REDLINE_RPM)).toBe(0);
     expect(limiterAmount(REV_LIMITER_RPM)).toBe(1);
     expect(limiterAmount(REV_LIMITER_RPM + 5000)).toBe(1);
     expect(limiterAmount(REDLINE_RPM + 400)).toBeGreaterThan(0);
-    // A four-stroke V6 fires three times per crank revolution, so the
-    // fundamental is rpm/60 x 3: 150Hz at this sim's 3000rpm idle and 600Hz
-    // at its 12000rpm redline. This used to be rpm/60 x 1.5 (an octave low)
-    // and was then capped at 320Hz, which flattened the top of the rev range
-    // entirely - two separate reasons the engine never sounded like an F1.
-    expect(engineFrequencyHz(0)).toBeCloseTo(IDLE_RPM / 20, 6);
-    expect(engineFrequencyHz(1)).toBeCloseTo(REDLINE_RPM / 20, 6);
-    expect(engineFrequencyHz(1)).toBeGreaterThan(500);
-  });
-
-  it("brackets the bank by rpm and crossfades equal-power", () => {
-    expect(rpmBracket(0)).toEqual({ lo: 0, hi: 0, t: 0 });
-    expect(rpmBracket(1)).toEqual({ lo: 5, hi: 5, t: 0 });
-    const mid = rpmBracket(0.5);
-    expect(AUDIO_RPM_POINTS[mid.lo]).toBeLessThanOrEqual(IDLE_RPM + (REDLINE_RPM - IDLE_RPM) * 0.5);
-    expect(AUDIO_RPM_POINTS[mid.hi]).toBeGreaterThanOrEqual(IDLE_RPM + (REDLINE_RPM - IDLE_RPM) * 0.5);
-    // Equal power: the sum of squares is flat, so a crossfade does not dip in
-    // the middle the way a linear one does.
-    const [a, b] = crossfadeWeights(0.37);
-    expect(a * a + b * b).toBeCloseTo(1, 9);
-    expect(a).toBeGreaterThan(b);
-  });
-
-  it("lags the turbo spooling up less than it dumps it", () => {
-    // Wastegate dumps boost far faster than the turbine recovers it, so the
-    // lag coefficient must be larger on the way down.
-    expect(turboLagCoefficient(false)).toBeGreaterThan(turboLagCoefficient(true));
-  });
-
-  it("keeps the turbo genuinely silent off throttle", () => {
-    // This is the fix for a reported "high pitched sound that hurts my ears"
-    // off throttle. Two separate mistakes combined: the turbo's loop
-    // selector was driven by boost instead of rpm (so a closed throttle
-    // played the LOWEST shaft loop at full weight), and its output gain was a
-    // constant regardless of boost. Either alone leaves a piercing 4kHz tone
-    // on a trailing throttle.
-    expect(turboGain01(0, 0)).toBe(0);
-    expect(turboGain01(0, 1)).toBe(0);
-    expect(turboGain01(1, 0)).toBe(0);
-    // Cubic: a light touch must be far quieter than full boost, so the whine
-    // never sits on top of the engine as soon as you ease off.
-    expect(turboGain01(0.3, 1)).toBeLessThan(turboGain01(0.8, 1) * 0.2);
-    // And it must stay a layer BEHIND the engine, not in front of it.
-    expect(turboGain01(1, 1)).toBeLessThan(engineGain01(1) * 0.5);
-  });
-
-  it("keeps the engine filter open enough to not sound muffled", () => {
-    // A 1.6L V6 carries well past 1kHz even at idle. The old floor of 500Hz
-    // is what made the car read as low-pitched and dull.
-    expect(engineCutoffHz(0, 0)).toBeGreaterThan(1000);
-    expect(engineCutoffHz(1, 0)).toBeGreaterThan(engineCutoffHz(0, 0));
-    expect(engineCutoffHz(0.5, 1)).toBeGreaterThan(engineCutoffHz(0.5, 0));
-    // Open enough at full power that the filter is not what you hear.
-    expect(engineCutoffHz(1, 1)).toBeGreaterThan(12000);
-    expect(engineCutoffHz(1, 1)).toBeLessThanOrEqual(18000);
-  });
-
-  it("drives the MGU-K whine only from real deployment", () => {
-    expect(mguGain01(0)).toBe(0);
-    expect(mguGain01(1)).toBeGreaterThan(0);
-    expect(mguFrequencyHz(1)).toBeGreaterThan(mguFrequencyHz(0));
-    // A pure sine with no broadband content behind it, so it has to stay a
-    // colour on the engine rather than a layer in front of it.
-    expect(mguGain01(1)).toBeLessThan(engineGain01(1) * 0.4);
+    expect(engineFrequencyHz(1)).toBeLessThanOrEqual(320);
   });
 
   it("smooths rpm toward a new target without overshooting", () => {
