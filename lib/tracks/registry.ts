@@ -52,6 +52,12 @@ export const TRACKS: TrackMeta[] = [
   { id: "singapore", name: "Marina Bay Street Circuit", shortName: "Singapore", corners: 19, lat: 1.2910, lon: 103.8580 },
   { id: "lasvegas", name: "Las Vegas Strip Circuit", shortName: "Las Vegas", corners: 17, lat: 36.1170, lon: -115.1665 },
   { id: "lusail", name: "Lusail International Circuit", shortName: "Lusail", corners: 16, lat: 25.4905, lon: 51.4535 },
+  // Three more rounds the roster was still missing, same sourcing as the rows
+  // above: corner counts are the circuits' own published figures and the pins
+  // are the raw dataset's bbox centres.
+  { id: "jeddah", name: "Jeddah Corniche Circuit", shortName: "Jeddah", corners: 27, lat: 21.6377, lon: 39.1037 },
+  { id: "imola", name: "Autodromo Enzo e Dino Ferrari", shortName: "Imola", corners: 19, lat: 44.3408, lon: 11.7136 },
+  { id: "istanbul", name: "Intercity Istanbul Park", shortName: "Istanbul", corners: 15, lat: 40.9572, lon: 29.4087 },
 ];
 
 export const DEFAULT_TRACK_ID = TRACKS[0].id;

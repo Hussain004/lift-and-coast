@@ -49,6 +49,9 @@ const SAUSAGE_SHARE_CAP: Record<string, number> = {
   // kerbs measure a 0.129 share, in Monaco/Bahrain's league.
   baku: 0.16,
   singapore: 0.16,
+  // Imola measures 0.105 - over the flat cap by a hair, the same
+  // slow-old-circuit shape as Hockenheim's hairpin below.
+  imola: 0.12,
 };
 
 /**
@@ -195,6 +198,10 @@ describe("derived zones (real circuits)", () => {
     miami: 6,
     lasvegas: 6,
     baku: 1,
+    // Jeddah is Miami/Las Vegas again but further: 27 numbered corners on a
+    // 6.2km street circuit measure 23 kerb runs a side, because the flowing
+    // corniche sections between the tight ones do not each earn one.
+    jeddah: 4,
   };
 
   it("produces roughly the right number of kerb runs on each side", () => {

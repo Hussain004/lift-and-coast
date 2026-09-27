@@ -80,6 +80,14 @@ const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
   singapore: 4000,
   lasvegas: 5500,
   lusail: 5000,
+  // Fifth batch, same method: Jeddah 5700 (0.92 laps, observed 6609 - a
+  // 27-corner corniche is the slowest profile of the set after Singapore),
+  // Imola 5700 (1.16 laps, observed 6208), Istanbul 5000 (0.94 laps,
+  // observed 5656). All three also hot-lap without leaving the track - worst
+  // excursion 2.3m, worst tilt 0.16rad against the 0.6rad flip threshold.
+  jeddah: 5700,
+  imola: 5700,
+  istanbul: 5000,
 };
 // Observed worst single off-track excursion is now 3.7m (Monaco, down from
 // 7.1m before the curvature-adaptive preview in pathFollower.ts); this gate

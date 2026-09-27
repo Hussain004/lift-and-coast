@@ -665,6 +665,101 @@ const FLORA: Record<string, FloraConfig> = {
     lateralMaxM: 60,
     seed: 2004,
   },
+  // Jeddah: a sea-level corniche through a built-up stretch of the Red Sea
+  // coast, so there is no forest at all - sparse low scrub and the odd palm
+  // in the irrigated strips between the road and the wall.
+  jeddah: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: DESERT_SCRUB,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1, 2],
+        heightM: [2.5, 4],
+        weight: 3,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: PALM_GREEN,
+        trunkColor: "#6B5B43",
+        canopySizeM: [1.8, 3],
+        heightM: [7, 12],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 18,
+    lateralMinM: 10,
+    lateralMaxM: 55,
+    seed: 2021,
+  },
+  // Imola: Emilia-Romagna farmland and poplar avenues, with the circuit
+  // dropping into the wooded Santerno valley on the north side.
+  imola: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: POPLAR_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2, 3.5],
+        heightM: [8, 14],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: OAK_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 10],
+        weight: 2,
+      },
+      {
+        shape: "conifer",
+        canopyColors: SPRUCE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 45,
+    lateralMinM: 9,
+    lateralMaxM: 60,
+    seed: 1953,
+  },
+  // Istanbul Park sits inside a forest reserve on the Asian side of the Bosphorus,
+  // so the circuit is ringed by genuinely dense mixed woodland.
+  istanbul: {
+    species: [
+      {
+        shape: "broadleaf",
+        canopyColors: OAK_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4.5],
+        heightM: [7, 12],
+        weight: 2,
+      },
+      {
+        shape: "broadleaf",
+        canopyColors: MAPLE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [2.5, 4],
+        heightM: [6, 10],
+        weight: 2,
+      },
+      {
+        shape: "conifer",
+        canopyColors: SPRUCE_GREEN,
+        trunkColor: TRUNK_BROWN,
+        canopySizeM: [1.8, 2.8],
+        heightM: [7, 12],
+        weight: 1,
+      },
+    ],
+    densityPerKm: 72,
+    lateralMinM: 8,
+    lateralMaxM: 62,
+    seed: 2005,
+  },
 };
 
 export function getFloraConfig(trackId: string): FloraConfig | null {

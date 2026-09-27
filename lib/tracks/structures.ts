@@ -30,6 +30,9 @@ import baku from "../../data/tracks/structures/baku.json";
 import singapore from "../../data/tracks/structures/singapore.json";
 import lasvegas from "../../data/tracks/structures/lasvegas.json";
 import lusail from "../../data/tracks/structures/lusail.json";
+import jeddah from "../../data/tracks/structures/jeddah.json";
+import imola from "../../data/tracks/structures/imola.json";
+import istanbul from "../../data/tracks/structures/istanbul.json";
 
 /**
  * Trackside structures (plan section 4, circuit detail): pit buildings,
@@ -109,6 +112,9 @@ const FILES: Record<string, StructuresFile> = {
   singapore: singapore as StructuresFile,
   lasvegas: lasvegas as StructuresFile,
   lusail: lusail as StructuresFile,
+  jeddah: jeddah as StructuresFile,
+  imola: imola as StructuresFile,
+  istanbul: istanbul as StructuresFile,
 };
 
 export function getStructures(trackId: string): VendoredStructure[] {

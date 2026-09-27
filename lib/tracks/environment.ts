@@ -85,6 +85,12 @@ const RUNOFF_BY_TRACK: Record<string, RunoffProfile> = {
   singapore: { kind: "paved", gravelTraps: false },
   baku: { kind: "concrete", gravelTraps: false },
   lasvegas: { kind: "paved", gravelTraps: false },
+  // Jeddah is a corniche street circuit: the walls sit right off the tarmac
+  // and the off-track area is paved apron, not a field.
+  jeddah: { kind: "paved", gravelTraps: false },
+  // Imola is a 1953 circuit boxed in by the town. It does cut a couple of
+  // gravel traps on the Variante Alta side, unlike the street venues.
+  imola: { kind: "concrete", gravelTraps: true },
 
   // Desert circuits use broad sand runoffs. Keeping this as a distinct kind
   // (rather than painting everything green) also gives the surface model a
@@ -113,6 +119,9 @@ const BARRIER_BY_TRACK: Record<string, Partial<BarrierProfile>> = {
   suzuka: { setbackMeters: 18 },
   interlagos: { setbackMeters: 17 },
   barcelona: { setbackMeters: 17, style: "tecpro" },
+  // A 2005 purpose-built circuit in a forest reserve: the widest run-off on
+  // the roster outside Monza's, with TecPro through the fast complex.
+  istanbul: { setbackMeters: 21, style: "tecpro" },
   zandvoort: { setbackMeters: 15 },
   budapest: { setbackMeters: 16 },
   melbourne: { setbackMeters: 15 },
@@ -137,6 +146,13 @@ const BARRIER_BY_TRACK: Record<string, Partial<BarrierProfile>> = {
   // Las Vegas is the poster child for this: a continuous catch fence down
   // both sides of the Strip, with the barrier tucked right against it.
   lasvegas: { style: "tecpro", setbackMeters: 6.5, heightMeters: 1.2, catchFence: true },
+  // Jeddah is the tightest street venue here - 27 corners on 6.2km of public
+  // road, with concrete walls almost against the barrier line and tall catch
+  // fencing the whole way round the corniche.
+  jeddah: { style: "concrete", setbackMeters: 6, heightMeters: 1.3, catchFence: true },
+  // Imola's room is set by the town, not the circuit: a narrow old layout with
+  // hard walls close in through the wooded north side.
+  imola: { style: "concrete", setbackMeters: 10, heightMeters: 1.1, catchFence: false },
 };
 
 export function runoffProfileForTrack(trackId: string): RunoffProfile {

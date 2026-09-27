@@ -7,7 +7,7 @@ import {
 import { buildRibbonGeometry, GRASS_BELOW_TRACK_METERS, GRAVEL_COLOR, hexToLinearRgb } from "../lib/tracks/mesh";
 import { runoffColorForTrack } from "../lib/tracks/environment";
 import { bankedHeight, stationOf } from "../lib/tracks/banking";
-import { surfaceZones } from "../lib/tracks/surfaces";
+import { surfaceZones, GRAVEL_WIDTH_METERS, KERB_WIDTH_METERS } from "../lib/tracks/surfaces";
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
@@ -149,6 +149,9 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
   singapore: 6,
   lasvegas: 12,
   lusail: 2,
+  jeddah: 2,
+  imola: 28,
+  istanbul: 28,
 };
 
 // How far the field may dip under the ribbon at an edge sample. The
@@ -197,6 +200,9 @@ const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
   singapore: 0.5,
   lasvegas: 0.5,
   lusail: 0.5,
+  jeddah: 0.5,
+  imola: 0.5,
+  istanbul: 0.5,
 };
 
 describe("buildTerrainGeometry (real circuits)", () => {
@@ -281,11 +287,28 @@ describe("buildTerrainGeometry (real circuits)", () => {
                 otherLeg = Math.min(otherLeg, Math.hypot(qx - sx, qz - sz));
               }
               if (otherLeg < 20) continue;
+              // Search for a vertex that is provably this trap's: inside this
+              // leg's paint band AND nearest to a station inside the gravel
+              // run. The globally nearest vertex is not always this leg's -
+              // on a folded street layout a vertex a few metres away can
+              // belong to a neighbouring leg, so it carries that leg's
+              // runoff colour, which is a truthful answer to the wrong
+              // question. Pinning both conditions makes the verdict this
+              // trap's paint by construction, so the fold guard above can
+              // stay at 20m and no correct probe is dropped.
+              const reach = KERB_WIDTH_METERS + GRAVEL_WIDTH_METERS;
+              const inRun = (st: number) => st >= start && st < i;
               let nearest = -1;
               let nearestSq = Infinity;
               for (let v = 0; v < verts; v++) {
-                const dx = terrain.positions[v * 3] - sx;
-                const dz = terrain.positions[v * 3 + 2] - sz;
+                const vx = terrain.positions[v * 3];
+                const vz = terrain.positions[v * 3 + 2];
+                if (Math.hypot(vx - x, vz - z) > halfW + reach) continue;
+                const st = terrain.nearestStation[v];
+                if (!inRun(st)) continue;
+                if (!zones[st][side < 0 ? "gravelLeft" : "gravelRight"]) continue;
+                const dx = vx - sx;
+                const dz = vz - sz;
                 const d2 = dx * dx + dz * dz;
                 if (d2 < nearestSq) {
                   nearestSq = d2;

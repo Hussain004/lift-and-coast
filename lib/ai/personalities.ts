@@ -44,6 +44,14 @@ const ACE_PACE_SCALE_BY_TRACK: Record<string, number> = {
   suzuka: 1.17,
   monaco: 1.2,
   spielberg: 1.24,
+  // Jeddah is Monaco's problem one step worse: 27 corners on a 6.2km
+  // corniche with 6m of run-off. At the 1.28 default it is the one cell in
+  // a 24-cell pace/force sweep that lifts the car (0.609rad against the
+  // 0.6rad flip gate), and the neighbouring 1.24 cell loses most of its
+  // distance - the tight end is genuinely knife-edge, not a rounding miss.
+  // 1.2 (Monaco's value) drops peak tilt to 0.119rad, a 5x margin, and
+  // keeps Ace above Pro's 1.18 default.
+  jeddah: 1.2,
 };
 
 export function difficultyPaceScale(difficulty: AIDifficulty, trackId?: string): number {

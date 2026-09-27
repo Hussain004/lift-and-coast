@@ -44,6 +44,11 @@ const REFERENCE_LENGTHS: Record<string, number> = {
   singapore: 4928,
   lasvegas: 6201,
   lusail: 5380,
+  // Same sourcing for the newest three (data/tracks/raw/{sa-2021,it-1953,
+  // tr-2005}.geojson): Jeddah 6175, Imola 4909, Istanbul Park 5338.
+  jeddah: 6175,
+  imola: 4909,
+  istanbul: 5338,
 };
 
 const RESAMPLE_SPACING_METERS = 2;
@@ -83,6 +88,13 @@ const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number; flat
   singapore: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
   lasvegas: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
   lusail: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
+  // TUMFTM covers none of the last three either, but each carries an
+  // authored single-width profile (see build-track.mts) rather than the flat
+  // 13m fallback, so the bands sit at the authored width. Jeddah and Istanbul
+  // are wide ~15m street/permanent circuits; Imola is a narrow ~12m old one.
+  jeddah: { min: 14.5, max: 15.5, mean: 15.0, flat: true },
+  imola: { min: 11.5, max: 12.5, mean: 12.0, flat: true },
+  istanbul: { min: 14.5, max: 15.5, mean: 15.0, flat: true },
 };
 
 // Elevation as built from the vendored DEM samples (see
@@ -132,6 +144,12 @@ const ELEVATION_BANDS: Record<
   singapore: { range: [7, 15], maxGrade: 0.06 },
   lasvegas: { range: [15, 30], maxGrade: 0.07 },
   lusail: { range: [2, 7], maxGrade: 0.03 },
+  // Measured from the built DEM profiles. Jeddah is a sea-level corniche
+  // with 2.5m of relief and a 1% steepest point; Imola and Istanbul Park
+  // each carry ~32m over the lap through hills (8.7% and 7.9% steepest).
+  jeddah: { range: [2, 7], maxGrade: 0.03 },
+  imola: { range: [24, 40], maxGrade: 0.1 },
+  istanbul: { range: [24, 40], maxGrade: 0.1 },
 };
 
 describe("parseTrackId", () => {
@@ -264,12 +282,15 @@ describe("built track data integrity", () => {
         }
         expect(Math.abs(sum / w.length - band.mean)).toBeLessThan(0.5);
         if (band.flat) {
-          // No TUMFTM coverage upstream: the build's documented flat 13m
-          // fallback (see scripts/build-track.mts). Pin the fallback to
-          // exactly flat, so it cannot silently drift; the variation gate
+          // No TUMFTM coverage upstream, so the width comes from a single
+          // authored value instead: the build's documented flat 13m fallback
+          // (see scripts/build-track.mts) for the street venues, or a
+          // hand-authored constant for Monaco and the newest three. Either
+          // way the width must be exactly that one value, so pin it to the
+          // band's own mean and it cannot silently drift; the variation gate
           // below does not apply to it.
-          expect(Math.max(...w)).toBeCloseTo(13, 6);
-          expect(Math.min(...w)).toBeCloseTo(13, 6);
+          expect(Math.max(...w)).toBeCloseTo(band.mean, 6);
+          expect(Math.min(...w)).toBeCloseTo(band.mean, 6);
         } else {
           // The along-lap variation is the whole point of using real data.
           expect(Math.max(...w) - Math.min(...w)).toBeGreaterThan(1.5);

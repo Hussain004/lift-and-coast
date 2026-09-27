@@ -31,6 +31,9 @@ import baku from "../../data/tracks/baku.json";
 import singapore from "../../data/tracks/singapore.json";
 import lasvegas from "../../data/tracks/lasvegas.json";
 import lusail from "../../data/tracks/lusail.json";
+import jeddah from "../../data/tracks/jeddah.json";
+import imola from "../../data/tracks/imola.json";
+import istanbul from "../../data/tracks/istanbul.json";
 
 const TRACK_DATA: Record<string, TrackData> = {
   silverstone: silverstone as TrackData,
@@ -60,6 +63,9 @@ const TRACK_DATA: Record<string, TrackData> = {
   singapore: singapore as TrackData,
   lasvegas: lasvegas as TrackData,
   lusail: lusail as TrackData,
+  jeddah: jeddah as TrackData,
+  imola: imola as TrackData,
+  istanbul: istanbul as TrackData,
 };
 
 export function getTrack(id: string): TrackData {

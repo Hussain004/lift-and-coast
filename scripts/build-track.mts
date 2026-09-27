@@ -996,6 +996,40 @@ const TRACKS: {
     widthFile: null,
     elevationFile: "lusail.json",
   },
+  // Three further rounds from the same dataset. TUMFTM has no width coverage
+  // for any of them, so - like Monaco and the six circuits above - each carries
+  // an authored width profile, documented here as authored rather than
+  // measured, and a real DEM elevation profile from fetch-elevation.mts.
+  {
+    // 6.175 km of sea-level corniche, 27 corners, near-constant width: the
+    // real road is ~15m end to end, so a single authored width is honest here
+    // in a way a per-corner profile would only pretend to.
+    rawPath: `${scriptDir}/../data/tracks/raw/sa-2021.geojson`,
+    id: "jeddah",
+    name: "Jeddah Corniche Circuit",
+    widthFile: null,
+    elevationFile: "jeddah.json",
+    manualWidths: [[0, 6250, 15]],
+  },
+  {
+    // Imola is a narrow 1953 circuit - the real track runs about 12 m, tighter
+    // through the Variante Alta complex than the pit straight.
+    rawPath: `${scriptDir}/../data/tracks/raw/it-1953.geojson`,
+    id: "imola",
+    name: "Autodromo Enzo e Dino Ferrari",
+    widthFile: null,
+    elevationFile: "imola.json",
+    manualWidths: [[0, 5000, 12]],
+  },
+  {
+    // Istanbul Park is a wide, purpose-built 2005 circuit at ~15m throughout.
+    rawPath: `${scriptDir}/../data/tracks/raw/tr-2005.geojson`,
+    id: "istanbul",
+    name: "Intercity Istanbul Park",
+    widthFile: null,
+    elevationFile: "istanbul.json",
+    manualWidths: [[0, 5450, 15]],
+  },
 ];
 
 let totalPoints = 0;

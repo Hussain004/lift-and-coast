@@ -68,6 +68,12 @@ const TRACKS: { id: string; rawFile: string }[] = [
   { id: "singapore", rawFile: "sg-2008.geojson" },
   { id: "lasvegas", rawFile: "us-2023.geojson" },
   { id: "lusail", rawFile: "qa-2004.geojson" },
+  // Three more rounds from the same dataset. None of the three is covered
+  // by TUMFTM for width (see build-track.mts), so all three build with an
+  // authored width profile and a real DEM elevation profile.
+  { id: "jeddah", rawFile: "sa-2021.geojson" },
+  { id: "imola", rawFile: "it-1953.geojson" },
+  { id: "istanbul", rawFile: "tr-2005.geojson" },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -82,6 +82,11 @@ export interface TerrainGeometry {
   originX: number;
   originZ: number;
   cellMeters: number;
+  /** Nearest-centerline-sample index per vertex, the station the vertex's
+   * surface paint is taken from (see paintSurfaceColors). Exposed so a test
+   * can pick a vertex it knows belongs to the stretch of track it means to
+   * probe, rather than whichever vertex happens to be closest in plan. */
+  nearestStation: Uint32Array;
 }
 
 /**
@@ -225,6 +230,7 @@ function computeTerrain(track: TrackData): TerrainGeometry {
     originX,
     originZ,
     cellMeters,
+    nearestStation: nearestIdx,
     colors: paintSurfaceColors(track, positions, columns, rows, nearestIdx, cx, cz),
   };
 }

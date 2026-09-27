@@ -55,6 +55,13 @@ const TRACKS: TrackSpec[] = [
   { id: "singapore", rawFile: "sg-2008.geojson", padMeters: 250 },
   { id: "lasvegas", rawFile: "us-2023.geojson", padMeters: 250, splitGrid: 2 },
   { id: "lusail", rawFile: "qa-2004.geojson", padMeters: 250 },
+  // Three more rounds from the same dataset (see fetch-elevation.mts for
+  // the matching list). Jeddah and Istanbul are split into quadrants: both
+  // sit in dense map areas - a Jeddah corniche and a forest reserve inside
+  // Istanbul - that can trip the element-count guard on a single bbox call.
+  { id: "jeddah", rawFile: "sa-2021.geojson", padMeters: 250, splitGrid: 2 },
+  { id: "imola", rawFile: "it-1953.geojson", padMeters: 250 },
+  { id: "istanbul", rawFile: "tr-2005.geojson", padMeters: 250, splitGrid: 2 },
 ];
 
 const REQUEST_PAUSE_MS = 6000;
