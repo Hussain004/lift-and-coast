@@ -538,3 +538,46 @@ export function meanSurfaceDrag(samples: readonly SurfaceSample[]): number {
   for (const sample of samples) total += sample.dragCoefficient;
   return total / samples.length;
 }
+
+/**
+ * Single-pass per-wheel surface sampling for the live physics step. The
+ * per-wheel sampleSurface() path allocates a SurfaceSample object per wheel
+ * plus three intermediate arrays (map/filter/map) every tick - with a full
+ * 20-car field at 60Hz that is ~1200 short-lived objects per second of pure
+ * GC pressure. This computes the three things the physics step actually
+ * consumes (kerb contact fraction, per-wheel ride heights, per-wheel grip
+ * multipliers) in one loop with no per-wheel object allocation.
+ */
+export interface WheelSurfaceSummary {
+  /** Fraction of wheels currently on a raised kerb (0..1). */
+  kerbContactFraction: number;
+  /** Per-wheel kerb ride height in meters, CAR_WHEELS order. */
+  rideHeights: number[];
+  /** Per-wheel surface grip multiplier, CAR_WHEELS order. */
+  grips: number[];
+  /** Mean extra speed-proportional drag coefficient over the wheels. */
+  meanDragCoefficient: number;
+}
+
+export function sampleWheelSurfaces(
+  track: TrackData,
+  wheels: readonly { x: number; z: number }[]
+): WheelSurfaceSummary {
+  const rideHeights: number[] = [];
+  const grips: number[] = [];
+  let kerbCount = 0;
+  let dragTotal = 0;
+  for (const wheel of wheels) {
+    const sample = sampleSurface(track, wheel.x, wheel.z);
+    if (sample.kerbRiseMeters > 0) kerbCount++;
+    dragTotal += sample.dragCoefficient;
+    rideHeights.push(sample.kerbRiseMeters);
+    grips.push(sample.gripMultiplier);
+  }
+  return {
+    kerbContactFraction: wheels.length > 0 ? kerbCount / wheels.length : 0,
+    rideHeights,
+    grips,
+    meanDragCoefficient: wheels.length > 0 ? dragTotal / wheels.length : 0,
+  };
+}

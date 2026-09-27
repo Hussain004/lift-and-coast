@@ -76,11 +76,7 @@ import {
   checkTrackLimits,
   worldEdgeResetMeters,
 } from "@/lib/tracks/trackLimits";
-import {
-  meanSurfaceDrag,
-  sampleSurface,
-  wheelSurfaceGrips,
-} from "@/lib/tracks/surfaces";
+import { sampleWheelSurfaces } from "@/lib/tracks/surfaces";
 import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
@@ -1012,20 +1008,14 @@ export function Car({
     // kerb or dropping one wheel into a gravel trap acts on that wheel rather
     // than being averaged across the whole car. Two wheels off is a very
     // different car from four, which is the skill this exists to create.
-    const surfaceSamples = wheelGroundPositions(body).map((wheel) =>
-      sampleSurface(track, wheel.x, wheel.z)
-    );
-    kerbContactRef.current =
-      surfaceSamples.filter((sample) => sample.kerbRiseMeters > 0).length / surfaceSamples.length;
-    applyKerbRideHeights(
-      controller,
-      surfaceSamples.map((sample) => sample.kerbRiseMeters)
-    );
+    const wheelSurfaces = sampleWheelSurfaces(track, wheelGroundPositions(body));
+    kerbContactRef.current = wheelSurfaces.kerbContactFraction;
+    applyKerbRideHeights(controller, wheelSurfaces.rideHeights);
     applyLoadSensitiveFriction(
       controller,
       aeroMode.current,
       compoundGripMultiplier * weatherState.gripMultiplier,
-      wheelSurfaceGrips(surfaceSamples),
+      wheelSurfaces.grips,
       damageGripMultiplierRef.current
     );
     controller.updateVehicle(world.timestep);
@@ -1058,7 +1048,7 @@ export function Car({
     // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
     // above - a wide moment costs time, and a gravel trap takes the car off
     // the driver's hands entirely rather than merely slowing it.
-    applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
+    applySurfaceDragImpulse(body, wheelSurfaces.meanDragCoefficient, world.timestep);
 
     const replaySample = snapshotOf(body);
     rewindBufferRef.current.push(replaySample);
