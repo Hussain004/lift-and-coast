@@ -47,7 +47,22 @@ describe("race audio mappings", () => {
     expect(limiterAmount(REV_LIMITER_RPM)).toBe(1);
     expect(limiterAmount(REV_LIMITER_RPM + 5000)).toBe(1);
     expect(limiterAmount(REDLINE_RPM + 400)).toBeGreaterThan(0);
-    expect(engineFrequencyHz(1)).toBeLessThanOrEqual(320);
+    // The fundamental is the V6's firing rate - three times crank. At the
+    // redline that is 750 Hz; the guard cap only exists to catch a
+    // nonsensical remote snapshot, so it must not bind here.
+    expect(engineFrequencyHz(1)).toBeCloseTo((REDLINE_RPM / 60) * 3, 6);
+    expect(engineFrequencyHz(1)).toBeLessThanOrEqual(800);
+    // ...and at idle it is the same fact applied to IDLE_RPM.
+    expect(engineFrequencyHz(0)).toBeCloseTo((IDLE_RPM / 60) * 3, 6);
+  });
+
+  it("tracks the firing rate across the rev range, not half of it", () => {
+    // A waveform repeating every firing event has its fundamental AT the
+    // firing rate. Half of it (one octave down) is what this used to emit.
+    for (const rpm01 of [0, 0.25, 0.5, 0.75, 1]) {
+      const rpm = IDLE_RPM + rpm01 * (REDLINE_RPM - IDLE_RPM);
+      expect(engineFrequencyHz(rpm01)).toBeCloseTo((rpm / 60) * 3, 6);
+    }
   });
 
   it("smooths rpm toward a new target without overshooting", () => {

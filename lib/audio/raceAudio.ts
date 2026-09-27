@@ -107,13 +107,24 @@ export function skidAmount01(lateralMs: number, forwardMs: number): number {
 }
 
 /** Oscillator fundamental: a V6 four-stroke fires three times a crank
- * revolution; the waveform's fundamental sits at half the firing rate
- * (rpm/60 x 1.5), 75 Hz at idle to 300 Hz at the limiter. */
+ * revolution, evenly spaced, so the exhaust pulse train is periodic at
+ * exactly the firing rate - rpm/60 x 3. Over this sim's 3,000-12,000 rpm
+ * range that is 150 Hz at idle to 600 Hz on the limiter, which is where a
+ * real V6 sits.
+ *
+ * This used to read rpm/60 x 1.5 and cap at 320 Hz, which is one octave
+ * low. The reasoning was that the fundamental sits at half the firing
+ * rate, but that only holds for a waveform with two pulses per cycle; a
+ * V6's three evenly-spaced firings per crank revolution put the
+ * fundamental at the firing rate itself. An F1 engine therefore idled an
+ * octave below where it should. The cap is raised past the limiter
+ * frequency so it only ever bites on a nonsensical remote snapshot, which
+ * is what it was for. */
 export function engineFrequencyHz(rpm01: number): number {
   const rpm = IDLE_RPM + clamp01(rpm01) * (REDLINE_RPM - IDLE_RPM);
   // Keep the fundamental in a musical, non-aliasing band even if a remote
   // snapshot reports a nonsensical normalized rpm.
-  return Math.min(320, (rpm / 60) * 1.5);
+  return Math.min(800, (rpm / 60) * 3);
 }
 
 /** Throttle opens the lowpass: coasting muted and dark, full power bright. */
