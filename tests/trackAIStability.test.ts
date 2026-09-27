@@ -9,6 +9,7 @@ import { computeAIControls } from "../lib/ai/pathFollower";
 import { computeRacingLine } from "../lib/tracks/racingLine";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
+import { MIN_DISTANCE_TRAVELED_METERS } from "./helpers/trackTables";
 
 /**
  * Plan section 15: "AI hot-lap harness (section 6): automated laps per
@@ -45,50 +46,6 @@ const SECONDS = 180;
 // 5791). Third batch, same method: Hockenheim 5000 (1.1 laps, observed
 // 5620), Sepang, Sochi and the Nürburgring 4500 each (observed
 // 5649/5642/5407).
-const MIN_DISTANCE_TRAVELED_METERS: Record<string, number> = {
-  silverstone: 6000,
-  monza: 6000,
-  spa: 6000,
-  suzuka: 6000,
-  monaco: 3500,
-  spielberg: 5000,
-  bahrain: 5300,
-  cota: 4000,
-  zandvoort: 4500,
-  budapest: 4500,
-  melbourne: 5000,
-  montreal: 4500,
-  mexico: 4500,
-  shanghai: 5000,
-  interlagos: 5000,
-  yasmarina: 4500,
-  hockenheim: 5000,
-  sepang: 4500,
-  sochi: 4500,
-  nurburgring: 4500,
-  // Fourth batch, same method (2026 additions): Miami 5500 (1.1 laps,
-  // observed 5963 - the stadium-section hairpins pace it like Bahrain's
-  // traction zones), Barcelona 6000 (observed 6337), Madrid 4500 (0.9 laps
-  // in 180s - Madring's 22-corner rhythm is the slowest profile of the
-  // set), Baku 5000 (observed 5776), Singapore 4000 (observed 4655 - the
-  // slowest bar Madrid), Las Vegas 5500 (observed 6498), Lusail 5000
-  // (observed 6125).
-  miami: 5500,
-  barcelona: 6000,
-  madrid: 4500,
-  baku: 5000,
-  singapore: 4000,
-  lasvegas: 5500,
-  lusail: 5000,
-  // Fifth batch, same method: Jeddah 5700 (0.92 laps, observed 6609 - a
-  // 27-corner corniche is the slowest profile of the set after Singapore),
-  // Imola 5700 (1.16 laps, observed 6208), Istanbul 5000 (0.94 laps,
-  // observed 5656). All three also hot-lap without leaving the track - worst
-  // excursion 2.3m, worst tilt 0.16rad against the 0.6rad flip threshold.
-  jeddah: 5700,
-  imola: 5700,
-  istanbul: 5000,
-};
 // Observed worst single off-track excursion is now 3.7m (Monaco, down from
 // 7.1m before the curvature-adaptive preview in pathFollower.ts); this gate
 // sits above that with margin so it catches a genuine runaway - the

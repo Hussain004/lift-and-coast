@@ -11,6 +11,7 @@ import { surfaceZones, GRAVEL_WIDTH_METERS, KERB_WIDTH_METERS } from "../lib/tra
 import { worldEdgeResetMeters } from "../lib/tracks/trackLimits";
 import { TRACKS } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
+import { MAX_TERRAIN_DIP_METERS, MIN_TERRAIN_RELIEF } from "./helpers/trackTables";
 import type { TerrainGeometry } from "../lib/tracks/terrain";
 import type { TrackData } from "../lib/tracks/types";
 
@@ -121,39 +122,6 @@ describe("buildTerrainGeometry (synthetic)", () => {
 // so it is never flat. Loose on purpose - it is here to catch "the field was
 // replaced by a plane again", not to re-measure the profile (that is
 // tests/trackRegistry.test.ts).
-const MIN_TERRAIN_RELIEF: Record<string, number> = {
-  silverstone: 5,
-  monza: 10,
-  spa: 50,
-  suzuka: 20,
-  monaco: 20,
-  spielberg: 40,
-  bahrain: 5,
-  cota: 10,
-  zandvoort: 2,
-  budapest: 18,
-  melbourne: 3,
-  montreal: 5,
-  mexico: 2,
-  shanghai: 2,
-  interlagos: 22,
-  yasmarina: 5,
-  hockenheim: 10,
-  sepang: 18,
-  sochi: 3,
-  nurburgring: 40,
-  miami: 3,
-  barcelona: 15,
-  madrid: 10,
-  baku: 20,
-  singapore: 6,
-  lasvegas: 12,
-  lusail: 2,
-  jeddah: 2,
-  imola: 28,
-  istanbul: 28,
-};
-
 // How far the field may dip under the ribbon at an edge sample. The
 // clearance pass the test above pins down pushes overlapping terrain until
 // it clears the asphalt, and at Monaco the lap's arms genuinely differ in
@@ -170,41 +138,6 @@ const MIN_TERRAIN_RELIEF: Record<string, number> = {
 // ribbon triangle densely), the per-sample average below is unchanged, and
 // the AI gate drives the corner for real - so the allowance is per-track,
 // like Monaco's, not a loosened global.
-const MAX_TERRAIN_DIP_METERS: Record<string, number> = {
-  silverstone: 0.5,
-  monza: 0.5,
-  spa: 0.5,
-  suzuka: 0.5,
-  monaco: 0.75,
-  spielberg: 0.5,
-  bahrain: 0.5,
-  cota: 0.5,
-  zandvoort: 2.0,
-  budapest: 0.5,
-  melbourne: 0.5,
-  montreal: 0.5,
-  mexico: 0.5,
-  shanghai: 0.5,
-  interlagos: 0.5,
-  yasmarina: 0.5,
-  hockenheim: 0.5,
-  sepang: 0.5,
-  sochi: 0.5,
-  nurburgring: 0.5,
-  miami: 0.5,
-  barcelona: 0.5,
-  // T12's 13.5-degree La Monumental bank is the steepest cross-slope in
-  // the set; the coarse terrain cells can bridge its ~1.1m edge apron.
-  madrid: 1.5,
-  baku: 0.5,
-  singapore: 0.5,
-  lasvegas: 0.5,
-  lusail: 0.5,
-  jeddah: 0.5,
-  imola: 0.5,
-  istanbul: 0.5,
-};
-
 describe("buildTerrainGeometry (real circuits)", () => {
   for (const entry of TRACKS) {
     it(`${entry.id} paints its environment runoff and gravel at the traps`, () => {

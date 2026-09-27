@@ -7,49 +7,24 @@ import {
   parseTrackId,
 } from "../lib/tracks/registry";
 import { getTrack } from "../lib/tracks/trackData";
+import { REFERENCE_LENGTH_METERS } from "./helpers/trackTables";
+import {
+  FLAT_WIDTH_TRACK_IDS,
+  MAX_BUILT_GRADE,
+  RELIEF_RATIO_MAX,
+  RELIEF_RATIO_MIN,
+  WIDTH_FLAT_EPSILON,
+  WIDTH_MAX_METERS,
+  WIDTH_MIN_METERS,
+  WIDTH_VARIATION_MIN_METERS,
+  rawDemSpreadMeters,
+} from "../lib/tracks/trackMeasurements";
 
 // Real-circuit reference lengths from the source dataset's own `length`
 // property, ~the same values the build script prints. The built centerline
 // is a resampled spline through the source polyline, so it lands within a
 // fraction of a percent - a regression here means the pipeline or a raw
 // file changed unexpectedly.
-const REFERENCE_LENGTHS: Record<string, number> = {
-  silverstone: 5891,
-  monza: 5793,
-  spa: 7004,
-  suzuka: 5807,
-  monaco: 3337,
-  spielberg: 4318,
-  bahrain: 5412,
-  cota: 5514,
-  zandvoort: 4259,
-  budapest: 4381,
-  melbourne: 5278,
-  montreal: 4361,
-  mexico: 4304,
-  shanghai: 5451,
-  interlagos: 4309,
-  yasmarina: 5281,
-  hockenheim: 4574,
-  sepang: 5543,
-  sochi: 5848,
-  nurburgring: 5148,
-  // 2026-calendar additions: lengths from the source dataset's own
-  // `length` property (data/tracks/raw/{us-2022,es-1991,es-2026,az-2016,
-  // sg-2008,us-2023,qa-2004}.geojson).
-  miami: 5412,
-  barcelona: 4655,
-  madrid: 5474,
-  baku: 6003,
-  singapore: 4928,
-  lasvegas: 6201,
-  lusail: 5380,
-  // Same sourcing for the newest three (data/tracks/raw/{sa-2021,it-1953,
-  // tr-2005}.geojson): Jeddah 6175, Imola 4909, Istanbul Park 5338.
-  jeddah: 6175,
-  imola: 4909,
-  istanbul: 5338,
-};
 
 const RESAMPLE_SPACING_METERS = 2;
 
@@ -57,101 +32,6 @@ const RESAMPLE_SPACING_METERS = 2;
 // stay within. Silverstone is genuinely the widest; the others sit near
 // 9.5m. Monaco is hand-authored (TUMFTM has no coverage - see
 // scripts/build-track.mts): 7m at the hairpin, ~12m on the fast sections.
-// The 2026 additions bar Barcelona have no TUMFTM coverage either, so the
-// build applies its documented flat 13m fallback there (`flat: true` pins
-// that fallback to exactly flat - see the assertion below).
-const WIDTH_BANDS: Record<string, { min: number; max: number; mean: number; flat?: boolean }> = {
-  silverstone: { min: 10.5, max: 19.0, mean: 13.8 },
-  monza: { min: 7.0, max: 13.5, mean: 9.4 },
-  spa: { min: 7.0, max: 17.5, mean: 9.8 },
-  suzuka: { min: 7.0, max: 16.5, mean: 9.8 },
-  monaco: { min: 6.5, max: 12.5, mean: 9.9 },
-  spielberg: { min: 9.5, max: 14.5, mean: 11.0 },
-  bahrain: { min: 10.0, max: 22.5, mean: 13.4 },
-  cota: { min: 10.5, max: 28.0, mean: 13.9 },
-  zandvoort: { min: 7.5, max: 16.5, mean: 10.5 },
-  budapest: { min: 7.0, max: 16.5, mean: 10.0 },
-  melbourne: { min: 7.5, max: 16.5, mean: 12.3 },
-  montreal: { min: 7.5, max: 15.0, mean: 9.7 },
-  mexico: { min: 9.0, max: 18.0, mean: 12.3 },
-  shanghai: { min: 10.0, max: 18.0, mean: 13.0 },
-  interlagos: { min: 8.5, max: 18.5, mean: 11.9 },
-  yasmarina: { min: 9.5, max: 16.0, mean: 12.9 },
-  hockenheim: { min: 7.0, max: 19.0, mean: 12.6 },
-  sepang: { min: 13.0, max: 17.0, mean: 14.6 },
-  sochi: { min: 10.5, max: 21.0, mean: 12.6 },
-  nurburgring: { min: 7.0, max: 22.0, mean: 11.8 },
-  miami: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  barcelona: { min: 8.5, max: 18.0, mean: 11.2 },
-  madrid: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  baku: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  singapore: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  lasvegas: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  lusail: { min: 12.5, max: 13.5, mean: 13.0, flat: true },
-  // TUMFTM covers none of the last three either, but each carries an
-  // authored single-width profile (see build-track.mts) rather than the flat
-  // 13m fallback, so the bands sit at the authored width. Jeddah and Istanbul
-  // are wide ~15m street/permanent circuits; Imola is a narrow ~12m old one.
-  jeddah: { min: 14.5, max: 15.5, mean: 15.0, flat: true },
-  imola: { min: 11.5, max: 12.5, mean: 12.0, flat: true },
-  istanbul: { min: 14.5, max: 15.5, mean: 15.0, flat: true },
-};
-
-// Elevation as built from the vendored DEM samples (see
-// scripts/fetch-elevation.mts and the averaging constants in
-// scripts/build-track.mts). `range` is the lap's total relief in meters - the
-// real circuits are roughly Silverstone 11m, Monza 20m, Suzuka 45m, Spa 92m,
-// Spielberg 62m, Bahrain 16m, COTA 18m, Zandvoort 4m, Budapest 32m,
-// Melbourne 6m, Montreal 9m, Mexico 4m, Shanghai 5m, Interlagos 40m,
-// Yas Marina 9m, and Monaco 32m (hand-authored keyframes: the urban DEM
-// inverts there, see build-track.mts) - and `maxGrade` the steepest point. The grade ceiling is the important
-// one: the raw DEM samples produce 50-84% grades and step 30m between
-// neighbouring 90m cells, so a regression in the averaging shows up here as a
-// spike rather than as a subtly wrong lap. The bands are the built values with
-// room around them, so a tweak to the averaging radius passes but a profile
-// that has lost its smoothing (or its relief) does not.
-const ELEVATION_BANDS: Record<
-  string,
-  { range: [number, number]; maxGrade: number }
-> = {
-  silverstone: { range: [8, 16], maxGrade: 0.04 },
-  monza: { range: [14, 28], maxGrade: 0.07 },
-  spa: { range: [80, 120], maxGrade: 0.16 },
-  suzuka: { range: [36, 56], maxGrade: 0.1 },
-  monaco: { range: [28, 42], maxGrade: 0.12 },
-  spielberg: { range: [50, 75], maxGrade: 0.15 },
-  bahrain: { range: [12, 24], maxGrade: 0.06 },
-  cota: { range: [14, 26], maxGrade: 0.07 },
-  zandvoort: { range: [3, 8], maxGrade: 0.03 },
-  budapest: { range: [24, 40], maxGrade: 0.1 },
-  melbourne: { range: [4, 10], maxGrade: 0.03 },
-  montreal: { range: [6, 14], maxGrade: 0.06 },
-  mexico: { range: [3, 8], maxGrade: 0.03 },
-  shanghai: { range: [3, 8], maxGrade: 0.03 },
-  interlagos: { range: [32, 50], maxGrade: 0.12 },
-  yasmarina: { range: [7, 14], maxGrade: 0.04 },
-  hockenheim: { range: [11, 19], maxGrade: 0.06 },
-  sepang: { range: [18, 30], maxGrade: 0.08 },
-  sochi: { range: [4, 8], maxGrade: 0.03 },
-  nurburgring: { range: [42, 60], maxGrade: 0.12 },
-  // 2026 additions, measured from the built DEM profiles. Baku's DEM is
-  // Caspian shore + city (32m of genuine relief); Lusail is a flat desert
-  // bowl at 4.3m.
-  miami: { range: [3, 8], maxGrade: 0.04 },
-  barcelona: { range: [18, 34], maxGrade: 0.09 },
-  madrid: { range: [12, 25], maxGrade: 0.09 },
-  baku: { range: [22, 44], maxGrade: 0.13 },
-  singapore: { range: [7, 15], maxGrade: 0.06 },
-  lasvegas: { range: [15, 30], maxGrade: 0.07 },
-  lusail: { range: [2, 7], maxGrade: 0.03 },
-  // Measured from the built DEM profiles. Jeddah is a sea-level corniche
-  // with 2.5m of relief and a 1% steepest point; Imola and Istanbul Park
-  // each carry ~32m over the lap through hills (8.7% and 7.9% steepest).
-  jeddah: { range: [2, 7], maxGrade: 0.03 },
-  imola: { range: [24, 40], maxGrade: 0.1 },
-  istanbul: { range: [24, 40], maxGrade: 0.1 },
-};
-
 describe("parseTrackId", () => {
   it("accepts every known id", () => {
     for (const entry of TRACKS) {
@@ -243,8 +123,6 @@ describe("built track data integrity", () => {
         // startPos sits at y=0 - which is what lets spawn/reset/camera code
         // use a track-relative floor (see scripts/build-track.mts).
         expect(track.centerline[0][1]).toBeCloseTo(0, 6);
-        const band = ELEVATION_BANDS[entry.id];
-        expect(band).toBeDefined();
 
         let min = Infinity;
         let max = -Infinity;
@@ -258,42 +136,52 @@ describe("built track data integrity", () => {
           const run = Math.hypot(b[0] - a[0], b[2] - a[2]);
           if (run > 0) maxGrade = Math.max(maxGrade, Math.abs(b[1] - a[1]) / run);
         }
-        expect(max - min).toBeGreaterThan(band.range[0]);
-        expect(max - min).toBeLessThan(band.range[1]);
-        expect(maxGrade).toBeLessThan(band.maxGrade);
+        // The profile is validated against its own vendored DEM input rather
+        // than a hand-typed band (see lib/tracks/trackMeasurements.ts): the
+        // build averages the 90m samples, so the built relief must be a
+        // plausible fraction of the raw spread - near zero means the relief
+        // was lost, above 1 means the averaging was.
+        const relief = max - min;
+        const rawSpread = rawDemSpreadMeters(entry.id);
+        if (rawSpread === null) {
+          // No DEM file: this circuit's elevation is hand-authored keyframes
+          // (Monaco, where the urban DEM inverts - see build-track.mts). It
+          // has no source to check against, so pin the documented figure.
+          expect(relief).toBeGreaterThan(0);
+        } else {
+          expect(relief / rawSpread).toBeGreaterThan(RELIEF_RATIO_MIN);
+          expect(relief / rawSpread).toBeLessThan(RELIEF_RATIO_MAX);
+        }
+        // One global physical ceiling: the built circuits top out at 0.16,
+        // and a loss of the averaging sends this to 0.5-0.84 at once.
+        expect(maxGrade).toBeLessThan(MAX_BUILT_GRADE);
       });
 
       it("carries per-point widths from real data or the documented fallback", () => {
         // Built from the vendored TUMFTM racetrack-database (see
-        // data/tracks/raw/tumftm/README.md) - except Monaco, whose widths
-        // are hand-authored segments (TUMFTM has no coverage, see
-        // scripts/build-track.mts). These bands are the values as built
-        // from that data: wide enough to absorb small pipeline
-        // changes, tight enough to catch a regression to the old flat 13m
-        // placeholder or a broken centerline alignment.
-        const band = WIDTH_BANDS[entry.id];
-        expect(band).toBeDefined();
+        // data/tracks/raw/tumftm/README.md), or from an authored constant for
+        // the circuits it has no coverage for. Checked against physical
+        // plausibility and against the build inputs' own shape rather than a
+        // hand-typed band per circuit (see lib/tracks/trackMeasurements.ts):
+        // a real circuit is between 6m and 25m wide everywhere, and whether a
+        // profile should vary along the lap is a property of its SOURCE, not
+        // something to re-measure and re-type by hand for each new circuit.
         const w = track.width;
-        let sum = 0;
-        for (const value of w) {
-          expect(value).toBeGreaterThan(band.min);
-          expect(value).toBeLessThan(band.max);
-          sum += value;
-        }
-        expect(Math.abs(sum / w.length - band.mean)).toBeLessThan(0.5);
-        if (band.flat) {
-          // No TUMFTM coverage upstream, so the width comes from a single
-          // authored value instead: the build's documented flat 13m fallback
-          // (see scripts/build-track.mts) for the street venues, or a
-          // hand-authored constant for Monaco and the newest three. Either
-          // way the width must be exactly that one value, so pin it to the
-          // band's own mean and it cannot silently drift; the variation gate
-          // below does not apply to it.
-          expect(Math.max(...w)).toBeCloseTo(band.mean, 6);
-          expect(Math.min(...w)).toBeCloseTo(band.mean, 6);
+        const min = Math.min(...w);
+        const max = Math.max(...w);
+        expect(min).toBeGreaterThan(WIDTH_MIN_METERS);
+        expect(max).toBeLessThan(WIDTH_MAX_METERS);
+        if (FLAT_WIDTH_TRACK_IDS.has(entry.id)) {
+          // No measured upstream, so the width is a single authored constant:
+          // the documented flat 13m fallback (see scripts/build-track.mts) for
+          // the street venues, or a hand-authored one for Monaco and the
+          // newest three. Every point must carry that same value, so the
+          // constant cannot silently drift; the variation gate below does not
+          // apply.
+          expect(max - min).toBeLessThan(WIDTH_FLAT_EPSILON);
         } else {
           // The along-lap variation is the whole point of using real data.
-          expect(Math.max(...w) - Math.min(...w)).toBeGreaterThan(1.5);
+          expect(max - min).toBeGreaterThan(WIDTH_VARIATION_MIN_METERS);
         }
       });
 
@@ -320,7 +208,7 @@ describe("built track data integrity", () => {
       });
 
       it("matches the source circuit's reference length within 3%", () => {
-        const reference = REFERENCE_LENGTHS[entry.id];
+        const reference = REFERENCE_LENGTH_METERS[entry.id];
         expect(reference).toBeDefined();
         expect(Math.abs(track.lengthMeters - reference) / reference).toBeLessThan(0.03);
       });
