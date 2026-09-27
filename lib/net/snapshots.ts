@@ -8,8 +8,8 @@
 // tin. Pure math over caller-owned buffers (no React, no clock reads
 // inside), so it is unit-testable with synthetic timestamps.
 
-export const SNAPSHOT_HZ = 15;
-export const INTERP_DELAY_MS = 120;
+export const SNAPSHOT_HZ = 30;
+export const INTERP_DELAY_MS = 80;
 /** Snapshots older than this are useless for interpolation - drop them. */
 export const SNAPSHOT_TTL_MS = 1000;
 /** Input upload rate guest -> host (see NetClient). */
