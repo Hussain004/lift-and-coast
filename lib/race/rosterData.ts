@@ -103,27 +103,33 @@ export interface FieldRival {
 
 /**
  * Plan section 7 (full field): the grid behind a (team, driver, rival
- * count) pick. Every driver except the player's own is a candidate, in
- * roster order (stable across visits, so ?rivals=5 always means the same
- * five cars), capped at the request - with 22 drivers on the roster that
- * fills up to a 20-car grid. Each rival runs its own team's primary
- * livery, the way a real grid dresses per team rather than per player.
+ * count) pick. Every driver except the player's own is a candidate, capped
+ * at the request - with 22 drivers on the roster that fills up to a 20-car
+ * grid. Each rival runs its own team's primary livery, the way a real grid
+ * dresses per team rather than per player.
+ *
+ * The candidate pool is SHUFFLED by `seed` before the first N are taken, so
+ * the field varies. It used to be walked in plain roster order, which meant
+ * rival #1 was always TEAMS[0].drivers[0] - Pierre Gasly - on every circuit,
+ * in every practice session, in every race. Passing the same seed gives the
+ * same field back, so shared links and refreshes still reproduce exactly; the
+ * caller passes a fresh seed per Drive click (see page.tsx) to get variety.
  */
 export function resolveFieldRoster(
   teamId: string,
   driverCode: string,
-  rivalCount: number
+  rivalCount: number,
+  seed: number = randomSeed()
 ): FieldRoster {
   const { team, driver } = resolveRosterSelection(teamId, driverCode);
   const count = Number.isFinite(rivalCount)
     ? Math.max(0, Math.floor(rivalCount))
     : 0;
-  const rivals: FieldRival[] = [];
+  const pool: FieldRival[] = [];
   for (const candidateTeam of TEAMS) {
     for (const candidate of candidateTeam.drivers) {
-      if (rivals.length >= count) break;
       if (candidate.code === driver.code) continue;
-      rivals.push({
+      pool.push({
         code: candidate.code,
         name: candidate.name,
         number: candidate.number,
@@ -131,9 +137,9 @@ export function resolveFieldRoster(
         color: candidateTeam.primaryColor,
       });
     }
-    if (rivals.length >= count) break;
   }
-  return { team, driver, rivals };
+  shuffleInPlace(pool, seed);
+  return { team, driver, rivals: pool.slice(0, count) };
 }
 
 /**
@@ -172,6 +178,31 @@ export function shuffledGridOrder(carCount: number, seed: number): number[] {
   return order;
 }
 
+/** A fresh seed for callers that want variety per session. */
+export function randomSeed(): number {
+  return Math.floor(Math.random() * 0xffffffff) >>> 0;
+}
+
+/** Stable 32-bit hash of a string, for seeding from a shared value (a room
+ *  code) that two clients both hold. */
+export function hashSeed(text: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Fisher-Yates over a list, in place, seeded. */
+function shuffleInPlace<T>(items: T[], seed: number): void {
+  const rng = mulberry32(seed >>> 0);
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+}
+
 export interface NetGridDriver {
   code: string;
   name: string;
@@ -189,24 +220,28 @@ export interface NetGridDriver {
  */
 export function resolveNetGridRoster(
   humanCodes: readonly string[],
-  aiCount: number
+  aiCount: number,
+  seed: number = randomSeed()
 ): NetGridDriver[] {
   const taken = new Set(humanCodes);
-  const fill: NetGridDriver[] = [];
   const want = Number.isFinite(aiCount) ? Math.max(0, Math.floor(aiCount)) : 0;
+  // Every client in a room fills the AI grid independently, so the seed has
+  // to be derived from something both sides share (the room code, see
+  // page.tsx) - otherwise host and guest would dress different cars for the
+  // same grid. Varying the seed per room keeps the fill from being the same
+  // eleven drivers in every session.
+  const pool: NetGridDriver[] = [];
   for (const candidateTeam of TEAMS) {
     for (const candidate of candidateTeam.drivers) {
-      if (fill.length >= want) break;
       if (taken.has(candidate.code)) continue;
-      taken.add(candidate.code);
-      fill.push({
+      pool.push({
         code: candidate.code,
         name: candidate.name,
         teamId: candidateTeam.id,
         color: candidateTeam.primaryColor,
       });
     }
-    if (fill.length >= want) break;
   }
-  return fill;
+  shuffleInPlace(pool, seed);
+  return pool.slice(0, want);
 }

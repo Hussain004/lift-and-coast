@@ -16,7 +16,7 @@ import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
 import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
-import { parseGridOrder, shuffledGridOrder } from "@/lib/race/rosterData";
+import { hashSeed, parseGridOrder, randomSeed, shuffledGridOrder } from "@/lib/race/rosterData";
 import { netRoom } from "@/lib/net/peer";
 import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
@@ -125,16 +125,25 @@ function RaceContent() {
   const netValid = !netActive || netSlot !== null;
   const track = getTrack(parseTrackId(searchParams.get("track")));
   const trackName = track.name.toUpperCase();
+  // Field seed. The roster (which AI cars you get) and the grid order (who is
+  // on pole) both derive from it, so a shared link reproduces the exact
+  // session and every fresh Drive click deals a new one. Drawn once by the
+  // lazy useState initializer, because a new value on re-render would remount
+  // the whole scene - the roster is part of the scene key.
+  const [fieldSeed] = useState(() => parseSeed(searchParams.get("seed")) ?? randomSeed());
   // Garage pick from the home screen (see lib/race/roster.ts): the player
   // runs their own team's primary, and every rival runs its own team's
-  // primary - a full grid dresses per team, like the real thing. In net
-  // rooms the humans come from the lobby roster (join order = grid
-  // order) with the same deterministic AI fill on both sides (see
-  // resolveNetGridRoster), so host and guest dress the same grid.
+  // primary - a full grid dresses per team, like the real thing. The field
+  // is drawn from the roster in shuffled order, so it is not the same eleven
+  // cars every time. In net rooms the humans come from the lobby roster
+  // (join order = grid order) with the same deterministic AI fill on both
+  // sides (see resolveNetGridRoster), seeded from the shared room code so
+  // host and guest dress the same grid.
   const { team, driver, rivals: soloRivals } = resolveFieldRoster(
     parseTeamId(searchParams.get("team")),
     parseDriverCode(searchParams.get("driver")),
-    rivalCount
+    rivalCount,
+    fieldSeed
   );
   const playerSlot = netActive && netSlot !== null ? netSlot : 0;
   const baseRivals = !netActive || !netValid
@@ -150,7 +159,10 @@ function RaceContent() {
         const totalCars = rivalCount + 1;
         const fill = resolveNetGridRoster(
           humans.map((h) => h.code),
-          Math.max(0, totalCars - humans.length)
+          Math.max(0, totalCars - humans.length),
+          // Both clients hold the room code, so hashing it gives every player
+          // in the room the same AI fill while still varying between rooms.
+          hashSeed(roomState?.code ?? "lift-and-coast")
         );
         const grid = [...humans, ...fill];
         return grid
@@ -169,6 +181,10 @@ function RaceContent() {
   // Missing or unparseable values fall through to the next source, so
   // every old link drives exactly as before. Pure over the URL (seeded
   // shuffle), so refreshes and shared links reproduce the same grid.
+  // Note gridSeed is deliberately NOT fieldSeed: its null is the "nobody
+  // asked for a seed, so leave the legacy pole start alone" signal, while
+  // fieldSeed is always populated and only picks the field. When ?seed= is
+  // present they are the same number.
   const gridSeed = parseSeed(searchParams.get("seed"));
   const explicitGrid = parseGridSpot(searchParams.get("grid"));
   const fullOrder = (() => {

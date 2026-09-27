@@ -3,11 +3,13 @@ import {
   DEFAULT_DRIVER_CODE,
   DEFAULT_TEAM_ID,
   TEAMS,
+  hashSeed,
   isKnownDriverCode,
   isKnownTeamId,
   loadRosterPrefs,
   parseDriverCode,
   parseTeamId,
+  randomSeed,
   resolveFieldRoster,
   resolveNetGridRoster,
   shuffledGridOrder,
@@ -136,13 +138,24 @@ describe("roster prefs", () => {
 });
 
 describe("resolveFieldRoster", () => {
-  it("excludes only the player's driver and keeps roster order", () => {
-    const { driver, rivals } = resolveFieldRoster("red-bull", "VER", 19);
+  it("excludes only the player's driver", () => {
+    const { driver, rivals } = resolveFieldRoster("red-bull", "VER", 19, 7);
     expect(rivals.length).toBe(19);
     expect(rivals.some((r) => r.code === driver.code)).toBe(false);
-    expect(rivals[0].code).toBe("GAS");
     // The teammate stays in the field as a rival like everyone else.
     expect(rivals.some((r) => r.code === "HAD")).toBe(true);
+  });
+
+  it("draws the field at random: no driver is permanently rival #1", () => {
+    // It used to walk TEAMS in roster order, so rival #1 was always
+    // TEAMS[0].drivers[0] - Pierre Gasly - on every circuit and in every
+    // practice session. Across seeds every driver should lead the field.
+    const leaders = new Set<string>();
+    for (let seed = 0; seed < 400; seed++) {
+      leaders.add(resolveFieldRoster("ferrari", "HAM", 1, seed).rivals[0].code);
+    }
+    expect(leaders.size).toBe(21);
+    expect(leaders.has("GAS")).toBe(true);
   });
 
   it("caps at the request and at the roster size", () => {
@@ -164,33 +177,75 @@ describe("resolveFieldRoster", () => {
     }
   });
 
-  it("is stable: same pick, same field, and resolves unknown picks", () => {
-    const a = resolveFieldRoster("williams", "ALB", 7).rivals.map((r) => r.code);
-    const b = resolveFieldRoster("williams", "ALB", 7).rivals.map((r) => r.code);
+  it("is stable for a given seed, and resolves unknown picks", () => {
+    const a = resolveFieldRoster("williams", "ALB", 7, 42).rivals.map((r) => r.code);
+    const b = resolveFieldRoster("williams", "ALB", 7, 42).rivals.map((r) => r.code);
     expect(a).toEqual(b);
-    const fallback = resolveFieldRoster("not-a-team", "XXX", 3);
+    const fallback = resolveFieldRoster("not-a-team", "XXX", 3, 42);
     expect(fallback.rivals.length).toBe(3);
     expect(fallback.driver.code).toBe(DEFAULT_DRIVER_CODE);
+  });
+
+  it("draws a fresh field when no seed is given", () => {
+    const draws = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      draws.add(resolveFieldRoster("mclaren", "PIA", 5).rivals.map((r) => r.code).join(","));
+    }
+    expect(draws.size).toBeGreaterThan(1);
   });
 });
 
 describe("resolveNetGridRoster", () => {
-  it("fills empty slots in roster order, skipping humans", () => {
-    const fill = resolveNetGridRoster(["VER", "NOR"], 3);
+  it("fills empty slots, skipping humans", () => {
+    const fill = resolveNetGridRoster(["VER", "NOR"], 3, 11);
     expect(fill.length).toBe(3);
-    expect(fill.map((d) => d.code)).toEqual(["GAS", "COL", "ALO"]);
+    const codes = fill.map((d) => d.code);
+    expect(codes).not.toContain("VER");
+    expect(codes).not.toContain("NOR");
+    expect(new Set(codes).size).toBe(3);
+  });
+
+  it("varies the fill across seeds, so it is not the same cars every room", () => {
+    const fills = new Set<string>();
+    for (let seed = 0; seed < 200; seed++) {
+      fills.add(resolveNetGridRoster([], 6, seed).map((d) => d.code).join(","));
+    }
+    expect(fills.size).toBeGreaterThan(100);
   });
 
   it("caps at the roster and clamps bad counts", () => {
-    expect(resolveNetGridRoster([], 99).length).toBe(22);
-    expect(resolveNetGridRoster([], 0)).toEqual([]);
-    expect(resolveNetGridRoster([], -2)).toEqual([]);
+    expect(resolveNetGridRoster([], 99, 3).length).toBe(22);
+    expect(resolveNetGridRoster([], 0, 3)).toEqual([]);
+    expect(resolveNetGridRoster([], -2, 3)).toEqual([]);
   });
 
   it("is deterministic for the same inputs (host and guest agree)", () => {
-    const a = resolveNetGridRoster(["HAM", "LEC"], 5);
-    const b = resolveNetGridRoster(["HAM", "LEC"], 5);
+    // Both clients seed from the room code, so the same room always fills
+    // the same AI grid even though the fill differs between rooms.
+    const a = resolveNetGridRoster(["HAM", "LEC"], 5, hashSeed("ABCD-1234"));
+    const b = resolveNetGridRoster(["HAM", "LEC"], 5, hashSeed("ABCD-1234"));
     expect(a).toEqual(b);
+    const other = resolveNetGridRoster(["HAM", "LEC"], 5, hashSeed("WXYZ-9999"));
+    expect(other.map((d) => d.code)).not.toEqual(a.map((d) => d.code));
+  });
+});
+
+describe("seed helpers", () => {
+  it("hashSeed is stable and spreads room codes apart", () => {
+    expect(hashSeed("ABCD-1234")).toBe(hashSeed("ABCD-1234"));
+    expect(hashSeed("ABCD-1234")).not.toBe(hashSeed("ABCD-1235"));
+    expect(hashSeed("")).toBeTypeOf("number");
+  });
+
+  it("randomSeed returns distinct non-negative integers", () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 200; i++) {
+      const s = randomSeed();
+      expect(Number.isInteger(s)).toBe(true);
+      expect(s).toBeGreaterThanOrEqual(0);
+      seen.add(s);
+    }
+    expect(seen.size).toBeGreaterThan(190);
   });
 });
 
