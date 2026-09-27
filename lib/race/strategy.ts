@@ -148,6 +148,23 @@ export function createStrategySystem(options: StrategyOptions = {}) {
   }
 
   function update(input: StrategyUpdate): StrategyState {
+    applyStrategy(input);
+    return { ...state };
+  }
+
+  /**
+   * Advance the strategy and return the live state WITHOUT spreading it into
+   * a new object. The player's React consumers (Car.tsx) need a fresh
+   * reference to re-render, but AI cars read a few scalar fields per tick and
+   * get no benefit from the per-tick allocation - with a full 20-car field
+   * at 60Hz that is 1200 short-lived objects per second of pure GC pressure.
+   */
+  function peek(input: StrategyUpdate): StrategyState {
+    applyStrategy(input);
+    return state;
+  }
+
+  function applyStrategy(input: StrategyUpdate): void {
     const dt = Math.max(0, input.dt);
     state.pitWindow = pitWindowFor(
       input.progressMeters,
@@ -203,7 +220,6 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     }
 
     recalculate();
-    return { ...state };
   }
 
   function snapshot(): StrategyState {
@@ -211,7 +227,7 @@ export function createStrategySystem(options: StrategyOptions = {}) {
   }
 
   recalculate();
-  return { state, setMode, setCompound, requestPit, cancelPit, update, snapshot };
+  return { state, setMode, setCompound, requestPit, cancelPit, update, peek, snapshot };
 }
 
 /** Human-readable pit/strategy line used by the race-ops panel. */

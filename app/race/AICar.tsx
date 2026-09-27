@@ -743,7 +743,7 @@ export function AICar({
       );
       batteryRef.current = energyStatus.batteryFraction;
       boostMultiplier = energyStatus.engineForceMultiplier;
-      strategyState = strategyRef.current.update({
+      strategyState = strategyRef.current.peek({
          dt: world.timestep,
          speedMs,
          throttle: aiControls.throttle,
