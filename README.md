@@ -26,7 +26,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
 - Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends
-- Multiplayer rooms with synchronized timing and race-control telemetry
+- Multiplayer rooms with synchronized timing and race-control telemetry at 30Hz snapshots for smooth wheel-to-wheel racing
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
 - Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass
 - Madrid banking at T12 and Zandvoort's Hugenholtzbocht cross-slope
