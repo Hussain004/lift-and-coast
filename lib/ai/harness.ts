@@ -60,6 +60,14 @@ export interface DriveState {
   z: number;
   yawRad: number;
   speedMs: number;
+  /**
+   * Ride height at the sample point. Additive - the only consumer is the
+   * track-edge guard, which has to be height-aware: a 2D nearest-point
+   * lookup picks the wrong centerline point entirely where a circuit
+   * crosses over itself (Suzuka's bridge, Monaco's port), and a guard that
+   * measures the room against the wrong deck steers the car off the road.
+   */
+  y: number;
 }
 
 export interface StabilityOptions {
@@ -428,6 +436,7 @@ export async function simulateDrive(
       // shift behavior for every existing scripted-input stability test in
       // this suite, not just this new closed-loop use.
       speedMs: computeSignedForwardSpeed(chassis.linvel(), preStepYaw),
+      y: preStepPos.y,
     });
     const stepAeroMode = stepInput.aeroMode ?? defaultAeroMode;
     applyCarControls(

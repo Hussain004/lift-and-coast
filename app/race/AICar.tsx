@@ -45,6 +45,7 @@ import {
 import { getLineRoom, getRacingLine } from "@/lib/tracks/racingLineCache";
 import type { ThrottleZone } from "@/lib/tracks/racingLine";
 import { computeAIControls, nearestLineIndex } from "@/lib/ai/pathFollower";
+import { buildTrackEdgeGuard } from "@/lib/ai/edgeGuard";
 import { createEnergySystem } from "@/lib/physics/energy";
 import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
 import { createStrategySystem } from "@/lib/race/strategy";
@@ -709,7 +710,13 @@ export function AICar({
         // The anchor above is this car's nearest line point at this exact
         // position - passing it makes the internal scan a confirmed
         // windowed hit (distance 0) instead of a second full-line scan.
-        anchor
+        anchor,
+        // Track-edge awareness (see lib/ai/edgeGuard.ts). Reuses the
+        // limitStatus this car already computed this tick rather than
+        // paying for a second nearest-point scan. Returns undefined on the
+        // circuits where it is disabled, leaving the reference control law
+        // untouched there.
+        buildTrackEdgeGuard(track, pos.x, pos.z, pos.y, limitStatus)
       );
       // Launch control closes the path-follower's deliberate low-speed
       // throttle ramp, but only while the shared racecraft step says the

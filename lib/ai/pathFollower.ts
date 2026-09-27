@@ -306,7 +306,131 @@ export function cornerAheadMeters(
  * pass true only on ticks where the caller is actually applying boosted
  * engine force this same tick (see AICar.tsx), so the speed this function
  * chases always matches the force actually being applied.
+ *
+ * trackEdge (default undefined, inert, so every existing caller runs the
+ * exact reference behaviour): see TrackEdgeGuard. Only a caller holding the
+ * track geometry can supply it.
  */
+/**
+ * Track-edge awareness, opt-in (see computeAIControls's trackEdge param).
+ *
+ * The controller above is pure pursuit against the racing line, and pure
+ * pursuit has no model of where the track ENDS - it will happily hold a line
+ * that runs off the asphalt because the line itself, or the corner's exit,
+ * legitimately approaches the edge. That is why the barrier/run-off setback
+ * work had to be so conservative: the AI's own worst excursion is the
+ * binding constraint on how much room a circuit may leave.
+ *
+ * A constant-gain cross-track correction was tried here first and is
+ * documented as closed above: swept from 0.0005 to 0.004 it found isolated
+ * safe values sandwiched between destabilizing ones, and the safe ones moved
+ * the worst excursion by ~2%. The structural problem is that such a term is
+ * ALWAYS on, so it perturbs the control law on every tick of normal driving
+ * and buys nothing in the rare case it was meant for.
+ *
+ * This form differs in the only way that matters for that finding: it is
+ * exactly zero unless the car is genuinely about to leave the road, and it
+ * ramps in quadratically rather than switching on, so it is C1-continuous
+ * across the activation boundary (no bang-bang, and no new discontinuity for
+ * a control law this sensitive to have one). While the car is on the racing
+ * line - which is the overwhelming majority of every lap - the contribution
+ * is bit-for-bit zero and the steering is identical to the reference law.
+ *
+ * The speed schedule is the second half of the point. A slow car in a tight
+ * corner is allowed to run to the edge: it is about to slow down, and its
+ * exit kerb use is legitimate racing line, so pulling it back in there would
+ * fight the very behaviour the line is built to produce. The guard only
+ * engages once the car is fast enough that running wide is not about to
+ * resolve itself.
+ */
+export interface TrackEdgeGuard {
+  /**
+   * Signed metres of asphalt between the car and the edge on the side it is
+   * currently on: halfWidth - |lateralMeters| from checkTrackLimits, so
+   * positive is on the road with room, zero is exactly on the edge, and
+   * negative is past it. Callers that cannot compute this should pass
+   * undefined and get the reference behaviour.
+   */
+  roomMeters: number;
+  /**
+   * Which side of the centerline the car is on, +1 right / -1 left, using
+   * checkTrackLimits's own `lateralMeters` sign convention. The guard steers
+   * back toward the centerline, so it needs to know which way is back.
+   */
+  side: -1 | 1;
+  /**
+   * Optional per-call override of the guard's own constants, so a per-track
+   * package can be swept and shipped the way racingLine.ts's per-line
+   * steering tuning is. Omitted means the module defaults below.
+   */
+  tuning?: TrackEdgeGuardTuning;
+}
+
+/** The guard's constants (see trackEdgeSteerCorrection). */
+export interface TrackEdgeGuardTuning {
+  /** Metres of room at which the guard starts contributing. */
+  activateMeters?: number;
+  /** Strength at 1m past activation; the term is quadratic in overshoot. */
+  gain?: number;
+  /** No contribution below this speed, full at or above speedCeilingMeters. */
+  speedFloorMeters?: number;
+  speedCeilingMeters?: number;
+}
+
+/**
+ * Distance from the edge at which the guard starts to contribute, meters.
+ * Positive so there is a dead band around the edge itself: a car whose
+ * wheels are exactly on the white line is still racing, and reacting to that
+ * would put a step discontinuity at the ribbon boundary.
+ */
+const EDGE_GUARD_ACTIVATE_METERS = 1.0;
+
+/**
+ * Strength of the guard once fully engaged. The contribution is quadratic in
+ * the overshoot, so this is the value at 1m past activation, not a linear
+ * rate.
+ */
+const EDGE_GUARD_GAIN = 0.22;
+
+/**
+ * Speed schedule: no contribution below EDGE_GUARD_SPEED_FLOOR_METERS, full
+ * contribution at or above EDGE_GUARD_SPEED_CEILING_METERS, linear between.
+ * A car doing 15 m/s through a hairpin is not going to carry a wide entry
+ * out of the corner, so the guard stays out of its way; the failure mode
+ * this exists for is a fast car arriving somewhere it cannot turn.
+ */
+const EDGE_GUARD_SPEED_FLOOR_METERS = 25;
+const EDGE_GUARD_SPEED_CEILING_METERS = 45;
+
+/**
+ * Steering correction from TrackEdgeGuard, in the same units and sign as the
+ * rest of the steering law (positive = left). Returns exactly 0 when the
+ * guard is inert, not engaged, or below the speed floor.
+ */
+export function trackEdgeSteerCorrection(
+  edge: TrackEdgeGuard | undefined,
+  carSpeedMs: number
+): number {
+  if (edge === undefined) return 0;
+  const t = edge.tuning;
+  const activate = t?.activateMeters ?? EDGE_GUARD_ACTIVATE_METERS;
+  const gain = t?.gain ?? EDGE_GUARD_GAIN;
+  const floor = t?.speedFloorMeters ?? EDGE_GUARD_SPEED_FLOOR_METERS;
+  const ceiling = t?.speedCeilingMeters ?? EDGE_GUARD_SPEED_CEILING_METERS;
+  const overshoot = activate - edge.roomMeters;
+  if (overshoot <= 0) return 0;
+  const speed = Math.min(1, Math.max(0, (Math.abs(carSpeedMs) - floor) / (ceiling - floor)));
+  if (speed <= 0) return 0;
+  // Quadratic in overshoot so the term is C1-continuous where it starts:
+  // value and slope are both zero at the activation boundary.
+  // Sign: steer uses the same convention as useDriveInput's input.steer
+  // (positive = left), and checkTrackLimits reports a positive
+  // lateralMeters for a car on the RIGHT of the centerline. So a car past the
+  // right-hand edge needs positive steer to come back left, and vice versa -
+  // the same sign as `side`, not the opposite.
+  return edge.side * gain * overshoot * overshoot * speed;
+}
+
 export function computeAIControls(
   line: RacingLinePoint[],
   carX: number,
@@ -335,7 +459,13 @@ export function computeAIControls(
    * full O(n) scan. Optional and validated, so every existing caller,
    * test and the headless harness run exactly as before.
    */
-  warmStartIndex?: number
+  warmStartIndex?: number,
+  /**
+   * Optional track-edge guard (see TrackEdgeGuard). Omitted by every
+   * existing caller, test and the headless harness, so the control law below
+   * is untouched unless a caller opts in.
+   */
+  trackEdge?: TrackEdgeGuard
 ): AIControls {
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ, warmStartIndex);
@@ -457,6 +587,11 @@ export function computeAIControls(
     while (yawError < -Math.PI) yawError += 2 * Math.PI;
     steer = Math.max(-1, Math.min(1, yawError * STEER_GAIN));
   }
+  // Opt-in track-edge awareness, added after the branch so it applies to
+  // whichever steering law (pure pursuit or Spa's Stanley-style tangent
+  // tracking) is in use. Exactly zero unless a caller passes trackEdge, so
+  // the reference behaviour above is unchanged by its presence.
+  steer = Math.max(-1, Math.min(1, steer + trackEdgeSteerCorrection(trackEdge, carSpeedMs)));
 
   const baseTarget = profileTarget;
   const speedError = baseTarget - carSpeedMs;
