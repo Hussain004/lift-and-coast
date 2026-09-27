@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Rendered video artifacts, gitignored. They vendor a minified GSAP
+    // build, which linted as 16 no-this-alias errors on every run and
+    // buried any real finding.
+    "brag-output/**",
+    "brag-output-chaotic/**",
   ]),
 ]);
 
