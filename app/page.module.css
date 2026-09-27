@@ -215,27 +215,27 @@
 
 .title {
   font-family: var(--font-display);
-  font-size: clamp(64px, 12.5vw, 164px);
+  font-size: clamp(72px, 14vw, 180px);
   font-style: italic;
   font-weight: 900;
-  letter-spacing: -2px;
-  line-height: 0.9;
+  letter-spacing: -3px;
+  line-height: 0.88;
   margin: 0;
   background: linear-gradient(
     100deg,
     #fffdf6 0%,
-    #d7dae1 22%,
-    #8f95a3 40%,
-    #f6f4ec 55%,
-    #868c98 75%,
-    #cfd3db 100%
+    #e8ebf0 18%,
+    #9aa1ae 38%,
+    #f6f4ec 52%,
+    #7c8390 72%,
+    #d6dae1 100%
   );
-  background-size: 200% 100%;
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   text-wrap: balance;
-  filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(0 22px 40px rgba(0, 0, 0, 0.6));
   animation:
     rise 0.9s 0.62s ease both,
     sheen 9s 2s ease-in-out infinite;
@@ -294,14 +294,14 @@
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 900;
-  font-size: 16px;
-  letter-spacing: 3.5px;
+  font-size: 17px;
+  letter-spacing: 4px;
   color: #fff;
-  padding: 15px 46px;
+  padding: 17px 52px;
   border-radius: 999px;
   background: linear-gradient(180deg, #ff2013, #c00500);
   box-shadow:
-    0 12px 34px rgba(225, 6, 0, 0.35),
+    0 14px 38px rgba(225, 6, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
 }
@@ -338,15 +338,15 @@
 
 .heroStats {
   display: flex;
-  margin: 22px 0 0;
+  margin: 26px 0 0;
   animation: rise 0.8s 1.06s ease both;
 }
 
 .heroStats div {
   display: flex;
   flex-direction: column-reverse;
-  gap: 3px;
-  padding: 0 26px;
+  gap: 4px;
+  padding: 0 30px;
   border-left: 1px solid var(--line);
 }
 
@@ -359,15 +359,21 @@
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 900;
-  font-size: 30px;
+  font-size: 34px;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #fffdf6 0%, #c8ccd4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .heroStats dt {
   font-family: var(--font-geist-mono);
   font-size: 10px;
-  letter-spacing: 3px;
+  letter-spacing: 3.5px;
   color: var(--faint);
+  text-transform: uppercase;
 }
 
 /* ---------- ticker, scroll cue, reveal, backdrop ---------- */
