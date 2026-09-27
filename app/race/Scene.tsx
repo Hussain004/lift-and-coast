@@ -665,6 +665,8 @@ export function Scene({
   countdownValueRef,
   qualifyingDisplayRef,
   penaltyToastRef,
+  ersModeRef,
+  fuelRef,
   playerBodyColor,
   playerAccentColor,
   audioRef,
@@ -775,6 +777,8 @@ export function Scene({
   countdownValueRef: React.RefObject<HTMLSpanElement | null>;
   qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
   penaltyToastRef: React.RefObject<HTMLDivElement | null>;
+  ersModeRef?: React.RefObject<HTMLDivElement | null>;
+  fuelRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
@@ -994,6 +998,8 @@ export function Scene({
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}
           penaltyToastRef={penaltyToastRef}
+          ersModeHudRef={ersModeRef}
+          fuelRef={fuelRef}
           track={track}
           bodyColor={playerBodyColor}
           accentColor={playerAccentColor}

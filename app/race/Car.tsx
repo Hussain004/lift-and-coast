@@ -257,6 +257,8 @@ export function Car({
   qualifyingRef,
   qualifyingDisplayRef,
   penaltyToastRef,
+  ersModeHudRef,
+  fuelRef,
   track,
   bodyColor = "#39ff88",
   accentColor,
@@ -387,6 +389,10 @@ export function Car({
   qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
   /** Live "+Ns PENALTY" flash for the race-mode track-limit penalty below. */
   penaltyToastRef?: React.RefObject<HTMLDivElement | null>;
+  /** Live ERS deployment-mode readout (harvest / balanced / attack). */
+  ersModeHudRef?: React.RefObject<HTMLDivElement | null>;
+  /** Live fuel readout in kg. */
+  fuelRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - the team's primary livery. */
   bodyColor?: string;
@@ -1163,6 +1169,12 @@ export function Car({
         strategyStateRef.current.compoundGripMultiplier * weatherStateRef.current.gripMultiplier * 100
       );
       tireRef.current.textContent = `${strategyStateRef.current.compound.toUpperCase()} ${gripPercent}%`;
+    }
+    if (ersModeHudRef?.current) {
+      ersModeHudRef.current.textContent = energyStatusRef.current.mode.toUpperCase();
+    }
+    if (fuelRef?.current) {
+      fuelRef.current.textContent = `${strategyStateRef.current.fuelKg.toFixed(0)}kg`;
     }
     if (assistsRef?.current) {
       assistsRef.current.textContent =

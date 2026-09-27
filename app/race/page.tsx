@@ -271,6 +271,8 @@ function RaceContent() {
   const penaltyToastRef = useRef<HTMLDivElement>(null);
   const muteRef = useRef<HTMLDivElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
+  const ersModeRef = useRef<HTMLDivElement>(null);
+  const fuelRef = useRef<HTMLDivElement>(null);
   // Shared with the race audio rig (see app/race/RaceAudioRig.tsx): both
   // cars write their latest telemetry here every render frame, and the rig
   // pumps it into the synth voices - plain mutable data, never React state,
@@ -364,6 +366,8 @@ function RaceContent() {
         countdownValueRef={countdownValueRef}
         qualifyingDisplayRef={qualifyingDisplayRef}
         penaltyToastRef={penaltyToastRef}
+        ersModeRef={ersModeRef}
+        fuelRef={fuelRef}
         audioRef={audioRef}
         touchInputRef={touchInputRef}
         timeOfDay={timeOfDay}
@@ -455,6 +459,8 @@ function RaceContent() {
         <div className={styles.hudStatus}>
           <div className={styles.statusCard}><span>TYRE</span><div className={styles.tire} ref={tireRef} /></div>
           <div className={styles.statusCard}><span>AERO</span><div className={styles.aeroMode} ref={aeroModeRef} /></div>
+          <div className={styles.statusCard}><span>ERS</span><div className={styles.ersMode} ref={ersModeRef} /></div>
+          <div className={styles.statusCard}><span>FUEL</span><div className={styles.fuel} ref={fuelRef} /></div>
           <div className={`${styles.statusCard} ${styles.assistsCard}`}><span>ASSISTS</span><div className={styles.assists} ref={assistsRef} /></div>
           <div className={styles.statusFooter}><span className={styles.damage} ref={damageRef} /><span className={styles.mute} ref={muteRef} /></div>
         </div>
