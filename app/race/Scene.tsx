@@ -24,6 +24,7 @@ import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import type { SharedReplay } from "@/lib/race/replay";
+import type { HudSnapshot } from "@/lib/race/hud";
 import {
   HELMET_AIM_DISTANCE_METERS,
   HELMET_AIM_DROP_METERS,
@@ -627,27 +628,8 @@ function ChaseCamera({
 
 export function Scene({
   track,
-  speedRef,
-  lapRef,
-  deltaRef,
-  sectorsRef,
-  trackLimitRef,
-  energyRef,
-  aeroModeRef,
-  tireRef,
-  assistsRef,
-  damageRef,
-  gearRef,
-  rpmRef,
-  throttleRef,
-  brakeRef,
-  steerMarkerRef,
-  minimapGroupRef,
-  minimapMarkerRef,
   aiMarkerEls,
-  positionRef,
-  raceResultRef,
-  towerRef,
+  hudRef,
   raceLaps,
   champRound,
   sessionMode = "race",
@@ -673,10 +655,6 @@ export function Scene({
   countdownGoAtMs = 0,
   countdownRef,
   countdownValueRef,
-  qualifyingDisplayRef,
-  penaltyToastRef,
-  ersModeRef,
-  fuelRef,
   playerBodyColor,
   playerAccentColor,
   audioRef,
@@ -709,32 +687,13 @@ export function Scene({
   audioRef?: React.RefObject<AudioSnapshot>;
   /** Shared mutable analog controls from the on-screen touch deck. */
   touchInputRef?: React.RefObject<TouchDriveInput | null>;
-  speedRef: React.RefObject<HTMLDivElement | null>;
-  lapRef: React.RefObject<HTMLDivElement | null>;
-  deltaRef: React.RefObject<HTMLDivElement | null>;
-  sectorsRef: React.RefObject<HTMLDivElement | null>;
-  trackLimitRef: React.RefObject<HTMLDivElement | null>;
-  energyRef: React.RefObject<HTMLDivElement | null>;
-  aeroModeRef: React.RefObject<HTMLDivElement | null>;
-  tireRef: React.RefObject<HTMLDivElement | null>;
-  assistsRef: React.RefObject<HTMLDivElement | null>;
-  damageRef: React.RefObject<HTMLDivElement | null>;
-  gearRef: React.RefObject<HTMLDivElement | null>;
-  rpmRef: React.RefObject<HTMLDivElement | null>;
-  throttleRef: React.RefObject<HTMLDivElement | null>;
-  brakeRef: React.RefObject<HTMLDivElement | null>;
-  steerMarkerRef: React.RefObject<HTMLDivElement | null>;
-  minimapGroupRef: React.RefObject<SVGGElement | null>;
-  minimapMarkerRef: React.RefObject<SVGPolygonElement | null>;
   /**
    * One minimap dot element per rival (see page.tsx) - each AICar writes
    * its own by aiIndex, so the count simply matches the rivals list.
    */
   aiMarkerEls?: React.RefObject<(SVGCircleElement | null)[]>;
-  positionRef: React.RefObject<HTMLDivElement | null>;
-  raceResultRef: React.RefObject<HTMLDivElement | null>;
-  /** F1 timing tower body (see page.tsx) - Car rewrites its rows ~10Hz. */
-  towerRef?: React.RefObject<HTMLDivElement | null>;
+  /** The HUD's data (see lib/race/hud.ts): Car writes it, app/race/hud/ draws it. */
+  hudRef: React.RefObject<HudSnapshot>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /** Lighting preset - see page.tsx's ?tod= URL param. */
@@ -794,10 +753,6 @@ export function Scene({
   countdownGoAtMs?: number;
   countdownRef: React.RefObject<HTMLDivElement | null>;
   countdownValueRef: React.RefObject<HTMLSpanElement | null>;
-  qualifyingDisplayRef: React.RefObject<HTMLDivElement | null>;
-  penaltyToastRef: React.RefObject<HTMLDivElement | null>;
-  ersModeRef?: React.RefObject<HTMLDivElement | null>;
-  fuelRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
@@ -978,26 +933,7 @@ export function Scene({
           cameraModeRef={cameraModeRef}
           racingLineVisibleRef={racingLineVisibleRef}
           touchInputRef={touchInputRef}
-          speedRef={speedRef}
-          lapRef={lapRef}
-          deltaRef={deltaRef}
-          sectorsRef={sectorsRef}
-          trackLimitRef={trackLimitRef}
-          energyRef={energyRef}
-          aeroModeRef={aeroModeRef}
-          tireRef={tireRef}
-          assistsRef={assistsRef}
-          damageRef={damageRef}
-          gearRef={gearRef}
-          rpmRef={rpmRef}
-          throttleRef={throttleRef}
-          brakeRef={brakeRef}
-          steerMarkerRef={steerMarkerRef}
-          minimapGroupRef={minimapGroupRef}
-          minimapMarkerRef={minimapMarkerRef}
-          positionRef={positionRef}
-          raceResultRef={raceResultRef}
-          towerRef={towerRef}
+          hudRef={hudRef}
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
@@ -1021,10 +957,6 @@ export function Scene({
           sharedRewindActiveRef={sharedRewindActiveRef}
           sharedReplayRef={sharedReplayRef}
           qualifyingRef={qualifyingRef}
-          qualifyingDisplayRef={qualifyingDisplayRef}
-          penaltyToastRef={penaltyToastRef}
-          ersModeHudRef={ersModeRef}
-          fuelRef={fuelRef}
           track={track}
           bodyColor={playerBodyColor}
           accentColor={playerAccentColor}
@@ -1114,7 +1046,7 @@ export function Scene({
             chassisRef={chassisRef}
             remoteBuffersRef={remoteBuffersRef}
             netResultRef={netResultRef}
-            raceResultRef={raceResultRef}
+            hudRef={hudRef}
             playerSlot={playerSlot}
             slotToOpponent={slotToOpponent}
             goAtRef={netGoAtRef}
@@ -1127,7 +1059,7 @@ export function Scene({
         <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       </Physics>
       <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
-      <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} />
+      <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} cameraModeRef={cameraModeRef} />
       <RaceStartCountdown
         raceStartRef={raceStartRef}
         countdownRef={countdownRef}

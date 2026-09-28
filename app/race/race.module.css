@@ -73,7 +73,6 @@
 }
 
 .loadingHeader,
-.startSequenceHeader,
 .startSequenceFooter {
   display: flex;
   align-items: center;
@@ -85,8 +84,7 @@
   letter-spacing: 1.8px;
 }
 
-.loadingHeader span:first-child,
-.startSequenceHeader span:first-child {
+.loadingHeader span:first-child{
   color: #f4f1e8;
   font-family: var(--font-display);
   font-size: 12px;
@@ -195,393 +193,36 @@
 /* Compact F1 timing tower: driver, interval and gap only. Car.tsx owns the
    live rows, but page.tsx renders the same structure immediately so the
    first frame is already useful. */
-.tower {
-  position: absolute;
-  left: 16px;
-  /* Below the left mirror. The mirror occupies roughly the top third of the
-     frame (see SideMirrors.tsx, which insets by a pixel margin scaled to the
-     viewport), so a truly centred tower overlapped it; 56% keeps the whole
-     block in the lower half without crowding the bottom-left. */
-  top: 56%;
-  transform: translateY(-50%);
-  width: min(270px, calc(100vw - 24px));
-  max-height: 42vh;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  box-sizing: border-box;
-  padding: 7px 8px 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-top: 3px solid #e10600;
-  border-radius: 5px;
-  background: linear-gradient(105deg, rgba(7, 10, 16, 0.94), rgba(10, 15, 23, 0.82));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
-  font-family: var(--font-geist-mono);
-  letter-spacing: 0.6px;
-  pointer-events: none;
-}
-
-.towerEvent {
-  color: #f2f5f8;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.towerHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #8d9aaa;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  padding-bottom: 5px;
-}
-
-.liveBadge {
-  color: #fff;
-  background: #e10600;
-  padding: 2px 5px;
-  letter-spacing: 1px;
-}
-
-.towerHeader span:last-child {
-  margin-left: auto;
-}
-
-.lap {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(0, 0, 0, 0.34);
-  padding: 5px 9px;
-  border-radius: 3px;
-  white-space: nowrap;
-}
-
-.position {
-  color: #39ff88;
-  font-size: 25px;
-  font-style: italic;
-  font-weight: 800;
-  letter-spacing: 1px;
-  line-height: 1;
-}
-
-.towerColumns,
-:global(.tower-row) {
-  display: grid;
-  grid-template-columns: 28px 90px 52px 52px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-}
-
-.towerColumns {
-  color: #748091;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  padding: 0 4px 2px;
-  text-align: right;
-}
-
-.towerColumns span:first-child,
-.towerColumns span:nth-child(2) {
-  text-align: left;
-}
-
-.towerRows {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  max-height: 42vh;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #394452 transparent;
-}
 
 /* Tower rows render from innerHTML (see renderTowerHtml), so these are
    global classes, not module-scoped. */
-:global(.tower-row) {
-  min-height: 22px;
-  padding: 2px 4px;
-  color: #aeb8c5;
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  border-left: 3px solid transparent;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-:global(.tower-row-you) {
-  border-left-color: #39ff88;
-  color: #fff;
-  background: rgba(57, 255, 136, 0.09);
-}
-
-:global(.tower-fastest) {
-  box-shadow: inset 0 0 0 1px rgba(185, 103, 255, 0.45);
-}
-
-:global(.tower-pos) {
-  color: #fff;
-  font-weight: 800;
-  text-align: left;
-}
-
-:global(.tower-driver) {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
-  overflow: hidden;
-}
-
-:global(.tower-number) {
-  min-width: 25px;
-  color: #8e9aaa;
-  font-size: 10px;
-  text-align: right;
-}
-
-:global(.tower-name) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:global(.tower-team) {
-  color: #697687;
-  font-size: 9px;
-  white-space: nowrap;
-}
-
-:global(.tower-interval),
-:global(.tower-gap),
-:global(.tower-last),
-:global(.tower-best),
-:global(.tower-status) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-}
-
-:global(.tower-interval) {
-  color: #d8e0e8;
-}
-
-:global(.tower-gap) {
-  color: #9ca8b6;
-}
-
-:global(.tower-last),
-:global(.tower-best) {
-  color: #c2cbd5;
-  font-size: 10px;
-}
-
-:global(.tower-status) {
-  color: #667383;
-  font-size: 9px;
-  font-weight: 800;
-}
-
-:global(.tower-status-warning) {
-  color: #ffd23f;
-}
-
-:global(.tower-status-black-white) {
-  color: #fff;
-  background: #151515;
-}
-
-:global(.tower-status-penalty) {
-  color: #ff5d5d;
-}
-
-:global(.code-chip) {
-  flex: 0 0 auto;
-  color: #0a0a0a;
-  font-weight: 800;
-  font-size: 10px;
-  letter-spacing: 0.8px;
-  padding: 2px 5px;
-  border-radius: 2px;
-}
 
 @media (max-width: 900px) {
-  .tower {
-    /* Below the left mirror, matching the desktop rule - the mirror owns the
-       top corner at every width. */
-    top: 210px;
-    transform: none;
-    width: min(240px, calc(100vw - 24px));
-    max-height: 32vh;
-  }
+  
 
-  .towerColumns,
-  :global(.tower-row) {
-    grid-template-columns: 27px 70px 46px 46px;
-    justify-content: space-between;
-    gap: 3px;
-    font-size: 9px;
-  }
+  
 
-  :global(.tower-team),
-  :global(.tower-number) {
-    display: none;
-  }
+  
 
   /* This block sits ABOVE the base .raceOpsPanel/.controlsPanel/.bottomBar
      rules in the file, so a same-specificity override here would lose on
      source order and silently do nothing. Qualify with .gameStage to win. */
-  .gameStage .raceOpsPanel,
-  .gameStage .controlsPanel {
+  .gameStage .raceOpsPanel{
     top: 200px;
     right: 16px;
     max-height: 42vh;
     overflow-y: auto;
   }
 
-  .gameStage .bottomBar {
-    left: 6px;
-    right: 212px;
-    width: auto;
-    max-width: none;
-    margin-inline: 0;
-    grid-template-columns: 64px 1fr 0.8fr;
-  }
+  
 
-  .gearCluster,
-  .speedCluster,
-  .inputCluster,
-  .hudStatus {
-    padding-left: 9px;
-    padding-right: 9px;
-  }
+  
 
-  .gear {
-    font-size: 44px;
-  }
+  
 
-  .speed {
-    font-size: 32px;
-  }
+  
 
-  .hudStatus {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, 1fr);
-    border-top: 1px solid rgba(255, 255, 255, 0.13);
-    border-right: 0;
-  }
-}
-
-.delta {
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 4px;
-}
-
-.delta:empty {
-  display: none;
-}
-
-.delta[data-sign="ahead"] {
-  color: #39ff88;
-}
-
-.delta[data-sign="behind"] {
-  color: #ff3b3b;
-}
-
-.sectors {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 6px 12px;
-  border-radius: 4px;
-  display: flex;
-  gap: 12px;
-}
-
-.sectors:empty {
-  display: none;
-}
-
-.trackLimit {
-  position: absolute;
-  top: 66px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #ff3b3b;
-  font-family: var(--font-geist-mono);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 16px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.trackLimit:empty {
-  display: none;
-}
-
-.raceDataStrip {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  pointer-events: none;
-  z-index: 3;
-}
-
-.raceDataLap {
-  min-width: 250px;
-}
-
-.raceDataLap,
-.raceDataPosition {
-  padding: 6px 10px;
-  border-radius: 3px;
-  background: rgba(7, 9, 13, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #fff;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.raceDataPosition {
-  min-width: 62px;
-  color: #39ff88;
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-align: center;
+  
 }
 
 /* The time attack's way home. Styled to sit in the strip rather than float
@@ -589,452 +230,20 @@
    the first thing a driver looks at mid-corner. The strip itself is
    pointer-events:none (the HUD is an overlay, not a UI layer), so this is the
    one cell that opts back in. */
-.raceDataHome {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 3px;
-  background: rgba(7, 9, 13, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.72);
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  text-decoration: none;
-  pointer-events: auto;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-
-.raceDataHome:hover {
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.34);
-}
-
-.raceDataHome:focus-visible {
-  outline: 2px solid #e10600;
-  outline-offset: 2px;
-}
-
-.raceDataStrip .delta,
-.raceDataStrip .sectors {
-  min-height: 30px;
-  margin: 0;
-}
 
 /* Bottom telemetry bar: a compact F1 broadcast strip with a strong
    speed/gear hierarchy, segmented power bars, inputs, and car status. */
-.bottomBar {
-  position: absolute;
-  /* Centred on the space left of the bottom-right map block, so the telemetry
-     and the map sit side by side instead of overlapping. */
-  left: 12px;
-  right: 216px;
-  bottom: 12px;
-  width: auto;
-  max-width: 820px;
-  margin-inline: auto;
-  min-height: 116px;
-  display: grid;
-  grid-template-columns: 86px minmax(210px, 1.15fr) minmax(145px, 0.72fr) minmax(190px, 1fr);
-  background: linear-gradient(112deg, rgba(7, 9, 13, 0.97), rgba(17, 20, 26, 0.95));
-  border: 1px solid #343a45;
-  border-top: 3px solid #e10600;
-  border-radius: 3px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  font-family: var(--font-geist-sans);
-  letter-spacing: 0.4px;
-  pointer-events: none;
-  overflow: hidden;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
-}
-
-.pauseOverlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(2, 4, 8, 0.46);
-  pointer-events: auto;
-  z-index: 30;
-}
-
-.pauseCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  min-width: 220px;
-  padding: 22px 28px;
-  border: 1px solid #3a414d;
-  border-top: 3px solid #e10600;
-  background: rgba(8, 10, 15, 0.96);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-  color: #fff;
-  font-family: var(--font-geist-sans);
-  text-align: center;
-}
-
-.pauseCard strong {
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: 1px;
-}
-
-.pauseCard span {
-  color: #aeb7c4;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-}
-
-.pauseCard button {
-  margin-top: 6px;
-  padding: 7px 18px;
-  border: 1px solid #ff7868;
-  border-radius: 2px;
-  background: #e10600;
-  color: #fff;
-  cursor: pointer;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-.hudTopLine {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, #e10600 0 32%, #ff8a00 32% 42%, rgba(255, 255, 255, 0.12) 42%);
-}
-
-.gearCluster,
-.speedCluster,
-.inputCluster,
-.hudStatus {
-  min-width: 0;
-  padding: 12px 14px 10px;
-}
-
-.gearCluster {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 2px;
-  background: linear-gradient(145deg, #e10600, #a90000);
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.clusterLabel,
-.barLabel,
-.pedalRow > span,
-.steerRow > span,
-.statusCard > span {
-  color: #aeb7c4;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-
-.gearCluster .clusterLabel {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.gear {
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 56px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: -3px;
-  line-height: 0.9;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.22);
-}
-
-.speedCluster,
-.inputCluster,
-.hudStatus {
-  border-right: 1px solid rgba(255, 255, 255, 0.13);
-}
-
-.speedCluster {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 9px;
-}
-
-.speedReadout {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.speed {
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 40px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: -1px;
-  line-height: 0.9;
-  white-space: nowrap;
-}
-
-.speedUnit {
-  color: #e10600;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
-}
-
-.rpmStack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.barLabel {
-  display: flex;
-  justify-content: space-between;
-  color: #7f8a99;
-  font-size: 9px;
-  letter-spacing: 0.6px;
-}
-
-.rpmTrack,
-.energyTrack,
-.pedalTrack,
-.steerTrack {
-  position: relative;
-  overflow: hidden;
-  background: #202630;
-  border: 1px solid #3a424e;
-}
-
-.rpmTrack {
-  width: 100%;
-  height: 11px;
-  background-image: repeating-linear-gradient(90deg, transparent 0 14px, rgba(255, 255, 255, 0.12) 14px 15px);
-}
-
-.rpmFill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #39ff88 0 55%, #ffd23f 55% 82%, #ff3b3b 82%);
-  transition: width 0.05s linear;
-}
-
-.energyTrack {
-  width: 100%;
-  height: 5px;
-  background: #202630;
-}
-
-.energyFill {
-  height: 100%;
-  width: 100%;
-  background: #f0f0f0;
-  transition: width 0.1s linear;
-}
-
-.inputCluster {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-}
-
-.pedalRow,
-.steerRow {
-  display: grid;
-  grid-template-columns: 42px 1fr;
-  align-items: center;
-  gap: 7px;
-}
-
-.pedalTrack {
-  height: 8px;
-}
-
-.pedalFillThrottle,
-.pedalFillBrake {
-  height: 100%;
-  width: 0%;
-  transition: width 0.05s linear;
-}
-
-.pedalFillThrottle {
-  background: #39ff88;
-}
-
-.pedalFillBrake {
-  background: #ff3b3b;
-}
-
-.steerTrack {
-  height: 8px;
-  background: linear-gradient(90deg, #202630 0 48%, #697586 48% 52%, #202630 52%);
-}
-
-.steerMarker {
-  position: absolute;
-  top: 1px;
-  left: 50%;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ffd23f;
-  box-shadow: 0 0 0 2px rgba(255, 210, 63, 0.18);
-  transform: translateX(-50%);
-  transition: left 0.05s linear;
-}
-
-.hudStatus {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-content: center;
-  gap: 7px 10px;
-  border-right: 0;
-}
-
-.statusCard {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-left: 8px;
-  border-left: 2px solid #4b5563;
-}
-
-.assistsCard {
-  grid-column: 1 / -1;
-}
-
-.assistsCard .assists {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  line-height: 1.15;
-}
-
-.statusCard > span {
-  color: #7f8a99;
-  font-size: 9px;
-  letter-spacing: 0.6px;
-}
-
-.aeroMode,
-.tire,
-.assists {
-  overflow: hidden;
-  color: #f2f4f7;
-  font-family: var(--font-geist-mono);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aeroMode {
-  color: #6bd1ff;
-}
-
-.ersMode {
-  color: #39ff88;
-}
-
-.fuel {
-  color: #ffd23f;
-}
-
-.tire {
-  color: #ff9f4a;
-}
-
-.assists {
-  color: #aeb7c4;
-  font-size: 10px;
-}
-
-.statusFooter {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  min-height: 12px;
-  padding-top: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.damage,
-.mute {
-  color: #aeb7c4;
-  font-family: var(--font-geist-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
-}
-
-.damage {
-  color: #ff6b6b;
-}
-
-.damage:empty,
-.mute:empty {
-  display: none;
-}
-
 
 /* Map block, bottom right (see page.tsx). It replaced the old top-right
    minimap, which sat in the right mirror's corner. The block owns the right
    edge; the telemetry bottomBar is offset by the same width so the two sit
    side by side instead of overlapping. */
-.minimapBlock {
-  --minimap-block-size: 188px;
-  position: absolute;
-  right: 16px;
-  bottom: 12px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 5px 6px 6px;
-  background: rgba(0, 0, 0, 0.46);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.minimapLabel {
-  color: #9aa5b3;
-  font-family: var(--font-geist-mono);
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
-  line-height: 1;
-}
-
-.minimap {
-  display: block;
-  border-radius: 3px;
-  pointer-events: none;
-}
 
 /* Shared slot for the right-hand HUD column below the right mirror. Race Ops
    and the controls reference are mutually exclusive (page.tsx renders one or
    the other, swapped with H), so they share these box values and can never
    stack on top of each other. */
-.controlsPanel,
+
 .raceOpsPanel {
   position: absolute;
   top: 376px;
@@ -1235,338 +444,28 @@
   font-size: 8px;
   line-height: 1.4;
 }
-.controlsPanel {
-  width: 196px;
-  background: rgba(10, 10, 14, 0.72);
-  border-radius: 6px;
-  font-family: var(--font-geist-mono);
-  letter-spacing: 1px;
-  pointer-events: auto;
-}
-
-.controlsHeader {
-  display: flex;
-  align-items: stretch;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.controlsMirrorToggle {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 6px;
-  border: none;
-  background: rgba(57, 255, 136, 0.08);
-  color: #9dffc5;
-  font: inherit;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  cursor: pointer;
-}
-
-.controlsMirrorToggle[aria-pressed="false"] {
-  background: rgba(255, 255, 255, 0.04);
-  color: #8993a2;
-}
-
-.controlsToggle {
-  width: 100%;
-  background: none;
-  border: none;
-  color: #39ff88;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  padding: 8px 12px;
-  cursor: pointer;
-  text-align: left;
-}
 
 /* Three actions share this 196px header (mirrors / race ops / collapse), so
    the header buttons use the compact 9px type rather than the 12px standalone
    size. */
-.controlsHeader .controlsToggle {
-  width: auto;
-  flex: 0 0 auto;
-  padding: 8px 5px;
-  font-size: 9px;
-  letter-spacing: 0.8px;
-  text-align: center;
-}
-
-.controlsList {
-  margin: 0;
-  padding: 0 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.controlsRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 11px;
-}
-
-.controlsRow dt {
-  color: #fff;
-}
-
-.controlsRow dd {
-  margin: 0;
-  color: #888;
-}
-
-.raceResult {
-  position: absolute;
-  top: 40%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #39ff88;
-  font-family: var(--font-geist-mono);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 20px 32px;
-  border-radius: 8px;
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 24px);
-  box-sizing: border-box;
-  overflow: auto;
-  pointer-events: none;
-}
-
-.raceResult:empty {
-  display: none;
-}
-
-.qualifying {
-  position: absolute;
-  top: 150px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #b967ff;
-  font-family: var(--font-geist-mono);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 16px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.qualifying:empty {
-  display: none;
-}
 
 /* The qualifying result is injected as one small, semantic board by Car.tsx.
    These selectors are global because the board is written with innerHTML,
    just like the broadcast tower rows above. */
-:global(.qualifying-result) {
-  width: min(720px, calc(100vw - 24px));
-  box-sizing: border-box;
-  padding: 20px 22px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-top: 3px solid #b967ff;
-  background: linear-gradient(145deg, rgba(14, 16, 24, 0.98), rgba(5, 7, 12, 0.98));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  color: #e8edf3;
-  font-family: var(--font-geist-mono);
-  letter-spacing: 0.45px;
-  text-align: left;
-  pointer-events: auto;
-}
 
-:global(.qualifying-result-kicker) {
-  color: #b967ff;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 2px;
-}
-
-:global(.qualifying-result-summary) {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 12px 14px;
-  border-left: 3px solid #39ff88;
-  background: rgba(57, 255, 136, 0.08);
-  color: #f4f1e8;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-:global(.qualifying-result-summary strong) {
-  color: #39ff88;
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-style: italic;
-  line-height: 1;
-}
-
-:global(.qualifying-result-summary span:last-child) {
-  color: #aeb8c5;
-  font-size: 10px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-:global(.qualifying-result-title) {
-  display: flex;
-  justify-content: space-between;
-  margin: 18px 0 7px;
-  color: #f4f1e8;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 1.6px;
-}
-
-:global(.qualifying-result-title small) {
-  color: #778293;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-:global(.qualifying-result-rows) {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: min(42vh, 360px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #394452 transparent;
-}
-
-:global(.qualifying-board-row) {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 92px 74px;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 4px 8px;
-  border-left: 3px solid transparent;
-  background: rgba(255, 255, 255, 0.035);
-  color: #c5ced8;
-  font-size: 10px;
-}
-
-:global(.qualifying-board-row-you) {
-  border-left-color: #39ff88;
-  background: rgba(57, 255, 136, 0.1);
-  color: #fff;
-}
-
-:global(.qualifying-board-pos) {
-  color: #fff;
-  font-weight: 900;
-}
-
-:global(.qualifying-board-driver) {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 7px;
-}
-
-:global(.qualifying-board-code) {
-  flex: 0 0 auto;
-  padding: 3px 5px;
-  border-radius: 2px;
-  color: #090b10;
-  font-size: 9px;
-  font-weight: 900;
-}
-
-:global(.qualifying-board-name) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:global(.qualifying-board-time) {
-  color: #f4f1e8;
-  font-weight: 800;
-  text-align: right;
-  white-space: nowrap;
-}
-
-:global(.qualifying-board-gap) {
-  color: #9da9b7;
-  font-size: 9px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-:global(.qualifying-result-actions) {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 16px;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 1px;
-}
-
-:global(.qualifying-result-actions a) {
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-  text-decoration: none;
-}
-
-:global(.qualifying-result-actions a:first-child) {
-  border-color: rgba(57, 255, 136, 0.55);
-  background: rgba(57, 255, 136, 0.12);
-  color: #bfffd7;
-}
-
-:global(.qualifying-result-actions a:hover) {
-  border-color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.penaltyToast {
-  position: absolute;
-  top: 108px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #ff3b3b;
-  font-family: var(--font-geist-mono);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 6px 16px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.penaltyToast:empty {
-  display: none;
-}
-
+/* Start gantry: five lamp pairs across the top of the screen, lit in steps
+ * and all extinguished together - "lights out and away we go". No number
+ * on screen (the value stays for screen readers), no panel over the car. */
 .startSequence {
   position: absolute;
-  inset: 0;
+  top: 78px;
+  left: 50%;
   z-index: 30;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 48%, rgba(225, 6, 0, 0.15), transparent 25%),
-    linear-gradient(180deg, rgba(3, 4, 7, 0.12), rgba(3, 4, 7, 0.48));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1578,141 +477,66 @@
   visibility: visible;
 }
 
-.startSequence::before,
-.startSequence::after {
-  position: absolute;
-  left: 50%;
-  width: min(680px, 86vw);
-  height: 1px;
-  content: "";
-  transform: translateX(-50%);
-}
-
-.startSequence::before {
-  top: 21%;
-  background: linear-gradient(90deg, transparent, rgba(225, 6, 0, 0.52), transparent);
-}
-
-.startSequence::after {
-  bottom: 21%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
-}
-
-.startSequencePanel {
-  position: relative;
-  width: min(410px, calc(100vw - 40px));
-  padding: 18px 24px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-top: 2px solid #e10600;
-  background: linear-gradient(145deg, rgba(13, 16, 23, 0.9), rgba(5, 7, 11, 0.78));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
-  transform: translateY(0);
-  animation: startPanelIn 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-.startSequenceHeader {
-  color: #778293;
-  font-size: 8px;
-}
-
-.startSequenceHeader span:last-child {
-  max-width: 190px;
-  overflow: hidden;
-  color: #aeb7c5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .startLights {
   display: flex;
-  justify-content: center;
-  gap: clamp(8px, 2.5vw, 16px);
-  margin: 25px 0 20px;
+  gap: clamp(6px, 1.4vw, 12px);
+  padding: 10px 14px;
+  background: #0b0d12;
+  border-top: 3px solid #1d2129;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
 
 .startLight {
-  width: clamp(18px, 4vw, 28px);
-  height: clamp(18px, 4vw, 28px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: #15181f;
+  border-radius: 6px;
+}
+
+.startLight i {
+  width: clamp(18px, 3.2vw, 30px);
+  height: clamp(18px, 3.2vw, 30px);
   border-radius: 50%;
-  background: #161b24;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
-  transition: background 100ms ease, box-shadow 100ms ease, transform 100ms ease;
+  background: #2a0506;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+  transition: background 60ms linear, box-shadow 60ms linear;
 }
 
-.startSequence[data-phase="waiting"] .startLight:nth-child(-n + 2),
-.startSequence[data-value="3"] .startLight:nth-child(-n + 2) {
-  background: #8f1214;
-  box-shadow: 0 0 12px rgba(225, 6, 0, 0.35), inset 0 0 8px rgba(255, 70, 55, 0.35);
+.startSequence[data-value="3"]:not([data-phase="waiting"]) .startLight:nth-child(-n + 2) i,
+.startSequence[data-value="2"] .startLight:nth-child(-n + 4) i,
+.startSequence[data-value="1"] .startLight i {
+  background: radial-gradient(circle at 40% 35%, #ff6a5c, #e10600 55%, #8c0400);
+  box-shadow: 0 0 18px rgba(255, 30, 10, 0.85), 0 0 4px rgba(255, 120, 100, 0.9) inset;
 }
 
-.startSequence[data-value="2"] .startLight:nth-child(-n + 4) {
-  background: #e10600;
-  box-shadow: 0 0 15px rgba(225, 6, 0, 0.62), inset 0 0 8px rgba(255, 90, 70, 0.5);
-}
-
-.startSequence[data-value="1"] .startLight {
-  background: #e10600;
-  border-color: rgba(255, 90, 70, 0.65);
-  box-shadow: 0 0 18px rgba(225, 6, 0, 0.72), inset 0 0 9px rgba(255, 90, 70, 0.5);
-  transform: scale(1.04);
-}
-
-/* F1 start: the five red lights illuminate one by one, then ALL go out -
- * "lights out and away we go". The GO! text carries the go signal; the
- * lights themselves extinguish exactly as they do on a real grid. */
-.startSequence[data-phase="go"] .startLight {
-  background: #161b24;
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
-  transform: none;
+.startSequence[data-phase="go"] .startLight i {
+  background: #2a0506;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
 }
 
 .startCountdownValue {
-  display: block;
-  width: 100%;
-  min-height: 92px;
-  color: #f4f1e8;
-  font-family: var(--font-display);
-  font-size: clamp(72px, 16vw, 122px);
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: -0.08em;
-  line-height: 0.9;
-  text-align: center;
-  text-shadow: 0 0 28px rgba(225, 6, 0, 0.32);
-}
-
-.startSequence[data-phase="go"] .startCountdownValue {
-  color: #39ff88;
-  font-size: clamp(54px, 12vw, 92px);
-  letter-spacing: -0.06em;
-  text-shadow: 0 0 30px rgba(57, 255, 136, 0.6);
-  animation: startGoPop 420ms cubic-bezier(0.16, 1.3, 0.3, 1) both;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .startSequenceFooter {
-  justify-content: center;
-  gap: 10px;
-  margin-top: 22px;
-  color: #687384;
-  font-size: 7px;
-  letter-spacing: 1.3px;
+  padding: 5px 12px;
+  background: rgba(9, 11, 17, 0.82);
+  color: #c9ced8;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
 }
 
-.startSignal {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #e10600;
-  box-shadow: 0 0 9px rgba(225, 6, 0, 0.8);
-  animation: startSignalPulse 1s ease-in-out infinite;
-}
-
-.startSequence[data-phase="go"] .startSignal {
-  background: #39ff88;
-  box-shadow: 0 0 9px rgba(57, 255, 136, 0.8);
+.startSequence[data-phase="go"] .startSequenceFooter {
+  visibility: hidden;
 }
 
 /* F-key performance readout (see FrameRateGovernor). Empty until toggled. */
@@ -1994,30 +818,17 @@
 }
 
 @media (max-width: 1100px), (pointer: coarse) {
-  .controlsPanel {
-    display: none;
-  }
+  
 
   .mobileControls {
     display: flex;
   }
 
-  .minimapBlock {
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(8px, env(safe-area-inset-bottom));
-    padding: 4px 5px 5px;
-  }
+  
 
-  .minimap {
-    width: 96px;
-    height: 96px;
-  }
+  
 
-  .raceDataStrip {
-    top: max(8px, env(safe-area-inset-top));
-    left: max(8px, env(safe-area-inset-left));
-    transform: none;
-  }
+  
 
   /* Portrait phone: the mobile action row owns the top-right corner, so the
      FPS readout moves to the top-left rather than sitting under those
@@ -2036,15 +847,9 @@
     overflow-y: auto;
   }
 
-  .trackLimit {
-    top: 46px;
-    max-width: calc(100% - 24px);
-    text-align: center;
-  }
+  
 
-  .penaltyToast {
-    top: 88px;
-  }
+  
 }
 
 @media (orientation: portrait) and (max-width: 1100px), (pointer: coarse) and (orientation: portrait) {
@@ -2103,39 +908,17 @@
     font-size: 8px;
   }
 
-  .raceDataLap {
-    min-width: 0;
-    max-width: 128px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  
 
-  .raceDataPosition {
-    min-width: 50px;
-  }
+  
 
-  .raceDataStrip .delta,
-  .raceDataStrip .sectors {
-    display: none;
-  }
+  
 
-  .tower {
-    top: 190px;
-    left: 8px;
-    width: min(220px, 50%);
-    max-height: 24%;
-    transform: none;
-  }
+  
 
-  .towerColumns,
-  :global(.tower-row) {
-    grid-template-columns: 24px 50px 38px 38px;
-    gap: 2px;
-  }
+  
 
-  .towerRows {
-    max-height: 20vh;
-  }
+  
 
   /* Landscape phone: same collision as portrait - the mobile action row holds
      the top-right corner. */
@@ -2152,71 +935,29 @@
     max-height: 24%;
   }
 
-  .minimapBlock {
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(8px, env(safe-area-inset-bottom));
-  }
+  
 
-  .minimap {
-    width: 78px;
-    height: 78px;
-  }
+  
 
-  .bottomBar {
-    right: 104px;
-    bottom: max(7px, env(safe-area-inset-bottom));
-    left: 6px;
-    width: auto;
-    max-width: none;
-    margin-inline: 0;
-    transform: none;
-    min-height: 76px;
-    grid-template-columns: 58px minmax(0, 1fr) 78px;
-  }
+  
 
-  .hudStatus {
-    display: none;
-  }
+  
 
-  .gearCluster,
-  .speedCluster,
-  .inputCluster {
-    padding: 8px 8px 7px;
-  }
+  
 
-  .gear {
-    font-size: 40px;
-  }
+  
 
-  .speed {
-    font-size: 30px;
-  }
+  
 
-  .clusterLabel,
-  .barLabel,
-  .pedalRow > span,
-  .steerRow > span {
-    font-size: 8px;
-    letter-spacing: 0.4px;
-  }
+  
 
-  .pedalRow,
-  .steerRow {
-    grid-template-columns: 30px 1fr;
-    gap: 4px;
-  }
+  
 
-  .inputCluster {
-    gap: 5px;
-  }
+  
 
-  .rpmTrack {
-    height: 8px;
-  }
+  
 
-  .energyTrack {
-    height: 4px;
-  }
+  
 }
 
 @media (orientation: landscape) and (max-width: 1100px), (pointer: coarse) and (orientation: landscape) {
@@ -2290,57 +1031,23 @@
 
   /* Landscape phone: the steering stick owns the bottom-right corner, so the
      map block moves inboard of it and the telemetry bar takes what is left. */
-  .minimapBlock {
-    right: calc(max(16px, env(safe-area-inset-right)) + 150px);
-  }
+  
 
-  .bottomBar {
-    bottom: max(9px, env(safe-area-inset-bottom));
-    left: 12px;
-    right: 262px;
-    width: auto;
-    max-width: 560px;
-    margin-inline: auto;
-    transform: none;
-    min-height: 76px;
-    grid-template-columns: 58px minmax(0, 1fr) 78px;
-  }
+  
 
-  .hudStatus {
-    display: none;
-  }
+  
 
-  .gearCluster,
-  .speedCluster,
-  .inputCluster {
-    padding: 8px 8px 7px;
-  }
+  
 
-  .gear {
-    font-size: 40px;
-  }
+  
 
-  .speed {
-    font-size: 30px;
-  }
+  
 
-  .clusterLabel,
-  .barLabel,
-  .pedalRow > span,
-  .steerRow > span {
-    font-size: 8px;
-    letter-spacing: 0.4px;
-  }
+  
 
-  .pedalRow,
-  .steerRow {
-    grid-template-columns: 30px 1fr;
-    gap: 4px;
-  }
+  
 
-  .inputCluster {
-    gap: 5px;
-  }
+  
 }
 
 @media (orientation: landscape) and (max-width: 760px),
@@ -2360,44 +1067,6 @@
     bottom: max(108px, env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
-  }
-}
-
-@media (max-width: 600px) {
-  :global(.qualifying-result) {
-    width: min(100%, calc(100vw - 18px));
-    padding: 15px 12px 12px;
-  }
-
-  :global(.qualifying-result-summary) {
-    grid-template-columns: auto 1fr;
-    gap: 8px;
-    font-size: 11px;
-  }
-
-  :global(.qualifying-result-summary strong) {
-    font-size: 25px;
-  }
-
-  :global(.qualifying-result-summary span:last-child) {
-    grid-column: 1 / -1;
-    text-align: left;
-  }
-
-  :global(.qualifying-board-row) {
-    grid-template-columns: 27px minmax(0, 1fr) 78px 57px;
-    gap: 5px;
-    padding-inline: 5px;
-    font-size: 9px;
-  }
-
-  :global(.qualifying-board-name) {
-    display: none;
-  }
-
-  :global(.qualifying-result-actions) {
-    flex-wrap: wrap;
-    gap: 6px;
   }
 }
 
@@ -2439,53 +1108,13 @@
   }
 }
 
-@keyframes startPanelIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes startGoPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.72);
-  }
-  65% {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes startSignalPulse {
-  0%,
-  100% {
-    opacity: 0.45;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .loading::after,
   .loadingCircuit path,
   .loadingCircuitDot,
   .loadingProgress span,
-  .startSequencePanel,
-  .startSequence[data-phase="go"] .startCountdownValue,
-  .startSignal {
-    animation: none;
+  .startLight i {
+    transition: none;
   }
 }
 
@@ -2494,18 +1123,8 @@
     padding: 22px 20px 20px;
   }
 
-  .startSequencePanel {
-    padding: 15px 16px 17px;
-  }
-
-  .startSequenceHeader span:last-child {
-    max-width: 130px;
-  }
-
   .startSequenceFooter {
-    gap: 7px;
-    font-size: 6px;
-    letter-spacing: 0.8px;
+    font-size: 11px;
   }
 }
 
@@ -2522,7 +1141,7 @@
    as busy rather than instrumented. This is one plan-view of the car with
    four legible corner readouts, then a clean aligned value column.
 --------------------------------------------------------------------------- */
-.controlsPanel,
+
 .raceOpsPanel,
 .telemetryPanel,
 .settingsPanel {
@@ -3003,4 +1622,14 @@
 .settingsAction:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Phone landscape: the deck's header (stick-size setting) and the how-to
+   hint sat on top of the race HUD. Driving needs neither; the stick size
+   stays settable in portrait. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .mobileControlsHeader,
+  .mobileControlHint {
+    display: none;
+  }
 }

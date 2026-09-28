@@ -79,3 +79,35 @@ export function projectToMinimap(
   const center = sizePx / 2;
   return { x: center + rx * zoomPxPerMeter, y: center + ry * zoomPxPerMeter };
 }
+
+/**
+ * A fixed, whole-circuit map (the broadcast/F1-game style): scales and
+ * centres the centreline's bounding box into a `sizePx` square with
+ * `padPx` of margin. Same raw-world path as above (X -> x, Z -> y), so the
+ * AI dots, which live in world coordinates inside the same group, land in
+ * the right place with no extra maths.
+ */
+export function computeFullMapTransform(
+  track: Pick<TrackData, "centerline">,
+  sizePx: number,
+  padPx = 10
+): { transform: string; scale: number } {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [x, , z] of track.centerline) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  const span = Math.max(1, maxX - minX, maxZ - minZ);
+  const scale = (sizePx - padPx * 2) / span;
+  const offsetX = (sizePx - (maxX - minX) * scale) / 2 - minX * scale;
+  const offsetY = (sizePx - (maxZ - minZ) * scale) / 2 - minZ * scale;
+  return {
+    transform: `translate(${offsetX.toFixed(2)},${offsetY.toFixed(2)}) scale(${scale.toFixed(5)})`,
+    scale,
+  };
+}

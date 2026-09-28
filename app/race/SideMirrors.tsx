@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, type RefObject } from "react";
+import type { CameraMode } from "@/lib/input/useDriveInput";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
@@ -41,10 +42,16 @@ function makeMirrorTarget() {
 export function SideMirrors({
   target,
   enabled,
+  cameraModeRef,
 }: {
   target: RefObject<THREE.Object3D | null>;
   enabled: boolean;
+  /** Mirrors belong to the car: they draw only from the driver's seat
+   * (cockpit/helmet), never over the chase, T-cam or TV views - where they
+   * were also two extra scene renders a frame for nothing. */
+  cameraModeRef?: RefObject<CameraMode>;
 }) {
+  const frameRef = useRef(0);
   const { gl, scene, camera, size } = useThree();
   const rendererRef = useRef(gl);
   const targetRef = useRef(target);
@@ -116,8 +123,14 @@ export function SideMirrors({
       return;
     }
 
-    displayGroup.visible = enabled;
-    if (!enabled) return;
+    const mode = cameraModeRef?.current;
+    const active = enabled && (mode === undefined || mode === "cockpit" || mode === "helmet");
+    displayGroup.visible = active;
+    if (!active) return;
+    // Refresh the mirror images every other frame: two extra scene renders
+    // are the most expensive thing on screen, and a 30Hz mirror reads fine.
+    frameRef.current += 1;
+    if (frameRef.current % 2 === 0) return;
 
     car.getWorldPosition(carPosition);
     car.getWorldQuaternion(carQuaternion);
@@ -210,7 +223,7 @@ export function SideMirrors({
       renderer.autoClear = previousAutoClear;
       renderer.shadowMap.autoUpdate = previousShadowAutoUpdate;
       car.visible = playerWasVisible;
-      displayGroup.visible = enabled;
+      displayGroup.visible = active;
     }
   });
 

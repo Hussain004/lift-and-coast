@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { pushHudEvent, type HudSnapshot } from "@/lib/race/hud";
 import type { RapierRigidBody } from "@react-three/rapier";
 import { netRoom } from "@/lib/net/peer";
 import {
@@ -311,7 +312,7 @@ export function NetClient({
   chassisRef,
   remoteBuffersRef,
   netResultRef,
-  raceResultRef,
+  hudRef,
   playerSlot,
   slotToOpponent,
   goAtRef,
@@ -323,7 +324,8 @@ export function NetClient({
   chassisRef: React.RefObject<RapierRigidBody | null>;
   remoteBuffersRef: React.RefObject<Record<number, TimedSnapshot<RemoteCarFrame>[]>>;
   netResultRef: React.RefObject<NetResultState | null>;
-  raceResultRef?: React.RefObject<HTMLDivElement | null>;
+  /** For the "host left" banner (see lib/race/hud.ts). */
+  hudRef?: React.RefObject<HudSnapshot>;
   /** This guest's grid slot (from the start message, via the URL). */
   playerSlot: number;
   /** Grid slot -> raceRef.opponents index, for feeding remote progress. */
@@ -402,9 +404,7 @@ export function NetClient({
   function declareHostLost(): void {
     if (hostLostRef.current) return;
     hostLostRef.current = true;
-    if (raceResultRef?.current && raceResultRef.current.textContent === "") {
-      raceResultRef.current.textContent = "HOST LEFT THE ROOM — DRIVING ON SOLO";
-    }
+    if (hudRef?.current) pushHudEvent(hudRef.current, "warn", "HOST LEFT THE ROOM", "DRIVING ON SOLO", 5);
     netRoom.leave();
   }
 
@@ -529,9 +529,7 @@ export function NetClient({
             netResultRef.current = { positions: msg.positions, winnerCode: msg.winnerCode };
           }
         } else if (msg.type === "bye") {
-          if (raceResultRef?.current && raceResultRef.current.textContent === "") {
-            raceResultRef.current.textContent = "HOST LEFT THE ROOM";
-          }
+          if (hudRef?.current) pushHudEvent(hudRef.current, "warn", "HOST LEFT THE ROOM", undefined, 5);
           netRoom.leave();
         }
       }),

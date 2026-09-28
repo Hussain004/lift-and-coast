@@ -5,11 +5,6 @@ import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStor
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
-import {
-  MINIMAP_SIZE_PX,
-  buildMinimapPath,
-  computeMinimapTransform,
-} from "@/lib/tracks/minimap";
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
 import { parseWeatherPreset } from "@/lib/physics/weather";
@@ -22,7 +17,6 @@ import { hashSeed, parseGridOrder, randomSeed, shuffledGridOrder } from "@/lib/r
 import { netRoom } from "@/lib/net/peer";
 import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
-import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
 import { RaceOpsPanel } from "./RaceOpsPanel";
 import { TelemetryPanel } from "./TelemetryPanel";
@@ -30,6 +24,15 @@ import { ControlSettingsPanel } from "./ControlSettingsPanel";
 import { applyControls, loadLocalControls, defaultStorage } from "@/lib/settings/controlStorage";
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
+import { createHudSnapshot, type HudSnapshot, type SessionResult } from "@/lib/race/hud";
+import { Tower } from "./hud/Tower";
+import { Notifications, Timing } from "./hud/Timing";
+import { TrackMap } from "./hud/TrackMap";
+import { Mfd } from "./hud/Mfd";
+import { Results } from "./hud/Results";
+import { PauseMenu } from "./hud/PauseMenu";
+import { useHudFrame } from "./hud/useHudFrame";
+import hudStyles from "./hud/hud.module.css";
 
 function TrackLoadingFallback({ loadingTrackName }: { loadingTrackName: string }) {
   return (
@@ -64,21 +67,15 @@ const Scene = dynamic(() => import("./Scene").then((mod) => mod.Scene), {
   loading: () => null,
 });
 
-const MINIMAP_CENTER_PX = MINIMAP_SIZE_PX / 2;
-const MINIMAP_MARKER_POINTS =
-  `${MINIMAP_CENTER_PX},${MINIMAP_CENTER_PX - 8} ` +
-  `${MINIMAP_CENTER_PX - 6},${MINIMAP_CENTER_PX + 6} ` +
-  `${MINIMAP_CENTER_PX + 6},${MINIMAP_CENTER_PX + 6}`;
-
 /**
  * The right-hand HUD column holds exactly one of four panels at a time, so
  * they can never stack on each other or fight the mirror above them. H cycles
  * in this order; 4 jumps straight to telemetry.
  */
-type HudSlot = "controls" | "telemetry" | "ops" | "settings";
+type HudSlot = "none" | "telemetry" | "ops" | "settings";
 
 /** H cycles the right-hand panel in this order. */
-const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["controls", "telemetry", "ops", "settings"];
+const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["none", "ops", "telemetry", "settings"];
 
 export default function RacePage() {
   const isClient = useIsClient();
@@ -289,47 +286,23 @@ function RaceContent() {
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
   const weatherPreset = parseWeatherPreset(searchParams.get("weather"));
-  // Resolved per-render from the selected track - only changes on a URL
-  // change (this page is client-only with no other state), so the build
-  // cost is paid once per session.
-  const minimapPathD = buildMinimapPath(track);
-  // Matches the chassis's own spawn rotation (rotation={[0, startPos.headingRad, 0]}
-  // in Car.tsx) exactly, so there's no visible snap on the first live frame.
-  const initialMinimapTransform = computeMinimapTransform(
-    track.startPos.x,
-    track.startPos.z,
-    track.startPos.headingRad
-  );
-  const speedRef = useRef<HTMLDivElement>(null);
-  const lapRef = useRef<HTMLDivElement>(null);
-  const deltaRef = useRef<HTMLDivElement>(null);
-  const sectorsRef = useRef<HTMLDivElement>(null);
-  const trackLimitRef = useRef<HTMLDivElement>(null);
-  const energyRef = useRef<HTMLDivElement>(null);
-  const aeroModeRef = useRef<HTMLDivElement>(null);
-  const tireRef = useRef<HTMLDivElement>(null);
-  const assistsRef = useRef<HTMLDivElement>(null);
-  const damageRef = useRef<HTMLDivElement>(null);
-  const gearRef = useRef<HTMLDivElement>(null);
-  const rpmRef = useRef<HTMLDivElement>(null);
-  const throttleRef = useRef<HTMLDivElement>(null);
-  const brakeRef = useRef<HTMLDivElement>(null);
-  const steerMarkerRef = useRef<HTMLDivElement>(null);
-  const minimapGroupRef = useRef<SVGGElement>(null);
-  const minimapMarkerRef = useRef<SVGPolygonElement>(null);
-  // One dot element per rival, written by aiIndex (see AICar.tsx) -
-  // callback refs into a shared array, so the count can change without
-  // hook-count violations.
+  // One shared mutable HUD snapshot (see lib/race/hud.ts): Car writes it,
+  // the widgets in ./hud draw it. Recreated on restart, so a fresh grid never
+  // inherits the last session's result or banners.
+  const hudRef = useRef<HudSnapshot>(createHudSnapshot(sessionMode, raceLaps));
+  // One minimap dot element per rival, written by AICar (world metres).
   const aiMarkerEls = useRef<(SVGCircleElement | null)[]>([]);
-  const positionRef = useRef<HTMLDivElement>(null);
-  const raceResultRef = useRef<HTMLDivElement>(null);
-  const towerRef = useRef<HTMLDivElement>(null);
   const countdownRef = useRef<HTMLDivElement>(null);
   const countdownValueRef = useRef<HTMLSpanElement>(null);
-  const qualifyingDisplayRef = useRef<HTMLDivElement>(null);
-  const penaltyToastRef = useRef<HTMLDivElement>(null);
   const muteRef = useRef<HTMLDivElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
+
+  // Dev builds only: the HUD snapshot on window, so a headless browser test
+  // can read the live HUD data and inject a result screen.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __liftHud?: React.RefObject<HudSnapshot> }).__liftHud = hudRef;
+  }, []);
 
   // Apply the player's saved control bindings and steering feel BEFORE the
   // first input is read. useDriveInput resolves keys through the live table
@@ -340,8 +313,6 @@ function RaceContent() {
     const stored = loadLocalControls(defaultStorage());
     if (stored !== null) applyControls(stored);
   }, []);
-  const ersModeRef = useRef<HTMLDivElement>(null);
-  const fuelRef = useRef<HTMLDivElement>(null);
   // Shared with the race audio rig (see app/race/RaceAudioRig.tsx): both
   // cars write their latest telemetry here every render frame, and the rig
   // pumps it into the synth voices - plain mutable data, never React state,
@@ -350,16 +321,16 @@ function RaceContent() {
   const touchInputRef = useRef<TouchDriveInput>(createTouchDriveInput());
   const raceCommandsRef = useRef<RaceOpsCommand[]>([]);
   const raceOpsSnapshotRef = useRef<RaceOpsSnapshot | null>(null);
-  const [paused, setPaused] = useState(false);
+  // The pause menu. Single-player it also pauses physics; online the race
+  // runs on underneath (nobody can stop a shared race).
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Mirrors only ever draw in the cockpit and helmet cameras (see
+  // SideMirrors), so "on" is the right default: the chase views stay clean.
   const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(true);
-  // Race Ops and the controls reference share the same right-hand HUD slot:
-  // whichever is inactive is not rendered, so they can never overlap. H
-  // (or the controls panel's own hint) swaps them.
-  // One shared HUD slot in the right-hand column: the controls reference,
-  // the telemetry overlay and Race Ops are MUTUALLY EXCLUSIVE, so they can
-  // never stack on each other or collide with the right mirror above them.
-  // H cycles through all three; 4 jumps straight to telemetry and back.
-  const [hudSlot, setHudSlot] = useState<HudSlot>("controls");
+  // The optional right-hand panel: Race Ops, live telemetry or control
+  // settings, mutually exclusive, closed by default. H cycles, 4 jumps to
+  // telemetry.
+  const [hudSlot, setHudSlot] = useState<HudSlot>("none");
   const raceOpsOpen = hudSlot === "ops";
   // The telemetry sample lives in a ref the car writes every physics step and
   // the panel reads on its own rAF, so an open overlay costs no React
@@ -369,35 +340,47 @@ function RaceContent() {
   const telemetryOpen = hudSlot === "telemetry";
   const settingsOpen = hudSlot === "settings";
   const cycleHudSlot = useCallback(() => {
-    setHudSlot((current) => {
-      const next = HUD_SLOT_ORDER[(HUD_SLOT_ORDER.indexOf(current) + 1) % HUD_SLOT_ORDER.length];
-      return next;
-    });
+    setHudSlot((current) => HUD_SLOT_ORDER[(HUD_SLOT_ORDER.indexOf(current) + 1) % HUD_SLOT_ORDER.length]);
   }, []);
   const toggleTelemetry = useCallback(() => {
-    setHudSlot((current) => (current === "telemetry" ? "controls" : "telemetry"));
+    setHudSlot((current) => (current === "telemetry" ? "none" : "telemetry"));
   }, []);
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
-  const togglePaused = useCallback(() => setPaused((value) => !value), []);
+  const [result, setResult] = useState<SessionResult | null>(null);
+  const [restartCount, setRestartCount] = useState(0);
+  const toggleMenu = useCallback(() => setMenuOpen((value) => !value), []);
   const toggleSideMirrors = useCallback(() => {
     setSideMirrorsEnabled((value) => !value);
   }, []);
   const toggleRaceOps = useCallback(
-    () => setHudSlot((current) => (current === "ops" ? "controls" : "ops")),
+    () => setHudSlot((current) => (current === "ops" ? "none" : "ops")),
     []
   );
+  const restart = () => {
+    // A new scene key remounts the whole Scene (Rapier world included) -
+    // the same clean slate a reload gives, without re-downloading anything.
+    hudRef.current = createHudSnapshot(sessionMode, raceLaps);
+    setResult(null);
+    setMenuOpen(false);
+    setRestartCount((n) => n + 1);
+  };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      if (event.code === "Escape") {
+        event.preventDefault();
+        if (!result) toggleMenu();
+        return;
+      }
       if (event.code === "KeyN") toggleSideMirrors();
       if (event.code === "KeyH") {
         event.preventDefault();
         cycleHudSlot();
       }
       // Digit 4, not a letter: every one of the 26 letters is already bound
-      // (see the ControlsPanel list) and 1-3 are the tyre compounds.
+      // and 1-3 are the tyre compounds.
       if (event.code === "Digit4") {
         event.preventDefault();
         toggleTelemetry();
@@ -405,7 +388,7 @@ function RaceContent() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cycleHudSlot, toggleSideMirrors, toggleTelemetry]);
+  }, [cycleHudSlot, toggleSideMirrors, toggleTelemetry, toggleMenu, result]);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
@@ -414,190 +397,110 @@ function RaceContent() {
   // identities, hidden reference times). Keep those inputs in the remount
   // key so a same-sized client navigation cannot reuse stale classification.
   const rosterKey = `${driver.code}/${driver.name}/${team.id}/${rivals.map((rival) => rival.code).join(",")}`;
-  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
+  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}-r${restartCount}`;
   const sceneReady = readySceneKey === sceneKey;
   const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
+  const sessionLabel =
+    timeAttack
+      ? "TIME ATTACK"
+      : sessionMode === "race"
+        ? `RACE · ${raceLaps} LAPS`
+        : sessionMode === "qualifying"
+          ? "QUALIFYING"
+          : `PRACTICE · ${raceLaps} LAPS`;
 
   return (
     <div className={styles.wrap}>
       <div className={styles.gameStage}>
         <Scene
-        key={sceneKey}
-        track={track}
-        playerBodyColor={team.primaryColor}
-        playerAccentColor={team.secondaryColor}
-        rivals={rivals}
-        playerCode={driver.code}
-        playerName={driver.name}
-        playerNumber={driver.number}
-        playerTeamId={team.id}
-        speedRef={speedRef}
-        lapRef={lapRef}
-        deltaRef={deltaRef}
-        sectorsRef={sectorsRef}
-        trackLimitRef={trackLimitRef}
-        energyRef={energyRef}
-        aeroModeRef={aeroModeRef}
-        tireRef={tireRef}
-        assistsRef={assistsRef}
-        damageRef={damageRef}
-        gearRef={gearRef}
-        rpmRef={rpmRef}
-         throttleRef={throttleRef}
-         brakeRef={brakeRef}
-         steerMarkerRef={steerMarkerRef}
-        minimapGroupRef={minimapGroupRef}
-        minimapMarkerRef={minimapMarkerRef}
-        aiMarkerEls={aiMarkerEls}
-        positionRef={positionRef}
-        raceResultRef={raceResultRef}
-        towerRef={towerRef}
-        raceLaps={raceLaps}
-        champRound={champRound}
-        sessionMode={sessionMode}
-        qualiFormat={format}
-        timeAttack={timeAttack}
-        netRole={netActive && netValid ? netRole : null}
-        netHumanSlots={(netActive && netValid ? (roomState?.members ?? []) : []).map((_, index) => index)}
-        countdownGoAtMs={countdownGoAtMs}
-        playerGridSpot={playerGridSpot}
-        difficulty={difficulty}
-        carSetup={carSetup}
-        countdownRef={countdownRef}
-        countdownValueRef={countdownValueRef}
-        qualifyingDisplayRef={qualifyingDisplayRef}
-        penaltyToastRef={penaltyToastRef}
-        ersModeRef={ersModeRef}
-        fuelRef={fuelRef}
-        audioRef={audioRef}
-        touchInputRef={touchInputRef}
-        timeOfDay={timeOfDay}
-        paused={singlePlayer ? paused : false}
-        onPauseToggle={singlePlayer ? togglePaused : undefined}
-        onReady={handleSceneReady}
-        weatherPreset={weatherPreset}
-        raceCommandsRef={raceCommandsRef}
-        raceOpsSnapshotRef={raceOpsSnapshotRef}
-        telemetryRef={telemetryOpen ? telemetryRef : undefined}
-        perfRef={perfRef}
-        sideMirrorsEnabled={sideMirrorsEnabled}
-      />
-      {!sceneReady && <TrackLoadingFallback loadingTrackName={trackName} />}
-      <div className={styles.raceDataStrip}>
-        <div ref={lapRef} className={styles.raceDataLap}>LAP 1</div>
-        {!qualifyingSession && <div ref={positionRef} className={styles.raceDataPosition}>P1</div>}
-        <div ref={deltaRef} className={styles.delta} />
-        <div ref={sectorsRef} className={styles.sectors} />
-        {/* The only mode with no way off the track. A race and a qualifying
-            session both end, and ending is what puts the MENU link on screen
-            (see the result banner in Car.tsx) - a time attack is deliberately
-            open-ended, so without this there is no visible way back at all.
-            Scoped to the time attack so the race HUD is untouched. The strip
-            is pointer-events:none, so the link opts back in. */}
-        {timeAttack && (
-          <Link className={styles.raceDataHome} href="/#time-attack">
-            &larr; Your times
-          </Link>
-        )}
-      </div>
-      <div className={styles.perf} ref={perfRef} aria-live="off" />
-      <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
-      <RaceOpsPanel
-        commandRef={raceCommandsRef}
-        snapshotRef={raceOpsSnapshotRef}
-        open={raceOpsOpen}
-        onToggle={toggleRaceOps}
-      />
-      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}
-      {settingsOpen && <ControlSettingsPanel />}
-      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
-          rewrites the rows ~10Hz (see renderTowerHtml), while this static
-          first-paint version keeps the grid populated before lights out. */}
-      {!qualifyingSession && (
-      <div className={styles.tower}>
-        <div className={styles.towerEvent}>{trackName}</div>
-        <div className={styles.towerColumns} aria-hidden="true">
-          <span>POS</span>
-          <span>DRIVER</span>
-          <span>INT</span>
-          <span>GAP</span>
+          key={sceneKey}
+          track={track}
+          playerBodyColor={team.primaryColor}
+          playerAccentColor={team.secondaryColor}
+          rivals={rivals}
+          playerCode={driver.code}
+          playerName={driver.name}
+          playerNumber={driver.number}
+          playerTeamId={team.id}
+          hudRef={hudRef}
+          aiMarkerEls={aiMarkerEls}
+          raceLaps={raceLaps}
+          champRound={champRound}
+          sessionMode={sessionMode}
+          qualiFormat={format}
+          timeAttack={timeAttack}
+          netRole={netActive && netValid ? netRole : null}
+          netHumanSlots={(netActive && netValid ? (roomState?.members ?? []) : []).map((_, index) => index)}
+          countdownGoAtMs={countdownGoAtMs}
+          playerGridSpot={playerGridSpot}
+          difficulty={difficulty}
+          carSetup={carSetup}
+          countdownRef={countdownRef}
+          countdownValueRef={countdownValueRef}
+          audioRef={audioRef}
+          touchInputRef={touchInputRef}
+          timeOfDay={timeOfDay}
+          paused={singlePlayer ? menuOpen || result !== null : false}
+          onPauseToggle={singlePlayer ? toggleMenu : undefined}
+          onReady={handleSceneReady}
+          weatherPreset={weatherPreset}
+          raceCommandsRef={raceCommandsRef}
+          raceOpsSnapshotRef={raceOpsSnapshotRef}
+          telemetryRef={telemetryOpen ? telemetryRef : undefined}
+          perfRef={perfRef}
+          sideMirrorsEnabled={sideMirrorsEnabled}
+        />
+        {!sceneReady && <TrackLoadingFallback loadingTrackName={trackName} />}
+        <div className={hudStyles.hud}>
+          {!qualifyingSession && (
+            <Tower hudRef={hudRef} trackName={trackName} initialRows={initialTowerRows} />
+          )}
+          <Timing hudRef={hudRef} />
+          <Notifications hudRef={hudRef} />
+          <TrackMap
+            hudRef={hudRef}
+            track={track}
+            rivals={rivals}
+            aiMarkerEls={aiMarkerEls}
+            playerColor={team.primaryColor}
+            showRivals={!qualifyingSession}
+          />
+          <Mfd hudRef={hudRef} />
+          <div className={hudStyles.muteChip} ref={muteRef} />
+          {/* The only mode with no natural end, so it keeps a visible way
+              back to the board (a race or qualifying ends on the results
+              screen, which has its own). */}
+          {timeAttack && (
+            <Link className={hudStyles.backLink} href="/#time-attack">
+              &larr; YOUR TIMES
+            </Link>
+          )}
         </div>
-        <div className={styles.towerRows} ref={towerRef}>
-          {initialTowerRows.map((row) => (
-            <div
-              className={`tower-row${row.isPlayer ? " tower-row-you" : ""}`}
-              key={row.code}
-              data-code={row.code}
-            >
-              <span className="tower-pos">P{row.grid}</span>
-              <span className="tower-driver">
-                <span className="code-chip" style={{ background: row.color }}>
-                  {row.code}
-                </span>
-              </span>
-              <span className="tower-interval">—</span>
-              <span className="tower-gap">GRID</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      )}
-      {/* F1-style broadcast telemetry: a compact carbon strip with the
-          gear and speed hierarchy first, then driver inputs and car state. */}
-      <div className={styles.bottomBar}>
-        <div className={styles.hudTopLine} />
-        <div className={styles.gearCluster}>
-          <span className={styles.clusterLabel}>GEAR</span>
-          <div className={styles.gear} ref={gearRef}>1</div>
-        </div>
-        <div className={styles.speedCluster}>
-          <div className={styles.speedReadout}>
-            <div className={styles.speed} ref={speedRef}>0</div>
-            <span className={styles.speedUnit}>KM/H</span>
-          </div>
-          <div className={styles.rpmStack}>
-            <div className={styles.barLabel}><span>RPM</span><span>POWER UNIT</span></div>
-            <div className={styles.rpmTrack}>
-              <div className={styles.rpmFill} ref={rpmRef} />
-            </div>
-            <div className={styles.energyTrack}>
-              <div className={styles.energyFill} ref={energyRef} />
-            </div>
-            <div className={styles.barLabel}><span>ERS</span><span>DEPLOYMENT</span></div>
-          </div>
-        </div>
-        <div className={styles.inputCluster}>
-          <div className={styles.pedalRow}><span>THR</span><div className={styles.pedalTrack}><div className={styles.pedalFillThrottle} ref={throttleRef} /></div></div>
-          <div className={styles.pedalRow}><span>BRK</span><div className={styles.pedalTrack}><div className={styles.pedalFillBrake} ref={brakeRef} /></div></div>
-          <div className={styles.steerRow}><span>STR</span><div className={styles.steerTrack}><div className={styles.steerMarker} ref={steerMarkerRef} /></div></div>
-        </div>
-        <div className={styles.hudStatus}>
-          <div className={styles.statusCard}><span>TYRE</span><div className={styles.tire} ref={tireRef} /></div>
-          <div className={styles.statusCard}><span>AERO</span><div className={styles.aeroMode} ref={aeroModeRef} /></div>
-          <div className={styles.statusCard}><span>ERS</span><div className={styles.ersMode} ref={ersModeRef} /></div>
-          <div className={styles.statusCard}><span>FUEL</span><div className={styles.fuel} ref={fuelRef} /></div>
-          <div className={`${styles.statusCard} ${styles.assistsCard}`}><span>ASSISTS</span><div className={styles.assists} ref={assistsRef} /></div>
-          <div className={styles.statusFooter}><span className={styles.damage} ref={damageRef} /><span className={styles.mute} ref={muteRef} /></div>
-        </div>
-      </div>
-      <div className={styles.raceResult} ref={raceResultRef} />
-      <div className={styles.qualifying} ref={qualifyingDisplayRef} />
-      {sceneReady && (
-        <div
-          className={styles.startSequence}
-          ref={countdownRef}
-          data-active="true"
-          data-phase="waiting"
-          data-value="3"
-        >
-          <div className={styles.startSequencePanel}>
-            <div className={styles.startSequenceHeader}>
-              <span>LIGHTS OUT</span>
-              <span>{trackName}</span>
-            </div>
+        <ResultWatcher hudRef={hudRef} onResult={setResult} />
+        <div className={styles.perf} ref={perfRef} aria-live="off" />
+        <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
+        <RaceOpsPanel
+          commandRef={raceCommandsRef}
+          snapshotRef={raceOpsSnapshotRef}
+          open={raceOpsOpen}
+          onToggle={toggleRaceOps}
+        />
+        {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}
+        {settingsOpen && <ControlSettingsPanel />}
+        {sceneReady && (
+          <div
+            className={styles.startSequence}
+            ref={countdownRef}
+            data-active="true"
+            data-phase="waiting"
+            data-value="3"
+          >
             <div className={styles.startLights} aria-hidden="true">
               {Array.from({ length: 5 }, (_, index) => (
-                <span className={styles.startLight} key={index} />
+                <span className={styles.startLight} key={index}>
+                  <i />
+                  <i />
+                </span>
               ))}
             </div>
             <span
@@ -607,79 +510,51 @@ function RaceContent() {
               aria-atomic="true"
             />
             <div className={styles.startSequenceFooter}>
-              <span>GRID START</span>
-              <span className={styles.startSignal} aria-hidden="true" />
-              <span>FULL THROTTLE ON GO</span>
+              P{playerGridSpot} ON THE GRID · {sessionLabel}
             </div>
           </div>
-        </div>
-      )}
-      <div className={styles.trackLimit} ref={trackLimitRef} />
-      <div className={styles.penaltyToast} ref={penaltyToastRef} />
-      {/* Bottom-right map block. It is a sibling of the telemetry bottomBar,
-          and its right offset is a CSS variable so both stay side by side:
-          the map block owns the right edge, the bar owns everything left of
-          it (see .minimap / .bottomBar in race.module.css). */}
-      <div className={styles.minimapBlock}>
-        <span className={styles.minimapLabel}>MAP</span>
-        <svg
-          className={styles.minimap}
-          width={MINIMAP_SIZE_PX}
-          height={MINIMAP_SIZE_PX}
-          viewBox={`0 0 ${MINIMAP_SIZE_PX} ${MINIMAP_SIZE_PX}`}
-        >
-          <g ref={minimapGroupRef} transform={initialMinimapTransform}>
-            <path d={minimapPathD} fill="none" stroke="#fff" strokeWidth={2.5} />
-            <circle cx={track.startPos.x} cy={track.startPos.z} r={3} fill="#ffd23f" />
-            {/* One dot per rival, written by aiIndex (see AICar.tsx) - plain
-                world-space dots inside the same rotating group as the track
-                path, so they inherit the egocentric transform for free. */}
-            {!qualifyingSession && rivals.map((rival, k) => (
-              <circle
-                key={rival.code}
-                ref={(el) => {
-                  aiMarkerEls.current[k] = el;
-                }}
-                cx={track.startPos.x}
-                cy={track.startPos.z}
-                r={5}
-                fill={rival.color}
-              />
-            ))}
-          </g>
-          {/* Fixed at the box center, always pointing up - the world rotates
-              around this marker instead of the marker rotating, so there's no
-              heading-arrow rotation math to get backwards. */}
-          <polygon ref={minimapMarkerRef} points={MINIMAP_MARKER_POINTS} fill={team.primaryColor} />
-        </svg>
-      </div>
-      <ControlsPanel
-        sideMirrorsEnabled={sideMirrorsEnabled}
-        onToggleSideMirrors={toggleSideMirrors}
-        hidden={raceOpsOpen || telemetryOpen || settingsOpen}
-        onCycleSlot={cycleHudSlot}
-      />
+        )}
       </div>
       <MobileControls
         inputRef={touchInputRef}
-        disabled={singlePlayer && paused}
-        onPause={singlePlayer ? togglePaused : undefined}
+        disabled={singlePlayer && menuOpen}
+        onPause={toggleMenu}
         onReplay={toggleMobileReplay}
         onToggleSideMirrors={toggleSideMirrors}
         sideMirrorsEnabled={sideMirrorsEnabled}
       />
-      {singlePlayer && paused && (
-        <div className={styles.pauseOverlay} role="dialog" aria-label="Game paused">
-          <div className={styles.pauseCard}>
-            <strong>PAUSED</strong>
-            <span>Press P or tap below to resume</span>
-            <button type="button" onClick={togglePaused}>RESUME</button>
-          </div>
-        </div>
+      {menuOpen && !result && (
+        <PauseMenu
+          trackName={track.name}
+          sessionLabel={sessionLabel}
+          online={!singlePlayer}
+          onResume={toggleMenu}
+          onRestart={restart}
+        />
       )}
+      {result && <Results result={result} trackName={track.name.toUpperCase()} onRestart={restart} />}
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />
     </div>
   );
+}
+
+/** Lifts the session result out of the HUD snapshot into React state, once. */
+function ResultWatcher({
+  hudRef,
+  onResult,
+}: {
+  hudRef: React.RefObject<HudSnapshot>;
+  onResult: (result: SessionResult) => void;
+}) {
+  const sentRef = useRef<SessionResult | null>(null);
+  useHudFrame(() => {
+    const result = hudRef.current.result;
+    if (result && result !== sentRef.current) {
+      sentRef.current = result;
+      onResult(result);
+    }
+  }, 5);
+  return null;
 }

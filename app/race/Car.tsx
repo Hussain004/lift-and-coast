@@ -68,9 +68,11 @@ import { DEFAULT_TEAM_ID } from "@/lib/race/rosterData";
 import { TRACKS } from "@/lib/tracks/registry";
 import type { CarPose } from "@/lib/net/snapshots";
 import { gridSlot } from "@/lib/race/grid";
-import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
+import { createDeltaTracker } from "@/lib/race/deltaTimer";
+import { pushHudEvent, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
+import { classifyRace, createFinishTracker, updateFinishTracker } from "@/lib/race/classification";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
-import { createSectorTimer, type SectorCrossing, type SectorColor } from "@/lib/race/sectorTimer";
+import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
 import {
   createTrackLimitSequence,
   resetTrackLimitLap,
@@ -79,7 +81,7 @@ import {
   trackLimitStageLabel,
   updateTrackLimitSequence,
 } from "@/lib/race/trackLimitSequence";
-import { computeRacePositions, buildTowerEntries, renderTowerHtml, towerOpponents, type RaceState } from "@/lib/race/racePosition";
+import { computeRacePositions, buildTowerEntries, towerOpponents, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, isQualifyingLapValid, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
@@ -92,7 +94,6 @@ import {
 } from "@/lib/tracks/trackLimits";
 import { sampleWheelSurfaces } from "@/lib/tracks/surfaces";
 import { computeSectorGates } from "@/lib/tracks/sectors";
-import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
 import { createStrategySystem } from "@/lib/race/strategy";
 import { createReplayController, REPLAY_CAPACITY_SECONDS, type SharedReplay, type TelemetryFrame } from "@/lib/race/replay";
@@ -110,95 +111,42 @@ import { FLAP_OPEN_RAD, steeringWheelAngle, stepFlapAngle } from "@/lib/race/car
 
 const SECTOR_COUNT = 3;
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function qualifyingColor(value: string | undefined): string {
   return value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#7d8795";
 }
 
-function qualifyingGap(seconds: number): string {
-  return `${seconds >= 0 ? "+" : ""}${seconds.toFixed(3)}`;
-}
-
-function renderQualifyingResultHtml({
+/** The qualifying classification for the results screen: every car's best,
+ * with gaps to the player's lap when they set one, else to pole. */
+function qualifyingRows({
   times,
   playerCode,
   playerName,
   playerColor,
   rivals,
-  playerPosition,
-  raceHref,
-  champRound,
 }: {
   times: QualifyingTimes;
   playerCode: string;
   playerName: string;
   playerColor: string;
   rivals: readonly TowerDriver[];
-  playerPosition: number;
-  raceHref: string;
-  champRound: number | null;
-}): string {
-  const board = qualifyingLeaderboard(
+}): QualifyingRow[] {
+  const rivalByCode = new Map(rivals.map((rival) => [rival.code, rival]));
+  return qualifyingLeaderboard(
     times,
     playerCode,
     rivals.map((rival) => rival.code)
-  );
-  const playerEntry = board.find((entry) => entry.isPlayer);
-  const playerTime = times.player;
-  const playerGap = playerEntry?.gapToLeaderSeconds ?? null;
-  const summaryGap =
-    playerTime === null
-      ? "NO VALID LAP"
-      : playerGap === null
-        ? "NO COMPARISON"
-        : playerGap === 0
-          ? "POLE"
-          : `${qualifyingGap(playerGap)} TO POLE`;
-  const rivalByCode = new Map(rivals.map((rival) => [rival.code, rival]));
-  const rows = board
-    .map((entry) => {
-      const rival = entry.isPlayer ? null : rivalByCode.get(entry.code);
-      const code = entry.isPlayer ? playerCode : entry.code;
-      const name = entry.isPlayer ? playerName : rival?.name ?? entry.code;
-      const color = qualifyingColor(entry.isPlayer ? playerColor : rival?.color);
-      const gapSeconds =
-        playerTime === null ? entry.gapToLeaderSeconds : entry.gapToPlayerSeconds;
-      const gap = entry.isPlayer
-        ? "YOU"
-        : gapSeconds === null
-          ? "—"
-          : qualifyingGap(gapSeconds);
-      return (
-        `<div class="qualifying-board-row${entry.isPlayer ? " qualifying-board-row-you" : ""}">` +
-        `<span class="qualifying-board-pos">P${entry.position}</span>` +
-        `<span class="qualifying-board-driver"><span class="qualifying-board-code" style="background:${color}">${escapeHtml(code)}</span>` +
-        `<span class="qualifying-board-name">${escapeHtml(name)}</span></span>` +
-        `<span class="qualifying-board-time">${formatLapTime(entry.time)}</span>` +
-        `<span class="qualifying-board-gap">${escapeHtml(gap)}</span></div>`
-      );
-    })
-    .join("");
-  const actionLabel = champRound === null ? "START RACE" : `START ROUND ${champRound + 1}`;
-  const gapTitle = playerTime === null ? "GAP TO LEADER" : "GAP TO YOU";
-  return (
-    `<section class="qualifying-result" aria-label="Qualifying result">` +
-    `<div class="qualifying-result-kicker">QUALIFYING COMPLETE</div>` +
-    `<div class="qualifying-result-summary"><strong>P${playerPosition}</strong>` +
-    `<span>YOU  ${playerTime === null ? "NO VALID LAP" : formatLapTime(playerTime)}</span>` +
-    `<span>${escapeHtml(summaryGap)}</span></div>` +
-    `<div class="qualifying-result-title">AI REFERENCE LAPS  <small>${gapTitle}</small></div>` +
-    `<div class="qualifying-result-rows">${rows}</div>` +
-    `<div class="qualifying-result-actions"><a href="${escapeHtml(raceHref)}">${actionLabel} FROM P${playerPosition}</a>` +
-    `<a href="/">MENU</a></div></section>`
-  );
+  ).map((entry) => {
+    const rival = entry.isPlayer ? null : rivalByCode.get(entry.code);
+    return {
+      position: entry.position,
+      code: entry.isPlayer ? playerCode : entry.code,
+      name: entry.isPlayer ? playerName : (rival?.name ?? null),
+      color: qualifyingColor(entry.isPlayer ? playerColor : rival?.color),
+      isPlayer: entry.isPlayer,
+      time: entry.time,
+      gap: times.player === null ? entry.gapToLeaderSeconds : entry.gapToPlayerSeconds,
+    };
+  });
 }
 
 // Plan section 7 (Grand Prix mode): a Quick Race is N laps against the one
@@ -212,7 +160,8 @@ function renderQualifyingResultHtml({
 // best AND runs a Quick Race at once - so both consequences apply
 // independently off the same violation rather than one suppressing the
 // other (see the ponytail note at the call site for what this doesn't do).
-const PENALTY_TOAST_DURATION_SECONDS = 2.5;
+/** Cool-down between the player taking the flag and the results screen. */
+const RESULTS_DELAY_SECONDS = 4;
 /**
  * The circuits a time-attack lap may be filed under, for the submission gate.
  * Module scope so it is built once rather than on every saved lap. The registry
@@ -220,11 +169,6 @@ const PENALTY_TOAST_DURATION_SECONDS = 2.5;
  * the race page does not already carry.
  */
 const TIME_ATTACK_TRACK_IDS: ReadonlySet<string> = new Set(TRACKS.map((t) => t.id));
-const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
-  purple: "#b967ff",
-  green: "#39ff88",
-  yellow: "#ffd23f",
-};
 
 export function Car({
   /**
@@ -236,27 +180,8 @@ export function Car({
   visualRef,
   cameraModeRef,
   racingLineVisibleRef,
-  speedRef,
-  lapRef,
-  deltaRef,
-  sectorsRef,
-  trackLimitRef,
-  energyRef,
-  aeroModeRef,
-  tireRef,
-  assistsRef,
-  damageRef,
-  gearRef,
-  rpmRef,
-  throttleRef,
-  brakeRef,
-  steerMarkerRef,
-  minimapGroupRef,
-  minimapMarkerRef,
-  positionRef,
-  raceResultRef,
-  towerRef,
   raceRef,
+  hudRef,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
   sessionMode = "race",
@@ -280,10 +205,6 @@ export function Car({
   sharedReplayRef,
   touchInputRef,
   qualifyingRef,
-  qualifyingDisplayRef,
-  penaltyToastRef,
-  ersModeHudRef,
-  fuelRef,
   track,
   bodyColor = "#39ff88",
   accentColor,
@@ -315,27 +236,6 @@ export function Car({
   cameraModeRef?: React.RefObject<CameraMode>;
   /** Shared with Track.tsx's racing line overlay - same sharing reason as cameraModeRef. */
   racingLineVisibleRef?: React.RefObject<boolean>;
-  speedRef?: React.RefObject<HTMLDivElement | null>;
-  lapRef?: React.RefObject<HTMLDivElement | null>;
-  deltaRef?: React.RefObject<HTMLDivElement | null>;
-  sectorsRef?: React.RefObject<HTMLDivElement | null>;
-  trackLimitRef?: React.RefObject<HTMLDivElement | null>;
-  energyRef?: React.RefObject<HTMLDivElement | null>;
-  aeroModeRef?: React.RefObject<HTMLDivElement | null>;
-  tireRef?: React.RefObject<HTMLDivElement | null>;
-  assistsRef?: React.RefObject<HTMLDivElement | null>;
-  damageRef?: React.RefObject<HTMLDivElement | null>;
-  gearRef?: React.RefObject<HTMLDivElement | null>;
-  rpmRef?: React.RefObject<HTMLDivElement | null>;
-  throttleRef?: React.RefObject<HTMLDivElement | null>;
-  brakeRef?: React.RefObject<HTMLDivElement | null>;
-  steerMarkerRef?: React.RefObject<HTMLDivElement | null>;
-  minimapGroupRef?: React.RefObject<SVGGElement | null>;
-  minimapMarkerRef?: React.RefObject<SVGPolygonElement | null>;
-  positionRef?: React.RefObject<HTMLDivElement | null>;
-  raceResultRef?: React.RefObject<HTMLDivElement | null>;
-  /** F1 timing tower body (see page.tsx) - Car rewrites its rows ~10Hz. */
-  towerRef?: React.RefObject<HTMLDivElement | null>;
   /**
    * Shared with AICar.tsx (created in Scene.tsx) - each car writes its own
    * lap/progress into its own slot of this plain mutable object every
@@ -343,6 +243,8 @@ export function Car({
    * position without either car needing a ref to the other's internals.
    */
   raceRef?: React.RefObject<RaceState>;
+  /** The HUD's data (see lib/race/hud.ts): written here, drawn by app/race/hud/. */
+  hudRef?: React.RefObject<HudSnapshot>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /**
@@ -433,13 +335,6 @@ export function Car({
   touchInputRef?: React.RefObject<TouchDriveInput | null>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
-  qualifyingDisplayRef?: React.RefObject<HTMLDivElement | null>;
-  /** Live "+Ns PENALTY" flash for the race-mode track-limit penalty below. */
-  penaltyToastRef?: React.RefObject<HTMLDivElement | null>;
-  /** Live ERS deployment-mode readout (harvest / balanced / attack). */
-  ersModeHudRef?: React.RefObject<HTMLDivElement | null>;
-  /** Live fuel readout in kg. */
-  fuelRef?: React.RefObject<HTMLDivElement | null>;
   track: TrackData;
   /** Garage pick (see lib/race/roster.ts) - the team's primary livery. */
   bodyColor?: string;
@@ -514,10 +409,14 @@ export function Car({
   // Tower repaint throttle: rows rebuild at a real ~10Hz. A frame counter
   // would run faster on a 144Hz display, so keep an elapsed-time clock.
   const towerClockRef = useRef(0);
+  // Race finish (see lib/race/classification.ts): the race clock without
+  // penalties, the per-car flag state, and when the results go up.
+  const raceClockRef = useRef(0);
+  const finishTrackerRef = useRef(createFinishTracker(rivals.length + 1));
+  const resultsAtClockRef = useRef<number | null>(null);
   // Race clock timestamp (not lap-relative currentLapSeconds, which resets
   // every lap and could strand the toast if a penalty lands late in a lap)
   // to hide the penalty toast at.
-  const penaltyToastHideAtRef = useRef<number | null>(null);
   const qualifyingDisplayedRef = useRef(false);
   const bestLapRef = useRef<number | null>(null);
   // Time attack: the signed-in player, read from storage once. The race route
@@ -679,24 +578,6 @@ export function Car({
   const startRotationRef = useRef(
     new THREE.Quaternion().setFromEuler(new THREE.Euler(0, gridSpot.headingRad, 0))
   );
-
-  useEffect(() => {
-    // A full page reload rather than resetting each of this component's
-    // (and AICar's, and the grid-start countdown's) many lap/race-scoped
-    // refs by hand - this project has no menu/results state machine to
-    // return to yet (see the finish-banner comment below), and a manual
-    // reset would need every one of those refs kept in perfect sync
-    // forever as new race-scoped state gets added. Reloading the exact
-    // current URL re-mounts everything from scratch (Rapier world
-    // included) and keeps any ?laps= param for free.
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Enter" && raceFinishedRef.current) {
-        window.location.reload();
-      }
-    }
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, []);
 
   useEffect(() => {
     const body = chassisRef.current;
@@ -1318,15 +1199,98 @@ export function Car({
     }
   });
 
+  /**
+   * The chequered flag and the classification (see
+   * lib/race/classification.ts): the flag falls when the LEADER completes the
+   * distance, whoever that is, and every car is classified at its next
+   * crossing. The results go up a few seconds after the player takes the
+   * flag - a short cool-down, the way a broadcast holds on the finish.
+   */
+  function updateRaceFinish(playerLaps: number, dt: number) {
+    const hud = hudRef?.current;
+    const race = raceRef?.current;
+    if (!hud || !race) return;
+    raceClockRef.current += dt;
+    const opponentLaps = rivals.map((_, k) => Math.max(0, race.opponents[k]?.lapCount ?? 0));
+    const tracker = finishTrackerRef.current;
+    const update = updateFinishTracker(tracker, [playerLaps, ...opponentLaps], raceLaps, raceClockRef.current);
+    if (update.finalLapNow) pushHudEvent(hud, "flag", "FINAL LAP", undefined, 2.4);
+    if (update.chequeredNow) {
+      hud.chequered = true;
+      const winner = update.finishedNow[0];
+      pushHudEvent(
+        hud,
+        "flag",
+        "CHEQUERED FLAG",
+        winner === 0 ? "YOU WIN" : winner !== undefined ? `${rivals[winner - 1]?.code ?? ""} WINS` : undefined,
+        3.5
+      );
+    }
+    if (update.finishedNow.includes(0) && !raceFinishedRef.current) {
+      raceFinishedRef.current = true;
+      resultsAtClockRef.current = raceClockRef.current + RESULTS_DELAY_SECONDS;
+    }
+    if (resultsAtClockRef.current === null || raceClockRef.current < resultsAtClockRef.current) return;
+
+    const control = effectiveRaceControlRef.current.snapshot();
+    const live = computeRacePositions([race.player, ...race.opponents], track.lengthMeters);
+    const rows = classifyRace(
+      [
+        {
+          code: playerCode,
+          name: playerName,
+          teamId: playerTeamId ?? null,
+          color: bodyColor,
+          isPlayer: true,
+          laps: playerLaps,
+          livePosition: live[0],
+          bestLapSeconds: bestLapRef.current,
+          penaltySeconds: control.penaltySeconds,
+        },
+        ...rivals.map((rival, k) => ({
+          code: rival.code,
+          name: rival.name ?? null,
+          teamId: rival.teamId ?? null,
+          color: rival.color,
+          isPlayer: false,
+          laps: opponentLaps[k],
+          livePosition: live[k + 1] ?? k + 2,
+          bestLapSeconds: race.opponents[k]?.bestLapSeconds ?? null,
+          penaltySeconds: 0,
+        })),
+      ],
+      tracker
+    );
+    const classified = rows.find((row) => row.isPlayer)?.position ?? live[0];
+    // Net rooms: the host's broadcast order is the result (see
+    // netResultRef) - every guest shows the same position, and nobody scores
+    // a championship round from an exhibition. Slot-keyed, so shared driver
+    // codes can't collide.
+    const netPositions = netActive ? netResultRef?.current?.positions ?? null : null;
+    const shown = netPositions?.[String(netSlot)] ?? classified;
+    const scoredRound = champRound !== null && !netActive ? champRound : null;
+    if (scoredRound !== null) {
+      // Fire-and-forget: the standings panel reads it back on the way home.
+      recordChampionshipResult(scoredRound, classified).catch(() => {});
+    }
+    hud.result = {
+      kind: "race",
+      position: shown,
+      laps: raceLaps,
+      rows,
+      penaltySeconds: control.penaltySeconds,
+      disqualified: control.disqualified,
+      champRound: scoredRound,
+      points: pointsForPosition(classified),
+    };
+  }
+
   function renderSectors() {
-    if (!sectorsRef?.current) return;
-    sectorsRef.current.innerHTML = sectorResultsRef.current
-      .map((s, i) =>
-        s
-          ? `<span style="color:${SECTOR_COLOR_HEX[s.color]}">S${i + 1} ${s.sectorSeconds.toFixed(3)}</span>`
-          : `<span>S${i + 1} --.---</span>`
-      )
-      .join("");
+    const hud = hudRef?.current;
+    if (!hud) return;
+    hud.sectors = sectorResultsRef.current.map((sector) =>
+      sector ? { seconds: sector.sectorSeconds, color: sector.color } : null
+    );
   }
 
   useFrame((_, dt) => {
@@ -1369,18 +1333,6 @@ export function Car({
         spinGroup.rotation.x = controller.wheelRotation(i) ?? 0;
       }
     });
-    if (speedRef?.current) {
-      const kmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
-      speedRef.current.textContent = `${Math.round(kmh)}`;
-    }
-    if (energyRef?.current) {
-      energyRef.current.style.width = `${(batteryFractionRef.current * 100).toFixed(1)}%`;
-    }
-    if (aeroModeRef?.current) {
-      aeroModeRef.current.textContent =
-        (aeroMode.current === "low-drag" ? "LOW DRAG" : "HIGH DOWNFORCE") +
-        (overtakeStateRef.current.active ? " · OVERTAKE" : "");
-    }
     // Active-aero flap (plan section 5): the rear-wing top element rotates
     // open in low-drag mode and shut otherwise, rate-limited like a real
     // actuator rather than snapping.
@@ -1388,56 +1340,44 @@ export function Car({
       const target = aeroMode.current === "low-drag" ? FLAP_OPEN_RAD : 0;
       flapRef.current.rotation.x = stepFlapAngle(flapRef.current.rotation.x, target, dt);
     }
-    if (tireRef?.current) {
-      const gripPercent = Math.round(
-        strategyStateRef.current.compoundGripMultiplier * weatherStateRef.current.gripMultiplier * 100
-      );
-      tireRef.current.textContent = `${strategyStateRef.current.compound.toUpperCase()} ${gripPercent}%`;
-    }
-    if (ersModeHudRef?.current) {
-      ersModeHudRef.current.textContent = energyStatusRef.current.mode.toUpperCase();
-    }
-    if (fuelRef?.current) {
-      fuelRef.current.textContent = `${strategyStateRef.current.fuelKg.toFixed(0)}kg`;
-    }
-    if (assistsRef?.current) {
-      assistsRef.current.textContent =
-        `TC ${tractionControlEnabled.current ? "ON" : "OFF"}` +
-        `  ABS ${absEnabled.current ? "ON" : "OFF"}` +
-        `  GEARS ${autoGear.current ? "AUTO" : "M"}` +
-        `  PAD ${gamepadConnected.current ? "ON" : "OFF"}` +
-        (racingLineVisible.current ? "" : "  LINE OFF");
-    }
-    // Manual gears HUD (plan section 13): the current gear up top, and
-    // below it an rpm bar anchored at idle that redlines-turns-red at the
-    // shift point - the "shift light" that teaches the auto-assist's
-    // optimal band (the skill manual drivers learn by feel).
-    if (gearRef?.current || rpmRef?.current) {
+    // HUD data (see lib/race/hud.ts): plain values only - the widgets in
+    // app/race/hud/ do all formatting and DOM work on their own frames.
+    const hud = hudRef?.current;
+    if (hud) {
+      const strategy = strategyStateRef.current;
+      const energy = energyStatusRef.current;
       const rpm = rpmForGear(gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()), gearboxRef.current.gear);
-      if (gearRef?.current) {
-        // "R" for reverse, a number for the forward gears.
-        gearRef.current.textContent = isReverse(gearboxRef.current.gear)
-          ? "R"
-          : `${gearboxRef.current.gear}`;
-      }
-      if (rpmRef?.current) {
-        const fraction = Math.min(1, Math.max(0, (rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)));
-        rpmRef.current.style.width = `${(fraction * 100).toFixed(1)}%`;
-        rpmRef.current.style.background =
-          rpm >= SHIFT_UP_RPM ? "#ff3b3b" : engineTorqueMultiplier(rpm) >= 0.99 ? "#39ff88" : "#ffd23f";
-      }
-    }
-    if (throttleRef?.current || brakeRef?.current || steerMarkerRef?.current) {
-      const throttle = Math.min(1, Math.max(0, input.current.throttle));
-      const brake = Math.min(1, Math.max(0, input.current.brake));
-      const steer = Math.min(1, Math.max(-1, input.current.steer));
-      if (throttleRef?.current) throttleRef.current.style.width = `${(throttle * 100).toFixed(1)}%`;
-      if (brakeRef?.current) brakeRef.current.style.width = `${(brake * 100).toFixed(1)}%`;
-      if (steerMarkerRef?.current) steerMarkerRef.current.style.left = `${(50 + steer * 45).toFixed(1)}%`;
-    }
-    if (damageRef?.current) {
-      const damagePercent = Math.round(damageGripMultiplierRef.current * 100);
-      damageRef.current.textContent = damagePercent < 100 ? `DAMAGE ${damagePercent}%` : "";
+      hud.speedKmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
+      hud.gear = isReverse(gearboxRef.current.gear) ? "R" : `${gearboxRef.current.gear}`;
+      hud.rpm01 = Math.min(1, Math.max(0, (rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)));
+      // The shift light teaches the auto-assist's optimal band (the skill
+      // manual drivers learn by feel).
+      hud.rpmZone = rpm >= SHIFT_UP_RPM ? "shift" : engineTorqueMultiplier(rpm) >= 0.99 ? "band" : "low";
+      hud.throttle = Math.min(1, Math.max(0, input.current.throttle));
+      hud.brake = Math.min(1, Math.max(0, input.current.brake));
+      hud.steer = Math.min(1, Math.max(-1, input.current.steer));
+      hud.ers01 = batteryFractionRef.current;
+      hud.ersMode = energy.mode;
+      hud.deployBudget01 = energy.deploymentBudgetFraction;
+      hud.lowDrag = aeroMode.current === "low-drag";
+      hud.overtakeActive = overtakeStateRef.current.active;
+      hud.compound = strategy.compound;
+      hud.tyreGrip = strategy.compoundGripMultiplier * weatherStateRef.current.gripMultiplier;
+      hud.tyreTempC = strategy.tireTemperatureC;
+      hud.tyreWear01 = tyreWear01(strategy.compound, strategy.tireAgeMeters);
+      hud.fuelKg = strategy.fuelKg;
+      hud.fuelWarning = strategy.fuelWarning;
+      hud.strategyMode = strategy.mode;
+      hud.pitPhase = strategy.pitPhase;
+      hud.pitStops = strategy.pitStops;
+      hud.damage = damageGripMultiplierRef.current;
+      hud.tc = tractionControlEnabled.current;
+      hud.abs = absEnabled.current;
+      hud.autoGear = autoGear.current;
+      hud.pad = gamepadConnected.current;
+      hud.racingLine = racingLineVisible.current;
+      hud.weather = weatherStateRef.current.preset;
+      hud.trackTempC = weatherStateRef.current.trackTemperatureC;
     }
     // Race audio snapshot (see lib/audio/raceAudio.ts): runs before the
     // rewind/countdown early returns below so the engine idles on the grid
@@ -1502,6 +1442,9 @@ export function Car({
     if (allFourWheelsOff && !lapInvalidRef.current) {
       lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
       lapInvalidRef.current = true;
+      if (sessionMode !== "race" && hudRef?.current) {
+        pushHudEvent(hudRef.current, "warn", "LAP INVALIDATED", "TRACK LIMITS");
+      }
     }
     if (limitUpdate.penaltyJustApplied) {
       if (!lapInvalidRef.current) lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
@@ -1517,10 +1460,7 @@ export function Car({
       });
       if (!raceFinishedRef.current) {
         raceElapsedSecondsRef.current += penaltySeconds;
-        if (penaltyToastRef?.current) {
-          penaltyToastRef.current.textContent = penaltyLabel;
-        }
-        penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
+        if (hudRef?.current) pushHudEvent(hudRef.current, "penalty", penaltyLabel, "TRACK LIMITS", 3.2);
       }
     }
 
@@ -1549,13 +1489,14 @@ export function Car({
       };
       const progresses = [raceRef.current.player, ...raceRef.current.opponents];
       const positions = computeRacePositions(progresses, track.lengthMeters);
-      if (positionRef?.current && !raceFinishedRef.current) {
-        positionRef.current.textContent = `P${positions[0]}`;
+      if (hudRef?.current && !raceFinishedRef.current) {
+        hudRef.current.position = positions[0];
+        hudRef.current.fieldSize = positions.length;
       }
       // F1 timing tower (see buildTowerEntries/renderTowerHtml): rebuilt
       // at a real ~10Hz, independent of display refresh rate.
       towerClockRef.current += dt;
-      if (towerRef?.current && towerClockRef.current >= 0.1) {
+      if (hudRef?.current && towerClockRef.current >= 0.1) {
         towerClockRef.current %= 0.1;
         const entries = buildTowerEntries(
           {
@@ -1569,7 +1510,8 @@ export function Car({
           towerOpponents(rivals, raceRef.current.opponents),
           track.lengthMeters
         );
-        towerRef.current.innerHTML = renderTowerHtml(entries);
+        hudRef.current.tower = entries;
+        hudRef.current.towerVersion += 1;
       }
     }
 
@@ -1586,7 +1528,7 @@ export function Car({
     // personal-best/ghost/delta reference. Checked every frame (not just
     // inside the crossedFinishLine block below) since the cars' laps usually
     // finish on different frames.
-    if (sessionMode !== "qualifying" && qualifyingDisplayRef?.current && !qualifyingDisplayedRef.current) {
+    if (sessionMode !== "qualifying" && hudRef?.current && !qualifyingDisplayedRef.current) {
       const pole = qualifyingRef?.current ? polePosition(qualifyingRef.current) : null;
       if (pole !== null && qualifyingRef?.current) {
         qualifyingDisplayedRef.current = true;
@@ -1602,9 +1544,13 @@ export function Car({
         });
         const onPole =
           pole === "player" ? "YOU" : (rivals[pole]?.code ?? rivalCode);
-        qualifyingDisplayRef.current.textContent =
-          `QUALIFYING - YOU ${formatLapTime(playerTime)}  ${rivalCode} ${formatLapTime(rivalTime)}  -  ` +
-          `${onPole} ON POLE`;
+        pushHudEvent(
+          hudRef.current,
+          "info",
+          `${onPole} ON POLE`,
+          `YOU ${formatLapTime(playerTime)} · ${rivalCode} ${formatLapTime(rivalTime)}`,
+          4
+        );
       }
     }
 
@@ -1642,59 +1588,7 @@ export function Car({
           }
         }
       }
-      // ponytail: the race "ends" here as a HUD banner only - driving,
-      // physics, and the AI keep going, and there's no in-race results/menu
-      // screen to return to (plan section 8's menu state machine doesn't
-      // exist yet). Also doesn't account for the AI finishing its own
-      // RACE_LAPS first - the banner only triggers off the player's own
-      // finish-line crossing. A championship round is still scored correctly
-      // (the finish order is settled the moment the player crosses, see
-      // finalPosition below); a dedicated results screen would just show it
-      // in place. Upgrade once session setup/results screens exist.
-      if (sessionMode === "race" && !raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
-        raceFinishedRef.current = true;
-        // raceElapsedSecondsRef stops advancing once raceFinishedRef flips
-        // (see the guard above it), so the penalty toast's hide-at clock
-        // would otherwise freeze too - clear it here rather than leave it
-        // stuck on screen next to the finish banner until reload.
-        if (penaltyToastRef?.current) {
-          penaltyToastRef.current.textContent = "";
-        }
-        penaltyToastHideAtRef.current = null;
-        const finalPositions = raceRef?.current
-          ? computeRacePositions(
-              [raceRef.current.player, ...raceRef.current.opponents],
-              track.lengthMeters
-            )
-          : [1];
-        const finalPosition = finalPositions[0];
-        // Net rooms: the host's broadcast order is the result (see
-        // netResultRef) - every guest shows the same board, and nobody
-        // scores a championship round from an exhibition. Slot-keyed, so
-        // shared driver codes can't collide.
-        const netPositions = netActive ? netResultRef?.current?.positions ?? null : null;
-        const shownPosition = netPositions?.[String(netSlot)] ?? finalPosition;
-        const control = effectiveRaceControlRef.current.snapshot();
-        const controlSuffix = control.disqualified
-          ? "  //  RACE BAN (12 PT)"
-          : control.penaltySeconds > 0
-            ? `  //  PENALTY +${control.penaltySeconds}s`
-            : "";
-        let championshipSuffix = "";
-        if (champRound !== null && !netActive) {
-          championshipSuffix =
-            `  //  ROUND ${champRound + 1}: P${finalPosition} (+${pointsForPosition(finalPosition)} PTS)`;
-          // Fire-and-forget, same as the personal-best write below: the
-          // standings panel reads this back when the player returns home.
-          recordChampionshipResult(champRound, finalPosition).catch(() => {});
-        }
-        raceResultRef.current.textContent =
-          `P${shownPosition} - ${raceLaps}-LAP RACE FINISHED - ${formatLapTime(raceElapsedSecondsRef.current)}` +
-          championshipSuffix +
-          controlSuffix +
-          `  //  PRESS ENTER TO RESTART`;
-      }
-      if (sessionMode === "practice" && !raceFinishedRef.current && lap.lapCount >= raceLaps && raceResultRef?.current) {
+      if (sessionMode === "practice" && !raceFinishedRef.current && lap.lapCount >= raceLaps && hudRef?.current) {
         // Solo session: driving on after the count is fine, but the banner
         // fires once with the session's best and a way back. Runs before
         // the wasNewBest bookkeeping below, so fold this lap in by hand.
@@ -1703,9 +1597,7 @@ export function Car({
           (v): v is number => v !== null
         );
         const sessionBest = candidates.length > 0 ? Math.min(...candidates) : null;
-        raceResultRef.current.innerHTML =
-          `PRACTICE COMPLETE - ${raceLaps} LAPS - BEST ${formatLapTime(sessionBest)}` +
-          `  //  <a href="${window.location.pathname}${window.location.search}">DRIVE AGAIN</a>  //  <a href="/">MENU</a>`;
+        hudRef.current.result = { kind: "practice", laps: raceLaps, bestLapSeconds: sessionBest };
       }
       const wasNewBest =
         eligible &&
@@ -1713,6 +1605,9 @@ export function Car({
         (bestLapRef.current === null || lap.lastLapSeconds < bestLapRef.current);
       if (wasNewBest) {
         bestLapRef.current = lap.lastLapSeconds;
+        if (hudRef?.current) {
+          pushHudEvent(hudRef.current, "good", "PERSONAL BEST", formatLapTime(lap.lastLapSeconds), 3);
+        }
       }
       deltaTrackerRef.current.endLap(lap.lastLapSeconds, track.lengthMeters, wasNewBest);
       // Same eligibility as the delta timer's reference (see its own
@@ -1746,47 +1641,43 @@ export function Car({
       resetTrackLimitLap(trackLimitSequenceRef.current);
     }
 
+    if (sessionMode === "race" && hudRef?.current && raceRef?.current && hudRef.current.result === null) {
+      updateRaceFinish(lap.lapCount, dt);
+    }
+
     const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);
     if (sectorCrossing) {
       sectorResultsRef.current[sectorCrossing.sectorIndex] = sectorCrossing;
       renderSectors();
     }
 
-    if (lapRef?.current) {
-      if (timeAttack) {
-        // No clock, and the running lap beside the best: a time attack has no
-        // deadline, so showing a countdown would be a lie, and the current lap
-        // is the only thing the driver is actually steering against.
-        lapRef.current.textContent =
-          `TIME ATTACK  LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
-          `  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
-          (lapInvalidRef.current ? "  INVALID" : "");
-      } else if (sessionMode === "qualifying" && qualiFormat !== "oneshot") {
-        const session = qualiSessionRef.current;
-        const phaseLabel = session.phase ? `${session.phase} ` : "";
-        const remaining =
-          qualiFormat === "knockout" ? session.phaseTimeLeftSeconds : session.timeLeftSeconds;
-        const mm = Math.floor(remaining / 60);
-        const ss = Math.floor(remaining % 60)
-          .toString()
-          .padStart(2, "0");
-        lapRef.current.textContent =
-          `QUAL ${phaseLabel}${mm}:${ss}  BEST ${formatLapTime(session.best.player)}` +
-          (lapInvalidRef.current ? "  INVALID" : "");
-      } else if (sessionMode === "qualifying") {
-        lapRef.current.textContent =
-          `QUAL SHOT  LAP ${lap.lapCount + 1}  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
-          (lapInvalidRef.current ? "  INVALID" : "");
-      } else if (sessionMode === "practice") {
-        lapRef.current.textContent =
-          `PRAC ${Math.min(lap.lapCount + 1, raceLaps)}/${raceLaps}  BEST ${formatLapTime(bestLapRef.current)}` +
-          (lapInvalidRef.current ? "  INVALID" : "");
-      } else {
-        lapRef.current.textContent =
-          `LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
-          `  BEST ${formatLapTime(bestLapRef.current)}` +
-          (lapInvalidRef.current ? "  INVALID" : "");
-      }
+    if (hudRef?.current) {
+      const hud = hudRef.current;
+      const session = qualiSessionRef.current;
+      hud.sessionMode = sessionMode;
+      hud.timeAttack = timeAttack;
+      hud.lap = sessionMode === "practice" ? Math.min(lap.lapCount + 1, raceLaps) : lap.lapCount + 1;
+      hud.totalLaps = sessionMode === "qualifying" ? 0 : raceLaps;
+      hud.lapSeconds = lap.currentLapSeconds;
+      hud.lastLapSeconds = lap.lastLapSeconds;
+      hud.bestLapSeconds = sessionMode === "qualifying" ? session.best.player : bestLapRef.current;
+      hud.lapInvalid = lapInvalidRef.current;
+      // Qualifying clock: a time attack has no deadline, so no clock at all.
+      const timed = sessionMode === "qualifying" && !timeAttack && qualiFormat !== "oneshot";
+      hud.clockSeconds = timed
+        ? qualiFormat === "knockout"
+          ? session.phaseTimeLeftSeconds
+          : session.timeLeftSeconds
+        : null;
+      hud.phase = timeAttack
+        ? "TIME ATTACK"
+        : sessionMode === "qualifying"
+          ? qualiFormat === "oneshot"
+            ? "ONE-SHOT QUALIFYING"
+            : (session.phase ?? "QUALIFYING")
+          : sessionMode === "practice"
+            ? "PRACTICE"
+            : null;
     }
 
     if (sessionMode === "qualifying" && !qualiFinishedRef.current) {
@@ -1810,13 +1701,12 @@ export function Car({
           } else if (session.phase !== null && session.phase !== prevPhase) {
             toast = session.phase === "Q3" ? "THROUGH TO Q3 - TOP TEN SHOOTOUT" : `THROUGH TO ${session.phase}`;
           }
-          if (toast && penaltyToastRef?.current) {
-            penaltyToastRef.current.textContent = toast;
-            penaltyToastHideAtRef.current = raceElapsedSecondsRef.current + PENALTY_TOAST_DURATION_SECONDS;
+          if (toast && hudRef?.current) {
+            pushHudEvent(hudRef.current, session.playerEliminated ? "warn" : "good", toast, undefined, 3.5);
           }
         }
       }
-      if (qualiSessionRef.current.finished && raceResultRef?.current) {
+      if (qualiSessionRef.current.finished && hudRef?.current) {
         qualiFinishedRef.current = true;
         // Player-only qualifying keeps the rival reference times in the
         // shared board (see Scene.tsx); race mode still fills that board
@@ -1842,24 +1732,19 @@ export function Car({
         const raceHref = retargetSessionUrl(window.location.search, "race", spot, gridOrder);
         // The full hidden AI reference field is now shown as a proper
         // classification, including each driver's gap to the player's lap.
-        raceResultRef.current.innerHTML = renderQualifyingResultHtml({
-          times: mergedBest,
-          playerCode,
-          playerName,
-          playerColor: bodyColor,
-          rivals,
-          playerPosition: spot,
+        hudRef.current.result = {
+          kind: "qualifying",
+          position: spot,
+          playerTime: mergedBest.player,
+          rows: qualifyingRows({ times: mergedBest, playerCode, playerName, playerColor: bodyColor, rivals }),
           raceHref,
           champRound,
-        });
+        };
       }
     }
 
     const delta = deltaTrackerRef.current.recordSample(tracked.progressMeters, lap.currentLapSeconds);
-    if (deltaRef?.current) {
-      deltaRef.current.textContent = formatDelta(delta);
-      deltaRef.current.dataset.sign = delta === null || delta === 0 ? "" : delta > 0 ? "behind" : "ahead";
-    }
+    if (hudRef?.current) hudRef.current.delta = delta;
 
     ghostRecorderRef.current.recordSample(lap.currentLapSeconds, {
       position: { x: t.x, y: t.y, z: t.z },
@@ -1895,30 +1780,15 @@ export function Car({
       };
     }
 
-    if (trackLimitRef?.current) {
-      trackLimitRef.current.textContent = allFourWheelsOff
-        ? trackLimitStageLabel(
-            trackLimitSequenceRef.current.stage,
-            trackLimitSequenceRef.current.offenses + 1
-          )
+    if (hudRef?.current) {
+      const hud = hudRef.current;
+      hud.trackLimitText = allFourWheelsOff
+        ? trackLimitStageLabel(trackLimitSequenceRef.current.stage, trackLimitSequenceRef.current.offenses + 1)
         : "";
-    }
-
-    if (
-      penaltyToastRef?.current &&
-      penaltyToastHideAtRef.current !== null &&
-      raceElapsedSecondsRef.current >= penaltyToastHideAtRef.current
-    ) {
-      penaltyToastRef.current.textContent = "";
-      penaltyToastHideAtRef.current = null;
-    }
-
-    if (minimapGroupRef?.current) {
-      const yaw = yawFromQuaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
-      minimapGroupRef.current.setAttribute("transform", computeMinimapTransform(t.x, t.z, yaw));
-    }
-    if (minimapMarkerRef?.current) {
-      minimapMarkerRef.current.setAttribute("fill", allFourWheelsOff ? "#ff3b3b" : bodyColor);
+      hud.offTrack = allFourWheelsOff;
+      hud.x = t.x;
+      hud.z = t.z;
+      hud.yaw = yawFromQuaternion(bodyRot.x, bodyRot.y, bodyRot.z, bodyRot.w);
     }
   });
 
