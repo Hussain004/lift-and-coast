@@ -22,8 +22,24 @@ export function pointsForPosition(position: number): number {
   return CHAMPIONSHIP_POINTS[position - 1] ?? 0;
 }
 
+/** One car's line in a raced round's classification. */
+export interface RoundResultRow {
+  code: string;
+  name: string | null;
+  teamId: string | null;
+  position: number;
+  points: number;
+  isPlayer: boolean;
+}
+
 export interface ChampionshipRound {
   trackId: string;
+  /**
+   * The whole field's classification, when the round was raced on a build
+   * that records it. Optional so seasons saved before it existed still load
+   * (their rounds only know the player's position).
+   */
+  result?: RoundResultRow[];
   /** Player's finishing position; null until the round has been raced. */
   playerPosition: number | null;
   /**
@@ -76,12 +92,13 @@ export function isSeasonComplete(season: ChampionshipSeason): boolean {
 export function recordRoundResult(
   season: ChampionshipSeason,
   roundIndex: number,
-  playerPosition: number
+  playerPosition: number,
+  result?: readonly RoundResultRow[]
 ): ChampionshipSeason {
   if (roundIndex < 0 || roundIndex >= season.rounds.length) return season;
   if (!Number.isInteger(playerPosition) || playerPosition < 1) return season;
   const rounds = season.rounds.map((round, i) =>
-    i === roundIndex ? { ...round, playerPosition } : round
+    i === roundIndex ? { ...round, playerPosition, ...(result ? { result: [...result] } : {}) } : round
   );
   return { ...season, rounds };
 }
@@ -123,52 +140,118 @@ export function weekendStage(
   return "race";
 }
 
-export interface ChampionshipStandings {
-  playerPoints: number;
-  aiPoints: number;
-  playerWins: number;
-  aiWins: number;
-  completedRounds: number;
-  totalRounds: number;
+/** Stable key for the player's standings row, whichever driver they drove. */
+export const PLAYER_KEY = "__player__";
+
+export interface DriverStanding {
+  key: string;
+  code: string;
+  name: string | null;
+  teamId: string | null;
+  isPlayer: boolean;
+  points: number;
+  wins: number;
+  podiums: number;
+  /** Finishing position per round, null where not classified / not raced. */
+  finishes: (number | null)[];
 }
 
-export function computeStandings(season: ChampionshipSeason): ChampionshipStandings {
-  let playerPoints = 0;
-  let aiPoints = 0;
-  let playerWins = 0;
-  let aiWins = 0;
-  let completed = 0;
-  for (const round of season.rounds) {
-    if (round.playerPosition === null) continue;
-    completed += 1;
-    playerPoints += pointsForPosition(round.playerPosition);
-    // Best-finishing rival: P2 when the player wins, P1 otherwise (every
-    // other grid slot is filled, so the rival contesting the win always
-    // holds one of those two spots).
-    const aiPosition = round.playerPosition === 1 ? 2 : 1;
-    aiPoints += pointsForPosition(aiPosition);
-    if (round.playerPosition === 1) playerWins += 1;
-    else aiWins += 1;
-  }
-  return {
-    playerPoints,
-    aiPoints,
-    playerWins,
-    aiWins,
-    completedRounds: completed,
-    totalRounds: season.rounds.length,
+export interface TeamStanding {
+  teamId: string;
+  points: number;
+  wins: number;
+}
+
+function byPoints<T extends { points: number; wins: number }>(a: T, b: T): number {
+  return b.points - a.points || b.wins - a.wins;
+}
+
+/**
+ * The drivers' championship, every car on the grid. Rounds raced before
+ * full results were recorded still score the player (their position is all
+ * that was saved). The player is keyed by PLAYER_KEY so their points stay in
+ * one row even if they switch driver mid-season.
+ */
+export function computeDriverStandings(season: ChampionshipSeason): DriverStanding[] {
+  const rows = new Map<string, DriverStanding>();
+  const row = (key: string, init: Omit<DriverStanding, "points" | "wins" | "podiums" | "finishes">) => {
+    let r = rows.get(key);
+    if (!r) {
+      r = { ...init, points: 0, wins: 0, podiums: 0, finishes: season.rounds.map(() => null) };
+      rows.set(key, r);
+    }
+    return r;
   };
+  const score = (r: DriverStanding, position: number, points: number, round: number) => {
+    r.points += points;
+    if (position === 1) r.wins += 1;
+    if (position <= 3) r.podiums += 1;
+    r.finishes[round] = position;
+  };
+  season.rounds.forEach((round, i) => {
+    if (round.playerPosition === null) return;
+    if (round.result && round.result.length > 0) {
+      for (const entry of round.result) {
+        const key = entry.isPlayer ? PLAYER_KEY : entry.code;
+        const r = row(key, { key, code: entry.code, name: entry.name, teamId: entry.teamId, isPlayer: entry.isPlayer });
+        // The player's latest driver/team wins, so the table shows who they are now.
+        if (entry.isPlayer) Object.assign(r, { code: entry.code, name: entry.name, teamId: entry.teamId });
+        score(r, entry.position, entry.points, i);
+      }
+    } else {
+      const r = row(PLAYER_KEY, { key: PLAYER_KEY, code: "YOU", name: null, teamId: null, isPlayer: true });
+      score(r, round.playerPosition, pointsForPosition(round.playerPosition), i);
+    }
+  });
+  return [...rows.values()].sort(byPoints);
 }
 
-/** Champion once the season is complete, null while rounds remain. */
-export function seasonChampion(
-  season: ChampionshipSeason
-): "player" | "ai" | "tie" | null {
+/** The constructors' championship: each team's drivers' points combined. */
+export function computeTeamStandings(season: ChampionshipSeason): TeamStanding[] {
+  const teams = new Map<string, TeamStanding>();
+  for (const driver of computeDriverStandings(season)) {
+    if (!driver.teamId) continue;
+    const t = teams.get(driver.teamId) ?? { teamId: driver.teamId, points: 0, wins: 0 };
+    t.points += driver.points;
+    t.wins += driver.wins;
+    teams.set(driver.teamId, t);
+  }
+  return [...teams.values()].sort(byPoints);
+}
+
+/** The champion once the season is complete, null while rounds remain. */
+export function seasonChampion(season: ChampionshipSeason): DriverStanding | null {
   if (!isSeasonComplete(season)) return null;
-  const { playerPoints, aiPoints } = computeStandings(season);
-  if (playerPoints > aiPoints) return "player";
-  if (aiPoints > playerPoints) return "ai";
-  return "tie";
+  return computeDriverStandings(season)[0] ?? null;
+}
+
+/**
+ * Season lengths offered when starting a championship. The 2026 calendar is
+ * the real round order; "all" appends the historic circuits after it.
+ */
+export const CALENDAR_2026 = [
+  "melbourne", "shanghai", "suzuka", "bahrain", "jeddah", "miami", "montreal", "monaco",
+  "barcelona", "spielberg", "silverstone", "spa", "budapest", "zandvoort", "monza", "madrid",
+  "baku", "singapore", "cota", "mexico", "interlagos", "lasvegas", "lusail", "yasmarina",
+] as const;
+
+export type SeasonLength = "short" | "calendar" | "all";
+
+export const SEASON_LENGTHS: { id: SeasonLength; label: string; blurb: string }[] = [
+  { id: "short", label: "Short", blurb: "6 classic rounds" },
+  { id: "calendar", label: "2026 Calendar", blurb: "24 rounds in real order" },
+  { id: "all", label: "Every Circuit", blurb: "the calendar plus historic tracks" },
+];
+
+const SHORT_SEASON = ["melbourne", "suzuka", "monaco", "silverstone", "spa", "monza"];
+
+/** The rounds for a season length, keeping only circuits that exist. */
+export function seasonTrackIds(length: SeasonLength, known: readonly string[]): string[] {
+  const has = new Set(known);
+  const calendar = CALENDAR_2026.filter((id) => has.has(id));
+  if (length === "short") return SHORT_SEASON.filter((id) => has.has(id));
+  if (length === "calendar") return calendar;
+  return [...calendar, ...known.filter((id) => !calendar.includes(id as (typeof CALENDAR_2026)[number]))];
 }
 
 /**
@@ -181,6 +264,24 @@ export function parseChampRound(raw: string | null): number | null {
   if (raw === null) return null;
   const n = parseInt(raw, 10);
   return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function isRoundResultRow(value: unknown): value is RoundResultRow {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.code === "string" &&
+    r.code.length <= 8 &&
+    (r.name === null || typeof r.name === "string") &&
+    (r.teamId === null || typeof r.teamId === "string") &&
+    typeof r.position === "number" &&
+    Number.isInteger(r.position) &&
+    r.position >= 1 &&
+    typeof r.points === "number" &&
+    Number.isFinite(r.points) &&
+    r.points >= 0 &&
+    typeof r.isPlayer === "boolean"
+  );
 }
 
 /** Shape guard for save import (see lib/persistence/saveBundle.ts). */
@@ -196,12 +297,14 @@ export function isChampionshipSeason(value: unknown): value is ChampionshipSeaso
   if (!Array.isArray(season.rounds)) return false;
   return season.rounds.every((round) => {
     if (typeof round !== "object" || round === null) return false;
-    const { trackId, playerPosition, qualiSpot } = round as {
+    const { trackId, playerPosition, qualiSpot, result } = round as {
       trackId?: unknown;
       playerPosition?: unknown;
       qualiSpot?: unknown;
+      result?: unknown;
     };
     if (typeof trackId !== "string" || !isKnownTrackId(trackId)) return false;
+    if (result !== undefined && !(Array.isArray(result) && result.every(isRoundResultRow))) return false;
     // qualiSpot is newer than some saved seasons - absent counts as
     // unqualified (the weekend flow treats it as "qualifying next").
     if (

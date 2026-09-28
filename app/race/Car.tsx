@@ -1271,7 +1271,18 @@ export function Car({
     const scoredRound = champRound !== null && !netActive ? champRound : null;
     if (scoredRound !== null) {
       // Fire-and-forget: the standings panel reads it back on the way home.
-      recordChampionshipResult(scoredRound, classified).catch(() => {});
+      recordChampionshipResult(
+        scoredRound,
+        classified,
+        rows.map((row) => ({
+          code: row.code,
+          name: row.name,
+          teamId: row.teamId,
+          position: row.position,
+          points: row.points,
+          isPlayer: row.isPlayer,
+        }))
+      ).catch(() => {});
     }
     hud.result = {
       kind: "race",

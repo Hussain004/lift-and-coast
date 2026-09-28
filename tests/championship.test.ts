@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAMPIONSHIP_POINTS,
-  computeStandings,
+  computeDriverStandings,
+  computeTeamStandings,
+  PLAYER_KEY,
+  seasonTrackIds,
+  CALENDAR_2026,
   createSeason,
   isChampionshipSeason,
   isSeasonComplete,
@@ -71,52 +75,70 @@ describe("recordRoundResult", () => {
   });
 });
 
-describe("computeStandings", () => {
-  it("awards the player and the single opponent inversely", () => {
+function row(code: string, teamId: string, position: number, isPlayer = false) {
+  return { code, name: null, teamId, position, points: pointsForPosition(position), isPlayer };
+}
+
+describe("driver and team standings", () => {
+  it("scores the whole field from recorded classifications", () => {
     let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
-    season = recordRoundResult(season, 0, 1); // player wins
-    season = recordRoundResult(season, 1, 1); // player wins
-    season = recordRoundResult(season, 2, 2); // AI wins
-    const standings = computeStandings(season);
-    expect(standings.playerPoints).toBe(25 + 25 + 18);
-    expect(standings.aiPoints).toBe(18 + 18 + 25);
-    expect(standings.playerWins).toBe(2);
-    expect(standings.aiWins).toBe(1);
-    expect(standings.completedRounds).toBe(3);
-    expect(standings.totalRounds).toBe(4);
+    season = recordRoundResult(season, 0, 2, [row("VER", "redbull", 1), row("GAS", "alpine", 2, true), row("NOR", "mclaren", 3)]);
+    season = recordRoundResult(season, 1, 1, [row("GAS", "alpine", 1, true), row("NOR", "mclaren", 2), row("VER", "redbull", 3)]);
+    const drivers = computeDriverStandings(season);
+    expect(drivers.map((d) => d.code)).toEqual(["GAS", "VER", "NOR"]);
+    expect(drivers[0]).toMatchObject({ key: PLAYER_KEY, points: 18 + 25, wins: 1, podiums: 2, finishes: [2, 1, null, null] });
+    expect(drivers[1]).toMatchObject({ points: 25 + 15, wins: 1 });
+    const teams = computeTeamStandings(season);
+    expect(teams[0]).toMatchObject({ teamId: "alpine", points: 43 });
   });
 
-  it("is all zeros before any round is raced", () => {
-    const standings = computeStandings(createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z"));
-    expect(standings).toMatchObject({ playerPoints: 0, aiPoints: 0, completedRounds: 0 });
+  it("keeps the player in one row across a driver change, and scores legacy rounds", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    season = recordRoundResult(season, 0, 3); // saved before full results existed
+    season = recordRoundResult(season, 1, 1, [row("HAM", "ferrari", 1, true), row("LEC", "ferrari", 2)]);
+    const drivers = computeDriverStandings(season);
+    const you = drivers.find((d) => d.isPlayer)!;
+    expect(you.points).toBe(15 + 25);
+    expect(you.code).toBe("HAM");
+    expect(drivers.filter((d) => d.isPlayer)).toHaveLength(1);
+  });
+
+  it("is empty before any round is raced", () => {
+    expect(computeDriverStandings(createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z"))).toEqual([]);
   });
 });
 
 describe("seasonChampion", () => {
-  function completedWith(playerPositions: number[]): ChampionshipSeason {
-    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
-    playerPositions.forEach((position, i) => {
-      season = recordRoundResult(season, i, position);
-    });
-    return season;
-  }
-
-  it("is null until every round is raced", () => {
-    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
-    season = recordRoundResult(season, 0, 1);
+  it("is null until every round is raced, then names the points leader", () => {
+    let season = createSeason(["silverstone", "monza"], "2026-01-01T00:00:00.000Z");
+    season = recordRoundResult(season, 0, 2, [row("VER", "redbull", 1), row("GAS", "alpine", 2, true)]);
     expect(seasonChampion(season)).toBeNull();
+    season = recordRoundResult(season, 1, 2, [row("VER", "redbull", 1), row("GAS", "alpine", 2, true)]);
+    expect(seasonChampion(season)?.code).toBe("VER");
   });
+});
 
-  it("names the player when they out-score the AI", () => {
-    expect(seasonChampion(completedWith([1, 1, 1, 2]))).toBe("player");
+describe("season lengths", () => {
+  const known = ["silverstone", "monza", "spa", "suzuka", "monaco", "melbourne", "imola", "hockenheim"];
+  it("runs the calendar in real round order, skipping circuits we do not have", () => {
+    expect(seasonTrackIds("calendar", known)).toEqual(["melbourne", "suzuka", "monaco", "silverstone", "spa", "monza"]);
+    expect(CALENDAR_2026[0]).toBe("melbourne");
+    expect(CALENDAR_2026).toHaveLength(24);
   });
-
-  it("names the AI when it out-scores the player", () => {
-    expect(seasonChampion(completedWith([2, 2, 2, 1]))).toBe("ai");
+  it("appends the historic circuits for an every-circuit season", () => {
+    expect(seasonTrackIds("all", known).slice(-2)).toEqual(["imola", "hockenheim"]);
+    expect(seasonTrackIds("short", known)).toHaveLength(6);
   });
+});
 
-  it("reports a tie when the points are level", () => {
-    expect(seasonChampion(completedWith([1, 2, 1, 2]))).toBe("tie");
+describe("result import guard", () => {
+  it("accepts recorded results and rejects malformed rows", () => {
+    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
+    season = recordRoundResult(season, 0, 1, [row("GAS", "alpine", 1, true)]);
+    expect(isChampionshipSeason(season)).toBe(true);
+    const bad = JSON.parse(JSON.stringify(season));
+    bad.rounds[0].result[0].points = -5;
+    expect(isChampionshipSeason(bad)).toBe(false);
   });
 });
 
@@ -213,12 +235,5 @@ describe("full-field qualifying", () => {
     expect(weekendStage(season, 0)).toBe("race");
   });
 
-  it("scores the best rival (P2 behind a win, P1 otherwise)", () => {
-    let season = createSeason(TRACK_IDS, "2026-01-01T00:00:00.000Z");
-    season = recordRoundResult(season, 0, 1);
-    season = recordRoundResult(season, 1, 5);
-    const standings = computeStandings(season);
-    expect(standings.playerPoints).toBe(25 + 10);
-    expect(standings.aiPoints).toBe(18 + 25);
-  });
+
 });

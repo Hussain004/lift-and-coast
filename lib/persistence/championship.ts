@@ -14,6 +14,7 @@ import {
   recordQualiResult,
   recordRoundResult,
   type ChampionshipSeason,
+  type RoundResultRow,
 } from "../race/championship";
 
 const CURRENT_SEASON_KEY = "current";
@@ -70,11 +71,12 @@ export async function recordChampionshipQuali(
  */
 export async function recordChampionshipResult(
   roundIndex: number,
-  playerPosition: number
+  playerPosition: number,
+  result?: readonly RoundResultRow[]
 ): Promise<ChampionshipSeason | null> {
   const season = await loadSeason();
   if (!season) return null;
-  const updated = recordRoundResult(season, roundIndex, playerPosition);
+  const updated = recordRoundResult(season, roundIndex, playerPosition, result);
   if (updated === season) return season;
   await saveSeason(updated);
   return updated;
