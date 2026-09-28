@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { cycleDrivingCamera, nextCameraMode, toggleOrbitCamera } from "../lib/input/useDriveInput";
 
 describe("nextCameraMode", () => {
-  it("cycles chase -> cockpit -> helmet -> t-cam -> tv -> chase", () => {
-    expect(nextCameraMode("chase")).toBe("cockpit");
+  it("cycles chase -> far chase -> t-cam -> cockpit -> helmet -> tv -> chase", () => {
+    expect(nextCameraMode("chase")).toBe("chase-far");
+    expect(nextCameraMode("chase-far")).toBe("t-cam");
+    expect(nextCameraMode("t-cam")).toBe("cockpit");
     expect(nextCameraMode("cockpit")).toBe("helmet");
-    expect(nextCameraMode("helmet")).toBe("t-cam");
-    expect(nextCameraMode("t-cam")).toBe("tv");
+    expect(nextCameraMode("helmet")).toBe("tv");
     expect(nextCameraMode("tv")).toBe("chase");
   });
 });
@@ -19,7 +20,7 @@ describe("orbit camera switching", () => {
 
   it("resumes the driving cycle from the stored mode", () => {
     expect(cycleDrivingCamera("cockpit", "chase")).toBe("helmet");
-    expect(cycleDrivingCamera("orbit", "helmet")).toBe("t-cam");
+    expect(cycleDrivingCamera("orbit", "helmet")).toBe("tv");
     expect(cycleDrivingCamera("orbit", "tv")).toBe("chase");
   });
 });

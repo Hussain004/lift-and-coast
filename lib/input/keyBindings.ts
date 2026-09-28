@@ -44,6 +44,7 @@ export const CONTROL_ACTIONS = [
   "pitRequest",
   "instantReplay",
   "weatherCycle",
+  "lookBack",
 ] as const;
 
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
@@ -81,6 +82,7 @@ export const DEFAULT_BINDINGS: ControlBindings = {
   pitRequest: ["KeyO"],
   instantReplay: ["KeyJ"],
   weatherCycle: ["KeyU"],
+  lookBack: ["Backquote"],
 };
 
 /** Human labels for the settings UI. */
@@ -107,6 +109,7 @@ export const CONTROL_LABELS: Record<ControlAction, string> = {
   pitRequest: "Pit request",
   instantReplay: "Instant replay",
   weatherCycle: "Weather cycle",
+  lookBack: "Look back (hold)",
 };
 
 /** Driving sensitivity and assist defaults the player can set. */

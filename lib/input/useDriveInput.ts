@@ -23,18 +23,31 @@ import {
   type ControlAction,
 } from "./keyBindings";
 
-export type CameraMode = "chase" | "cockpit" | "helmet" | "t-cam" | "tv" | "orbit";
+export type CameraMode = "chase" | "chase-far" | "cockpit" | "helmet" | "t-cam" | "tv" | "orbit";
 /** Every mode except the free orbit, which sits outside the C cycle. */
 export type DrivingCameraMode = Exclude<CameraMode, "orbit">;
 
-/** C-key cycle order (plan section 9: chase, cockpit, helmet, TV T-cam, broadcast). */
+/** C-key cycle order, the F1 game's: chase near and far, T-cam, cockpit,
+ * helmet, then the broadcast cameras. */
 export function nextCameraMode(mode: DrivingCameraMode): DrivingCameraMode {
-  if (mode === "chase") return "cockpit";
+  if (mode === "chase") return "chase-far";
+  if (mode === "chase-far") return "t-cam";
+  if (mode === "t-cam") return "cockpit";
   if (mode === "cockpit") return "helmet";
-  if (mode === "helmet") return "t-cam";
-  if (mode === "t-cam") return "tv";
+  if (mode === "helmet") return "tv";
   return "chase";
 }
+
+/** On-screen name for each camera, shown briefly when it is selected. */
+export const CAMERA_LABELS: Record<CameraMode, string> = {
+  chase: "CHASE CAM",
+  "chase-far": "FAR CHASE CAM",
+  "t-cam": "T-CAM",
+  cockpit: "COCKPIT CAM",
+  helmet: "HELMET CAM",
+  tv: "TV CAM",
+  orbit: "ORBIT CAM",
+};
 
 /**
  * V-key orbit toggle (plan section 9 replay cam): dropping into orbit

@@ -22,9 +22,12 @@ import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { TelemetrySample } from "@/lib/race/telemetry";
-import type { CameraMode } from "@/lib/input/useDriveInput";
+import { CAMERA_LABELS, type CameraMode } from "@/lib/input/useDriveInput";
 import type { SharedReplay } from "@/lib/race/replay";
-import type { HudSnapshot } from "@/lib/race/hud";
+import { pushHudEvent, type HudSnapshot } from "@/lib/race/hud";
+import { fovForSpeed, shakeOffset, stepCameraYaw } from "@/lib/race/chaseCam";
+import { loadCameraShake, subscribeCameraShake } from "@/lib/settings/cameraPrefs";
+import { getBindings } from "@/lib/input/keyBindings";
 import {
   HELMET_AIM_DISTANCE_METERS,
   HELMET_AIM_DROP_METERS,
@@ -289,6 +292,11 @@ function WeatherFX({ weatherRef, target, fogFar }: { weatherRef: React.RefObject
 // (see below); the chassis stays visible, sitting low in frame the way a
 // real T-cam frames the nose.
 const CHASE_OFFSET = new THREE.Vector3(0, 2.6, 8.5);
+const CHASE_FAR_OFFSET = new THREE.Vector3(0, 3.6, 12.5);
+// Look back (hold): in front of the nose, looking over the car down the road
+// behind - the F1 game's rear view.
+const LOOK_BACK_OFFSET = new THREE.Vector3(0, 1.9, -5.2);
+const LOOK_BACK_AIM = new THREE.Vector3(0, 0.6, 16);
 const COCKPIT_OFFSET = new THREE.Vector3(0, 0.65, -0.3);
 // Helmet: the driver's eye point, INSIDE the sculpted helmet sphere at
 // (0, 0.42, 0.3) r=0.16. Sitting inside that closed shell is deliberate -
@@ -399,14 +407,43 @@ function ChaseCamera({
   cameraMode,
   raceRef,
   track,
+  hudRef,
+  audioRef,
 }: {
   target: React.RefObject<THREE.Object3D | null>;
   cameraMode: React.RefObject<CameraMode>;
   /** Car.tsx writes the player's live progress here every frame. */
   raceRef: React.RefObject<RaceState>;
   track: TrackData;
+  /** For the camera-name toast on a switch. */
+  hudRef?: React.RefObject<HudSnapshot>;
+  /** Kerb contact for the shake (Car.tsx writes it for the audio rig). */
+  audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { camera } = useThree();
+  // Chase-camera heading (see lib/race/chaseCam.ts): an ANGULAR lag only -
+  // the offset from the car stays exact, so no speed-dependent gap can open.
+  const camYaw = useRef<number | null>(null);
+  const lookBackHeld = useRef(false);
+  const shakeOn = useRef(true);
+  useEffect(() => {
+    shakeOn.current = loadCameraShake();
+    const unsubscribe = subscribeCameraShake(() => {
+      shakeOn.current = loadCameraShake();
+    });
+    const key = (down: boolean) => (e: KeyboardEvent) => {
+      if (getBindings().lookBack.includes(e.code)) lookBackHeld.current = down;
+    };
+    const onDown = key(true);
+    const onUp = key(false);
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
+  }, []);
   const desiredPos = useRef(new THREE.Vector3(0, 3, 8));
   const lookAt = useRef(new THREE.Vector3());
   const offset = useRef(new THREE.Vector3());
@@ -470,10 +507,17 @@ function ChaseCamera({
     };
   }, [gl, cameraMode]);
 
-  useFrame(() => {
+  useFrame((state, dt) => {
     const object = target.current;
     if (!object) return;
     const mode = cameraMode.current;
+    if (mode !== prevMode.current && hudRef?.current) {
+      pushHudEvent(hudRef.current, "info", CAMERA_LABELS[mode], undefined, 1.1);
+    }
+    const speedMs = raceRef.current?.player.speedMs ?? 0;
+    const shake = shakeOn.current
+      ? shakeOffset(state.clock.elapsedTime, audioRef?.current.player.kerb01 ?? 0, speedMs)
+      : null;
     // Reads the chassis MESH's own interpolated world transform (see
     // visualRef in Car.tsx), not the raw physics body. react-three-rapier
     // smooths each RigidBody's rendered object between physics steps
@@ -522,7 +566,15 @@ function ChaseCamera({
     // look-at aim point below, for the same reason (see its comment). Any
     // future camera mode must keep this unsmoothed - it's the fix for a
     // real, previously-shipped bug, not a style choice.
-    if (mode === "helmet") {
+    if (lookBackHeld.current && mode !== "tv" && mode !== "orbit") {
+      setCamEuler(yawEuler.current, yaw);
+      offset.current.copy(LOOK_BACK_OFFSET).applyEuler(yawEuler.current);
+      camera.position.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
+      forward.current.copy(LOOK_BACK_AIM).applyEuler(yawEuler.current);
+      camera.lookAt(t.x + forward.current.x, t.y + forward.current.y, t.z + forward.current.z);
+      setPerspectiveFov(camera, CHASE_FOV);
+      camYaw.current = yaw;
+    } else if (mode === "helmet") {
       // Helmet view sits at the driver's eye (see HELMET_OFFSET). The wheel,
       // dash and rails are siblings of the visible chassis, and the chassis
       // itself stays visible here - Car.tsx only hides it for cockpit mode -
@@ -539,7 +591,8 @@ function ChaseCamera({
         desiredPos.current.z + forward.current.z * HELMET_AIM_DISTANCE_METERS
       );
       camera.lookAt(lookAt.current);
-      setPerspectiveFov(camera, HELMET_FOV);
+      if (shake) camera.position.set(camera.position.x + shake.x * 0.5, camera.position.y + shake.y * 0.5, camera.position.z);
+      setPerspectiveFov(camera, fovForSpeed(HELMET_FOV, speedMs, 4));
     } else if (mode === "cockpit") {
       offset.current.copy(COCKPIT_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
@@ -558,7 +611,8 @@ function ChaseCamera({
         desiredPos.current.z + forward.current.z * 20
       );
       camera.lookAt(lookAt.current);
-      setPerspectiveFov(camera, COCKPIT_FOV);
+      if (shake) camera.position.set(camera.position.x + shake.x * 0.5, camera.position.y + shake.y * 0.5, camera.position.z);
+      setPerspectiveFov(camera, fovForSpeed(COCKPIT_FOV, speedMs, 4));
     } else if (mode === "t-cam") {
       // Same unsmoothed position + aim construction as cockpit (see above),
       // only higher, further back, and aimed further ahead with a downward
@@ -575,7 +629,8 @@ function ChaseCamera({
         desiredPos.current.z + forward.current.z * 30
       );
       camera.lookAt(lookAt.current);
-      setPerspectiveFov(camera, TCAM_FOV);
+      if (shake) camera.position.set(camera.position.x + shake.x, camera.position.y + shake.y, camera.position.z);
+      setPerspectiveFov(camera, fovForSpeed(TCAM_FOV, speedMs, 5));
     } else if (mode === "tv") {
       // Broadcast (see lib/race/broadcastCams.ts): a hard cut to whichever
       // fixed stand sits nearest ahead of the car, aiming back at the car
@@ -600,8 +655,17 @@ function ChaseCamera({
       camera.lookAt(orbit.current.ax, orbit.current.ay, orbit.current.az);
       setPerspectiveFov(camera, ORBIT_FOV);
     } else {
-      offset.current.copy(CHASE_OFFSET).applyEuler(setCamEuler(yawEuler.current, yaw));
+      // Chase near/far: the offset is rotated by the camera's own lagging
+      // heading, never lagged in distance (see lib/race/chaseCam.ts) - the
+      // car swings a few degrees in frame as it turns, and sits exactly as
+      // far away at 300 km/h as at 30.
+      const wasChase = prevMode.current === "chase" || prevMode.current === "chase-far";
+      camYaw.current = camYaw.current === null || !wasChase ? yaw : stepCameraYaw(camYaw.current, yaw, dt);
+      offset.current
+        .copy(mode === "chase-far" ? CHASE_FAR_OFFSET : CHASE_OFFSET)
+        .applyEuler(setCamEuler(yawEuler.current, camYaw.current));
       desiredPos.current.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
+      if (shake) desiredPos.current.set(desiredPos.current.x + shake.x, desiredPos.current.y + shake.y, desiredPos.current.z);
       camera.position.copy(desiredPos.current);
 
       // lookAt is NOT smoothed either, for the same reason position isn't:
@@ -618,7 +682,7 @@ function ChaseCamera({
       // speed-dependent gap can open between them.
       lookAt.current.set(t.x, t.y + 0.5, t.z);
       camera.lookAt(lookAt.current);
-      setPerspectiveFov(camera, CHASE_FOV);
+      setPerspectiveFov(camera, fovForSpeed(CHASE_FOV, speedMs));
     }
     prevMode.current = mode;
   });
@@ -1058,7 +1122,14 @@ export function Scene({
             so readiness means the actual simulation tree is live. */}
         <SceneReady onReady={onReady} readyRef={sceneReadyRef} />
       </Physics>
-      <ChaseCamera target={visualRef} cameraMode={cameraModeRef} raceRef={raceRef} track={track} />
+      <ChaseCamera
+        target={visualRef}
+        cameraMode={cameraModeRef}
+        raceRef={raceRef}
+        track={track}
+        hudRef={hudRef}
+        audioRef={audioRef}
+      />
       <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} cameraModeRef={cameraModeRef} />
       <RaceStartCountdown
         raceStartRef={raceStartRef}

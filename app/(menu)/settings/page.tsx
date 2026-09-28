@@ -3,6 +3,7 @@ import { ControlSettingsPanel } from "../../race/ControlSettingsPanel";
 import { SaveTransfer } from "../../SaveTransfer";
 import { GraphicsSetting } from "../../GraphicsSetting";
 import { EngineerSetting } from "../../EngineerSetting";
+import { CameraSetting } from "../../CameraSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -18,6 +19,9 @@ export default function SettingsPage() {
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>GRAPHICS</h2>
           <GraphicsSetting />
+          <h2 className={styles.cardTitle} style={{ marginTop: 18 }}>CAMERA</h2>
+          <p className={styles.cardNote}>Kerb and high-speed shake. Off by default if your system asks for reduced motion.</p>
+          <CameraSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>RACE ENGINEER</h2>
