@@ -6,6 +6,7 @@ import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
   gearThrustFactor,
+  isReverse,
   rpmForGear,
   updateGearbox,
   type GearboxState,
@@ -633,6 +634,8 @@ export interface GearboxControl {
   shiftUp: boolean;
   /** Edge-triggered shift-down request (manual mode only - see gearbox.ts). */
   shiftDown: boolean;
+  /** Edge-triggered reverse request, honoured in both gear modes. */
+  selectReverse?: boolean;
 }
 
 export function applyCarControls(
@@ -659,6 +662,7 @@ export function applyCarControls(
       speedMs: currentSpeedMs,
       shiftUp: gearbox.shiftUp,
       shiftDown: gearbox.shiftDown,
+      selectReverse: gearbox.selectReverse,
     });
     // Shift decisions use the filtered state above, but torque delivery uses
     // the physical wheel speed. Filtering the torque curve as well made a
@@ -670,6 +674,10 @@ export function applyCarControls(
       baseEngineForce * boostMultiplier * engineTorqueMultiplier(rpm) * gearThrustFactor(gearbox.state.gear),
       BOOSTED_ENGINE_FORCE_CAP
     );
+    // Reverse is the same engine and the same torque, pushed the other way.
+    // Negating the wheel force is the whole of it, so reverse gets every
+    // assist, limiter and traction-control behaviour forward driving has.
+    if (isReverse(gearbox.state.gear)) engineForce = -engineForce;
   }
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   const brakeScale = combinedBrakeScale(currentSpeedMs, steer);

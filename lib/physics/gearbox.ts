@@ -48,6 +48,13 @@ export interface GearboxDriverInput {
   shiftUp: boolean;
   /** Edge request: shift down one gear this tick (manual mode only). */
   shiftDown: boolean;
+  /**
+   * Edge request: select reverse (see REVERSE_GEAR). Honoured in BOTH auto
+   * and manual mode, and only below REVERSE_ENGAGE_SPEED_MS - reverse is a
+   * recovery tool, not a driving gear, and an auto gearbox that dropped into
+   * it mid-corner would be a brake failure.
+   */
+  selectReverse?: boolean;
 }
 
 // Matches CAR_WHEELS' wheel radius in vehicle.ts - duplicated rather than
@@ -57,6 +64,35 @@ const DRIVEN_WHEEL_RADIUS_M = 0.34;
 const DRIVEN_WHEEL_CIRCUMFERENCE_M = 2 * Math.PI * DRIVEN_WHEEL_RADIUS_M;
 
 export const GEAR_COUNT = 7;
+
+/**
+ * Reverse is gear 0 - below first, not a negative gear, so every existing
+ * `gear >= 1` assumption (ratio indexing, HUD, audio, replay frames) keeps
+ * working unchanged and only reverse has to be handled explicitly.
+ */
+export const REVERSE_GEAR = 0;
+
+/**
+ * Reverse ratio. A real reverse is TALL, not short - a fraction of first gear -
+ * because it only ever has to move the car, not accelerate it.
+ */
+export const REVERSE_RATIO = 7.4;
+
+/**
+ * Thrust factor in reverse. Deliberately well under first gear's 1.0: reverse
+ * has to be able to back the car out of a gravel trap or reverse out of a
+ * mistake, not launch it backwards down the pit lane. 0.5 keeps reverse to
+ * walking pace, which is the entire point of it.
+ */
+const REVERSE_THRUST_FACTOR = 0.5;
+
+/**
+ * Speed under which reverse may be selected, m/s. Engaging it while rolling
+ * forward would be an instant speed reversal of a 220kg car, so reverse is
+ * only available from (near) a standstill - the same interlock a real gearbox
+ * has.
+ */
+export const REVERSE_ENGAGE_SPEED_MS = 2.5;
 
 // Overall ratios (gear ratio x final drive), 1st (shortest) to 7th.
 // The first six retain the close, F1-like spread used by the original tuning;
@@ -104,6 +140,12 @@ const TORQUE_CURVE: ReadonlyArray<readonly [number, number]> = [
 ];
 
 export function rpmForGear(speedMs: number, gear: number): number {
+  if (gear === REVERSE_GEAR) {
+    // Reverse reads the same way as any other gear: engine speed from wheel
+    // speed through the reverse ratio, floored at idle.
+    const wheelRpm = (Math.abs(speedMs) / DRIVEN_WHEEL_CIRCUMFERENCE_M) * 60;
+    return Math.max(IDLE_RPM, wheelRpm * REVERSE_RATIO);
+  }
   if (gear < 1 || gear > GEAR_COUNT) return IDLE_RPM;
   const wheelRpm = (Math.abs(speedMs) / DRIVEN_WHEEL_CIRCUMFERENCE_M) * 60;
   return Math.max(IDLE_RPM, wheelRpm * GEAR_RATIOS[gear - 1]);
@@ -111,9 +153,15 @@ export function rpmForGear(speedMs: number, gear: number): number {
 
 /** Thrust multiplier for the gear's own mechanical advantage (1..GEAR_COUNT). */
 export function gearThrustFactor(gear: number): number {
+  if (gear === REVERSE_GEAR) return REVERSE_THRUST_FACTOR;
   if (gear < 1) return GEAR_THRUST_FACTORS[0];
   if (gear > GEAR_COUNT) return GEAR_THRUST_FACTORS[GEAR_COUNT - 1];
   return GEAR_THRUST_FACTORS[gear - 1];
+}
+
+/** True when the gearbox is in reverse. */
+export function isReverse(gear: number): boolean {
+  return gear === REVERSE_GEAR;
 }
 
 export function createGearboxState(auto = true): GearboxState {
@@ -148,6 +196,32 @@ export function updateGearbox(state: GearboxState, input: GearboxDriverInput): G
     state.speedInitialized = true;
   } else {
     state.filteredSpeedMs += (rawSpeed - state.filteredSpeedMs) * SPEED_FILTER_ALPHA;
+  }
+
+  // Reverse, handled before either mode's own policy because it applies to
+  // both. Edge-triggered, speed-gated, and it cancels any pending shift
+  // cooldown - the driver is asking for a specific gear, not nudging the
+  // current one.
+  if (input.selectReverse) {
+    if (rawSpeed <= REVERSE_ENGAGE_SPEED_MS) {
+      state.gear = REVERSE_GEAR;
+      state.shiftCooldownTicks = 0;
+    }
+    // Above the gate the request is ignored rather than queued: honouring it
+    // a second later would drop the car into reverse while it was still
+    // rolling forward.
+    return state;
+  }
+
+  // Out of reverse and not being asked back into it: a shift-up (or the
+  // throttle, which the caller signals as a shift-up when reverse gear is
+  // selected) returns to first. Speed-gated the same way, so the car cannot
+  // be flipped into forward while travelling backwards.
+  if (state.gear === REVERSE_GEAR) {
+    if (input.shiftUp && rawSpeed <= REVERSE_ENGAGE_SPEED_MS) {
+      state.gear = 1;
+    }
+    return state;
   }
 
   if (!state.auto) {

@@ -28,6 +28,7 @@ const BINDINGS: [string, string][] = [
   ["T · B", "TC · ABS"],
   ["L", "racing line"],
   ["Q / Z", "shift gears"],
+  ["5", "reverse (stopped)"],
   ["G", "auto-gears"],
   ["M", "mute"],
   ["N", "side mirrors"],

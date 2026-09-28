@@ -72,6 +72,8 @@ export interface SessionInput {
   throttle: number;
   brake: number;
   steer: number;
+  /** Edge-triggered reverse request, passed straight to the shared gearbox. */
+  selectReverse?: boolean;
 }
 
 export interface SessionState {
@@ -254,7 +256,12 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
       DEFAULT_BRAKE_FORCE,
       controller.currentVehicleSpeed(),
       tractionControl,
-      { state: gearbox, shiftUp: false, shiftDown: false }
+      {
+        state: gearbox,
+        shiftUp: false,
+        shiftDown: false,
+        selectReverse: input.selectReverse,
+      }
     );
 
     // Per-wheel surfaces, resampled from the LIVE position every tick - the one

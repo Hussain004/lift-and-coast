@@ -46,6 +46,7 @@ import {
   IDLE_RPM,
   REDLINE_RPM,
   SHIFT_UP_RPM,
+  isReverse,
 } from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
 import {
@@ -1095,6 +1096,7 @@ export function Car({
         state: gearboxRef.current,
         shiftUp: gatedDriveInput.shiftUp,
         shiftDown: gatedDriveInput.shiftDown,
+        selectReverse: gatedDriveInput.selectReverse,
       }
     );
     if (gearboxRef.current.gear > gearBeforeControls) shiftSerialRef.current += 1;
@@ -1353,7 +1355,10 @@ export function Car({
     if (gearRef?.current || rpmRef?.current) {
       const rpm = rpmForGear(gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()), gearboxRef.current.gear);
       if (gearRef?.current) {
-        gearRef.current.textContent = `${gearboxRef.current.gear}`;
+        // "R" for reverse, a number for the forward gears.
+        gearRef.current.textContent = isReverse(gearboxRef.current.gear)
+          ? "R"
+          : `${gearboxRef.current.gear}`;
       }
       if (rpmRef?.current) {
         const fraction = Math.min(1, Math.max(0, (rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)));

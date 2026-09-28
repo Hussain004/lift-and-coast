@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GEAR_COUNT,
   GEAR_RATIOS,
+  REVERSE_GEAR,
   IDLE_RPM,
   REDLINE_RPM,
   REV_LIMITER_RPM,
@@ -90,8 +91,12 @@ describe("gearThrustFactor", () => {
   });
 
   it("clamps out-of-range gears", () => {
-    expect(gearThrustFactor(0)).toBe(gearThrustFactor(1));
+    // Gear 0 is no longer out of range - it is REVERSE (see REVERSE_GEAR), with
+    // its own deliberately low thrust factor. Genuinely invalid gears clamp to
+    // the nearest real one.
+    expect(gearThrustFactor(-1)).toBe(gearThrustFactor(1));
     expect(gearThrustFactor(99)).toBe(gearThrustFactor(GEAR_COUNT));
+    expect(gearThrustFactor(REVERSE_GEAR)).toBeLessThan(gearThrustFactor(1));
   });
 });
 

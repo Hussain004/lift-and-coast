@@ -87,6 +87,13 @@ export interface DriveInput {
    */
   shiftUp: boolean;
   shiftDown: boolean;
+  /**
+   * Edge-triggered reverse request (5). Only takes effect from a near
+   * standstill - see REVERSE_ENGAGE_SPEED_MS in gearbox.ts. Edge-triggered on
+   * the same terms as shiftUp/shiftDown: latched on keydown, consumed by
+   * exactly one update(), so holding it does not re-request every frame.
+   */
+  selectReverse: boolean;
 }
 
 const STEER_RATE = 5;
@@ -99,6 +106,9 @@ const REWIND_KEYS = ["KeyR"];
 const DEPLOY_KEYS = ["ShiftLeft", "ShiftRight"];
 const SHIFT_UP_KEYS = ["KeyQ"];
 const SHIFT_DOWN_KEYS = ["KeyZ"];
+// 5 is the reverse request. 1-3 are tyre compounds and 4 is the telemetry
+// overlay, so 5 is the next free key on an otherwise fully-bound board.
+const SELECT_REVERSE_KEYS = ["Digit5"];
 const AERO_MODE_TOGGLE_KEY = "KeyE";
 const CAMERA_MODE_TOGGLE_KEY = "KeyC";
 const ORBIT_TOGGLE_KEY = "KeyV";
@@ -154,6 +164,7 @@ export function useDriveInput(
     weatherCycle: false,
     shiftUp: false,
     shiftDown: false,
+    selectReverse: false,
   });
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
@@ -237,6 +248,9 @@ export function useDriveInput(
       if (SHIFT_DOWN_KEYS.includes(e.code) && !keys.current.has(e.code)) {
         input.current.shiftDown = true;
       }
+      if (SELECT_REVERSE_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+        input.current.selectReverse = true;
+      }
       keys.current.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keys.current.delete(e.code);
@@ -276,6 +290,7 @@ export function useDriveInput(
       // (applyCarControls' gearbox handling).
       const shiftUp = input.current.shiftUp;
       const shiftDown = input.current.shiftDown;
+      const selectReverse = input.current.selectReverse;
       const pitRequested = input.current.pitRequested;
       const replayToggle = input.current.replayToggle;
       const ersModeCycle = input.current.ersModeCycle;
@@ -283,6 +298,7 @@ export function useDriveInput(
       const weatherCycle = input.current.weatherCycle;
       input.current.shiftUp = false;
       input.current.shiftDown = false;
+      input.current.selectReverse = false;
       input.current.pitRequested = false;
       input.current.replayToggle = false;
       input.current.ersModeCycle = false;
@@ -350,6 +366,7 @@ export function useDriveInput(
       input.current.strategyModeCycle = strategyModeCycle;
       input.current.weatherCycle = weatherCycle;
       input.current.shiftUp = shiftUp;
+      input.current.selectReverse = selectReverse;
       input.current.shiftDown = shiftDown;
       return input.current;
     },
