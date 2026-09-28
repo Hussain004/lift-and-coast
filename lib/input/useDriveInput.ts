@@ -137,6 +137,18 @@ const anyPressed = (keys: Set<string>, codes: readonly string[]) =>
  * the Canvas, not a child of it. `touchInputRef` is the matching mutable
  * channel for the adaptive on-screen phone controls.
  */
+const EDGE_FLAGS = [
+  "shiftUp",
+  "shiftDown",
+  "selectReverse",
+  "pitRequested",
+  "replayToggle",
+  "ersModeCycle",
+  "strategyModeCycle",
+  "weatherCycle",
+] as const;
+type EdgeFlag = (typeof EDGE_FLAGS)[number];
+
 export function useDriveInput(
   externalCameraModeRef?: RefObject<CameraMode>,
   externalRacingLineVisibleRef?: RefObject<boolean>,
@@ -158,6 +170,21 @@ export function useDriveInput(
     shiftUp: false,
     shiftDown: false,
     selectReverse: false,
+  });
+  // One-shot requests latched by keydown and drained by update(). Kept apart
+  // from `input` on purpose: `input` is also what update() returns, and
+  // latching in the same object meant each tick's copy of an edge became the
+  // next tick's latched edge, so one press of J toggled instant replay on
+  // every physics step forever (same for ERS/strategy/weather/pit keys).
+  const pendingEdges = useRef<Record<EdgeFlag, boolean>>({
+    shiftUp: false,
+    shiftDown: false,
+    selectReverse: false,
+    pitRequested: false,
+    replayToggle: false,
+    ersModeCycle: false,
+    strategyModeCycle: false,
+    weatherCycle: false,
   });
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
@@ -218,31 +245,31 @@ export function useDriveInput(
         autoGear.current = !autoGear.current;
       }
       if (boundKeys("pitRequest")[0] === e.code && !keys.current.has(e.code)) {
-        input.current.pitRequested = true;
+        pendingEdges.current.pitRequested = true;
       }
       if (boundKeys("instantReplay")[0] === e.code && !keys.current.has(e.code)) {
-        input.current.replayToggle = true;
+        pendingEdges.current.replayToggle = true;
       }
       if (boundKeys("ersMode")[0] === e.code && !keys.current.has(e.code)) {
-        input.current.ersModeCycle = true;
+        pendingEdges.current.ersModeCycle = true;
       }
       if (boundKeys("strategyMode")[0] === e.code && !keys.current.has(e.code)) {
-        input.current.strategyModeCycle = true;
+        pendingEdges.current.strategyModeCycle = true;
       }
       if (boundKeys("weatherCycle")[0] === e.code && !keys.current.has(e.code)) {
-        input.current.weatherCycle = true;
+        pendingEdges.current.weatherCycle = true;
       }
       // Shift requests latch on the rising edge (no OS key-repeat, same
       // edge detection as the toggles above) and are consumed by the next
       // update() - see the copy/clear/restore in update() below.
       if (boundKeys("shiftUp").includes(e.code) && !keys.current.has(e.code)) {
-        input.current.shiftUp = true;
+        pendingEdges.current.shiftUp = true;
       }
       if (boundKeys("shiftDown").includes(e.code) && !keys.current.has(e.code)) {
-        input.current.shiftDown = true;
+        pendingEdges.current.shiftDown = true;
       }
       if (boundKeys("reverse").includes(e.code) && !keys.current.has(e.code)) {
-        input.current.selectReverse = true;
+        pendingEdges.current.selectReverse = true;
       }
       keys.current.add(e.code);
     };
@@ -281,22 +308,8 @@ export function useDriveInput(
       // cleared, so holding Q/Z down can't shift every frame), and they're
       // restored onto the returned input for the tick's consumers
       // (applyCarControls' gearbox handling).
-      const shiftUp = input.current.shiftUp;
-      const shiftDown = input.current.shiftDown;
-      const selectReverse = input.current.selectReverse;
-      const pitRequested = input.current.pitRequested;
-      const replayToggle = input.current.replayToggle;
-      const ersModeCycle = input.current.ersModeCycle;
-      const strategyModeCycle = input.current.strategyModeCycle;
-      const weatherCycle = input.current.weatherCycle;
-      input.current.shiftUp = false;
-      input.current.shiftDown = false;
-      input.current.selectReverse = false;
-      input.current.pitRequested = false;
-      input.current.replayToggle = false;
-      input.current.ersModeCycle = false;
-      input.current.strategyModeCycle = false;
-      input.current.weatherCycle = false;
+      const edges = { ...pendingEdges.current };
+      for (const flag of EDGE_FLAGS) pendingEdges.current[flag] = false;
       const steerTarget =
         (anyPressed(pressed, boundKeys("steerLeft")) ? 1 : 0) -
         (anyPressed(pressed, boundKeys("steerRight")) ? 1 : 0);
@@ -360,14 +373,7 @@ export function useDriveInput(
       input.current.rewind = anyPressed(pressed, boundKeys("rewind"));
       input.current.deploy = anyPressed(pressed, boundKeys("deploy")) || (touch?.deploy ?? false);
       input.current.overtake = anyPressed(pressed, boundKeys("overtake")) || (touch?.overtake ?? false);
-      input.current.pitRequested = pitRequested;
-      input.current.replayToggle = replayToggle;
-      input.current.ersModeCycle = ersModeCycle;
-      input.current.strategyModeCycle = strategyModeCycle;
-      input.current.weatherCycle = weatherCycle;
-      input.current.shiftUp = shiftUp;
-      input.current.selectReverse = selectReverse;
-      input.current.shiftDown = shiftDown;
+      for (const flag of EDGE_FLAGS) input.current[flag] = edges[flag];
       return input.current;
     },
   };

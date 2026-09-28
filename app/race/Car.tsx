@@ -95,7 +95,7 @@ import { computeSectorGates } from "@/lib/tracks/sectors";
 import { computeMinimapTransform } from "@/lib/tracks/minimap";
 import { createOvertakeSystem, OVERTAKE_BOOST_MULTIPLIER } from "@/lib/physics/overtake";
 import { createStrategySystem } from "@/lib/race/strategy";
-import { createReplayController, type TelemetryFrame } from "@/lib/race/replay";
+import { createReplayController, REPLAY_CAPACITY_SECONDS, type SharedReplay, type TelemetryFrame } from "@/lib/race/replay";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
@@ -277,6 +277,7 @@ export function Car({
   netSlot = 0,
   raceStartRef,
   sharedRewindActiveRef,
+  sharedReplayRef,
   touchInputRef,
   qualifyingRef,
   qualifyingDisplayRef,
@@ -422,6 +423,12 @@ export function Car({
    * between the two physics steps matters.
    */
   sharedRewindActiveRef?: React.RefObject<boolean>;
+  /**
+   * Owned by Scene.tsx, written here and read by AICar.tsx: while instant
+   * replay plays, every AI car shows its own pose from `secondsBack` behind
+   * live instead of simulating, and snaps back to live when it ends.
+   */
+  sharedReplayRef?: React.RefObject<SharedReplay>;
   /** Shared mutable analog controls from the on-screen touch deck. */
   touchInputRef?: React.RefObject<TouchDriveInput | null>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
@@ -661,7 +668,7 @@ export function Car({
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
   );
-  const replayRef = useRef(createReplayController(45, 1 / 60));
+  const replayRef = useRef(createReplayController(REPLAY_CAPACITY_SECONDS, 1 / 60));
   const replayActiveRef = useRef(false);
   const replayCameraRestoreRef = useRef<CameraMode | null>(null);
   const overtakeRequestedRef = useRef(false);
@@ -810,11 +817,35 @@ export function Car({
   }, [world]);
 
   function toggleReplay() {
+    // Online the other cars belong to other people's machines, so there is
+    // no whole-field timeline to replay and no way to freeze it.
+    if (netActive) return;
+    if (replayActiveRef.current) {
+      stopReplay();
+      return;
+    }
     replayActiveRef.current = replayRef.current.togglePlayback();
     if (replayActiveRef.current) {
       replayCameraRestoreRef.current = cameraMode.current;
       cameraMode.current = "tv";
-    } else if (replayCameraRestoreRef.current) {
+    }
+  }
+
+  /**
+   * Ends instant replay however it ends (toggled, stopped from Race Ops, or
+   * played out) and puts the car back exactly where it was when the replay
+   * began. Without the restore, stopping midway left the car at the replayed
+   * past pose - a free rewind. The AI cars restore themselves from the same
+   * shared flag (see AICar.tsx).
+   */
+  function stopReplay() {
+    replayRef.current.stopPlayback();
+    replayActiveRef.current = false;
+    const live = replayRef.current.liveFrame();
+    const body = chassisRef.current;
+    if (live && body) applySnapshot(body, live, false);
+    if (sharedReplayRef) sharedReplayRef.current = { active: false, secondsBack: 0 };
+    if (replayCameraRestoreRef.current) {
       cameraMode.current = replayCameraRestoreRef.current;
       replayCameraRestoreRef.current = null;
     }
@@ -872,12 +903,7 @@ export function Car({
           toggleReplay();
           break;
         case "stop-replay":
-          replayRef.current.stopPlayback();
-          replayActiveRef.current = false;
-          if (replayCameraRestoreRef.current) {
-            cameraMode.current = replayCameraRestoreRef.current;
-            replayCameraRestoreRef.current = null;
-          }
+          if (replayActiveRef.current) stopReplay();
           break;
         case "seek-replay":
           replayRef.current.seekRelative(command.seconds);
@@ -898,16 +924,20 @@ export function Car({
     if (replayActiveRef.current) {
       replayRef.current.tick(world.timestep);
       if (!replayRef.current.state().playback) {
-        replayActiveRef.current = false;
-        if (replayCameraRestoreRef.current) {
-          cameraMode.current = replayCameraRestoreRef.current;
-          replayCameraRestoreRef.current = null;
+        // Played out: back to live, and this step runs normally.
+        stopReplay();
+      } else {
+        // The whole field freezes and replays (see sharedReplayRef): the
+        // race clock, lap timer and AI all hold while the player watches, so
+        // a replay can never cost track position.
+        const replayFrame = replayRef.current.frameAtCursor();
+        if (replayFrame) applySnapshot(body, replayFrame, true);
+        if (sharedReplayRef) {
+          sharedReplayRef.current = { active: true, secondsBack: replayRef.current.secondsBehindLive() };
         }
+        isRewindingRef.current = true;
+        return;
       }
-      const replayFrame = replayRef.current.frameAtCursor();
-      if (replayFrame) applySnapshot(body, replayFrame, true);
-      isRewindingRef.current = true;
-      return;
     }
     isRewindingRef.current = driveInput.rewind;
     if (sharedRewindActiveRef) sharedRewindActiveRef.current = driveInput.rewind;

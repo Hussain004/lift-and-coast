@@ -93,6 +93,8 @@ import {
   REWIND_CAPACITY_SECONDS,
   snapshotOf,
 } from "@/lib/race/rewindBuffer";
+import { createPoseRing } from "@/lib/race/poseRing";
+import { REPLAY_CAPACITY_SECONDS, type SharedReplay } from "@/lib/race/replay";
 import { gridSlot } from "@/lib/race/grid";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
@@ -165,6 +167,7 @@ export function AICar({
   raceStartRef,
   qualifyingRef,
   sharedRewindActiveRef,
+  sharedReplayRef,
   gridSlotIndex = 1,
   aiIndex = 0,
   /** This rival's FIA code - selects its deterministic personality (pace,
@@ -207,6 +210,13 @@ export function AICar({
    * ordering between the two physics steps matters.
    */
   sharedRewindActiveRef?: React.RefObject<boolean>;
+  /**
+   * Instant replay (written by Car.tsx): while active this car shows its own
+   * recorded pose from `secondsBack` behind live and does not simulate, so
+   * the whole field is replayed and frozen together; when it ends the car is
+   * put back on its live pose.
+   */
+  sharedReplayRef?: React.RefObject<SharedReplay>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   /**
@@ -310,6 +320,10 @@ export function AICar({
   // Flashback state (see sharedRewindActiveRef): same scrub/resume/lap-
   // rollback discipline as the player's own car in Car.tsx.
   const aiBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
+  // Instant replay recording (see sharedReplayRef) - packed floats, since 19
+  // cars x 45s of object snapshots would be ~16MB of garbage.
+  const aiReplayRef = useRef(createPoseRing(REPLAY_CAPACITY_SECONDS, 1 / 60));
+  const aiWasReplayingRef = useRef(false);
   // Progress continuity (see progressTracker.ts): rank and racecraft
   // read tracked progress, never the flicker-prone scan, at the seam.
   const progressTrackerRef = useRef(createProgressTracker());
@@ -387,6 +401,19 @@ export function AICar({
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
+
+    const replay = sharedReplayRef?.current;
+    if (replay?.active) {
+      aiWasReplayingRef.current = true;
+      const sample = aiReplayRef.current.sampleAt(replay.secondsBack);
+      if (sample) applySnapshot(body, sample, true);
+      return;
+    }
+    if (aiWasReplayingRef.current) {
+      aiWasReplayingRef.current = false;
+      const live = aiReplayRef.current.sampleAt(0);
+      if (live) applySnapshot(body, live, false);
+    }
 
     // Guest pose reconciliation (see netPoseRef): a guest's car is
     // simulated here from its inputs, but the guest is driving its own copy
@@ -841,7 +868,9 @@ export function AICar({
       towDrag * weatherState.dragMultiplier
     );
     applySurfaceDragImpulse(body, meanSurfaceDrag(surfaceSamples), world.timestep);
-    aiBufferRef.current.push(snapshotOf(body));
+    const aiSnapshot = snapshotOf(body);
+    aiBufferRef.current.push(aiSnapshot);
+    aiReplayRef.current.push(aiSnapshot);
     if (trafficRef && trafficKey !== undefined) {
       trafficRef.current[trafficKey] = { x: pos.x, z: pos.z };
     }

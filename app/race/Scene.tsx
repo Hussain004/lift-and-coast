@@ -23,6 +23,7 @@ import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { CameraMode } from "@/lib/input/useDriveInput";
+import type { SharedReplay } from "@/lib/race/replay";
 import {
   HELMET_AIM_DISTANCE_METERS,
   HELMET_AIM_DROP_METERS,
@@ -869,6 +870,9 @@ export function Scene({
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
   const sharedRewindActiveRef = useRef(false);
+  // Instant replay clock (see Car.tsx's sharedReplayRef): the player's
+  // replay writes it, every AI car follows it.
+  const sharedReplayRef = useRef<SharedReplay>({ active: false, secondsBack: 0 });
   // Qualifying is intentionally a player-only track session. Keep the full
   // roster in the shared board so the final classification and race handoff
   // still include the hidden reference field, but do not mount AICar bodies
@@ -1015,6 +1019,7 @@ export function Scene({
           trafficKey="p"
           raceStartRef={raceStartRef}
           sharedRewindActiveRef={sharedRewindActiveRef}
+          sharedReplayRef={sharedReplayRef}
           qualifyingRef={qualifyingRef}
           qualifyingDisplayRef={qualifyingDisplayRef}
           penaltyToastRef={penaltyToastRef}
@@ -1045,6 +1050,7 @@ export function Scene({
                 minimapMarkerEls={aiMarkerEls}
                 raceStartRef={raceStartRef}
                 sharedRewindActiveRef={sharedRewindActiveRef}
+                sharedReplayRef={sharedReplayRef}
                 qualifyingRef={qualifyingRef}
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}

@@ -26,13 +26,25 @@ export interface ReplayState {
   frameCount: number;
 }
 
+/** The field-wide replay clock: the player's replay drives it, every AI car
+ * follows it (see Car.tsx / AICar.tsx). */
+export interface SharedReplay {
+  active: boolean;
+  /** How far behind live the replay cursor sits. */
+  secondsBack: number;
+}
+
 /**
  * A compact rolling replay/telemetry recorder. It deliberately stores the
  * same physics snapshot as rewind plus a small telemetry row, so instant
  * replay and the data trace cannot disagree about what the car was doing.
  */
+/** Instant-replay length, shared by the player's recorder and the AI's pose
+ * rings so every car holds the same window. */
+export const REPLAY_CAPACITY_SECONDS = 45;
+
 export function createReplayController(
-  capacitySeconds = 45,
+  capacitySeconds = REPLAY_CAPACITY_SECONDS,
   timestep = 1 / 60
 ) {
   const capacity = Math.max(2, Math.round(capacitySeconds / Math.max(1 / 240, timestep)));
@@ -56,9 +68,14 @@ export function createReplayController(
     }
   }
 
+  // The timeline is the frame index, one physics step per frame - NOT the
+  // race clock in each frame's telemetry. The race clock stands still before
+  // lights out and jumps forward when a time penalty is added, and a timeline
+  // built on it collapsed every pre-start frame onto one instant and skipped
+  // across penalties. It also has to match the AI's pose rings (see
+  // lib/race/poseRing.ts), which are step-indexed.
   function duration(): number {
-    if (frames.length < 2) return 0;
-    return Math.max(0, frames[frames.length - 1].telemetry.elapsedSeconds - frames[0].telemetry.elapsedSeconds);
+    return frames.length < 2 ? 0 : (frames.length - 1) * timestep;
   }
 
   function togglePlayback(): boolean {
@@ -83,22 +100,25 @@ export function createReplayController(
     cursorSeconds = Math.min(duration(), Math.max(0, cursorSeconds + seconds));
   }
 
+  /** How far behind the newest recorded frame the cursor sits - the shared
+   * clock every other car's replay follows. Zero when not playing back. */
+  function secondsBehindLive(): number {
+    return playback ? Math.max(0, duration() - cursorSeconds) : 0;
+  }
+
+  /** The newest recorded frame: the live state at the moment playback began,
+   * which is where the car must be put back when the replay ends. */
+  function liveFrame(): ReplayFrame | null {
+    return frames.length === 0 ? null : frames[frames.length - 1];
+  }
+
   function frameAtCursor(): ReplayFrame | null {
     if (frames.length === 0) return null;
     if (!playback) return frames[frames.length - 1];
-    const target = frames[0].telemetry.elapsedSeconds + cursorSeconds;
-    if (target <= frames[0].telemetry.elapsedSeconds) return frames[0];
-    const last = frames[frames.length - 1];
-    if (target >= last.telemetry.elapsedSeconds) return last;
-    for (let i = 1; i < frames.length; i++) {
-      const b = frames[i];
-      if (target > b.telemetry.elapsedSeconds) continue;
-      const a = frames[i - 1];
-      const span = b.telemetry.elapsedSeconds - a.telemetry.elapsedSeconds;
-      const t = span <= 0 ? 0 : (target - a.telemetry.elapsedSeconds) / span;
-      return blendFrames(a, b, t);
-    }
-    return last;
+    const exact = cursorSeconds / timestep;
+    const i = Math.min(frames.length - 1, Math.max(0, Math.floor(exact)));
+    if (i >= frames.length - 1) return frames[frames.length - 1];
+    return blendFrames(frames[i], frames[i + 1], exact - i);
   }
 
   function telemetryTrace(maxPoints = 80): TelemetryFrame[] {
@@ -124,7 +144,19 @@ export function createReplayController(
     recording = true;
   }
 
-  return { record, tick, togglePlayback, stopPlayback, seekRelative, frameAtCursor, telemetryTrace, state, clear };
+  return {
+    record,
+    tick,
+    togglePlayback,
+    stopPlayback,
+    seekRelative,
+    secondsBehindLive,
+    liveFrame,
+    frameAtCursor,
+    telemetryTrace,
+    state,
+    clear,
+  };
 }
 
 function blendFrames(a: ReplayFrame, b: ReplayFrame, t: number): ReplayFrame {
