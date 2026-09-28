@@ -158,6 +158,19 @@ export function isDefaultCarSetup(setup: CarSetup): boolean {
  * car does rather than as numbers, because a bare "0.65" tells a player
  * nothing about whether they have made it faster or slower.
  */
+export function carSetupRideLabel(setup: CarSetup): string {
+  return setup.rideHeight < RIDE_HEIGHT_NOMINAL - 0.05
+    ? "LOW"
+    : setup.rideHeight > RIDE_HEIGHT_NOMINAL + 0.05
+      ? "HIGH"
+      : "STANDARD";
+}
+
+export function carSetupAeroLabel(setup: CarSetup): string {
+  return setup.aeroTrim < 0.45 ? "LOW DRAG" : setup.aeroTrim > 0.55 ? "MAX DOWNFORCE" : "BALANCED";
+}
+
+/** Both halves in one phrase, for anywhere a single string is wanted. */
 export function carSetupLabel(setup: CarSetup): string {
   const low = setup.rideHeight < RIDE_HEIGHT_NOMINAL - 0.05;
   const high = setup.rideHeight > RIDE_HEIGHT_NOMINAL + 0.05;

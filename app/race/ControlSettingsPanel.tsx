@@ -172,10 +172,16 @@ export function ControlSettingsPanel() {
               onClick={() => setCapture({ action })}
             >
               <span className={styles.settingsKeyName}>{CONTROL_LABELS[action]}</span>
+              {/* The PENDING key, not the live one. A row that showed the
+                  live table looked like the rebind had been ignored - you
+                  press a key, the row does not move, and there is no way to
+                  tell whether it took. Showing the pending value also makes
+                  the red conflict marking mean something, since a conflicting
+                  key is by definition the one you just chose. */}
               <span className={styles.settingsKeyCode}>
                 {capture?.action === action
                   ? "press a key"
-                  : getBindings()[action].map(formatKeyCode).join(" / ")}
+                  : bindings[action].map(formatKeyCode).join(" / ")}
               </span>
             </button>
           ))}

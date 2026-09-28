@@ -2524,7 +2524,8 @@
 --------------------------------------------------------------------------- */
 .controlsPanel,
 .raceOpsPanel,
-.telemetryPanel {
+.telemetryPanel,
+.settingsPanel {
   position: absolute;
   top: 376px;
   right: 16px;
@@ -2780,4 +2781,226 @@
   font-size: 9px;
   letter-spacing: 1.4px;
   color: #5c6670;
+}
+
+/* ---------------------------------------------------------------------------
+   Control settings - key rebinding and steering feel.
+
+   A FOURTH entry in the shared right-hand slot (controls, telemetry, Race
+   Operations, settings), so it obeys the same slot geometry and the same
+   minimap clearance as the other three - it is in the combined rule above.
+   Its list is longer than the others', so the rows are tighter and the panel
+   is a little wider, but the column's vertical budget is not ours to spend.
+--------------------------------------------------------------------------- */
+.settingsPanel {
+  width: 430px;
+  background: linear-gradient(160deg, rgba(8, 10, 14, 0.97), rgba(19, 23, 28, 0.95));
+  border: 1px solid #333c46;
+  border-top: 2px solid #6f7d8c;
+  border-radius: 4px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.46);
+  color: #dfe4ea;
+  font-family: var(--font-geist-sans);
+  font-size: 12px;
+  pointer-events: auto;
+  z-index: 4;
+}
+
+.settingsHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px 7px;
+  border-bottom: 1px solid #262e37;
+}
+
+.settingsTitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.2px;
+  color: #aeb8c4;
+}
+
+.settingsHint {
+  font-size: 10px;
+  color: #5c6670;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsStatus {
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #7fdca4;
+  background: rgba(47, 191, 107, 0.08);
+  border-bottom: 1px solid #1e242b;
+}
+
+.settingsGroup {
+  padding: 9px 12px;
+  border-bottom: 1px solid #1a2027;
+}
+
+.settingsLabel {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  color: #6b7580;
+  margin-bottom: 6px;
+}
+
+/* Two columns, not one. The binding list is 22 actions - the longest thing
+   in the slot by far - and as a single column it ran to 849px of content in a
+   ~296px budget, so two thirds of it was below the fold and the panel read as
+   "ten bindings" when there were twenty-two. Pairing them up roughly halves
+   the list. The panel still scrolls, and should: 22 bindings plus three
+   sliders, three checkboxes and a select cannot fit in the space between the
+   mirror and the minimap, and pretending otherwise would mean hiding
+   controls. This is a long list, not a wrapping bug like Race Ops was. */
+.settingsKeys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 6px;
+}
+
+/* Each row is a button, so a rebind is one click then one key press, with no
+   separate apply step for the binding itself. */
+.settingsKey,
+.settingsKeyBad {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 7px;
+  border: 1px solid #222932;
+  border-radius: 3px;
+  background: #10141a;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms linear, background 100ms linear;
+}
+
+.settingsKey:hover {
+  border-color: #333c46;
+  background: #141922;
+}
+
+.settingsKeyBad {
+  border-color: #d2543a;
+  background: #1d1210;
+}
+
+.settingsKey[data-capturing="yes"] {
+  border-color: #7fdca4;
+  background: rgba(47, 191, 107, 0.12);
+}
+
+.settingsKeyName {
+  font-size: 10.5px;
+  color: #c3cad2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsKeyCode {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: #7fdca4;
+  white-space: nowrap;
+}
+
+.settingsProblem {
+  margin: 7px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #e08a72;
+}
+
+.settingsField {
+  display: grid;
+  grid-template-columns: 68px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: #c3cad2;
+}
+
+.settingsField input[type="range"] {
+  width: 100%;
+  accent-color: #2fbf6b;
+}
+
+.settingsField select {
+  grid-column: 2 / 4;
+  padding: 3px 6px;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  background: #10141a;
+  color: #dfe4ea;
+  font: inherit;
+  font-size: 11px;
+}
+
+.settingsField b {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-align: right;
+  color: #7fdca4;
+}
+
+.settingsCheck {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: #c3cad2;
+  cursor: pointer;
+}
+
+.settingsCheck input {
+  accent-color: #2fbf6b;
+}
+
+.settingsActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 10px 12px 12px;
+}
+
+.settingsAction {
+  flex: 1 1 auto;
+  padding: 6px 8px;
+  border: 1px solid #2a313a;
+  border-radius: 3px;
+  background: #141922;
+  color: #c3cad2;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: border-color 100ms linear, background 100ms linear;
+}
+
+.settingsAction:hover:not(:disabled) {
+  border-color: #3f4a57;
+  background: #1a212b;
+}
+
+.settingsAction:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

@@ -6,7 +6,8 @@ import {
   DEFAULT_CAR_SETUP,
   RIDE_HEIGHT_MAX,
   RIDE_HEIGHT_MIN,
-  carSetupLabel,
+  carSetupAeroLabel,
+  carSetupRideLabel,
   isDefaultCarSetup,
   normalizeCarSetup,
   type CarSetup,
@@ -303,12 +304,15 @@ export function SessionSetup() {
       )}
       <div className={styles.sliderRow}>
         <span className={styles.label}>CAR SETUP</span>
-        <span className={styles.readout} aria-live="polite">
-          {carSetupLabel(carSetup)}
-        </span>
       </div>
-      <div className={styles.scale}>
-        <span>Built for your car only - the AI runs the standard setup</span>
+      <div className={styles.setupNote}>
+        Built for your car only - the AI runs the standard setup
+      </div>
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>RIDE HEIGHT</span>
+        <span className={styles.setupValue} aria-live="polite">
+          {carSetupRideLabel(carSetup)}
+        </span>
       </div>
       <input
         type="range"
@@ -328,6 +332,12 @@ export function SessionSetup() {
         <span>LOW (more grip, skips kerbs)</span>
         <span>HIGH (less grip, settles)</span>
       </div>
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>AERO TRIM</span>
+        <span className={styles.setupValue} aria-live="polite">
+          {carSetupAeroLabel(carSetup)}
+        </span>
+      </div>
       <input
         type="range"
         min={AERO_TRIM_MIN}
@@ -343,8 +353,8 @@ export function SessionSetup() {
         aria-label="Aero trim: more downforce and more drag, or less of both"
       />
       <div className={styles.scale}>
-        <span>LOW DRAG (faster, less grip)</span>
-        <span>MAX DOWNFORCE (cornering, more drag)</span>
+        <span>LOW DRAG (faster)</span>
+        <span>MAX DOWNFORCE (more drag)</span>
       </div>
       <div className={styles.presets} role="radiogroup" aria-label="Car setup presets">
         <button

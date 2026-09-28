@@ -215,3 +215,23 @@
     animation: none;
   }
 }
+/* The car setup's value, next to its label.
+   Deliberately NOT .readout: that is a 32px italic display face sized for a
+   single digit (the lap and rival counts), and a setup's name is a phrase -
+   set in it, "STANDARD - MAX DOWNFORCE" wrapped across two lines and shouted
+   over the rest of the panel. Found by screenshotting the screen, which is the
+   only way that shows up. */
+.setupValue {
+  color: #f6f3ec;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-align: right;
+}
+
+/* The "the AI runs the standard setup" caveat. */
+.setupNote {
+  color: #555b66;
+  font-size: 11px;
+  line-height: 1.4;
+}
