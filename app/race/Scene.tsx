@@ -20,6 +20,7 @@ import { Track } from "./Track";
 import type { TrackData } from "@/lib/tracks/types";
 import { buildTerrainGeometry } from "@/lib/tracks/terrain";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
+import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { CameraMode } from "@/lib/input/useDriveInput";
 import {
   HELMET_AIM_DISTANCE_METERS,
@@ -678,6 +679,7 @@ export function Scene({
   weatherPreset = "clear",
   raceCommandsRef,
   raceOpsSnapshotRef,
+  telemetryRef,
   perfRef,
   sideMirrorsEnabled = true,
 }: {
@@ -733,6 +735,9 @@ export function Scene({
   weatherPreset?: WeatherPreset;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
+  /** Live telemetry target for the player car (see lib/race/telemetry.ts).
+   *  Passed only while the overlay is open. */
+  telemetryRef?: React.RefObject<TelemetrySample | null>;
   /** Championship round index from ?champ=, or null for a one-off race. */
   champRound?: number | null;
   /** What kind of session this visit is - see ?mode= (default race). */
@@ -1007,6 +1012,7 @@ export function Scene({
           raceControlRef={raceControlRef}
           raceCommandsRef={raceCommandsRef}
           raceOpsSnapshotRef={raceOpsSnapshotRef}
+          telemetryRef={telemetryRef}
           audioRef={audioRef}
         />
         {sessionMode !== "practice" &&

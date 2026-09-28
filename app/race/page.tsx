@@ -12,6 +12,7 @@ import {
 import { getTrack } from "@/lib/tracks/trackData";
 import { parseTrackId } from "@/lib/tracks/registry";
 import { parseWeatherPreset } from "@/lib/physics/weather";
+import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
 import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
@@ -23,6 +24,7 @@ import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
 import { RaceOpsPanel } from "./RaceOpsPanel";
+import { TelemetryPanel } from "./TelemetryPanel";
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 
@@ -303,6 +305,13 @@ function RaceContent() {
   // whichever is inactive is not rendered, so they can never overlap. H
   // (or the controls panel's own hint) swaps them.
   const [raceOpsOpen, setRaceOpsOpen] = useState(false);
+  // Telemetry overlay (K). The sample lives in a ref the car writes every
+  // physics step and the panel reads on its own rAF, so an open overlay costs
+  // no React re-renders; the ref is passed down only while it is open, which
+  // is also what makes the car's per-step work conditional.
+  const telemetryRef = useRef<TelemetrySample | null>(null);
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
+  const toggleTelemetry = useCallback(() => setTelemetryOpen((value) => !value), []);
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
   const toggleSideMirrors = useCallback(() => {
@@ -319,10 +328,16 @@ function RaceContent() {
         event.preventDefault();
         toggleRaceOps();
       }
+      // Digit 4, not a letter: every one of the 26 letters is already bound
+      // (see the ControlsPanel list) and 1-3 are the tyre compounds.
+      if (event.code === "Digit4") {
+        event.preventDefault();
+        toggleTelemetry();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleRaceOps, toggleSideMirrors]);
+  }, [toggleRaceOps, toggleSideMirrors, toggleTelemetry]);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
@@ -393,6 +408,7 @@ function RaceContent() {
         weatherPreset={weatherPreset}
         raceCommandsRef={raceCommandsRef}
         raceOpsSnapshotRef={raceOpsSnapshotRef}
+        telemetryRef={telemetryOpen ? telemetryRef : undefined}
         perfRef={perfRef}
         sideMirrorsEnabled={sideMirrorsEnabled}
       />
@@ -411,6 +427,7 @@ function RaceContent() {
         open={raceOpsOpen}
         onToggle={toggleRaceOps}
       />
+      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}
       {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}

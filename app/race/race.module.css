@@ -2447,3 +2447,256 @@
     letter-spacing: 0.8px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Telemetry overlay (the engineer's view, toggled with K).
+
+   Sits on the LEFT rail, opposite the Race Ops / controls panel on the right,
+   so the two never fight for the same corner and the panel-slot swap on H
+   does not disturb it. Above the bottom bar, which keeps its own readouts.
+   Carbon panel with a green instrument accent, matching the existing strip.
+--------------------------------------------------------------------------- */
+.telemetryPanel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 300px;
+  background: linear-gradient(145deg, rgba(7, 9, 13, 0.96), rgba(18, 22, 26, 0.94));
+  border: 1px solid #333b45;
+  border-left: 3px solid #39ff88;
+  border-radius: 3px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e8ebef;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  pointer-events: none;
+  z-index: 4;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px));
+}
+
+.telemetryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 9px;
+  border-bottom: 1px solid #2a313a;
+  background: linear-gradient(180deg, rgba(57, 255, 136, 0.09), transparent);
+}
+
+.telemetryTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  color: #39ff88;
+}
+
+.telemetryHint {
+  font-size: 9px;
+  padding: 1px 5px;
+  border: 1px solid #3a414d;
+  border-radius: 2px;
+  color: #8b949f;
+}
+
+.telemetryBody {
+  display: grid;
+  grid-template-columns: 1fr 74px;
+  grid-template-areas:
+    "car side"
+    "balance balance"
+    "gg gg";
+  gap: 8px;
+  padding: 9px;
+}
+
+/* Plan view of the car: 2x2 corners, front row at the top, so the layout
+   matches how a driver or engineer reads a car from above. */
+.telemetryCarMap {
+  grid-area: car;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 5px;
+  /* Faint chassis outline behind the corners, drawn as a grid background so
+     it needs no extra element. */
+  background:
+    linear-gradient(90deg, transparent 49.5%, rgba(255, 255, 255, 0.05) 49.5%, rgba(255, 255, 255, 0.05) 50.5%, transparent 50.5%),
+    rgba(255, 255, 255, 0.015);
+  border: 1px solid #232a32;
+  border-radius: 2px;
+  padding: 5px;
+}
+
+.telemetryWheel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "name name"
+    "loadbar loadbar"
+    "gripbar gripbar"
+    "load grip"
+    "temp temp";
+  gap: 2px;
+  padding: 4px 5px;
+  border: 1px solid #262d35;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 90ms linear, background 90ms linear;
+}
+
+/* A corner that has left the ground is the most useful thing this panel can
+   say, so it changes the whole box, not just a bar. */
+.telemetryWheel[data-contact="off"] {
+  border-color: #ff5a3c;
+  background: rgba(255, 90, 60, 0.13);
+}
+
+.telemetryWheelName {
+  grid-area: name;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #7d8794;
+}
+
+.telemetryBarTrack {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.telemetryBarLoad {
+  grid-area: loadbar;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #2f7fd6, #59b6ff);
+  transition: width 70ms linear;
+}
+
+.telemetryBarGrip {
+  grid-area: gripbar;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #b8452f, #39ff88);
+  transition: width 70ms linear;
+}
+
+.telemetryWheelLoad {
+  grid-area: load;
+  font-size: 9px;
+  color: #cfd6de;
+  text-align: right;
+  padding-right: 4px;
+}
+
+.telemetryWheelGrip {
+  grid-area: grip;
+  font-size: 9px;
+  color: #39ff88;
+  text-align: right;
+}
+
+.telemetryWheelTemp {
+  grid-area: temp;
+  font-size: 8px;
+  color: #6f7883;
+  text-align: right;
+}
+
+.telemetrySide {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 3px;
+}
+
+.telemetryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 1px 0;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.08);
+}
+
+.telemetryLabel {
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: #7d8794;
+}
+
+.telemetryValue {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #e8ebef;
+}
+
+/* Centre-zero balance meter: understeer left, oversteer right, so the
+   magnitude reads as well as the word. */
+.telemetryBalance {
+  grid-area: balance;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.telemetryBalanceTrack {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, rgba(255, 90, 60, 0.5), rgba(255, 255, 255, 0.08) 50%, rgba(255, 210, 63, 0.5));
+  border: 1px solid #262d35;
+}
+
+.telemetryBalanceNeedle {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  width: 3px;
+  height: 8px;
+  margin-left: -1.5px;
+  background: #ffffff;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
+  transition: transform 90ms linear;
+}
+
+.telemetryBalanceLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 7px;
+  letter-spacing: 0.5px;
+  color: #6f7883;
+}
+
+.telemetryBalanceValue {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #e8ebef;
+}
+
+.telemetryGg {
+  grid-area: gg;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding-top: 5px;
+  border-top: 1px solid #232a32;
+}
+
+.telemetryGg canvas {
+  width: 132px;
+  height: 132px;
+  display: block;
+}
+
+.telemetryGgLabel {
+  font-size: 7px;
+  letter-spacing: 0.8px;
+  color: #6f7883;
+}

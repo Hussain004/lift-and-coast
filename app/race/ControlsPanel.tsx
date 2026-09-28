@@ -41,6 +41,7 @@ const BINDINGS: [string, string][] = [
   ["I", "ERS mode"],
   ["Y", "strategy mode"],
   ["U", "weather cycle"],
+  ["4", "telemetry"],
 ];
 
 export function ControlsPanel({

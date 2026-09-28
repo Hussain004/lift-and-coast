@@ -32,6 +32,7 @@ import {
   createCarController,
   wheelGroundPositions,
   yawFromQuaternion,
+  STATIC_WHEEL_LOAD_N,
 } from "@/lib/physics/vehicle";
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
 import { createEnergySystem, overtakeModeActive, type EnergyMode } from "@/lib/physics/energy";
@@ -47,6 +48,7 @@ import {
   SHIFT_UP_RPM,
 } from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
+import { WHEEL_ORDER, slipAngleDeg, type TelemetrySample } from "@/lib/race/telemetry";
 import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
 import type { TouchDriveInput } from "@/lib/input/touch";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
@@ -263,6 +265,7 @@ export function Car({
   raceControlRef,
   raceCommandsRef,
   raceOpsSnapshotRef,
+  telemetryRef,
 }: {
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
@@ -402,6 +405,14 @@ export function Car({
   raceControlRef?: React.RefObject<RaceControlHandle>;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
+  /**
+   * Live telemetry for the engineer overlay (see lib/race/telemetry.ts and
+   * app/race/TelemetryPanel.tsx). Optional: the car fills it in place every
+   * physics step and the panel reads it on its own rAF, so no re-render is
+   * involved. Omitted when the overlay is closed, which also skips the
+   * per-step work entirely.
+   */
+  telemetryRef?: React.RefObject<TelemetrySample | null>;
 }) {
   const { startPos } = track;
   // Grid slot for this car (see grid.ts) - pole at the line, everyone
@@ -1018,6 +1029,69 @@ export function Car({
       wheelSurfaces.grips,
       damageGripMultiplierRef.current
     );
+
+    // Live telemetry for the engineer overlay (see lib/race/telemetry.ts).
+    // Written into a ref the panel reads on its own rAF, never into React
+    // state - this runs every physics step and a setState here would
+    // re-render the whole HUD at 60Hz. Skipped entirely when the overlay is
+    // closed, so a session that never opens it pays nothing.
+    const telemetryTarget = telemetryRef?.current;
+    if (telemetryTarget) {
+      const rotation = body.rotation();
+      const yawNow = yawFromQuaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+      const linvelNow = body.linvel();
+      const angvelNow = body.angvel();
+      const speedNow = controller.currentVehicleSpeed();
+      const effectiveGrip =
+        compoundGripMultiplier *
+        weatherState.gripMultiplier *
+        damageGripMultiplierRef.current;
+
+      // CAR_WHEELS order is front-left, front-right, rear-left, rear-right,
+      // which is exactly WHEEL_ORDER's order.
+      const corners = WHEEL_ORDER.map((corner, index) => {
+        const loadN = controller.wheelSuspensionForce(index);
+        const load = Number.isFinite(loadN) ? (loadN as number) : 0;
+        const grip = wheelSurfaces.grips[index] * effectiveGrip;
+        return [
+          corner,
+          {
+            loadN: load,
+            grip: Number.isFinite(grip) ? Math.max(0, grip) : 0,
+            // Rapier collapses the suspension force when a corner is airborne,
+            // which is exactly the "not touching" signal the panel wants. A
+            // quarter of static is well clear of any load a planted wheel
+            // carries at rest, so this cannot flicker.
+            inContact: load > STATIC_WHEEL_LOAD_N * 0.25,
+            temperatureC: strategyStateRef.current.tireTemperatureC,
+          },
+        ] as const;
+      });
+      const wheels = Object.fromEntries(corners) as TelemetrySample["wheels"];
+      let totalLoadN = 0;
+      for (const corner of WHEEL_ORDER) totalLoadN += wheels[corner].loadN;
+
+      telemetryTarget.wheels = wheels;
+      telemetryTarget.totalLoadN = totalLoadN;
+      // Lateral g from the centripetal term (speed x yaw rate) rather than by
+      // differentiating velocity: the frame-to-frame derivative of a raycast
+      // vehicle's velocity is far too noisy for a live readout, and this is
+      // smooth, cheap and the right magnitude.
+      const yawRateRadS = angvelNow.y;
+      telemetryTarget.lateralG = (Math.abs(speedNow * yawRateRadS)) / 9.81;
+      telemetryTarget.longitudinalG =
+        (driveInput.throttle * driveInput.throttle * DEFAULT_ENGINE_FORCE -
+          driveInput.brake * driveInput.brake * DEFAULT_BRAKE_FORCE) /
+        (CHASSIS_MASS * 9.81);
+      telemetryTarget.yawRateDegS = (yawRateRadS * 180) / Math.PI;
+      telemetryTarget.slipAngleDeg = slipAngleDeg(yawNow, linvelNow.x, linvelNow.z);
+      telemetryTarget.rpm = rpmForGear(
+        gearboxSpeedMs(gearboxRef.current, speedNow),
+        gearboxRef.current.gear
+      );
+      telemetryTarget.redlineRpm = REDLINE_RPM;
+    }
+
     controller.updateVehicle(world.timestep);
 
     applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
