@@ -73,6 +73,16 @@ const MINIMAP_MARKER_POINTS =
   `${MINIMAP_CENTER_PX - 6},${MINIMAP_CENTER_PX + 6} ` +
   `${MINIMAP_CENTER_PX + 6},${MINIMAP_CENTER_PX + 6}`;
 
+/**
+ * The right-hand HUD column holds exactly one of three panels at a time, so
+ * they can never stack on each other or fight the mirror above them. H cycles
+ * in this order; 4 jumps straight to telemetry.
+ */
+type HudSlot = "controls" | "telemetry" | "ops";
+
+/** H cycles the right-hand panel in this order. */
+const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["controls", "telemetry", "ops"];
+
 export default function RacePage() {
   return (
     // useSearchParams requires a Suspense boundary for static prerendering
@@ -304,20 +314,36 @@ function RaceContent() {
   // Race Ops and the controls reference share the same right-hand HUD slot:
   // whichever is inactive is not rendered, so they can never overlap. H
   // (or the controls panel's own hint) swaps them.
-  const [raceOpsOpen, setRaceOpsOpen] = useState(false);
-  // Telemetry overlay (K). The sample lives in a ref the car writes every
-  // physics step and the panel reads on its own rAF, so an open overlay costs
-  // no React re-renders; the ref is passed down only while it is open, which
-  // is also what makes the car's per-step work conditional.
+  // One shared HUD slot in the right-hand column: the controls reference,
+  // the telemetry overlay and Race Ops are MUTUALLY EXCLUSIVE, so they can
+  // never stack on each other or collide with the right mirror above them.
+  // H cycles through all three; 4 jumps straight to telemetry and back.
+  const [hudSlot, setHudSlot] = useState<HudSlot>("controls");
+  const raceOpsOpen = hudSlot === "ops";
+  // The telemetry sample lives in a ref the car writes every physics step and
+  // the panel reads on its own rAF, so an open overlay costs no React
+  // re-renders. The ref is only passed down while the slot is on telemetry,
+  // which is also what makes the car's per-step work conditional.
   const telemetryRef = useRef<TelemetrySample | null>(null);
-  const [telemetryOpen, setTelemetryOpen] = useState(false);
-  const toggleTelemetry = useCallback(() => setTelemetryOpen((value) => !value), []);
+  const telemetryOpen = hudSlot === "telemetry";
+  const cycleHudSlot = useCallback(() => {
+    setHudSlot((current) => {
+      const next = HUD_SLOT_ORDER[(HUD_SLOT_ORDER.indexOf(current) + 1) % HUD_SLOT_ORDER.length];
+      return next;
+    });
+  }, []);
+  const toggleTelemetry = useCallback(() => {
+    setHudSlot((current) => (current === "telemetry" ? "controls" : "telemetry"));
+  }, []);
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const togglePaused = useCallback(() => setPaused((value) => !value), []);
   const toggleSideMirrors = useCallback(() => {
     setSideMirrorsEnabled((value) => !value);
   }, []);
-  const toggleRaceOps = useCallback(() => setRaceOpsOpen((value) => !value), []);
+  const toggleRaceOps = useCallback(
+    () => setHudSlot((current) => (current === "ops" ? "controls" : "ops")),
+    []
+  );
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
@@ -326,7 +352,7 @@ function RaceContent() {
       if (event.code === "KeyN") toggleSideMirrors();
       if (event.code === "KeyH") {
         event.preventDefault();
-        toggleRaceOps();
+        cycleHudSlot();
       }
       // Digit 4, not a letter: every one of the 26 letters is already bound
       // (see the ControlsPanel list) and 1-3 are the tyre compounds.
@@ -337,7 +363,7 @@ function RaceContent() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleRaceOps, toggleSideMirrors, toggleTelemetry]);
+  }, [cycleHudSlot, toggleSideMirrors, toggleTelemetry]);
   const toggleMobileReplay = useCallback(() => {
     raceCommandsRef.current.push({ type: "toggle-replay" });
   }, []);
@@ -427,8 +453,7 @@ function RaceContent() {
         open={raceOpsOpen}
         onToggle={toggleRaceOps}
       />
-      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}
-      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
+      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}
       {!qualifyingSession && (
@@ -574,8 +599,8 @@ function RaceContent() {
       <ControlsPanel
         sideMirrorsEnabled={sideMirrorsEnabled}
         onToggleSideMirrors={toggleSideMirrors}
-        hidden={raceOpsOpen}
-        onShowRaceOps={toggleRaceOps}
+        hidden={raceOpsOpen || telemetryOpen}
+        onCycleSlot={cycleHudSlot}
       />
       </div>
       <MobileControls

@@ -48,13 +48,15 @@ export function ControlsPanel({
   sideMirrorsEnabled,
   onToggleSideMirrors,
   hidden,
-  onShowRaceOps,
+  onCycleSlot,
 }: {
   sideMirrorsEnabled: boolean;
   onToggleSideMirrors: () => void;
-  /** Race Ops took over this HUD slot (H), so stand down until it closes. */
+  /** Race Ops or the telemetry overlay took over this HUD slot, so stand down
+   *  until it closes - the three panels are mutually exclusive by design. */
   hidden: boolean;
-  onShowRaceOps: () => void;
+  /** Cycles the slot: controls -> telemetry -> Race Ops -> controls (H). */
+  onCycleSlot: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<boolean>(() => loadCollapsed());
   const toggle = () => {
@@ -82,11 +84,11 @@ export function ControlsPanel({
         <button
           type="button"
           className={styles.controlsToggle}
-          onClick={onShowRaceOps}
+          onClick={onCycleSlot}
           aria-keyshortcuts="H"
-          title="Show Race Ops (H)"
+          title="Cycle the right-hand panel: controls, telemetry, Race Ops (H)"
         >
-          OPS H
+          PANEL H
         </button>
         <button type="button" className={styles.controlsToggle} onClick={toggle} aria-expanded={!collapsed}>
           {collapsed ? "CONTROLS +" : "CONTROLS −"}

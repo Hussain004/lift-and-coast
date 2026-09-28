@@ -21,24 +21,30 @@ import {
 } from "@/lib/race/telemetry";
 
 /**
- * Live telemetry overlay (in-race engineer view).
+ * Live telemetry overlay - the engineer's view, toggled with 4 (or cycled to
+ * with H).
  *
- * The bottom bar already carries gear, speed, RPM, ERS, driver inputs, sector
- * times, tyre compound, assists and damage, so this panel deliberately shows
- * the layer underneath it: how load is distributed across the four corners,
- * how much grip each corner actually has, whether it is on the ground, and
- * the combined-g trace that makes a balance problem visible at a glance.
+ * It shares the right-hand HUD slot with the controls reference and Race Ops,
+ * so exactly one of the three is mounted and none can collide with the mirror
+ * above them.
  *
- * The car writes a plain sample into a ref every render frame (see Car.tsx)
- * rather than this component reaching into the physics world, so the panel is
- * a pure renderer and the plumbing stays one-directional. It animates itself
- * on its own rAF so the readouts do not depend on the parent's re-render
- * cadence, and reads the ref each frame instead of holding React state - a
- * 60Hz setState here would re-render the HUD for no reason.
+ * What it shows is chosen to be what the bottom bar does NOT already show.
+ * That bar carries gear, speed, RPM, ERS, driver inputs, sector times, tyre
+ * compound, assists and damage; this adds the layer underneath: how load is
+ * distributed across the four corners, how much grip each actually has,
+ * whether it is on the ground, and the combined-g trace that makes a balance
+ * problem visible.
+ *
+ * The car writes a plain sample into a ref every physics step (see Car.tsx)
+ * and this component reads that ref on its own rAF, so the values never pass
+ * through React state - a setState per frame would re-render the whole HUD.
+ * The formatting and scaling all live in lib/race/telemetry.ts, which is pure
+ * and unit-tested; this is a renderer.
  */
 
-/** How many g-g samples the trace holds. At 60Hz this is about 5 seconds. */
+/** G-g samples retained. At 60Hz that is about five seconds of trace. */
 const GG_TRACE_SAMPLES = 300;
+const GG_CANVAS_PX = 248;
 
 const CORNER_LABELS: Record<WheelCorner, string> = {
   frontLeft: "FL",
@@ -60,6 +66,7 @@ interface TelemetryCells {
   gLat: HTMLSpanElement | null;
   gLong: HTMLSpanElement | null;
   balance: HTMLSpanElement | null;
+  balanceNeedle: HTMLDivElement | null;
   frontPct: HTMLSpanElement | null;
   slip: HTMLSpanElement | null;
   yaw: HTMLSpanElement | null;
@@ -71,36 +78,40 @@ function emptyCells(): TelemetryCells {
   for (const corner of WHEEL_ORDER) {
     wheel[corner] = { load: null, grip: null, temp: null, loadBar: null, gripBar: null, box: null };
   }
-  return { gLat: null, gLong: null, balance: null, frontPct: null, slip: null, yaw: null, wheel };
+  return {
+    gLat: null,
+    gLong: null,
+    balance: null,
+    balanceNeedle: null,
+    frontPct: null,
+    slip: null,
+    yaw: null,
+    wheel,
+  };
 }
 
 export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<TelemetrySample | null> }) {
-  const rootRef = useRef<HTMLDivElement>(null);
   const ggRef = useRef<HTMLCanvasElement>(null);
   const traceRef = useRef<{ x: number; y: number }[]>([]);
-  // Mutable mirrors of the nodes the frame loop writes into. Deliberately not
-  // React state: these change every frame, and a setState per frame would
-  // re-render the whole HUD for no reason.
   const cellsRef = useRef<TelemetryCells>(emptyCells());
 
   useEffect(() => {
     let frame = 0;
-    const draw = () => {
+    const update = () => {
       const cells = cellsRef.current;
-      const canvas = ggRef.current;
       const sample = sampleRef.current;
       if (cells && sample) {
         cells.gLat!.textContent = formatG(sample.lateralG);
         cells.gLong!.textContent = formatG(sample.longitudinalG);
         cells.slip!.textContent = `${sample.slipAngleDeg.toFixed(1)}°`;
         cells.yaw!.textContent = `${sample.yawRateDegS.toFixed(0)}°/s`;
+        cells.frontPct!.textContent = `${frontLoadPercent(sample).toFixed(0)}%`;
+
         const bias = balanceBias(sample);
         cells.balance!.textContent = balanceLabel(bias);
-        // The balance bar is a centre-zero meter: full left understeer, full
-        // right oversteer, so a driver can see the magnitude and not just
-        // read a word.
-        cells.balance!.style.transform = `translateX(${(bias * 50).toFixed(1)}%)`;
-        cells.frontPct!.textContent = `${frontLoadPercent(sample).toFixed(0)}%`;
+        // The needle is a centre-zero meter: full left understeer, full right
+        // oversteer, so the magnitude reads and not just the word.
+        cells.balanceNeedle!.style.transform = `translateX(${(bias * 50).toFixed(1)}%)`;
 
         for (const corner of WHEEL_ORDER) {
           const cell = cells.wheel[corner];
@@ -110,11 +121,10 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
           cell.temp!.textContent = formatTemp(w.temperatureC);
           cell.loadBar!.style.width = `${(loadBarFill(w.loadN, STATIC_WHEEL_LOAD_N) * 100).toFixed(1)}%`;
           cell.gripBar!.style.width = `${(gripBarFill(w.grip) * 100).toFixed(1)}%`;
-          // A corner off the ground is the single most useful thing this
-          // panel can say, so it changes the box, not just a bar.
           cell.box!.dataset.contact = w.inContact ? "on" : "off";
         }
 
+        const canvas = ggRef.current;
         if (canvas) {
           const point = ggPlotPoint(sample.lateralG, sample.longitudinalG);
           traceRef.current.push(point);
@@ -122,25 +132,25 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
           drawTrace(canvas, traceRef.current);
         }
       }
-      frame = requestAnimationFrame(draw);
+      frame = requestAnimationFrame(update);
     };
-    frame = requestAnimationFrame(draw);
+    frame = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frame);
   }, [sampleRef]);
 
   const cells = cellsRef.current;
 
   return (
-    <div ref={rootRef} className={styles.telemetryPanel} data-testid="telemetry-panel">
+    <div className={styles.telemetryPanel} data-testid="telemetry-panel">
       <div className={styles.telemetryHeader}>
         <span className={styles.telemetryTitle}>TELEMETRY</span>
-        <span className={styles.telemetryHint}>4</span>
+        <span className={styles.telemetryHint}>4 to close</span>
       </div>
 
       <div className={styles.telemetryBody}>
         <div className={styles.telemetryCarMap}>
           {WHEEL_ORDER.map((corner) => {
-            const [col, row] = WHEEL_GRID_POSITION[corner];
+            const [column, row] = WHEEL_GRID_POSITION[corner];
             const cell = cells.wheel[corner];
             return (
               <div
@@ -150,151 +160,166 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
                 }}
                 className={styles.telemetryWheel}
                 data-contact="on"
-                style={{ gridColumn: col + 1, gridRow: row + 1 }}
+                style={{ gridColumn: column + 1, gridRow: row + 1 }}
               >
-                <span className={styles.telemetryWheelName}>{CORNER_LABELS[corner]}</span>
-                <div className={styles.telemetryBarTrack}>
-                  <div
+                <div className={styles.telemetryWheelTop}>
+                  <span className={styles.telemetryWheelName}>{CORNER_LABELS[corner]}</span>
+                  <span
                     ref={(node) => {
-                      cell.loadBar = node;
+                      cell.temp = node;
                     }}
-                    className={styles.telemetryBarLoad}
-                  />
+                    className={styles.telemetryWheelTemp}
+                  >
+                    --
+                  </span>
                 </div>
-                <div className={styles.telemetryBarTrack}>
-                  <div
+                <div className={styles.telemetryWheelBars}>
+                  <div className={styles.telemetryBarTrack}>
+                    <div
+                      ref={(node) => {
+                        cell.loadBar = node;
+                      }}
+                      className={styles.telemetryBarLoad}
+                    />
+                  </div>
+                  <div className={styles.telemetryBarTrack}>
+                    <div
+                      ref={(node) => {
+                        cell.gripBar = node;
+                      }}
+                      className={styles.telemetryBarGrip}
+                    />
+                  </div>
+                </div>
+                <div className={styles.telemetryWheelValues}>
+                  <span
                     ref={(node) => {
-                      cell.gripBar = node;
+                      cell.load = node;
                     }}
-                    className={styles.telemetryBarGrip}
-                  />
+                    className={styles.telemetryWheelLoad}
+                  >
+                    0.0kN
+                  </span>
+                  <span
+                    ref={(node) => {
+                      cell.grip = node;
+                    }}
+                    className={styles.telemetryWheelGrip}
+                  >
+                    0.00
+                  </span>
                 </div>
-                <span
-                  ref={(node) => {
-                    cell.load = node;
-                  }}
-                  className={styles.telemetryWheelLoad}
-                >
-                  0.0kN
-                </span>
-                <span
-                  ref={(node) => {
-                    cell.grip = node;
-                  }}
-                  className={styles.telemetryWheelGrip}
-                >
-                  0.00
-                </span>
-                <span
-                  ref={(node) => {
-                    cell.temp = node;
-                  }}
-                  className={styles.telemetryWheelTemp}
-                >
-                  --
-                </span>
               </div>
             );
           })}
         </div>
 
-        <div className={styles.telemetrySide}>
+        <dl className={styles.telemetryReadouts}>
           <div className={styles.telemetryRow}>
-            <span className={styles.telemetryLabel}>LAT G</span>
-            <span
+            <dt className={styles.telemetryLabel}>LATERAL</dt>
+            <dd
               ref={(node) => {
                 cells.gLat = node;
               }}
               className={styles.telemetryValue}
             >
               +0.0
-            </span>
+            </dd>
           </div>
           <div className={styles.telemetryRow}>
-            <span className={styles.telemetryLabel}>LON G</span>
-            <span
+            <dt className={styles.telemetryLabel}>LONGITUDINAL</dt>
+            <dd
               ref={(node) => {
                 cells.gLong = node;
               }}
               className={styles.telemetryValue}
             >
               +0.0
-            </span>
+            </dd>
           </div>
           <div className={styles.telemetryRow}>
-            <span className={styles.telemetryLabel}>SLIP</span>
-            <span
+            <dt className={styles.telemetryLabel}>SLIP ANGLE</dt>
+            <dd
               ref={(node) => {
                 cells.slip = node;
               }}
               className={styles.telemetryValue}
             >
               0.0°
-            </span>
+            </dd>
           </div>
           <div className={styles.telemetryRow}>
-            <span className={styles.telemetryLabel}>YAW</span>
-            <span
+            <dt className={styles.telemetryLabel}>YAW RATE</dt>
+            <dd
               ref={(node) => {
                 cells.yaw = node;
               }}
               className={styles.telemetryValue}
             >
               0°/s
-            </span>
+            </dd>
           </div>
           <div className={styles.telemetryRow}>
-            <span className={styles.telemetryLabel}>FRONT</span>
-            <span
+            <dt className={styles.telemetryLabel}>FRONT LOAD</dt>
+            <dd
               ref={(node) => {
                 cells.frontPct = node;
               }}
               className={styles.telemetryValue}
             >
               50%
-            </span>
+            </dd>
           </div>
-        </div>
-
-        <div className={styles.telemetryBalance}>
-          <div className={styles.telemetryBalanceTrack}>
-            <div className={styles.telemetryBalanceNeedle} />
+          <div className={styles.telemetryRow}>
+            <dt className={styles.telemetryLabel}>BALANCE</dt>
+            <dd className={styles.telemetryValue}>
+              <span
+                ref={(node) => {
+                  cells.balance = node;
+                }}
+              >
+                NEUTRAL
+              </span>
+              <div className={styles.telemetryBalanceTrack}>
+                <div
+                  ref={(node) => {
+                    cells.balanceNeedle = node;
+                  }}
+                  className={styles.telemetryBalanceNeedle}
+                />
+              </div>
+            </dd>
           </div>
-          <div className={styles.telemetryBalanceLabels}>
-            <span>UNDERSTEER</span>
-            <span>OVERSTEER</span>
-          </div>
-          <div className={styles.telemetryBalanceValue}>
-            <span
-              ref={(node) => {
-                cells.balance = node;
-              }}
-            >
-              NEUTRAL
-            </span>
-          </div>
-        </div>
+        </dl>
 
         <div className={styles.telemetryGg}>
-          <canvas ref={ggRef} width={132} height={132} aria-label="Combined g trace" />
-          <span className={styles.telemetryGgLabel}>G-G {GG_PLOT_MAX_G}g</span>
+          <canvas
+            ref={ggRef}
+            width={GG_CANVAS_PX}
+            height={GG_CANVAS_PX}
+            aria-label="Combined g trace"
+          />
+          <span className={styles.telemetryGgLabel}>COMBINED G · {GG_PLOT_MAX_G}G</span>
         </div>
       </div>
     </div>
   );
 }
 
-/** Draws the combined-g trace: a ring grid for the g limits and the fading
- *  recent path, oldest faintest. */
+/**
+ * Draws the combined-g trace: concentric rings at half and full g, a crosshair
+ * for the axes, then the recent path fading with age so the eye reads
+ * direction of travel without a separate legend, and a dot on the live sample.
+ */
 function drawTrace(canvas: HTMLCanvasElement, trace: { x: number; y: number }[]): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const size = canvas.width;
   const half = size / 2;
-  const radius = half - 12;
+  const radius = half - 10;
   ctx.clearRect(0, 0, size, size);
 
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
   ctx.lineWidth = 1;
   for (const fraction of [0.5, 1]) {
     ctx.beginPath();
@@ -309,21 +334,18 @@ function drawTrace(canvas: HTMLCanvasElement, trace: { x: number; y: number }[])
   ctx.stroke();
 
   if (trace.length < 2) return;
-  // Oldest samples fade out, so the eye reads direction of travel without a
-  // separate legend.
   for (let i = 1; i < trace.length; i++) {
     const age = i / trace.length;
-    ctx.strokeStyle = `rgba(57, 255, 136, ${(0.12 + age * 0.78).toFixed(3)})`;
-    ctx.lineWidth = 1 + age * 1.6;
+    ctx.strokeStyle = `rgba(127, 220, 164, ${(0.10 + age * 0.75).toFixed(3)})`;
+    ctx.lineWidth = 1 + age * 1.8;
     ctx.beginPath();
     ctx.moveTo(half + trace[i - 1].x * radius, half - trace[i - 1].y * radius);
     ctx.lineTo(half + trace[i].x * radius, half - trace[i].y * radius);
     ctx.stroke();
   }
-  // The live sample, as a filled dot.
   const last = trace[trace.length - 1];
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(half + last.x * radius, half - last.y * radius, 2.6, 0, Math.PI * 2);
+  ctx.arc(half + last.x * radius, half - last.y * radius, 3, 0, Math.PI * 2);
   ctx.fill();
 }
