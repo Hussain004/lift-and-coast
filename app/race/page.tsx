@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
@@ -31,13 +31,7 @@ import { applyControls, loadLocalControls, defaultStorage } from "@/lib/settings
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 
-function TrackLoadingFallback() {
-  const loadingTrackName =
-    typeof window === "undefined"
-      ? "RACE ENVIRONMENT"
-      : getTrack(
-          parseTrackId(new URLSearchParams(window.location.search).get("track"))
-        ).name.toUpperCase();
+function TrackLoadingFallback({ loadingTrackName }: { loadingTrackName: string }) {
   return (
     <div className={styles.loading} role="status" aria-live="polite">
       <div className={styles.loadingCard}>
@@ -87,6 +81,7 @@ type HudSlot = "controls" | "telemetry" | "ops" | "settings";
 const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["controls", "telemetry", "ops", "settings"];
 
 export default function RacePage() {
+  const isClient = useIsClient();
   return (
     // useSearchParams requires a Suspense boundary for static prerendering
     // (Next.js opts the whole route into client-only rendering below it
@@ -94,9 +89,21 @@ export default function RacePage() {
     // this whole page is already client-only ("use client" above) and the
     // param read resolves synchronously on first render.
     <Suspense fallback={null}>
-      <RaceContent />
+      {isClient ? <RaceContent /> : <TrackLoadingFallback loadingTrackName="" />}
     </Suspense>
   );
+}
+
+const noopSubscribe = () => () => {};
+
+/**
+ * False during the server render and hydration, true after. The race body
+ * must not be server-rendered: the field seed is drawn at random on first
+ * render (see fieldSeed below), so a server-rendered grid and the client's
+ * grid are two different draws and hydration fails on the tower rows.
+ */
+function useIsClient(): boolean {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false);
 }
 
 function RaceContent() {
@@ -475,7 +482,7 @@ function RaceContent() {
         perfRef={perfRef}
         sideMirrorsEnabled={sideMirrorsEnabled}
       />
-      {!sceneReady && <TrackLoadingFallback />}
+      {!sceneReady && <TrackLoadingFallback loadingTrackName={trackName} />}
       <div className={styles.raceDataStrip}>
         <div ref={lapRef} className={styles.raceDataLap}>LAP 1</div>
         {!qualifyingSession && <div ref={positionRef} className={styles.raceDataPosition}>P1</div>}
