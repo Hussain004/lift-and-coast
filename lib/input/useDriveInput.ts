@@ -1,5 +1,9 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { stepSteering } from "./steering";
+// BRAKE_RAMP_SECONDS is the shared anti-flip brake shaping, documented where
+// it is defined. It lives in ./steering rather than here because it is a
+// property of the car, not of this input path: the landing page's time attack
+// applies the same ramp, and the two must not be able to drift apart.
+import { BRAKE_RAMP_SECONDS, stepSteering } from "./steering";
 import {
   applyAxisDeadzone,
   engaged,
@@ -87,35 +91,6 @@ export interface DriveInput {
 
 const STEER_RATE = 5;
 const STEER_CENTER_RATE = 7;
-// Ramp brake input up to full over half a second instead of snapping to 1
-// instantly. Found via headless testing at the current (much higher) engine
-// force: slamming full brake the instant the key is pressed, after building
-// real speed, pitches the chassis violently (tilt exceeded the flip
-// threshold above ~0.7 brake amount applied instantly) - the raycast
-// suspension has no anti-dive geometry to absorb a full-force step input.
-// Ramping the input itself, same technique already used for steering,
-// verified safe with a wide margin (~0.3 rad vs the 0.6 flip threshold),
-// including combined with hard throttle boost and trail-braking steer.
-// Releasing the brake is left instant - only the sudden application caused
-// the instability, not the release.
-//
-// This mitigation lives ONLY in this keyboard input path - it is not a fix
-// in the vehicle model itself (lib/physics/vehicle.ts still accepts and
-// reacts badly to an instant brake:1). Any other input source that can
-// command full brake in one frame - the planned gamepad/wheel analog input
-// (implementation_plan.md section 5) or an AI driver braking under braking
-// (section 14, "AI harvests battery under braking") - needs the same
-// shaping applied at its own point of entry, or a real fix in the vehicle
-// model, before it ships.
-//
-// This ramp IS what "ABS" means in this project (plan section 5, depth
-// feature 5) - toggling absEnabled off removes it, letting brake input
-// through instantly and reintroducing the exact real, documented
-// instability above. That's the intended tradeoff (real ABS-off driving
-// is genuinely harder to control without lockup), not a missing safety
-// check.
-const BRAKE_RAMP_SECONDS = 0.5;
-
 const THROTTLE_KEYS = ["KeyW", "ArrowUp"];
 const BRAKE_KEYS = ["KeyS", "ArrowDown"];
 const LEFT_KEYS = ["KeyA", "ArrowLeft"];

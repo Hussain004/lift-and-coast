@@ -1162,3 +1162,243 @@
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Landing-page time attack.
+
+   Sits directly under the circuit records, sharing their card language - a
+   dark inset panel, a hairline border, one accent - so the two read as "this
+   circuit". The map is the loud element and the times are tabular and quiet:
+   on a phone the map is square and full width, and the driving pads sit under
+   it within thumb reach rather than being hidden behind a toggle, because the
+   landing page is read on a phone more often than it is raced.
+--------------------------------------------------------------------------- */
+.timeAttack {
+  width: 100%;
+  margin-top: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 88% 0%, rgba(225, 6, 0, 0.07), transparent 58%),
+    rgba(8, 10, 14, 0.6);
+  overflow: hidden;
+}
+
+.timeAttackBody {
+  display: grid;
+  grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+  gap: 22px;
+  padding: 18px;
+  align-items: start;
+}
+
+.timeAttackStage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Square backing store, scaled by CSS to whatever the column gives it. */
+.timeAttackCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: radial-gradient(80% 80% at 50% 45%, #0d1017, #06070b);
+}
+
+.timeAttackPads {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeAttackSteer,
+.timeAttackPedals {
+  display: flex;
+  gap: 8px;
+}
+
+.timeAttackPad,
+.timeAttackPadGo {
+  min-width: 62px;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  /* Without this the browser pans and zooms the page under a held finger,
+     which is the classic way on-screen driving controls feel broken. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.timeAttackPad:active,
+.timeAttackPadGo:active {
+  transform: translateY(1px);
+}
+
+.timeAttackPad:disabled,
+.timeAttackPadGo:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.timeAttackPadGo {
+  background: rgba(225, 6, 0, 0.16);
+  border-color: rgba(225, 6, 0, 0.35);
+  color: #ff8a86;
+}
+
+.timeAttackPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  text-align: left;
+}
+
+.timeAttackField {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.timeAttackLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 2.6px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.timeAttackInput {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font-family: var(--font-geist-sans);
+  font-size: 14px;
+}
+
+.timeAttackInput:focus {
+  outline: none;
+  border-color: #e10600;
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.18);
+}
+
+.timeAttackInput::placeholder {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.timeAttackTimes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.timeAttackTimes > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.timeAttackTimes dt {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 2.2px;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+/* Tabular figures and a fixed minimum width, so the digits do not shuffle
+   sideways as the clock runs - the same reason .recordsTime is fixed. */
+.timeAttackTimes dd {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  letter-spacing: -0.3px;
+  color: rgba(255, 255, 255, 0.86);
+  min-height: 22px;
+}
+
+.timeAttackDelta {
+  color: #7fdca4;
+}
+
+.timeAttackSpeed {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.timeAttackButton {
+  width: 100%;
+  padding: 13px 18px;
+  border: none;
+  border-radius: 11px;
+  background: #e10600;
+  color: #fff;
+  font-family: var(--font-geist-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.timeAttackButton:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.timeAttackButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.timeAttackPosted {
+  margin: 0;
+  font-size: 12.5px;
+  color: #7fdca4;
+}
+
+@media (max-width: 900px) {
+  /* The map first, full width and square, then the readouts. */
+  .timeAttackBody {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .timeAttackTimes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  /* Wider pads on a phone: a 62px target is below the comfortable minimum
+     for a thumb held down mid-corner. */
+  .timeAttackPad,
+  .timeAttackPadGo {
+    min-width: 76px;
+    min-height: 60px;
+  }
+}

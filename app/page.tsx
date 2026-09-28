@@ -5,6 +5,7 @@ import { SessionSetup } from "./SessionSetup";
 import { TeamSetup } from "./TeamSetup";
 import { WorldMap } from "./WorldMap";
 import { TrackRecords } from "./TrackRecords";
+import { TimeAttack } from "./TimeAttack";
 import { ShowroomLoader } from "./ShowroomLoader";
 import { Hero } from "./Hero";
 import { TopBar } from "./TopBar";
@@ -48,6 +49,7 @@ export default function Home() {
               <SessionSetup />
             </div>
             <TrackRecords />
+            <TimeAttack />
           </Reveal>
         </section>
         <div className={styles.duo}>
