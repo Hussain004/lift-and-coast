@@ -30,6 +30,13 @@ export interface LeaderboardEntry {
   playerName: string | null;
   /** The auth.users id of the player who set it, or null when anonymous. */
   userId: string | null;
+  /**
+   * The anonymous per-browser UUID, written on every submission. This is the
+   * only thing that identifies an unsigned row - a handle is a display name
+   * anyone can choose, and the derived driver code is 2-4 characters, so
+   * neither can tell two rows apart. Read for identity by playerKey.
+   */
+  clientId: string | null;
 }
 
 export interface LapSubmission {
@@ -98,9 +105,102 @@ export function sortLeaderboard(entries: readonly LeaderboardEntry[]): Leaderboa
   });
 }
 
+/**
+ * Every id that identifies the person who set a row.
+ *
+ * A row can carry BOTH, and that overlap is the whole reason this is a list
+ * rather than a single key. A signed-in lap in a browser has that browser's
+ * `client_id` as well as the account `user_id`, so:
+ *
+ * - the same browser, signed out then signed in, shares `client_id`;
+ * - the same account on a second device, shares `user_id`.
+ *
+ * Picking one key gets one of those two cases right and the other wrong. A
+ * key of "user_id else client_id" merges a player's laps across devices but
+ * then shows their own anonymous lap from this browser as a rival of their
+ * signed-in lap. Merging on any shared id gets both, transitively.
+ *
+ * An empty list means the row cannot be attributed to anyone, and such a row
+ * is left as its own group rather than dropped - hiding a set lap because of
+ * a data problem somewhere else is worse than showing it twice.
+ */
+function identitiesOf(entry: LeaderboardEntry): string[] {
+  const ids: string[] = [];
+  if (entry.userId !== null && entry.userId.length > 0) ids.push(`u:${entry.userId}`);
+  if (entry.clientId !== null && entry.clientId.length > 0) ids.push(`c:${entry.clientId}`);
+  return ids;
+}
+
+/**
+ * One row per player: each player's fastest lap, ordered, capped at `limit`.
+ *
+ * A board is a comparison between people, so one player's five laps is not
+ * five places - it is one place, and their second-best lap is noise sitting
+ * above somebody else's genuine best. Ranking by lap alone makes a player who
+ * drives more look better than one who drives less, which is exactly backwards.
+ *
+ * Grouping is a union-find over the ids in identitiesOf, so rows are the same
+ * player when they share ANY id - transitively, which is what makes the
+ * same-browser-then-signed-in case collapse together with the same account
+ * elsewhere.
+ *
+ * The input is sorted first so the winner per group is the earliest of that
+ * group's equal-time laps (sortLeaderboard's tie-break), and the result is a
+ * NEW array - callers render from it and must not reorder in place.
+ *
+ * `limit` is applied AFTER collapsing, not before. Trimming to N rows and then
+ * deduplicating can return far fewer than N players - five rows from two
+ * prolific drivers is two rows - which is why the caller over-fetches and
+ * this function does the trimming.
+ */
+export function bestPerPlayer(
+  entries: readonly LeaderboardEntry[],
+  limit: number
+): LeaderboardEntry[] {
+  const sorted = sortLeaderboard(entries);
+  const parent = sorted.map((_, i) => i);
+  const find = (i: number): number => {
+    let root = i;
+    while (parent[root] !== root) root = parent[root];
+    // Path compression, so a long chain of shared ids stays cheap.
+    let walk = i;
+    while (parent[walk] !== root) {
+      const next = parent[walk];
+      parent[walk] = root;
+      walk = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+
+  // First occurrence of each id, so later rows union onto it.
+  const seen = new Map<string, number>();
+  sorted.forEach((entry, index) => {
+    for (const id of identitiesOf(entry)) {
+      const first = seen.get(id);
+      if (first === undefined) seen.set(id, index);
+      else union(first, index);
+    }
+  });
+
+  // sorted is already fastest-first, so the first row seen for a group is the
+  // group's best and anything later in that group is worse.
+  const best = new Map<number, LeaderboardEntry>();
+  sorted.forEach((entry, index) => {
+    const root = find(index);
+    if (!best.has(root)) best.set(root, entry);
+  });
+
+  const bounded = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+  return sortLeaderboard([...best.values()]).slice(0, bounded);
+}
+
 /** `1:23.456`, or null for anything that is not a real lap time. */
-export function formatLapTime(lapMs: number): string | null {
-  if (!Number.isFinite(lapMs) || lapMs <= 0) return null;
+export function formatLapTime(lapMs: number): string | null {  if (!Number.isFinite(lapMs) || lapMs <= 0) return null;
   const totalSeconds = lapMs / 1000;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds - minutes * 60;

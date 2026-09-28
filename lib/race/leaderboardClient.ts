@@ -19,6 +19,7 @@
  */
 
 import {
+  bestPerPlayer,
   isSubmittableLap,
   sortLeaderboard,
   type LapSubmission,
@@ -92,6 +93,10 @@ export function rowToEntry(row: unknown): LeaderboardEntry | null {
     // without proving who set either.
     playerName: typeof r.player_name === "string" && r.player_name.length > 0 ? r.player_name : null,
     userId: typeof r.user_id === "string" ? r.user_id : null,
+    // Always written (the column is NOT NULL) but read defensively: this row
+    // mapper also has to cope with a board written by an older build, and a
+    // missing id must not throw mid-list.
+    clientId: typeof r.client_id === "string" ? r.client_id : null,
   };
 }
 
@@ -99,7 +104,11 @@ export function rowToEntry(row: unknown): LeaderboardEntry | null {
 export function buildLeaderboardQuery(trackId: string, limit: number): string {
   const bounded = Math.max(1, Math.min(100, Math.floor(limit)));
   const params = new URLSearchParams({
-    select: "track_id,lap_ms,driver_code,team_id,compound,created_at,player_name,user_id",
+    // client_id is the anonymous per-browser identity and the only id an
+    // unsigned row has, so it has to be read for "one row per player" to work
+    // for anyone who is not signed in.
+    select:
+      "track_id,lap_ms,driver_code,team_id,compound,created_at,player_name,user_id,client_id",
     track_id: `eq.${trackId}`,
     order: "lap_ms.asc",
     limit: String(bounded),
@@ -133,8 +142,33 @@ export interface LeaderboardTransport {
 }
 
 /**
- * The fastest laps for a circuit, already ordered. Resolves to an empty list
- * on any failure whatsoever.
+ * How many rows to ask for when the caller wants `limit` PLAYERS on the board.
+ *
+ * The board shows one row per player (see bestPerPlayer), so asking the
+ * server for exactly `limit` rows and deduplicating afterwards can return far
+ * fewer than `limit` players - five rows from two prolific drivers is two
+ * rows, and the board reads as empty when it is not. Over-fetching lets the
+ * collapse happen against a deeper slice.
+ *
+ * Bounded at the query's own 100-row cap, so this stays a cheap indexed read
+ * of a public table rather than an open-ended pull. The honest limit: this
+ * reduces the crowding, it does not eliminate it. A player with more than
+ * `limit * OVERFETCH_PER_PLAYER` laps can still fill the slice alone. Removing
+ * that possibility entirely needs the collapse in the database - a view doing
+ * `distinct on (track_id, coalesce(user_id::text, client_id::text))` - rather
+ * than in the client, and is the version to build if the board ever shows
+ * short for a reason other than an empty circuit.
+ */
+const OVERFETCH_PER_PLAYER = 20;
+
+function overfetchFor(limit: number): number {
+  const wanted = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
+  return Math.min(100, wanted * OVERFETCH_PER_PLAYER);
+}
+
+/**
+ * The fastest laps for a circuit, one row per player, already ordered.
+ * Resolves to an empty list on any failure whatsoever.
  */
 export async function fetchLeaderboard(
   config: LeaderboardConfig | null,
@@ -148,7 +182,7 @@ export async function fetchLeaderboard(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), transport.timeoutMs ?? REQUEST_TIMEOUT_MS);
   try {
-    const res = await doFetch(`${config.url}${buildLeaderboardQuery(trackId, limit)}`, {
+    const res = await doFetch(`${config.url}${buildLeaderboardQuery(trackId, overfetchFor(limit))}`, {
       method: "GET",
       headers: headersFor(config),
       signal: controller.signal,
@@ -164,7 +198,9 @@ export async function fetchLeaderboard(
     }
     // The server already orders by lap_ms; re-sorting is cheap and makes the
     // ordering a property of this module rather than of the query string.
-    return sortLeaderboard(entries);
+    // Then one row per player, then the caller's limit - in that order, or the
+    // limit would be applied to laps rather than to people.
+    return bestPerPlayer(sortLeaderboard(entries), limit);
   } catch {
     return [];
   } finally {

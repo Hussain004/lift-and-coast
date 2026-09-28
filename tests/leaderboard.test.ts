@@ -5,6 +5,7 @@ import {
   formatLapTime,
   formatLapTimeFromWholeMs,
   generateUuid,
+  bestPerPlayer,
   isSubmittableLap,
   isUuid,
   rankForLap,
@@ -48,6 +49,9 @@ function entry(over: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
     // existed; the account tests set these explicitly.
     playerName: null,
     userId: null,
+    // The anonymous per-browser id, which the board has always carried and
+    // which is the only identity an unsigned row has.
+    clientId: "00000000-0000-4000-8000-000000000000",
     ...over,
   };
 }
@@ -258,6 +262,7 @@ describe("rowToEntry", () => {
       // rather than as a row with missing data.
       playerName: null,
       userId: null,
+      clientId: null,
     });
   });
 
@@ -392,5 +397,177 @@ describe("submitLap", () => {
     expect(
       await submitLap(config, submission(), "id", TRACK_IDS, { fetchImpl: stub.fetchImpl })
     ).toBe(false);
+  });
+});
+
+describe("one row per player on the board", () => {
+  const ALICE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const BOB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const CARA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("keeps each player's fastest lap and drops their slower ones", () => {
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE }),
+      entry({ lapMs: 207_184, clientId: ALICE }),
+      entry({ lapMs: 81_000, clientId: BOB }),
+    ];
+    const board = bestPerPlayer(rows, 5);
+    expect(board.map((e) => e.lapMs)).toEqual([77_100, 81_000]);
+  });
+
+  it("does not let one prolific driver crowd out the board", () => {
+    // The reported symptom, exactly: one player holding two of the five
+    // visible rows used to take two places and push a rival off the board.
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE }),
+      entry({ lapMs: 207_184, clientId: ALICE }),
+      entry({ lapMs: 88_000, clientId: BOB }),
+    ];
+    const board = bestPerPlayer(rows, 2);
+    expect(board.map((e) => e.lapMs)).toEqual([77_100, 88_000]);
+  });
+
+  it("still orders the survivors fastest first", () => {
+    const rows = [
+      entry({ lapMs: 95_000, clientId: ALICE }),
+      entry({ lapMs: 80_000, clientId: BOB }),
+      entry({ lapMs: 88_000, clientId: CARA }),
+    ];
+    expect(bestPerPlayer(rows, 5).map((e) => e.lapMs)).toEqual([80_000, 88_000, 95_000]);
+  });
+
+  it("applies the limit to players, not to laps", () => {
+    const rows = [
+      entry({ lapMs: 80_000, clientId: ALICE }),
+      entry({ lapMs: 80_500, clientId: ALICE }),
+      entry({ lapMs: 81_000, clientId: BOB }),
+      entry({ lapMs: 82_000, clientId: CARA }),
+    ];
+    expect(bestPerPlayer(rows, 2)).toHaveLength(2);
+  });
+
+  it("gives the earlier of two equal laps the row", () => {
+    // sortLeaderboard's tie-break, preserved: setting the same time twice is
+    // the first setter's row, and the dedupe must not reshuffle that.
+    const rows = [
+      entry({ lapMs: 80_000, clientId: ALICE, createdAt: "2026-09-28T10:00:00.000Z" }),
+      entry({ lapMs: 80_000, clientId: ALICE, createdAt: "2026-09-28T09:00:00.000Z" }),
+    ];
+    const board = bestPerPlayer(rows, 5);
+    expect(board).toHaveLength(1);
+    expect(board[0].createdAt).toBe("2026-09-28T09:00:00.000Z");
+  });
+
+  it("merges one player's signed-in and anonymous laps from the same browser", () => {
+    // A signed-in lap in a browser carries BOTH ids, so the anonymous lap this
+    // browser set earlier is the same person. Keying on user_id alone would
+    // show these as two rivals of each other.
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE, userId: null, playerName: null }),
+      entry({ lapMs: 90_000, clientId: ALICE, userId: "user-alice", playerName: "hussain" }),
+    ];
+    const board = bestPerPlayer(rows, 5);
+    expect(board).toHaveLength(1);
+    expect(board[0].lapMs).toBe(77_100);
+  });
+
+  it("merges one account's laps across two different browsers", () => {
+    // The other direction, which keying on client_id alone gets wrong.
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE, userId: "user-alice" }),
+      entry({ lapMs: 84_000, clientId: BOB, userId: "user-alice" }),
+    ];
+    const board = bestPerPlayer(rows, 5);
+    expect(board).toHaveLength(1);
+    expect(board[0].clientId).toBe(ALICE);
+  });
+
+  it("does NOT merge an unrelated browser's anonymous lap into an account", () => {
+    // Nothing links these, and guessing that they are the same person would be
+    // inventing an identity the data does not contain.
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE, userId: null, playerName: null }),
+      entry({ lapMs: 90_000, clientId: BOB, userId: "user-alice", playerName: "hussain" }),
+    ];
+    expect(bestPerPlayer(rows, 5)).toHaveLength(2);
+  });
+
+  it("merges transitively through a shared id", () => {
+    // alice/anonymous -> alice/signed-in -> bob-browser/same account. Each
+    // link is one shared id; the group is only correct if the merge composes.
+    const rows = [
+      entry({ lapMs: 70_000, clientId: ALICE, userId: null }),
+      entry({ lapMs: 75_000, clientId: ALICE, userId: "user-alice" }),
+      entry({ lapMs: 80_000, clientId: BOB, userId: "user-alice" }),
+    ];
+    const board = bestPerPlayer(rows, 5);
+    expect(board).toHaveLength(1);
+    expect(board[0].lapMs).toBe(70_000);
+  });
+
+  it("does NOT merge two different anonymous browsers on a shared handle", () => {
+    // Handles are self-chosen and unverified, so two browsers typing the same
+    // name are two players. Collapsing them would be inventing an identity
+    // the data does not contain.
+    const rows = [
+      entry({ lapMs: 77_100, clientId: ALICE, playerName: "hussain" }),
+      entry({ lapMs: 80_000, clientId: BOB, playerName: "hussain" }),
+    ];
+    expect(bestPerPlayer(rows, 5)).toHaveLength(2);
+  });
+
+  it("keeps rows it cannot attribute rather than hiding them", () => {
+    // A row with neither id is a data problem somewhere else; dropping it
+    // would make a set lap vanish for a reason the player cannot see.
+    const rows = [
+      entry({ lapMs: 77_100, userId: null, clientId: null }),
+      entry({ lapMs: 80_000, userId: null, clientId: null }),
+    ];
+    expect(bestPerPlayer(rows, 5)).toHaveLength(2);
+  });
+
+  it("returns a new array and does not mutate its input", () => {
+    const rows = [entry({ lapMs: 80_000, clientId: ALICE }), entry({ lapMs: 70_000, clientId: BOB })];
+    const before = rows.map((e) => e.lapMs);
+    const board = bestPerPlayer(rows, 5);
+    expect(rows.map((e) => e.lapMs)).toEqual(before);
+    expect(board).not.toBe(rows);
+  });
+
+  it("copes with a zero, negative or junk limit", () => {
+    const rows = [entry({ lapMs: 80_000, clientId: ALICE })];
+    expect(bestPerPlayer(rows, 0)).toHaveLength(0);
+    expect(bestPerPlayer(rows, -5)).toHaveLength(0);
+    expect(bestPerPlayer(rows, NaN)).toHaveLength(0);
+  });
+
+  it("over-fetches so a crowded slice still fills the board", async () => {
+    // The slice has to be deeper than the requested rows, or five rows from
+    // two prolific drivers dedupe down to a two-row board.
+    const config = { url: "https://example.supabase.co", publishableKey: "pk" };
+    const calls: string[] = [];
+    const five = [1, 2, 3, 4, 5].map((k) => ({
+      track_id: "monza",
+      lap_ms: 70_000 + k,
+      driver_code: "VER",
+      team_id: "ferrari",
+      compound: "soft",
+      created_at: "2026-09-28T00:00:00.000Z",
+      client_id: `client-${k}`,
+    }));
+    const fetchImpl = (async (url: string) => {
+      calls.push(url);
+      return { ok: true, json: async () => five } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const board = await fetchLeaderboard(config, "monza", 5, { fetchImpl });
+    expect(board).toHaveLength(5);
+    const requested = new URL(calls[0], "https://x").searchParams.get("limit");
+    expect(Number(requested)).toBeGreaterThanOrEqual(5);
+  });
+
+  it("asks the server for client_id so unsigned rows can be told apart", () => {
+    const query = buildLeaderboardQuery("monza", 5);
+    expect(query).toContain("client_id");
   });
 });
