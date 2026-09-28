@@ -1381,6 +1381,90 @@
   color: #7fdca4;
 }
 
+/* ------------------------------------------------------ time attack launcher
+   The landing page's time attack no longer drives: it is a way in. So it is one
+   target, the two numbers that make pressing it worth doing, and the account
+   panel beneath. The button is deliberately the only red thing in the block. */
+
+.timeAttackLaunch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 18px 18px;
+}
+
+.timeAttackLaunchText {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+}
+
+.timeAttackLaunchLead {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.timeAttackTargets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+  max-width: 320px;
+}
+
+.timeAttackTargets > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeAttackTargets dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.4px;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.timeAttackTargets dd {
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.timeAttackLaunchButton {
+  display: inline-block;
+  padding: 14px 30px;
+  border-radius: 999px;
+  background: #e10600;
+  color: #fff;
+  font-family: var(--font-geist-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-decoration: none;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.timeAttackLaunchButton:hover {
+  filter: brightness(1.12);
+}
+
+.timeAttackLaunchButton:active {
+  transform: translateY(1px);
+}
+
+.timeAttackLaunchButton:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
 /* ------------------------------------------------------------------ account
    The panel at the foot of the time attack. Deliberately quiet: a player who
    never touches it should not feel it there, and one who does should not have

@@ -41,6 +41,17 @@ export function parseQualifyingFormat(raw: string | null): QualifyingFormat {
   return "timed";
 }
 
+/**
+ * Time attack from ?ta=1: qualifying with no clock (see RaceUrlParams).
+ *
+ * Strictly "1" and "true", so a stray `?ta` or `?ta=0` is an ordinary
+ * qualifying session rather than a half-enabled one. It is a flag, never a
+ * mode, so anything that ignores it still gets a working session.
+ */
+export function parseTimeAttack(raw: string | null): boolean {
+  return raw === "1" || raw === "true";
+}
+
 /** Grid spot for the player from ?grid=, or null (staggered from pole). */
 export function parseGridSpot(raw: string | null): number | null {
   if (raw === null) return null;
@@ -105,6 +116,20 @@ export interface RaceUrlParams {
    * so every car lines up where it qualified, not just the player.
    */
   order?: string[];
+  /**
+   * Time attack (?ta=1): a qualifying session with no clock. It reuses the
+   * qualifying machinery wholesale - same best-lap tracking, same validity
+   * rule, same HUD - and differs in exactly one respect: the session never
+   * finishes and no time ever runs down, so the player can keep going until
+   * they leave. Every lap that beats their own best is saved.
+   *
+   * Modelled as a flag on a qualifying session rather than a fourth
+   * SessionMode, because a fourth mode would have to be special-cased at
+   * every `sessionMode === "qualifying"` site, and all but two of those
+   * want identical behaviour. A flag makes "what actually differs" a list
+   * you can read in one place instead of a diff spread over the file.
+   */
+  timeAttack?: boolean;
 }
 
 /**
@@ -154,6 +179,9 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.order !== undefined && params.order.length > 0) {
     query.set("order", params.order.join(","));
   }
+  // 1/0 rather than a bare ?ta, so the value is always something to parse and
+  // the flag survives being copied and re-saved by a user or a tool.
+  if (params.timeAttack) query.set("ta", "1");
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }

@@ -14,7 +14,7 @@ import { parseTrackId } from "@/lib/tracks/registry";
 import { parseWeatherPreset } from "@/lib/physics/weather";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseTimeAttack, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE, type SessionMode } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
 import { hashSeed, parseGridOrder, randomSeed, shuffledGridOrder } from "@/lib/race/rosterData";
@@ -101,6 +101,17 @@ function RaceContent() {
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
   const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
   const rivalCount = parseRivals(searchParams.get("rivals"));
+  // Time attack (?ta=1): a qualifying session with no clock. It is forced onto
+  // qualifying and the timed format here rather than left to whatever ?mode=
+  // says, so the flag cannot be half-applied by a hand-edited or truncated
+  // link - the two things it depends on are a qualifying session and a ticking
+  // format to suppress, and both are set from the flag alone.
+  const timeAttack = parseTimeAttack(searchParams.get("ta"));
+  const sessionModeOverride: SessionMode | undefined = timeAttack ? "qualifying" : undefined;
+  const format = timeAttack ? "timed" : qualiFormat;
+  // Nobody to race: a time attack is the driver against their own best lap, so
+  // the field is empty and the qualifying overlay has no rival times to show.
+  const timeAttackRivals = 0;
   // AI field character (see lib/ai/personalities.ts): the meeting
   // difficulty tier travels on ?diff=, defaulting to Pro's calibrated
   // fast-line reference. In net rooms the host simulates, so the host's
@@ -154,7 +165,10 @@ function RaceContent() {
   const { team, driver, rivals: soloRivals } = resolveFieldRoster(
     parseTeamId(searchParams.get("team")),
     parseDriverCode(searchParams.get("driver")),
-    rivalCount,
+    // A time attack has no field: the whole point is the driver against their
+    // own best lap, and an AI car on track is traffic in a session whose only
+    // measure is a clean lap.
+    timeAttack ? timeAttackRivals : rivalCount,
     fieldSeed
   );
   const playerSlot = netActive && netSlot !== null ? netSlot : 0;
@@ -182,7 +196,8 @@ function RaceContent() {
           .filter(({ slot }) => slot !== playerSlot)
           .map(({ entry }) => entry);
       })();
-  const sessionMode = netActive && netValid ? "race" : parseSessionMode(searchParams.get("mode"));
+  const sessionMode =
+    netActive && netValid ? "race" : (sessionModeOverride ?? parseSessionMode(searchParams.get("mode")));
   const qualifyingSession = sessionMode === "qualifying";
   const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
   // Random grid for quick races (?seed= from the home Drive link): the
@@ -372,7 +387,7 @@ function RaceContent() {
   // identities, hidden reference times). Keep those inputs in the remount
   // key so a same-sized client navigation cannot reuse stale classification.
   const rosterKey = `${driver.code}/${driver.name}/${team.id}/${rivals.map((rival) => rival.code).join(",")}`;
-  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
+  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}`;
   const sceneReady = readySceneKey === sceneKey;
   const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
 
@@ -413,10 +428,11 @@ function RaceContent() {
         raceLaps={raceLaps}
         champRound={champRound}
         sessionMode={sessionMode}
+        qualiFormat={format}
+        timeAttack={timeAttack}
         netRole={netActive && netValid ? netRole : null}
         netHumanSlots={(netActive && netValid ? (roomState?.members ?? []) : []).map((_, index) => index)}
         countdownGoAtMs={countdownGoAtMs}
-        qualiFormat={qualiFormat}
         playerGridSpot={playerGridSpot}
         difficulty={difficulty}
         countdownRef={countdownRef}

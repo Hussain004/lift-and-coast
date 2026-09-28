@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import {
@@ -59,6 +59,12 @@ import type { TouchDriveInput } from "@/lib/input/touch";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
+import { isSaveableTimeAttackLap, submitTimeAttackLap } from "@/lib/race/timeAttackBoard";
+import { resolveClientId } from "@/lib/race/leaderboard";
+import { loadAccountSession, refreshSession, saveAccountSession } from "@/lib/race/authClient";
+import { sessionNeedsRefresh, type AccountSession } from "@/lib/race/accounts";
+import { DEFAULT_TEAM_ID } from "@/lib/race/rosterData";
+import { TRACKS } from "@/lib/tracks/registry";
 import type { CarPose } from "@/lib/net/snapshots";
 import { gridSlot } from "@/lib/race/grid";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
@@ -205,6 +211,13 @@ function renderQualifyingResultHtml({
 // independently off the same violation rather than one suppressing the
 // other (see the ponytail note at the call site for what this doesn't do).
 const PENALTY_TOAST_DURATION_SECONDS = 2.5;
+/**
+ * The circuits a time-attack lap may be filed under, for the submission gate.
+ * Module scope so it is built once rather than on every saved lap. The registry
+ * is the light one - names and ids only, no geometry - so this costs nothing
+ * the race page does not already carry.
+ */
+const TIME_ATTACK_TRACK_IDS: ReadonlySet<string> = new Set(TRACKS.map((t) => t.id));
 const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
   purple: "#b967ff",
   green: "#39ff88",
@@ -241,6 +254,7 @@ export function Car({
   champRound = null,
   sessionMode = "race",
   qualiFormat = "timed",
+  timeAttack = false,
   playerGridSpot = null,
   playerCode = "YOU",
   playerName = "YOU",
@@ -329,6 +343,16 @@ export function Car({
   sessionMode?: SessionMode;
   /** Qualifying format from ?qformat= (default timed). */
   qualiFormat?: QualifyingFormat;
+  /**
+   * Time attack from ?ta=1: a qualifying session with no clock, where every
+   * lap that beats the player's own best is saved to the public board.
+   *
+   * A flag on qualifying rather than a fourth session mode, so it inherits the
+   * whole best-lap and validity machinery unchanged. It changes exactly two
+   * things: the session never finishes and no time runs down, and a completed
+   * lap that improves the personal best is written to the board.
+   */
+  timeAttack?: boolean;
   /**
    * The player's grid spot from ?grid= (1-based), or null for a staggered
    * start from pole. Every other slot goes to the rivals in order.
@@ -472,6 +496,70 @@ export function Car({
   const penaltyToastHideAtRef = useRef<number | null>(null);
   const qualifyingDisplayedRef = useRef(false);
   const bestLapRef = useRef<number | null>(null);
+  // Time attack: the signed-in player, read from storage once. The race route
+  // is a fresh page load, so this is where an account picked up on the landing
+  // page becomes known - and reading it lazily here means a race with no
+  // account never touches storage at all.
+  const timeAttackSessionRef = useRef<AccountSession | null | undefined>(undefined);
+  const timeAttackClientIdRef = useRef<string | null | undefined>(undefined);
+
+  /**
+   * Saves one time-attack lap to the board. Never throws and never blocks.
+   *
+   * The session is refreshed first when it is close to expiry, so a lap
+   * cannot start with a valid token and lose the row to a refresh landing
+   * first. A refresh that fails falls back to an ANONYMOUS save rather than
+   * dropping the lap: the time is the thing the player earned, and an
+   * unattributed row on a public board is a much better outcome than a lost
+   * one.
+   */
+  const saveTimeAttackLap = useCallback(
+    (lapMs: number, trackId: string) => {
+      // undefined means "not read yet", which is why the ref's own type carries
+      // it - and why the value is copied into a local, because TypeScript
+      // cannot see that the assignment above already happened through the ref.
+      if (timeAttackSessionRef.current === undefined) {
+        timeAttackSessionRef.current = loadAccountSession();
+      }
+      const stored: AccountSession | null = timeAttackSessionRef.current ?? null;
+      const send = (session: AccountSession | null) => {
+        if (timeAttackClientIdRef.current === undefined) {
+          try {
+            timeAttackClientIdRef.current = resolveClientId(window.localStorage);
+          } catch {
+            timeAttackClientIdRef.current = null;
+          }
+        }
+        return submitTimeAttackLap({
+          trackId,
+          lapMs,
+          driverCode: playerCode,
+          teamId: playerTeamId ?? DEFAULT_TEAM_ID,
+          session,
+          clientId: timeAttackClientIdRef.current,
+          knownTrackIds: TIME_ATTACK_TRACK_IDS,
+        });
+      };
+      if (stored === null || !sessionNeedsRefresh(stored, Date.now())) {
+        void send(stored);
+        return;
+      }
+      void refreshSession(stored).then((result) => {
+        if (result.ok && result.session !== null) {
+          timeAttackSessionRef.current = result.session;
+          saveAccountSession(result.session);
+          void send(result.session);
+        } else {
+          // The account could not be refreshed, so it is no longer a usable
+          // identity - but the lap still counts. Stash the failure so the next
+          // save does not try the same dead token again.
+          timeAttackSessionRef.current = null;
+          void send(null);
+        }
+      });
+    },
+    [playerCode, playerTeamId]
+  );
   const deltaTrackerRef = useRef(createDeltaTracker());
   // Set whenever this lap's progress jumped discontinuously (a rewind, or
   // the off-track teleport below) instead of driving forward continuously -
@@ -1456,6 +1544,15 @@ export function Car({
     }
 
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {
+      // The session's own best BEFORE this lap, which is what decides whether
+      // the lap is an improvement. Read from the qualifying session because
+      // that is the single place the best already lives - a second best-lap
+      // variable here would be a third copy of the same number.
+      const previousBestMs =
+        qualiSessionRef.current.best.player === null
+          ? null
+          : qualiSessionRef.current.best.player * 1000;
+
       if (qualifyingRef?.current && eligible) {
         const prev = qualifyingRef.current.player;
         if (prev === null || lap.lastLapSeconds < prev) {
@@ -1468,6 +1565,17 @@ export function Car({
           "player",
           eligible ? lap.lastLapSeconds : null
         );
+        // Time attack: a qualifying session with no clock, where every lap that
+        // beats the driver's own best is saved to the public board. Fired and
+        // forgotten from the frame loop on purpose - a slow or unreachable
+        // board must not be able to stall the simulation, and there is no
+        // retry: a lost save costs a row, not the session.
+        if (timeAttack && eligible) {
+          const lapMs = lap.lastLapSeconds * 1000;
+          if (isSaveableTimeAttackLap(previousBestMs, lapMs)) {
+            saveTimeAttackLap(lapMs, track.id);
+          }
+        }
       }
       // ponytail: the race "ends" here as a HUD banner only - driving,
       // physics, and the AI keep going, and there's no in-race results/menu
@@ -1581,7 +1689,15 @@ export function Car({
     }
 
     if (lapRef?.current) {
-      if (sessionMode === "qualifying" && qualiFormat !== "oneshot") {
+      if (timeAttack) {
+        // No clock, and the running lap beside the best: a time attack has no
+        // deadline, so showing a countdown would be a lie, and the current lap
+        // is the only thing the driver is actually steering against.
+        lapRef.current.textContent =
+          `TIME ATTACK  LAP ${lap.lapCount + 1}  ${formatLapTime(lap.currentLapSeconds)}` +
+          `  BEST ${formatLapTime(qualiSessionRef.current.best.player)}` +
+          (lapInvalidRef.current ? "  INVALID" : "");
+      } else if (sessionMode === "qualifying" && qualiFormat !== "oneshot") {
         const session = qualiSessionRef.current;
         const phaseLabel = session.phase ? `${session.phase} ` : "";
         const remaining =
@@ -1610,7 +1726,13 @@ export function Car({
     }
 
     if (sessionMode === "qualifying" && !qualiFinishedRef.current) {
-      if (qualiFormat === "timed" || qualiFormat === "knockout") {
+      // TIME ATTACK NEVER TICKS. The qualifying session machine is what counts
+      // the clock down and flips `finished`, so simply not calling it is the
+      // whole of the "unlimited time" behaviour - there is no second clock to
+      // also forget to stop. The best lap still updates, because that is
+      // recordQualiLap's job at the finish line above, not this function's.
+      const ticking = !timeAttack && (qualiFormat === "timed" || qualiFormat === "knockout");
+      if (ticking) {
         const prevPhase = qualiSessionRef.current.phase;
         const wasEliminated = qualiSessionRef.current.playerEliminated;
         qualiSessionRef.current = tickQualifyingSession(qualiSessionRef.current, dt);

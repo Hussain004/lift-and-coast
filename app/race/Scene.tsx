@@ -650,6 +650,7 @@ export function Scene({
   champRound,
   sessionMode = "race",
   qualiFormat = "timed",
+  timeAttack = false,
   playerGridSpot = null,
   playerCode = "YOU",
   playerName = "YOU",
@@ -744,6 +745,9 @@ export function Scene({
   sessionMode?: SessionMode;
   /** Qualifying format from ?qformat= (default timed). */
   qualiFormat?: QualifyingFormat;
+  /** Time attack from ?ta=1: a qualifying session with no clock, where every
+   *  lap that beats the player's own best is saved to the public board. */
+  timeAttack?: boolean;
   /**
    * The player's grid spot from ?grid= (1-based; a qualifying result or
    * the championship panel), or null for a staggered start from pole.
@@ -985,6 +989,7 @@ export function Scene({
           champRound={champRound}
           sessionMode={sessionMode}
           qualiFormat={qualiFormat}
+          timeAttack={timeAttack}
           playerGridSpot={playerGridSpot}
           playerCode={playerCode}
           playerName={playerName}

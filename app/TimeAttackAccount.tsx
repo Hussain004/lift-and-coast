@@ -12,6 +12,9 @@ import {
   signIn,
   signOut,
   signUp,
+  loadAccountSession,
+  saveAccountSession,
+  clearAccountSession,
 } from "@/lib/race/authClient";
 import {
   MAX_USERNAME_LENGTH,
@@ -38,24 +41,19 @@ import {
  * cannot be verified server-side without replaying the lap. Signing in proves
  * you are the person who came back, not that you drove the lap.
  *
- * NOTHING HERE CAN BLOCK DRIVING. Signing in is optional, a failed attempt is
- * one line of copy, and the time attack works identically with or without an
- * account - an anonymous lap still reaches the board.
+ * NOTHING HERE BLOCKS DRIVING. Signing in is optional, a failed attempt is one
+ * line of copy, and a lap saves identically with or without an account - an
+ * anonymous lap still reaches the board.
  *
- * The session is owned by TimeAttack and handed in, because the submit path
- * needs the same access token and there must be exactly one copy of "is anyone
- * signed in" on this page.
+ * The session is owned here and persisted through the auth client, because the
+ * race route reads it back from storage on load and this is the only place on
+ * the landing page that holds one.
  */
 
 type Mode = "sign-up" | "sign-in";
 type Busy = false | "sign-up" | "sign-in" | "sign-out";
 
 const MY_TIMES_SHOWN = 8;
-
-export interface TimeAttackAccountProps {
-  session: AccountSession | null;
-  onSessionChange: (session: AccountSession | null) => void;
-}
 
 /** Why a handle is not usable yet, or null when it is fine. */
 function usernameHint(raw: string): string | null {
@@ -76,7 +74,12 @@ function usernameHint(raw: string): string | null {
   }
 }
 
-export function TimeAttackAccount({ session, onSessionChange }: TimeAttackAccountProps) {
+export function TimeAttackAccount() {
+  // Restored from storage through a lazy initialiser rather than in an effect:
+  // setState directly in an effect body is what react-hooks/set-state-in-effect
+  // bans, and the storage read is guarded for SSR anyway. Same pattern as
+  // lib/race/roster.ts and the time attack's own name field.
+  const [session, setSession] = useState<AccountSession | null>(() => loadAccountSession());
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("sign-up");
   const [username, setUsername] = useState("");
@@ -94,6 +97,23 @@ export function TimeAttackAccount({ session, onSessionChange }: TimeAttackAccoun
   // A cooldown on attempts, so mashing a button is not a request a frame.
   // Supabase rate-limits server-side too; this is manners.
   const lastAttemptRef = useRef(0);
+
+  /**
+   * The single place the session changes, so the state and the stored copy can
+   * never disagree. A signed-in lap's access token is refreshed by the race
+   * route before it saves (see saveTimeAttackLap in app/race/Car.tsx), which
+   * rewrites the stored session underneath here - and because the stored copy
+   * is written by whoever refreshed it, this only has to keep its own changes
+   * consistent.
+   */
+  const applySession = useCallback((next: AccountSession | null) => {
+    setSession(next);
+    if (next === null) {
+      clearAccountSession();
+    } else {
+      saveAccountSession(next);
+    }
+  }, []);
 
   useEffect(() => {
     if (!configured || session === null) return;
@@ -145,10 +165,10 @@ export function TimeAttackAccount({ session, onSessionChange }: TimeAttackAccoun
       // The password has done its one job; it is not left in a field or in
       // state where anything could read it back out.
       setPassword("");
-      onSessionChange(result.session);
+      applySession(result.session);
       setOpen(false);
     },
-    [busy, configured, mode, username, password, onSessionChange]
+    [busy, configured, mode, username, password, applySession]
   );
 
   const doSignOut = useCallback(() => {
@@ -159,11 +179,11 @@ export function TimeAttackAccount({ session, onSessionChange }: TimeAttackAccoun
       // and a stranded token expires by itself.
       void signOut(session);
     }
-    onSessionChange(null);
+    applySession(null);
     setPassword("");
     setOpen(false);
     setBusy(false);
-  }, [busy, session, onSessionChange]);
+  }, [busy, session, applySession]);
 
   if (!configured) return null;
 
