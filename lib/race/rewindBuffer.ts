@@ -5,6 +5,9 @@ export interface RewindSample {
   rotation: { x: number; y: number; z: number; w: number };
   linvel: { x: number; y: number; z: number };
   angvel: { x: number; y: number; z: number };
+  /** The car's damage grip multiplier at this instant (player only), so a
+   * flashback to before a hit also undoes the damage from it. */
+  damage?: number;
 }
 
 /** Length of the rewindable past, shared by the player and the AI so both

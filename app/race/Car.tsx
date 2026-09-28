@@ -990,6 +990,7 @@ export function Car({
     if (wasRewindingRef.current) {
       const sample = rewindBufferRef.current.resumeFrom(rewindCursorRef.current);
       if (sample) applySnapshot(body, sample, false);
+      if (sample?.damage !== undefined) damageGripMultiplierRef.current = sample.damage;
       // The rewind can move the car across the finish-line projection. Prime
       // the detector from the restored pose so its old sample cannot cause a
       // duplicate or missed crossing on the next physics/render tick.
@@ -1095,6 +1096,11 @@ export function Car({
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
     energyStatusRef.current = energyStatus;
+    // Damage persists until a pit crew fixes it - a completed service (the
+    // stop counter ticking over) is the repair, not crossing the line.
+    if (strategyState.pitStops > strategyStateRef.current.pitStops) {
+      damageGripMultiplierRef.current = 1;
+    }
     strategyStateRef.current = strategyState;
     overtakeStateRef.current = overtakeState;
     weatherStateRef.current = weatherState;
@@ -1249,7 +1255,7 @@ export function Car({
     applySurfaceDragImpulse(body, wheelSurfaces.meanDragCoefficient, world.timestep);
 
     const replaySample = snapshotOf(body);
-    rewindBufferRef.current.push(replaySample);
+    rewindBufferRef.current.push({ ...replaySample, damage: damageGripMultiplierRef.current });
     replayRef.current.record({
       ...replaySample,
       telemetry: {
@@ -1707,7 +1713,6 @@ export function Car({
       qualifyingDiscontinuityRef.current = false;
       lapInvalidRef.current = false;
       lapInvalidAtSecondsRef.current = null;
-      damageGripMultiplierRef.current = 1;
       resetTrackLimitLap(trackLimitSequenceRef.current);
     }
 
