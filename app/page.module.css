@@ -1020,3 +1020,145 @@
   border-color: #e10600;
   box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.18);
 }
+
+/* ---------------------------------------------------------------------------
+   Circuit records + time attack.
+
+   Sits under the circuit planner so it reads as "this circuit" - the board
+   re-reads whenever the circuit picker above changes. A dark inset card with
+   a single green accent, matching the page's carbon-and-neon language; the
+   podium rows are lifted out of the flat list by weight and colour rather
+   than by a badge, which keeps the block quiet until there is something to
+   show.
+--------------------------------------------------------------------------- */
+.records {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 12% 0%, rgba(47, 191, 107, 0.07), transparent 58%),
+    rgba(8, 10, 14, 0.6);
+  overflow: hidden;
+}
+
+.recordsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.recordsEyebrow {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 2.6px;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
+.recordsTrack {
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordsNote {
+  margin: 0;
+  padding: 18px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.recordsList {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 8px;
+}
+
+/* Tabular figures and a fixed time column, so a list of lap times never
+   shimmers as the fractional part changes. */
+.recordsRow {
+  display: grid;
+  grid-template-columns: 30px 92px minmax(110px, 1.5fr) minmax(80px, 1fr) 78px;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background 140ms ease;
+}
+
+.recordsRow + .recordsRow {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.recordsRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.recordsPos {
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.recordsTime {
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  letter-spacing: -0.2px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* The top three carry weight and the accent instead of a medal icon, so the
+   block stays typographic. */
+.recordsRow[data-podium="yes"] .recordsTime {
+  color: #7fdca4;
+  font-weight: 600;
+}
+
+.recordsRow[data-podium="yes"] .recordsPos {
+  color: rgba(127, 220, 164, 0.75);
+}
+
+.recordsDriver {
+  color: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordsTeam {
+  color: rgba(255, 255, 255, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordsCompound {
+  justify-self: end;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+@media (max-width: 760px) {
+  .recordsRow {
+    grid-template-columns: 24px 82px minmax(0, 1fr) 62px;
+    gap: 9px;
+    font-size: 12.5px;
+  }
+
+  /* Team name is the first thing to go when the row runs out of width. */
+  .recordsTeam {
+    display: none;
+  }
+}

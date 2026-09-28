@@ -4,6 +4,7 @@ import { SaveTransfer } from "./SaveTransfer";
 import { SessionSetup } from "./SessionSetup";
 import { TeamSetup } from "./TeamSetup";
 import { WorldMap } from "./WorldMap";
+import { TrackRecords } from "./TrackRecords";
 import { ShowroomLoader } from "./ShowroomLoader";
 import { Hero } from "./Hero";
 import { TopBar } from "./TopBar";
@@ -46,6 +47,7 @@ export default function Home() {
               <WorldMap />
               <SessionSetup />
             </div>
+            <TrackRecords />
           </Reveal>
         </section>
         <div className={styles.duo}>
