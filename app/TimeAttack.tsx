@@ -20,6 +20,14 @@ import {
   type TimeAttack,
 } from "@/lib/race/timeAttack";
 import { createDeltaTracker, formatDelta } from "@/lib/race/deltaTimer";
+import { TimeAttackAccount } from "./TimeAttackAccount";
+import {
+  clearAccountSession,
+  loadAccountSession,
+  refreshSession,
+  saveAccountSession,
+} from "@/lib/race/authClient";
+import { sessionNeedsRefresh, type AccountSession } from "@/lib/race/accounts";
 import { BRAKE_RAMP_SECONDS, stepSteering } from "@/lib/input/steering";
 import { loadRosterPrefs } from "@/lib/race/roster";
 import {
@@ -144,6 +152,11 @@ export function TimeAttack() {
   // live one. The live clock changes every frame and goes straight to the DOM.
   const [completion, setCompletion] = useState<Completion | null>(null);
   const [posted, setPosted] = useState<string | null>(null);
+  // The signed-in player, if any, restored from storage through the same lazy
+  // initialiser as the name above. Optional throughout: with no session this
+  // page behaves exactly as it did before accounts existed, and an anonymous
+  // lap still reaches the board.
+  const [account, setAccount] = useState<AccountSession | null>(() => loadAccountSession());
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Mutable 60Hz state. Refs, not React state: the session, the lap logic, the
@@ -172,6 +185,12 @@ export function TimeAttack() {
   // must never re-fire a submission that has already been made, and reading or
   // writing a ref during render is itself banned.
   const nameRef = useRef(name);
+  // The session, mirrored into a ref for the same reason as the name: the
+  // submit effect must read the CURRENT session without the session becoming
+  // one of its dependencies, or signing in mid-session would re-fire the
+  // already-consumed lap guard. Written from onSessionChange, never during
+  // render.
+  const accountRef = useRef<AccountSession | null>(account);
 
   const mapRef = useRef<{
     projection: TrackProjection;
@@ -545,6 +564,41 @@ export function TimeAttack() {
 
   // -------------------------------------------------------------- submitting
 
+  /**
+   * The single place the session changes, so the ref, the state and the stored
+   * copy can never disagree. The ref is written here rather than during render
+   * (which is banned) and read by the submit path.
+   */
+  const onSessionChange = useCallback((next: AccountSession | null) => {
+    accountRef.current = next;
+    setAccount(next);
+    if (next === null) {
+      clearAccountSession();
+    } else {
+      saveAccountSession(next);
+    }
+  }, []);
+
+  /**
+   * A session about to expire is refreshed BEFORE it is used, so a lap cannot
+   * start with a valid token and lose the row to a refresh landing first. A
+   * refresh that fails signs the player out rather than leaving a header whose
+   * every action silently fails; the lap then submits anonymously, which is the
+   * behaviour that predates accounts and still works.
+   */
+  const usableSession = useCallback(async (): Promise<AccountSession | null> => {
+    const current = accountRef.current;
+    if (current === null) return null;
+    if (!sessionNeedsRefresh(current, Date.now())) return current;
+    const result = await refreshSession(current);
+    if (!result.ok || result.session === null) {
+      onSessionChange(null);
+      return null;
+    }
+    onSessionChange(result.session);
+    return result.session;
+  }, [onSessionChange]);
+
   useEffect(() => {
     if (completion === null || !completion.lap.isBest) return;
     if (completion.trackId !== trackId) return;
@@ -556,37 +610,63 @@ export function TimeAttack() {
     // ever reach here, and this stops a hot loop writing a row per frame even
     // if the once-per-lap guard above were ever broken.
     if (!gateRef.current.tryConsume(performance.now())) return;
-    const code = driverCodeFromName(nameRef.current);
-    // No usable name means no submission and no invented identity: the board
-    // only accepts a 2-4 character code, and making one up would be a lie on a
-    // public table. The lap still counts locally.
-    if (code === null) return;
-    let clientId: string | null = null;
-    try {
-      clientId = resolveClientId(window.localStorage);
-    } catch {
-      clientId = null;
-    }
-    if (clientId === null) return;
     // The player's own team from the garage picker above, so the board shows a
     // real team beside the code. Read at submit time rather than subscribed to,
     // because a team change must not re-fire a submission.
     const teamId = loadRosterPrefs().teamId;
-    submitLapFromEnv(
-      {
-        trackId,
-        lapMs: Math.round(completion.lap.lapSeconds * 1000),
-        driverCode: code,
-        teamId,
-        compound: COMPOUND,
-      },
-      clientId,
-      TRACK_IDS
-    ).then((ok) => {
-      if (ok) setPosted(formatLapTime(Math.round(completion.lap.lapSeconds * 1000)) ?? "");
+    const lapMs = Math.round(completion.lap.lapSeconds * 1000);
+    // Async because a near-expiry session is refreshed first. Everything
+    // downstream of that is the same code path it has always been.
+    void (async () => {
+      const signedIn = await usableSession();
+      // A signed-in player's row is keyed on their own account, so the stored
+      // per-device client id is not consulted at all: the same lap from a
+      // different device lands on the same player, which is the whole point.
+      let clientId: string | null = null;
+      let accessToken: string | undefined;
+      let playerName: string | undefined;
+      let code: string | null;
+      if (signedIn !== null) {
+        // The handle replaces the typed name as the identity. It always yields
+        // a legal code - accounts.ts admits nothing shorter than three
+        // characters - and the full handle is what the board shows, because
+        // the 2-4 character code cannot tell two players with the same one
+        // apart.
+        code = driverCodeFromName(signedIn.username);
+        clientId = signedIn.userId;
+        accessToken = signedIn.accessToken;
+        playerName = signedIn.username;
+      } else {
+        code = driverCodeFromName(nameRef.current);
+        try {
+          clientId = resolveClientId(window.localStorage);
+        } catch {
+          clientId = null;
+        }
+      }
+      // No usable name means no submission and no invented identity: the board
+      // only accepts a 2-4 character code, and making one up would be a lie on a
+      // public table. The lap still counts locally.
+      if (code === null || clientId === null) return;
+      const ok = await submitLapFromEnv(
+        {
+          trackId,
+          lapMs,
+          driverCode: code,
+          teamId,
+          compound: COMPOUND,
+          // Omitted entirely when anonymous, so an unauthenticated submission
+          // is byte-for-byte the request it has always been.
+          ...(playerName !== undefined ? { userId: clientId, playerName } : {}),
+        },
+        clientId,
+        TRACK_IDS,
+        accessToken
+      );
+      if (ok) setPosted(formatLapTime(lapMs) ?? "");
       // A failure costs one line of copy. No retry, no error, no interruption.
-    });
-  }, [completion, configured, trackId]);
+    })();
+  }, [completion, configured, trackId, usableSession]);
 
   // ------------------------------------------------------------------ view
 
@@ -611,25 +691,31 @@ export function TimeAttack() {
         </div>
 
         <div className={styles.timeAttackPanel}>
-          <label className={styles.timeAttackField}>
-            <span className={styles.timeAttackLabel}>YOUR NAME</span>
-            <input
-              className={styles.timeAttackInput}
-              type="text"
-              value={name}
-              maxLength={MAX_NAME_LENGTH}
-              placeholder="Optional"
-              aria-label="Your name, used for the leaderboard"
-              onChange={(e) => {
-                setName(e.target.value);
-                // Mirrored into a ref from the handler rather than during
-                // render, so the submit effect can read the current name
-                // without the name becoming one of its dependencies.
-                nameRef.current = e.target.value;
-                saveTimeAttackName(e.target.value);
-              }}
-            />
-          </label>
+          {/* The typed name is only for anonymous laps. Signed in, the handle
+              is the identity, so asking for a second name would be asking the
+              player to be two things on one board row. The remembered value is
+              left untouched underneath, so signing out restores it. */}
+          {account === null && (
+            <label className={styles.timeAttackField}>
+              <span className={styles.timeAttackLabel}>YOUR NAME</span>
+              <input
+                className={styles.timeAttackInput}
+                type="text"
+                value={name}
+                maxLength={MAX_NAME_LENGTH}
+                placeholder="Optional"
+                aria-label="Your name, used for the leaderboard"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  // Mirrored into a ref from the handler rather than during
+                  // render, so the submit effect can read the current name
+                  // without the name becoming one of its dependencies.
+                  nameRef.current = e.target.value;
+                  saveTimeAttackName(e.target.value);
+                }}
+              />
+            </label>
+          )}
 
           <dl className={styles.timeAttackTimes}>
             <div>
@@ -687,6 +773,10 @@ export function TimeAttack() {
           )}
         </div>
       </div>
+
+      {/* At the foot, below the driving panel: an account is something you set
+          up between laps, not something in the way of driving one. */}
+      <TimeAttackAccount session={account} onSessionChange={onSessionChange} />
     </div>
   );
 }

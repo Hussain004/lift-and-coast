@@ -37,6 +37,23 @@ function driverName(code: string): string {
   return code.toUpperCase();
 }
 
+/**
+ * Who to show for a row.
+ *
+ * A signed-in player's own handle wins over the derived code, because the code
+ * is 2-4 characters and cannot tell two players apart - and handles are not
+ * unique, so this is a display name and never treated as identity. Everything
+ * else falls back to the roster lookup, which is what an anonymous row still
+ * has. The handle is uppercased only because this column always has been; it is
+ * typed in whatever case the player chose.
+ */
+function entryName(entry: LeaderboardEntry): string {
+  if (entry.playerName !== null && entry.playerName.length > 0) {
+    return entry.playerName.toUpperCase();
+  }
+  return driverName(entry.driverCode);
+}
+
 function teamName(id: string): string {
   return TEAMS.find((t) => t.id === id)?.name.toUpperCase() ?? id.toUpperCase();
 }
@@ -89,13 +106,13 @@ export function TrackRecords() {
         <ol className={styles.recordsList}>
           {entries.map((entry, index) => (
             <li
-              key={`${entry.createdAt}-${entry.driverCode}-${entry.lapMs}`}
+              key={`${entry.createdAt}-${entry.userId ?? entry.driverCode}-${entry.lapMs}`}
               className={styles.recordsRow}
               data-podium={index < 3 ? "yes" : "no"}
             >
               <span className={styles.recordsPos}>{index + 1}</span>
               <span className={styles.recordsTime}>{formatLapTime(entry.lapMs) ?? "--"}</span>
-              <span className={styles.recordsDriver}>{driverName(entry.driverCode)}</span>
+              <span className={styles.recordsDriver}>{entryName(entry)}</span>
               <span className={styles.recordsTeam}>{teamName(entry.teamId)}</span>
               <span className={styles.recordsCompound}>{entry.compound.toUpperCase()}</span>
             </li>

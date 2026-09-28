@@ -44,6 +44,10 @@ function entry(over: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
     teamId: "red-bull",
     compound: "soft",
     createdAt: "2026-09-28T00:00:00.000Z",
+    // Anonymous by default, which is what the board held before accounts
+    // existed; the account tests set these explicitly.
+    playerName: null,
+    userId: null,
     ...over,
   };
 }
@@ -250,6 +254,10 @@ describe("rowToEntry", () => {
       teamId: "red-bull",
       compound: "soft",
       createdAt: "2026-09-28T00:00:00.000Z",
+      // A row from before accounts existed has neither, and reads as anonymous
+      // rather than as a row with missing data.
+      playerName: null,
+      userId: null,
     });
   });
 

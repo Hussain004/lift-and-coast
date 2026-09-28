@@ -21,6 +21,15 @@ export interface LeaderboardEntry {
   compound: string;
   /** When the lap was submitted, ISO-8601 from the server. */
   createdAt: string;
+  /**
+   * The handle of the signed-in player who set it, or null for an anonymous
+   * row. A display name and nothing more: handles are self-chosen and
+   * unverified, so two players can hold the same one and this is not evidence
+   * of identity.
+   */
+  playerName: string | null;
+  /** The auth.users id of the player who set it, or null when anonymous. */
+  userId: string | null;
 }
 
 export interface LapSubmission {
@@ -29,6 +38,16 @@ export interface LapSubmission {
   driverCode: string;
   teamId: string;
   compound: string;
+  /**
+   * Optional signed-in identity. Both fields stay null/undefined for an
+   * anonymous lap, which is the default and still works.
+   *
+   * `userId` is not taken on trust by the server: the insert policy accepts a
+   * claimed id only when it equals auth.uid() from the accompanying JWT, so a
+   * mismatched pair fails the insert rather than storing a false attribution.
+   */
+  userId?: string;
+  playerName?: string;
 }
 
 /** Tyre compounds the board accepts; mirrors the table's CHECK constraint. */

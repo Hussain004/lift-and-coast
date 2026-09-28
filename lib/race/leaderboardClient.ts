@@ -51,10 +51,22 @@ export function leaderboardConfigFromEnv(
  */
 const REQUEST_TIMEOUT_MS = 4000;
 
-function headersFor(config: LeaderboardConfig): Record<string, string> {
+/**
+ * The bearer to send.
+ *
+ * With no session this is the publishable key - the anonymous role - which is
+ * the behaviour that has always worked and still does, so an unconfigured build
+ * and a player who never signed in are both unaffected.
+ *
+ * With a session it is the player's own JWT, which is what makes PostgREST set
+ * auth.uid() and lets the insert policy check that a claimed user_id really is
+ * the caller. The apikey header stays the publishable key either way: that is
+ * the project identifier, not the identity.
+ */
+function headersFor(config: LeaderboardConfig, accessToken?: string): Record<string, string> {
   return {
     apikey: config.publishableKey,
-    Authorization: `Bearer ${config.publishableKey}`,
+    Authorization: `Bearer ${accessToken ?? config.publishableKey}`,
     "Content-Type": "application/json",
   };
 }
@@ -75,6 +87,11 @@ export function rowToEntry(row: unknown): LeaderboardEntry | null {
     teamId: r.team_id,
     compound: r.compound,
     createdAt: typeof r.created_at === "string" ? r.created_at : "",
+    // Both present only on rows set while signed in. player_name is only ever
+    // a display name - anyone can hold any handle, so it tells two rows apart
+    // without proving who set either.
+    playerName: typeof r.player_name === "string" && r.player_name.length > 0 ? r.player_name : null,
+    userId: typeof r.user_id === "string" ? r.user_id : null,
   };
 }
 
@@ -82,8 +99,28 @@ export function rowToEntry(row: unknown): LeaderboardEntry | null {
 export function buildLeaderboardQuery(trackId: string, limit: number): string {
   const bounded = Math.max(1, Math.min(100, Math.floor(limit)));
   const params = new URLSearchParams({
-    select: "track_id,lap_ms,driver_code,team_id,compound,created_at",
+    select: "track_id,lap_ms,driver_code,team_id,compound,created_at,player_name,user_id",
     track_id: `eq.${trackId}`,
+    order: "lap_ms.asc",
+    limit: String(bounded),
+  });
+  return `/rest/v1/lap_records?${params.toString()}`;
+}
+
+/**
+ * Query string for one player's fastest lap on each circuit.
+ *
+ * NOT a security boundary, and deliberately not treated as one: the select
+ * policy is public, so every row here is already readable by anyone. This is a
+ * convenience filter that happens to match what a player means by "my times",
+ * not a private store. That is also why it needs no session token - sending
+ * one would imply the rows were private, and they are not.
+ */
+export function buildMyTimesQuery(userId: string, limit: number): string {
+  const bounded = Math.max(1, Math.min(200, Math.floor(limit)));
+  const params = new URLSearchParams({
+    select: "track_id,lap_ms,driver_code,team_id,compound,created_at,player_name,user_id",
+    user_id: `eq.${userId}`,
     order: "lap_ms.asc",
     limit: String(bounded),
   });
@@ -154,6 +191,51 @@ export function loadLeaderboardForTrack(trackId: string, limit: number): Promise
   );
 }
 
+/**
+ * A player's own lap times, fastest first, across every circuit. Resolves to
+ * an empty list on any failure - a signed-in player whose history fails to
+ * load sees no history, not a broken page.
+ *
+ * Takes the user id as an argument rather than reading a session, so the caller
+ * decides what "mine" means and this stays a pure query over a public table.
+ */
+export async function loadMyTimes(
+  userId: string,
+  limit = 30,
+  transport: LeaderboardTransport = {}
+): Promise<LeaderboardEntry[]> {
+  const config = leaderboardConfigFromEnv({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  });
+  if (config === null || userId.length === 0) return [];
+  const doFetch = transport.fetchImpl ?? globalThis.fetch;
+  if (typeof doFetch !== "function") return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), transport.timeoutMs ?? REQUEST_TIMEOUT_MS);
+  try {
+    const res = await doFetch(`${config.url}${buildMyTimesQuery(userId, limit)}`, {
+      method: "GET",
+      headers: headersFor(config),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const body: unknown = await res.json();
+    if (!Array.isArray(body)) return [];
+    const entries: LeaderboardEntry[] = [];
+    for (const row of body) {
+      const entry = rowToEntry(row);
+      if (entry !== null) entries.push(entry);
+    }
+    return sortLeaderboard(entries);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** True when this build was pointed at a leaderboard project at all. */
 export function leaderboardIsConfigured(): boolean {
   return (
@@ -171,7 +253,8 @@ export function leaderboardIsConfigured(): boolean {
 export function submitLapFromEnv(
   submission: LapSubmission,
   clientId: string | null,
-  knownTrackIds: ReadonlySet<string>
+  knownTrackIds: ReadonlySet<string>,
+  accessToken?: string
 ): Promise<boolean> {
   return submitLap(
     leaderboardConfigFromEnv({
@@ -180,7 +263,9 @@ export function submitLapFromEnv(
     }),
     submission,
     clientId,
-    knownTrackIds
+    knownTrackIds,
+    {},
+    accessToken
   );
 }
 
@@ -189,13 +274,19 @@ export function submitLapFromEnv(
  *
  * `knownTrackIds` gates the submission before the network call; the table's
  * own CHECK constraint is the real boundary and will reject the same things.
+ *
+ * `accessToken`, when present, is sent as the bearer so the row can carry an
+ * authenticated `user_id`. The table's insert policy is what actually decides
+ * whether a claimed identity is accepted, so a token that does not match the
+ * claimed id fails the write here rather than storing a false attribution.
  */
 export async function submitLap(
   config: LeaderboardConfig | null,
   submission: LapSubmission,
   clientId: string | null,
   knownTrackIds: ReadonlySet<string>,
-  transport: LeaderboardTransport = {}
+  transport: LeaderboardTransport = {},
+  accessToken?: string
 ): Promise<boolean> {
   if (config === null || clientId === null) return false;
   if (!isSubmittableLap(submission, knownTrackIds)) return false;
@@ -206,7 +297,7 @@ export async function submitLap(
   try {
     const res = await doFetch(`${config.url}/rest/v1/lap_records`, {
       method: "POST",
-      headers: headersFor(config),
+      headers: headersFor(config, accessToken),
       signal: controller.signal,
       body: JSON.stringify({
         track_id: submission.trackId,
@@ -215,6 +306,12 @@ export async function submitLap(
         team_id: submission.teamId,
         compound: submission.compound,
         client_id: clientId,
+        // Omitted rather than sent as null when there is no account, so an
+        // anonymous lap is byte-for-byte the request it always was.
+        ...(submission.userId !== undefined ? { user_id: submission.userId } : {}),
+        ...(submission.playerName !== undefined
+          ? { player_name: submission.playerName }
+          : {}),
       }),
     });
     return res.ok;

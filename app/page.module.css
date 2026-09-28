@@ -1381,6 +1381,213 @@
   color: #7fdca4;
 }
 
+/* ------------------------------------------------------------------ account
+   The panel at the foot of the time attack. Deliberately quiet: a player who
+   never touches it should not feel it there, and one who does should not have
+   to hunt for it. The prompt is a single line of text, not a button that
+   competes with "Set a Lap" for the eye. */
+
+.account {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 18px 18px;
+  text-align: left;
+}
+
+.accountPrompt {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-geist-sans);
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.18);
+  text-underline-offset: 4px;
+}
+
+.accountPrompt:hover {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.accountPrompt:focus-visible {
+  outline: 2px solid #e10600;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.accountForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.accountTabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  align-self: flex-start;
+}
+
+.accountTab,
+.accountTabActive {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 7px;
+  font-family: var(--font-geist-sans);
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  background: none;
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.accountTabActive {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.accountField {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.accountLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 2.6px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.accountInput {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font-family: var(--font-geist-sans);
+  font-size: 14px;
+}
+
+.accountInput:focus {
+  outline: none;
+  border-color: #e10600;
+  box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.18);
+}
+
+.accountHint,
+.accountNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.accountError {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #ff9a8f;
+}
+
+.accountActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.accountSubmit {
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #e10600;
+  color: #fff;
+  font-family: var(--font-geist-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+}
+
+.accountSubmit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.accountLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-geist-sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.2);
+  text-underline-offset: 4px;
+}
+
+.accountLink:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.accountSignedIn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.accountWho {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.accountWho b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.accountTimeList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 18px;
+}
+
+.accountTimeRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12.5px;
+}
+
+.accountTimeCircuit {
+  color: rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountTimeValue {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 900px) {
   /* The map first, full width and square, then the readouts. */
   .timeAttackBody {
