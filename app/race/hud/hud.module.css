@@ -375,6 +375,28 @@
   border-color: #fff;
 }
 
+/* Engineer radio: a quieter voice than the flags - mono, sentence case. */
+.notice[data-kind="radio"] {
+  border-color: var(--blue);
+}
+
+.notice[data-kind="radio"] strong {
+  font-family: var(--font-geist-mono);
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.notice[data-kind="radio"]::before {
+  content: "RADIO";
+  align-self: center;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
 @keyframes noticeIn {
   from {
     opacity: 0;
@@ -1109,4 +1131,16 @@
   .timingTime {
     font-size: 17px;
   }
+}
+
+.pauseSubhead {
+  margin: 14px 0 8px;
+  color: #5d6370;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.pauseSubhead:first-of-type {
+  margin-top: 0;
 }

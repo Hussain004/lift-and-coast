@@ -12,7 +12,7 @@ import type { SectorColor } from "./sectorTimer";
 import type { TowerEntry } from "./racePosition";
 import type { SessionMode } from "./sessionSetup";
 
-export type HudEventKind = "info" | "good" | "purple" | "warn" | "penalty" | "flag";
+export type HudEventKind = "info" | "good" | "purple" | "warn" | "penalty" | "flag" | "radio";
 
 export interface HudEvent {
   id: number;

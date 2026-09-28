@@ -10,6 +10,7 @@ import {
   subscribeToControls,
 } from "@/lib/input/keyBindings";
 import { ControlSettingsPanel } from "../ControlSettingsPanel";
+import { EngineerSetting } from "../../EngineerSetting";
 import styles from "./hud.module.css";
 
 /** Keys that are not rebindable, so they are not in the bindings table. */
@@ -141,7 +142,12 @@ export function PauseMenu({
                 ))}
               </dl>
             ) : (
-              <ControlSettingsPanel inline />
+              <>
+                <div className={styles.pauseSubhead}>RACE ENGINEER</div>
+                <EngineerSetting />
+                <div className={styles.pauseSubhead}>CONTROLS</div>
+                <ControlSettingsPanel inline />
+              </>
             )}
           </div>
         )}

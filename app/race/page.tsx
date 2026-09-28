@@ -30,6 +30,7 @@ import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 import { createHudSnapshot, type HudSnapshot, type SessionResult } from "@/lib/race/hud";
 import { Tower } from "./hud/Tower";
 import { Notifications, Timing } from "./hud/Timing";
+import { Engineer } from "./hud/Engineer";
 import { TrackMap } from "./hud/TrackMap";
 import { Mfd } from "./hud/Mfd";
 import { Results } from "./hud/Results";
@@ -481,6 +482,7 @@ function RaceContent() {
           )}
           <Timing hudRef={hudRef} />
           <Notifications hudRef={hudRef} />
+          <Engineer hudRef={hudRef} />
           <TrackMap
             hudRef={hudRef}
             track={track}

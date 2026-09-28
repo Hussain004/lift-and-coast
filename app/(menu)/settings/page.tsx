@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ControlSettingsPanel } from "../../race/ControlSettingsPanel";
 import { SaveTransfer } from "../../SaveTransfer";
 import { GraphicsSetting } from "../../GraphicsSetting";
+import { EngineerSetting } from "../../EngineerSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -17,6 +18,11 @@ export default function SettingsPage() {
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>GRAPHICS</h2>
           <GraphicsSetting />
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>RACE ENGINEER</h2>
+          <p className={styles.cardNote}>Radio calls on gaps, tyres, fuel, damage and the flag. Voice uses your browser&apos;s speech and respects mute (M).</p>
+          <EngineerSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>SAVE DATA</h2>
