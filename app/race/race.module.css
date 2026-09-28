@@ -94,7 +94,7 @@
 
 .loadingCircuit {
   position: relative;
-  height: 112px;
+  height: 200px;
   margin: 22px 0 20px;
   overflow: hidden;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -108,14 +108,41 @@
   overflow: visible;
 }
 
+/* The real circuit draws itself in (pathLength=1 makes the dash maths
+   track-independent), then holds and repeats. */
 .loadingCircuit path {
   fill: none;
   stroke: #e10600;
-  stroke-width: 2;
+  stroke-width: 3;
   stroke-linecap: round;
-  stroke-dasharray: 12 8;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
   filter: drop-shadow(0 0 7px rgba(225, 6, 0, 0.65));
-  animation: loadingCircuitDash 2.8s linear infinite;
+  animation: loadingCircuitDraw 2.6s ease-in-out infinite;
+}
+
+@keyframes loadingCircuitDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.loadingTip {
+  min-height: 36px;
+  margin-top: 16px;
+  color: #aeb5c1;
+  font-family: var(--font-geist-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: loadingTipIn 0.4s ease-out;
+}
+
+@keyframes loadingTipIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .loadingCircuitGhost {
@@ -126,21 +153,9 @@
   animation: none !important;
 }
 
-.loadingCircuitDot {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ffd23f;
-  box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.12), 0 0 18px #ffd23f;
-  animation: loadingDot 2.8s ease-in-out infinite;
-}
-
 .loadingKicker {
   color: #e10600;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 2.2px;
 }
@@ -170,24 +185,6 @@
   height: 100%;
   background: linear-gradient(90deg, transparent, #e10600, #ffd23f, transparent);
   animation: loadingProgress 1.35s ease-in-out infinite;
-}
-
-.loadingDetail {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 13px;
-  color: #697586;
-  font-size: 8px;
-  letter-spacing: 1.25px;
-}
-
-.loadingDetail i {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #e10600;
-  box-shadow: 0 0 8px rgba(225, 6, 0, 0.8);
 }
 
 /* Compact F1 timing tower: driver, interval and gap only. Car.tsx owns the
@@ -243,17 +240,6 @@
    and the controls reference are mutually exclusive (page.tsx renders one or
    the other, swapped with H), so they share these box values and can never
    stack on top of each other. */
-
-.raceOpsPanel {
-  position: absolute;
-  top: 376px;
-  right: 16px;
-  /* Same minimap clearance as the later combined rule below; kept in step so
-     the two copies cannot disagree. */
-  max-height: calc(100% - 604px);
-  overflow-x: hidden;
-  overflow-y: auto;
-}
 
 .raceOpsPanel {
   /* Wide rather than tall. The vertical space in this column is bounded by
@@ -1081,24 +1067,6 @@
   }
 }
 
-@keyframes loadingCircuitDash {
-  to {
-    stroke-dashoffset: -40;
-  }
-}
-
-@keyframes loadingDot {
-  0%,
-  100% {
-    left: 4%;
-    opacity: 0.35;
-  }
-  50% {
-    left: 94%;
-    opacity: 1;
-  }
-}
-
 @keyframes loadingProgress {
   0% {
     transform: translateX(-130%);
@@ -1111,7 +1079,6 @@
 @media (prefers-reduced-motion: reduce) {
   .loading::after,
   .loadingCircuit path,
-  .loadingCircuitDot,
   .loadingProgress span,
   .startLight i {
     transition: none;
@@ -1146,19 +1113,27 @@
 .telemetryPanel,
 .settingsPanel {
   position: absolute;
-  top: 376px;
+  /* The optional right-hand slot (H): top-right, bounded above the wheel
+     display, which owns the bottom-right corner (~280px tall with its
+     margins). */
+  top: 16px;
   right: 16px;
-  /* Bounded ABOVE the minimap, which owns the bottom of this column (see
-     .minimapBlock: bottom 12px, 188px block). This used to be
-     calc(100% - 392px), which runs to within 16px of the stage bottom - so a
-     tall panel sat on top of the minimap. 604px is the slot's top (376) plus
-     the minimap's footprint, with a few px of padding. */
-  max-height: calc(100% - 604px);
+  z-index: 12;
+  max-height: calc(100% - 330px);
   /* No horizontal scrollbar: the corner map and the g-g box sit side by side,
      and a fixed-width canvas beside a flexible column can tip the row a pixel
      or two past the panel on a narrow viewport. */
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+/* The same panel embedded in a page (pause menu, settings screen). Doubled
+   class so it wins over the fixed HUD-slot width below. */
+.settingsPanel.settingsInline {
+  position: static;
+  width: 100%;
+  max-height: none;
+  box-shadow: none;
 }
 
 .telemetryPanel {

@@ -38,12 +38,7 @@ import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/ros
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
 import type { WeatherPreset } from "@/lib/physics/weather";
-import {
-  GRAPHICS_OPTIONS,
-  loadGraphicsPref,
-  saveGraphicsPref,
-  type GraphicsPref,
-} from "@/lib/render/quality";
+import { GraphicsSetting } from "./GraphicsSetting";
 import styles from "./sessionSetup.module.css";
 
 const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
@@ -97,8 +92,6 @@ export function SessionSetup() {
   // link so the race grid dresses both cars (see lib/race/roster.ts).
   const { teamId, driverCode } = useRosterSelection();
   const router = useRouter();
-  // Graphics tier (see lib/render/quality.ts), persisted like the rest.
-  const [graphics, setGraphics] = useState<GraphicsPref>(() => loadGraphicsPref());
   const meta = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
   const stats = previewStats(meta);
   const hero = outlinePath(getOutline(meta.id).points, 150, 10);
@@ -375,24 +368,7 @@ export function SessionSetup() {
       <div className={styles.sliderRow}>
         <span className={styles.label}>GRAPHICS</span>
       </div>
-      <div className={styles.presets} role="radiogroup" aria-label="Graphics quality">
-        {GRAPHICS_OPTIONS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={graphics === option.id}
-            title={option.id === "auto" ? "Detects your hardware and adapts live" : undefined}
-            onClick={() => {
-              setGraphics(option.id);
-              saveGraphicsPref(option.id);
-            }}
-            className={graphics === option.id ? styles.presetActive : styles.preset}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <GraphicsSetting />
       <Link
         href={driveUrl(undefined)}
         onClick={(e) => {

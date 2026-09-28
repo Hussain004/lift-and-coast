@@ -90,7 +90,7 @@ export function TrackRecords() {
   return (
     <div className={styles.records} aria-live="polite" data-testid="track-records">
       <div className={styles.recordsHeader}>
-        <span className={styles.recordsEyebrow}>03 &nbsp;RECORDS</span>
+        <span className={styles.recordsEyebrow}>TRACK RECORDS</span>
         <span className={styles.recordsTrack}>{getTrackName(trackId)}</span>
       </div>
       {unconfigured && (

@@ -141,7 +141,7 @@ export function PauseMenu({
                 ))}
               </dl>
             ) : (
-              <ControlSettingsPanel />
+              <ControlSettingsPanel inline />
             )}
           </div>
         )}

@@ -96,7 +96,7 @@ export function TimeAttack() {
     // page with the times somewhere below the fold.
     <div className={styles.timeAttack} id="time-attack" data-testid="time-attack">
       <div className={styles.recordsHeader}>
-        <span className={styles.recordsEyebrow}>04 &nbsp;TIME ATTACK</span>
+        <span className={styles.recordsEyebrow}>TIME ATTACK BOARD</span>
         <span className={styles.recordsTrack}>{circuit}</span>
       </div>
 

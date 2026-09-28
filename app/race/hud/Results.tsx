@@ -99,7 +99,7 @@ export function Results({
     actions =
       result.champRound !== null ? (
         <>
-          <Link ref={setPrimary} className={styles.primaryButton} href="/#season">
+          <Link ref={setPrimary} className={styles.primaryButton} href="/championship">
             CONTINUE CHAMPIONSHIP
           </Link>
           <button type="button" className={styles.ghostButton} onClick={onRestart}>

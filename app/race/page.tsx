@@ -1,12 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useIsClient } from "../useIsClient";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
 import { getTrack } from "@/lib/tracks/trackData";
-import { parseTrackId } from "@/lib/tracks/registry";
+import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
+import { buildMinimapPath, computeFullMapTransform } from "@/lib/tracks/minimap";
+import type { TrackData } from "@/lib/tracks/types";
 import { parseWeatherPreset } from "@/lib/physics/weather";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
@@ -34,29 +37,59 @@ import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
 import hudStyles from "./hud/hud.module.css";
 
-function TrackLoadingFallback({ loadingTrackName }: { loadingTrackName: string }) {
+const LOADING_TIPS = [
+  "Lift & coast: it's not slow, it's strategic.",
+  "Harvest under braking, deploy on the straights - the battery is a lap-long budget.",
+  "Trail the brake into the apex: the front tyres grip harder while they are loaded.",
+  "Overtake mode arms within a second of the car ahead. Save a burst for the zone.",
+  "Low-drag aero is for straights only - leave it open into a corner and the rear lets go.",
+  "All four wheels past the white line is a track-limits strike. Three and it's a flag.",
+  "Hold R to rewind a mistake. The whole field rewinds with you.",
+  "Softs are fast for two laps, hards last ten. Box when the grip number falls away.",
+  "Kerbs extend your line, sausage kerbs unsettle the car. Use them, don't jump them.",
+  "Penalty seconds are added to your race time - a +5s can cost the position after the flag.",
+  "Tab shows the full timing tower. , and . flip the wheel display.",
+  "Gravel bogs the car down. Grass is slippery. Neither is faster.",
+];
+
+/**
+ * The loading screen, now about the circuit you are about to drive: its real
+ * outline drawing in, the facts that matter, and a rotating tip. Rendered
+ * without a track on the server (the race body is client-only).
+ */
+function TrackLoadingFallback({ track }: { track: TrackData | null }) {
+  const meta = track ? TRACKS.find((t) => t.id === track.id) : undefined;
+  const [tip, setTip] = useState(() => (track ? track.id.length * 7 : 0) % LOADING_TIPS.length);
+  useEffect(() => {
+    const id = window.setInterval(() => setTip((n) => (n + 1) % LOADING_TIPS.length), 4200);
+    return () => window.clearInterval(id);
+  }, []);
+  const outline = track ? { d: buildMinimapPath(track), ...computeFullMapTransform(track, 200, 12) } : null;
   return (
     <div className={styles.loading} role="status" aria-live="polite">
       <div className={styles.loadingCard}>
         <div className={styles.loadingHeader}>
           <span>LIFT &amp; COAST</span>
-          <span>{loadingTrackName}</span>
+          <span>{meta ? `${(track!.lengthMeters / 1000).toFixed(3)} KM · ${meta.corners} TURNS` : ""}</span>
         </div>
         <div className={styles.loadingCircuit} aria-hidden="true">
-          <svg viewBox="0 0 240 92" role="presentation">
-            <path d="M12 68C28 18 62 12 86 35s30 45 57 31 24-45 51-45c18 0 28 12 34 25" />
-            <path className={styles.loadingCircuitGhost} d="M12 68C28 18 62 12 86 35s30 45 57 31 24-45 51-45c18 0 28 12 34 25" />
-          </svg>
-          <span className={styles.loadingCircuitDot} />
+          {outline && (
+            <svg viewBox="0 0 200 200" role="presentation">
+              <g transform={outline.transform}>
+                <path className={styles.loadingCircuitGhost} d={outline.d} vectorEffect="non-scaling-stroke" />
+                <path d={outline.d} pathLength={1} vectorEffect="non-scaling-stroke" />
+              </g>
+            </svg>
+          )}
         </div>
-        <div className={styles.loadingKicker}>INITIALIZING RACE ENVIRONMENT</div>
-        <div className={styles.loadingTitle}>LOADING TRACK</div>
+        <div className={styles.loadingKicker}>LOADING CIRCUIT</div>
+        <div className={styles.loadingTitle}>{track?.name ?? "\u00a0"}</div>
         <div className={styles.loadingProgress} aria-hidden="true">
           <span />
         </div>
-        <div className={styles.loadingDetail}>
-          BUILDING CIRCUIT <i /> SYNCHRONIZING GRID
-        </div>
+        <p className={styles.loadingTip} key={tip}>
+          {LOADING_TIPS[tip]}
+        </p>
       </div>
     </div>
   );
@@ -78,6 +111,9 @@ type HudSlot = "none" | "telemetry" | "ops" | "settings";
 const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["none", "ops", "telemetry", "settings"];
 
 export default function RacePage() {
+  // The race body is never server-rendered: the field seed is drawn at random
+  // on first render (see fieldSeed), so a server grid and a client grid would
+  // be two different draws and hydration would fail on the tower.
   const isClient = useIsClient();
   return (
     // useSearchParams requires a Suspense boundary for static prerendering
@@ -86,21 +122,9 @@ export default function RacePage() {
     // this whole page is already client-only ("use client" above) and the
     // param read resolves synchronously on first render.
     <Suspense fallback={null}>
-      {isClient ? <RaceContent /> : <TrackLoadingFallback loadingTrackName="" />}
+      {isClient ? <RaceContent /> : <TrackLoadingFallback track={null} />}
     </Suspense>
   );
-}
-
-const noopSubscribe = () => () => {};
-
-/**
- * False during the server render and hydration, true after. The race body
- * must not be server-rendered: the field seed is drawn at random on first
- * render (see fieldSeed below), so a server-rendered grid and the client's
- * grid are two different draws and hydration fails on the tower rows.
- */
-function useIsClient(): boolean {
-  return useSyncExternalStore(noopSubscribe, () => true, () => false);
 }
 
 function RaceContent() {
@@ -450,7 +474,7 @@ function RaceContent() {
           perfRef={perfRef}
           sideMirrorsEnabled={sideMirrorsEnabled}
         />
-        {!sceneReady && <TrackLoadingFallback loadingTrackName={trackName} />}
+        {!sceneReady && <TrackLoadingFallback track={track} />}
         <div className={hudStyles.hud}>
           {!qualifyingSession && (
             <Tower hudRef={hudRef} trackName={trackName} initialRows={initialTowerRows} />
@@ -471,7 +495,7 @@ function RaceContent() {
               back to the board (a race or qualifying ends on the results
               screen, which has its own). */}
           {timeAttack && (
-            <Link className={hudStyles.backLink} href="/#time-attack">
+            <Link className={hudStyles.backLink} href="/time-trial">
               &larr; YOUR TIMES
             </Link>
           )}

@@ -51,7 +51,7 @@ import type { AccountSession } from "@/lib/race/accounts";
 
 type Capture = { action: ControlAction } | null;
 
-export function ControlSettingsPanel() {
+export function ControlSettingsPanel({ inline = false }: { inline?: boolean } = {}) {
   // Seeded from the stored copy on mount, then owned here so a rebind can
   // edit a table that is not yet valid - the live table only ever holds a
   // valid one.
@@ -150,7 +150,7 @@ export function ControlSettingsPanel() {
   };
 
   return (
-    <div className={styles.settingsPanel} data-testid="control-settings">
+    <div className={`${styles.settingsPanel}${inline ? ` ${styles.settingsInline}` : ""}`} data-testid="control-settings">
       <div className={styles.settingsHeader}>
         <span className={styles.settingsTitle}>CONTROLS</span>
         <span className={styles.settingsHint}>
