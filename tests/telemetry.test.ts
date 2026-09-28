@@ -11,10 +11,11 @@ import {
   frontLoadPercent,
   ggPlotPoint,
   gripBarFill,
-  slipAngleDeg,
   loadBarFill,
   normalizeBar,
   rpmBarFill,
+  slipAngleDeg,
+  emptyTelemetrySample,
   type TelemetrySample,
   type WheelTelemetry,
 } from "../lib/race/telemetry";
@@ -22,29 +23,27 @@ import { STATIC_WHEEL_LOAD_N } from "../lib/physics/vehicle";
 
 const STATIC = STATIC_WHEEL_LOAD_N;
 
-function wheel(over: Partial<WheelTelemetry> = {}): WheelTelemetry {
-  return { loadN: STATIC, grip: 1, inContact: true, temperatureC: 90, ...over };
-}
+const wheel = (over: Partial<WheelTelemetry> = {}): WheelTelemetry => ({
+  loadN: STATIC,
+  grip: 1,
+  inContact: true,
+  temperatureC: 90,
+  ...over,
+});
 
-/** A neutral car: even load, even grip, on the ground everywhere. */
-function sample(over: Partial<TelemetrySample> = {}): TelemetrySample {
-  return {
-    wheels: {
-      frontLeft: wheel(),
-      frontRight: wheel(),
-      rearLeft: wheel(),
-      rearRight: wheel(),
-    },
-    lateralG: 0,
-    longitudinalG: 0,
-    totalLoadN: STATIC * 4,
-    slipAngleDeg: 0,
-    yawRateDegS: 0,
-    rpm: 8000,
-    redlineRpm: 12000,
-    ...over,
-  };
-}
+const sample = (over: Partial<TelemetrySample> = {}): TelemetrySample => ({
+  ...emptyTelemetrySample(),
+  wheels: {
+    frontLeft: wheel(),
+    frontRight: wheel(),
+    rearLeft: wheel(),
+    rearRight: wheel(),
+  },
+  totalLoadN: STATIC * 4,
+  rpm: 8000,
+  redlineRpm: 12000,
+  ...over,
+});
 
 describe("normalizeBar", () => {
   it("maps a range onto 0..1 and clamps outside it", () => {

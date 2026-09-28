@@ -51,6 +51,35 @@ export interface TelemetrySample {
   redlineRpm: number;
 }
 
+/**
+ * A neutral sample: a car sitting still on the ground with no grip, no load
+ * and no motion.
+ *
+ * The telemetry ref is created with this and then MUTATED IN PLACE every
+ * physics step, rather than replaced, so a 60Hz update allocates nothing. It
+ * has to exist before the first update for that reason - the panel reads the
+ * ref on its own rAF and needs something valid to read on the very first
+ * frame, and the writer needs a truthy object to mutate.
+ */
+export function emptyTelemetrySample(): TelemetrySample {
+  const wheel = (): WheelTelemetry => ({ loadN: 0, grip: 0, inContact: true, temperatureC: 20 });
+  return {
+    wheels: {
+      frontLeft: wheel(),
+      frontRight: wheel(),
+      rearLeft: wheel(),
+      rearRight: wheel(),
+    },
+    lateralG: 0,
+    longitudinalG: 0,
+    totalLoadN: 0,
+    slipAngleDeg: 0,
+    yawRateDegS: 0,
+    rpm: 0,
+    redlineRpm: 15_000,
+  };
+}
+
 /** Normalised 0..1 bar value, clamped. */
 export function normalizeBar(value: number, min: number, max: number): number {
   if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max)) return 0;

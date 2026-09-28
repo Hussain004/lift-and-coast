@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import styles from "./race.module.css";
 import { STATIC_WHEEL_LOAD_N } from "@/lib/physics/vehicle";
 import {
-  GG_PLOT_MAX_G,
+
   WHEEL_GRID_POSITION,
   WHEEL_ORDER,
   balanceBias,
@@ -44,7 +44,14 @@ import {
 
 /** G-g samples retained. At 60Hz that is about five seconds of trace. */
 const GG_TRACE_SAMPLES = 300;
-const GG_CANVAS_PX = 248;
+/**
+ * The g-g box is deliberately small. It sits beside the corner map rather than
+ * beneath it, and the whole panel has to fit between the right mirror and the
+ * minimap without scrolling on an ordinary screen - the first version used a
+ * 248px canvas stacked under everything and was tall enough to cover the
+ * minimap.
+ */
+const GG_CANVAS_PX = 116;
 
 const CORNER_LABELS: Record<WheelCorner, string> = {
   frontLeft: "FL",
@@ -148,6 +155,7 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
       </div>
 
       <div className={styles.telemetryBody}>
+        <div className={styles.telemetryTopRow}>
         <div className={styles.telemetryCarMap}>
           {WHEEL_ORDER.map((corner) => {
             const [column, row] = WHEEL_GRID_POSITION[corner];
@@ -214,6 +222,16 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
           })}
         </div>
 
+        <div className={styles.telemetryGg}>
+          <canvas
+            ref={ggRef}
+            width={GG_CANVAS_PX}
+            height={GG_CANVAS_PX}
+            aria-label="Combined g trace"
+          />
+          <span className={styles.telemetryGgLabel}>COMBINED G</span>
+        </div>
+        </div>
         <dl className={styles.telemetryReadouts}>
           <div className={styles.telemetryRow}>
             <dt className={styles.telemetryLabel}>LATERAL</dt>
@@ -291,16 +309,6 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
             </dd>
           </div>
         </dl>
-
-        <div className={styles.telemetryGg}>
-          <canvas
-            ref={ggRef}
-            width={GG_CANVAS_PX}
-            height={GG_CANVAS_PX}
-            aria-label="Combined g trace"
-          />
-          <span className={styles.telemetryGgLabel}>COMBINED G · {GG_PLOT_MAX_G}G</span>
-        </div>
       </div>
     </div>
   );

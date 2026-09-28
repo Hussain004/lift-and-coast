@@ -48,7 +48,12 @@ import {
   SHIFT_UP_RPM,
 } from "@/lib/physics/gearbox";
 import { applyImpactDamage } from "@/lib/physics/damage";
-import { WHEEL_ORDER, slipAngleDeg, type TelemetrySample } from "@/lib/race/telemetry";
+import {
+  WHEEL_ORDER,
+  emptyTelemetrySample,
+  slipAngleDeg,
+  type TelemetrySample,
+} from "@/lib/race/telemetry";
 import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
 import type { TouchDriveInput } from "@/lib/input/touch";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
@@ -1035,8 +1040,13 @@ export function Car({
     // state - this runs every physics step and a setState here would
     // re-render the whole HUD at 60Hz. Skipped entirely when the overlay is
     // closed, so a session that never opens it pays nothing.
-    const telemetryTarget = telemetryRef?.current;
-    if (telemetryTarget) {
+    if (telemetryRef) {
+      // Guard on the REF being provided, not on `.current` being truthy. The
+      // ref is created empty and mutated in place (no per-frame allocation),
+      // so the first write has to create the object - guarding on `.current`
+      // meant nothing ever assigned it, the block never ran, and every
+      // readout stayed blank for the whole session.
+      const telemetryTarget = (telemetryRef.current ??= emptyTelemetrySample());
       const rotation = body.rotation();
       const yawNow = yawFromQuaternion(rotation.x, rotation.y, rotation.z, rotation.w);
       const linvelNow = body.linvel();

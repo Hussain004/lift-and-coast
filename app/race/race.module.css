@@ -2490,7 +2490,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 9px 12px 8px;
+  padding: 7px 12px 6px;
   border-bottom: 1px solid #262e37;
 }
 
@@ -2513,9 +2513,9 @@
 .telemetryCarMap {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 3px 10px;
-  margin: 12px;
-  padding: 12px 10px;
+  gap: 3px 8px;
+  margin: 0 12px;
+  padding: 8px;
   border: 1px solid #232a32;
   border-radius: 3px;
   background:
@@ -2525,8 +2525,8 @@
 
 .telemetryWheel {
   display: grid;
-  gap: 3px;
-  padding: 6px 7px;
+  gap: 2px;
+  padding: 4px 5px;
   border: 1px solid #222932;
   border-radius: 3px;
   background: #10141a;
@@ -2608,9 +2608,12 @@
 
 /* Aligned value column. Label left, value right, one hairline between rows -
    a dl-like rhythm that is much easier to scan than four floating boxes. */
+/* Two columns of label/value pairs, so six readouts take three rows instead of
+   six and the panel stays compact. */
 .telemetryReadouts {
   display: grid;
-  gap: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
   margin: 0 12px;
 }
 
@@ -2618,12 +2621,13 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  padding: 5px 0;
+  gap: 6px;
+  padding: 4px 0;
   border-top: 1px solid #1e242b;
 }
 
-.telemetryRow:first-child {
+/* The first row of each column has no rule above it. */
+.telemetryRow:nth-child(-n + 2) {
   border-top: none;
 }
 
@@ -2672,16 +2676,25 @@
 .telemetryBody {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
-  padding: 12px 0 13px;
+  gap: 9px;
+  padding: 10px 0 11px;
+}
+
+/* Corner map and the g-g trace share the top row so the panel is short enough
+   to fit between the right mirror and the minimap without scrolling. */
+.telemetryTopRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 10px;
 }
 
 .telemetryGg {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  margin-top: 2px;
+  gap: 3px;
+  padding-top: 2px;
 }
 
 .telemetryGg canvas {
