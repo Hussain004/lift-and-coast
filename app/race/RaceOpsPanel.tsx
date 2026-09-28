@@ -90,7 +90,7 @@ export function RaceOpsPanel({
         aria-keyshortcuts="H"
         title="Close Race Ops and show the controls reference (H)"
       >
-        <span>RACE OPS</span><span>−</span>
+        <span>RACE OPERATIONS</span><span>−</span>
       </button>
       <div className={styles.raceOpsBody}>
           <div className={styles.opsStatus}>

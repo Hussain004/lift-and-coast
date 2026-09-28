@@ -1047,7 +1047,12 @@
 }
 
 .raceOpsPanel {
-  width: 286px;
+  /* Wide rather than tall. The vertical space in this column is bounded by
+     the right-hand mirror above and the minimap below, so extra height is not
+     available - but the panel's action rows were WRAPPING at 286px, and that
+     wrapping is what forced the scrollbar. Widening puts the buttons on one
+     line each and the content then fits the existing bound. */
+  width: 384px;
   background: linear-gradient(145deg, rgba(7, 9, 13, 0.97), rgba(20, 23, 29, 0.95));
   border: 1px solid #3a414d;
   border-top: 3px solid #e10600;
@@ -1713,9 +1718,12 @@
 /* F-key performance readout (see FrameRateGovernor). Empty until toggled. */
 .perf {
   position: absolute;
+  /* Top right, above the right-hand mirror. The mirror is inset from the top
+     by 112-200px (see SideMirrors.tsx's topMarginPx clamp), so this sits in
+     clear space rather than on top of it, and it is out of the way of the
+     bottom timing strip it used to sit between. */
   top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 16px;
   font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.04em;
   color: #9dffc2;
@@ -2011,6 +2019,15 @@
     transform: none;
   }
 
+  /* Portrait phone: the mobile action row owns the top-right corner, so the
+     FPS readout moves to the top-left rather than sitting under those
+     buttons. */
+  .perf {
+    top: max(8px, env(safe-area-inset-top));
+    right: auto;
+    left: max(8px, env(safe-area-inset-left));
+  }
+
   .raceOpsPanel {
     top: 170px;
     right: 8px;
@@ -2118,6 +2135,14 @@
 
   .towerRows {
     max-height: 20vh;
+  }
+
+  /* Landscape phone: same collision as portrait - the mobile action row holds
+     the top-right corner. */
+  .perf {
+    top: max(8px, env(safe-area-inset-top));
+    right: auto;
+    left: max(8px, env(safe-area-inset-left));
   }
 
   .raceOpsPanel {
