@@ -64,6 +64,71 @@ import { MAX_DECEL_MS2, maxLateralAccelMs2 } from "../tracks/racingLine";
 const LOOKAHEAD_SECONDS = 1.0;
 const LOOKAHEAD_MIN_METERS = 24;
 const LOOKAHEAD_MAX_METERS = 50;
+
+// ---------------------------------------------------------------------------
+// Suzuka's crossover: measured, and still not fixed. Read this before
+// "correcting" anything here.
+//
+// The AI is chaotically fragile at exactly one place on Suzuka - the bridge
+// crossover at station ~4650-4760m, racing line indices ~2323-2381 - and it
+// is fragile there in every configuration tried. A 21-pace sweep of
+// paceScale 1.00-1.40 (180s each, the same harness the gates use):
+//
+//   plan-only nearestLineIndex (shipped): 5 paces flip, worst 0.753 rad
+//   height-aware nearestLineIndex:       11 paces flip, worst 1.029 rad
+//
+// (gate is 0.6 rad). Every flipping pace in both sets peaks at the crossover,
+// which is what makes it a location problem rather than general fragility.
+//
+// Things measured there and ruled OUT, so they are not re-investigated:
+//
+// - The terrain "hole". Under the upper deck the heightfield sits 6.1m below
+//   the road surface, the deepest on any circuit (next worst Zandvoort 3.2m),
+//   and tests/terrain.test.ts exempts Suzuka's bridge-zone windows from the
+//   dip bound. That is correct, not a defect: it is the ground UNDER the
+//   bridge. applyRibbonClearance creates it deliberately - one 12.5m terrain
+//   vertex serves both decks, and the lower deck's ribbon demands the terrain
+//   sit below it, which necessarily drops the shared vertex to the lower
+//   deck. Disabling that pass removes the dip (to 0.48m) and is strictly
+//   worse: the same shared vertex then stands 5.9m ABOVE the lower deck's
+//   road, and the car jams at station 4565m on every single run.
+//
+// - The barrier wall. Re-running the flip with `walls: false` (which drops
+//   the barrier collider) reproduces the identical max tilt to three decimal
+//   places at the identical index and time. Not the barrier.
+//
+// - The line lookup being plan-only, which looked like the obvious culprit:
+//   the decks are ~13m apart in plan and 5.5m apart in height here, so a
+//   horizontal nearest-point search cannot tell them apart, and the rest of
+//   the game (checkTrackLimits, via nearestCenterline) already uses a 3D
+//   distance for exactly this reason. Making this function match that rule -
+//   same formula, same unit weight on the vertical term, plumbed through
+//   computeAIControls, AICar.tsx and the per-track gate - passed all 30
+//   circuits at the default pace and still made Suzuka markedly WORSE
+//   (the 11-flip row above). Reverted. A "more correct" lookup is not
+//   automatically a better one here: following the correct deck lets the car
+//   carry more speed into the section, and the section is what cannot take
+//   it.
+//
+// The actual cause is geometric. Between the two decks there are two ~8.5m
+// roads and roughly 13m of centreline separation, so the clear gap between
+// the upper deck's edge and the lower deck's road is only a few metres - not
+// the tens of metres of run-off the control law's margins assume everywhere
+// else. The car reaches this point at 45-60 m/s, runs ~1.4m wide, and is
+// then over solid structure rather than open grass, so the excursion turns
+// into a tumble instead of a slow recovery. Every flipping pace does exactly
+// this; the only thing that varies is whether this lap's excursion is big
+// enough to tip it.
+//
+// What would earn this corner real margin is making the AI's target speed
+// respect the room ACTUALLY available before the next solid thing - a
+// measured run-off width per line point, capping targetSpeedMs where the
+// geometry gives a car metres rather than tens of metres. That is a change
+// to how the speed profile is derived, not another number to sweep here, and
+// it would need its own pass over all 30 circuits. Until then this stays a
+// documented knife edge, and the rev-range work that was waiting on Suzuka
+// margin stays blocked for the same reason.
+// ---------------------------------------------------------------------------
 /**
  * Corner-entry preview cap (see the curvature clamp in computeAIControls).
  * The speed-scaled preview above is validated for open road, but pure
@@ -156,6 +221,14 @@ function cappedPaceForPoint(point: RacingLinePoint, clampedPace: number): number
  * Nearest line index for an (x, z) position - exported for the racecraft
  * book (see AICar.tsx), which anchors its corner-ahead scan to the same
  * point the steering pursues from.
+ *
+ * The search is plan-only on purpose, even though the rest of the game uses a
+ * height-aware one (nearestCenterline, via checkTrackLimits) and even though
+ * the decks at Suzuka's crossover are only ~13m apart in plan: making this
+ * match that rule was measured and made Suzuka substantially worse (11
+ * flipping paces instead of 5 over a 1.00-1.40 sweep). See the Suzuka
+ * crossover block above before changing the metric - the reasoning and the
+ * numbers are there.
  */
 export function nearestLineIndex(
   line: RacingLinePoint[],
