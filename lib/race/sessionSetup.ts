@@ -94,6 +94,10 @@ export function parseGridSpot(raw: string | null): number | null {
 export const MIN_RIVALS = 1;
 export const MAX_RIVALS = 19;
 export const DEFAULT_RIVALS = 1;
+/** The home screen's starting field: a Grand Prix is a full grid. Separate
+ * from DEFAULT_RIVALS, which only decides how a link WITHOUT ?rivals= parses
+ * (old links stay duels). */
+export const DEFAULT_SETUP_RIVALS = MAX_RIVALS;
 /** Cars on track including the player - the F1 grid size. */
 export const MAX_FIELD_SIZE = MAX_RIVALS + 1;
 
@@ -277,7 +281,7 @@ function clampLaps(n: unknown): number {
 }
 
 function clampRivals(n: unknown): number {
-  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_RIVALS;
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_SETUP_RIVALS;
   return Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, Math.round(n)));
 }
 
@@ -317,7 +321,7 @@ export function loadSessionSetupPrefs(
     trackId: DEFAULT_TRACK_ID,
     timeOfDay: DEFAULT_TIME_OF_DAY,
     weather: "clear",
-    rivals: DEFAULT_RIVALS,
+    rivals: DEFAULT_SETUP_RIVALS,
     difficulty: DEFAULT_DIFFICULTY,
     carSetup: { ...DEFAULT_CAR_SETUP },
   };

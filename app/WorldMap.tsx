@@ -46,6 +46,10 @@ function pick(id: string): void {
   saveSessionSetupPrefs({ raceLaps, trackId: id, timeOfDay, weather, rivals, difficulty });
 }
 
+/** Pin-centre to label distance in screen px: clears the active pin's r=12
+ * ring, which otherwise sat on top of the label's first letter. */
+const LABEL_GAP = 16;
+
 export function WorldMap() {
   const trackId = useSessionTrackId();
   const land = useMemo(() => landPath(getLandPolygons()), []);
@@ -144,7 +148,7 @@ export function WorldMap() {
     priority,
     7 * k,
     13 * k,
-    9 * k
+    LABEL_GAP * k
   );
 
   return (
@@ -234,8 +238,8 @@ export function WorldMap() {
                 <circle r={active ? 6.5 : 5} className={active ? styles.pinActive : styles.pinDot} />
                 {side && (
                   <text
-                    x={side === "right" ? 9 : side === "left" ? -9 : 0}
-                    y={side === "above" ? -11 : side === "below" ? 17 : 4}
+                    x={side === "right" ? LABEL_GAP : side === "left" ? -LABEL_GAP : 0}
+                    y={side === "above" ? -LABEL_GAP - 2 : side === "below" ? LABEL_GAP + 8 : 4}
                     textAnchor={side === "right" ? "start" : side === "left" ? "end" : "middle"}
                     className={active ? styles.pinLabel : styles.pinHover}
                   >

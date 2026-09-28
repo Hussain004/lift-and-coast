@@ -4,6 +4,7 @@ import {
   retargetSessionUrl,
   DEFAULT_RACE_LAPS,
   DEFAULT_RIVALS,
+  DEFAULT_SETUP_RIVALS,
   DEFAULT_TIME_OF_DAY,
   MAX_RACE_LAPS,
   MAX_RIVALS,
@@ -81,7 +82,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       weather: "clear",
-      rivals: DEFAULT_RIVALS,
+      rivals: DEFAULT_SETUP_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
       carSetup: DEFAULT_CAR_SETUP,
     });
@@ -93,7 +94,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       weather: "clear",
-      rivals: DEFAULT_RIVALS,
+      rivals: DEFAULT_SETUP_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
       carSetup: DEFAULT_CAR_SETUP,
     });
@@ -112,7 +113,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: "spa",
       timeOfDay: "day",
       weather: "clear",
-      rivals: DEFAULT_RIVALS,
+      rivals: DEFAULT_SETUP_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
       carSetup: DEFAULT_CAR_SETUP,
     });
@@ -151,7 +152,7 @@ describe("loadSessionSetupPrefs", () => {
       trackId: DEFAULT_TRACK_ID,
       timeOfDay: DEFAULT_TIME_OF_DAY,
       weather: "clear",
-      rivals: DEFAULT_RIVALS,
+      rivals: DEFAULT_SETUP_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
       carSetup: DEFAULT_CAR_SETUP,
     });
@@ -283,7 +284,7 @@ describe("rivals prefs", () => {
     const { storage } = fakeStorage({
       "lift-and-coast.session-setup.v1": JSON.stringify({ raceLaps: 3, trackId: "spa" }),
     });
-    expect(loadSessionSetupPrefs(storage).rivals).toBe(DEFAULT_RIVALS);
+    expect(loadSessionSetupPrefs(storage).rivals).toBe(DEFAULT_SETUP_RIVALS);
     const over = fakeStorage({
       "lift-and-coast.session-setup.v1": JSON.stringify({ raceLaps: 3, trackId: "spa", rivals: 99 }),
     });

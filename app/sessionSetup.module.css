@@ -118,14 +118,17 @@
 
 .preset:hover {
   border-color: #e10600;
-  color: #e10600;
+  color: #f6f3ec;
 }
 
+/* Solid fill, white text: red-on-dark-red read as ~2:1 and the selected
+   option was the hardest one on the panel to read. */
 .presetActive {
-  background: rgba(225, 6, 0, 0.12);
+  background: #e10600;
   border: 1px solid #e10600;
   border-radius: 4px;
-  color: #e10600;
+  color: #ffffff;
+  font-weight: 600;
   font-family: var(--font-geist-mono);
   font-size: 11px;
   letter-spacing: 1px;

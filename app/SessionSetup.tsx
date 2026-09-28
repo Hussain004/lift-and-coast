@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   DEFAULT_RACE_LAPS,
-  DEFAULT_RIVALS,
+  DEFAULT_SETUP_RIVALS,
   MAX_RACE_LAPS,
   MAX_RIVALS,
   MIN_RACE_LAPS,
@@ -268,7 +268,7 @@ export function SessionSetup() {
               const count = parseInt(e.target.value, 10);
               const clamped = Number.isFinite(count)
                 ? Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, count))
-                : DEFAULT_RIVALS;
+                : DEFAULT_SETUP_RIVALS;
               setRivals(clamped);
               persist(raceLaps, trackId, timeOfDay, weather, clamped);
             }}
