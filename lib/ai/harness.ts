@@ -239,12 +239,12 @@ export interface StabilityResult {
 
 
 let rapierReady: Promise<typeof RAPIER> | null = null;
-function ensureRapierInit() {
+export function ensureRapierInit() {
   if (!rapierReady) rapierReady = RAPIER.init().then(() => RAPIER);
   return rapierReady;
 }
 
-function tiltFromUpright(rotation: {
+export function tiltFromUpright(rotation: {
   x: number;
   y: number;
   z: number;
@@ -257,7 +257,7 @@ function tiltFromUpright(rotation: {
   return bodyUp.angleTo(worldUp);
 }
 
-function yawFromRotation(rotation: {
+export function yawFromRotation(rotation: {
   x: number;
   y: number;
   z: number;
