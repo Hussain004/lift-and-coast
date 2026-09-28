@@ -9,6 +9,7 @@ import {
   shouldRepeat,
   type NavDirection,
 } from "@/lib/input/menuNav";
+import { uiConfirm, uiTick } from "@/lib/audio/uiTones";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -50,6 +51,7 @@ function move(dir: NavDirection) {
   const rects = all.map((el) => el.getBoundingClientRect());
   const index = pickNavTarget(active.getBoundingClientRect(), rects, dir);
   if (index >= 0) {
+    uiTick();
     all[index].focus();
     all[index].scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
@@ -79,6 +81,10 @@ export function MenuNavigator({
           e.preventDefault();
           router.push(backHref);
         }
+        return;
+      }
+      if (e.key === "Enter" && active instanceof HTMLElement && active !== document.body && !isTextField(active)) {
+        uiConfirm();
         return;
       }
       const dir: NavDirection | null =
@@ -123,7 +129,10 @@ export function MenuNavigator({
       const b = !!pad.buttons[PAD.b]?.pressed;
       if (a && !prevA) {
         const el = document.activeElement as HTMLElement | null;
-        if (el && el !== document.body) el.click();
+        if (el && el !== document.body) {
+          uiConfirm();
+          el.click();
+        }
         else move("down");
       }
       if (b && !prevB && backHref) router.push(backHref);

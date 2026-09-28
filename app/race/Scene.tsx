@@ -28,6 +28,7 @@ import { pushHudEvent, type HudSnapshot } from "@/lib/race/hud";
 import { fovForSpeed, shakeOffset, stepCameraYaw } from "@/lib/race/chaseCam";
 import { loadCameraShake, subscribeCameraShake } from "@/lib/settings/cameraPrefs";
 import { getBindings } from "@/lib/input/keyBindings";
+import { startLightBeep } from "@/lib/audio/uiTones";
 import {
   HELMET_AIM_DISTANCE_METERS,
   HELMET_AIM_DROP_METERS,
@@ -114,7 +115,14 @@ function RaceStartCountdown({
   const elapsedRef = useRef(0);
   const finishedRef = useRef(false);
   const startedRef = useRef(false);
+  const lastBeepRef = useRef("");
   const showCountdown = (value: string, phase: string): void => {
+    // A gantry beep as each step of lights comes on; lights out is silent,
+    // as it is on a real grid.
+    if (phase === "countdown" && value !== lastBeepRef.current) {
+      lastBeepRef.current = value;
+      startLightBeep();
+    }
     // The page mounts the visible overlay only after the first Canvas frame.
     // Keep writing the current value even when it has not changed: on the
     // first frame the ref can be null, and the next tick must hydrate the

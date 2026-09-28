@@ -4,6 +4,8 @@ import { SaveTransfer } from "../../SaveTransfer";
 import { GraphicsSetting } from "../../GraphicsSetting";
 import { EngineerSetting } from "../../EngineerSetting";
 import { CameraSetting } from "../../CameraSetting";
+import { HapticsSetting } from "../../HapticsSetting";
+import { AudioSetting } from "../../AudioSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -22,6 +24,14 @@ export default function SettingsPage() {
           <h2 className={styles.cardTitle} style={{ marginTop: 18 }}>CAMERA</h2>
           <p className={styles.cardNote}>Kerb and high-speed shake. Off by default if your system asks for reduced motion.</p>
           <CameraSetting />
+          <h2 className={styles.cardTitle} style={{ marginTop: 18 }}>VIBRATION</h2>
+          <p className={styles.cardNote}>Gamepad rumble on kerbs, slides and impacts (Chromium browsers), and phone vibration on impacts.</p>
+          <HapticsSetting />
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>SOUND</h2>
+          <p className={styles.cardNote}>Engines, effects and menu sounds. M toggles it during a race.</p>
+          <AudioSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>RACE ENGINEER</h2>

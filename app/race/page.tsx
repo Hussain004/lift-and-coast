@@ -21,6 +21,7 @@ import { netRoom } from "@/lib/net/peer";
 import { isRoomCode } from "@/lib/net/protocol";
 import { defaultAudioSnapshot } from "@/lib/audio/raceAudio";
 import { RaceAudioRig } from "./RaceAudioRig";
+import { Haptics } from "./Haptics";
 import { RaceOpsPanel } from "./RaceOpsPanel";
 import { TelemetryPanel } from "./TelemetryPanel";
 import { ControlSettingsPanel } from "./ControlSettingsPanel";
@@ -505,6 +506,7 @@ function RaceContent() {
         <ResultWatcher hudRef={hudRef} onResult={setResult} />
         <div className={styles.perf} ref={perfRef} aria-live="off" />
         <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
+        <Haptics audioRef={audioRef} />
         <RaceOpsPanel
           commandRef={raceCommandsRef}
           snapshotRef={raceOpsSnapshotRef}

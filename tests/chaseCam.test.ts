@@ -6,6 +6,7 @@ import {
   stepCameraYaw,
   wrapAngle,
 } from "../lib/race/chaseCam";
+import { rumbleFor } from "../lib/settings/hapticsPref";
 
 describe("chase camera yaw spring", () => {
   it("has ZERO lag on a straight, at any speed - the galloping-bug guard", () => {
@@ -56,5 +57,14 @@ describe("speed sensation", () => {
     }
     const still = shakeOffset(1, 0, 0);
     expect(Math.abs(still.x) + Math.abs(still.y)).toBe(0);
+  });
+});
+
+describe("rumble mapping", () => {
+  it("is silent on a clean lap and slams both motors on impact", () => {
+    expect(rumbleFor(0, 0.2, 0)).toEqual({ weak: 0, strong: 0 });
+    expect(rumbleFor(0, 0, 1)).toEqual({ weak: 1, strong: 1 });
+    const kerb = rumbleFor(1, 0, 0);
+    expect(kerb.weak).toBeGreaterThan(kerb.strong);
   });
 });
