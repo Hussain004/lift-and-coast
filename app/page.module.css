@@ -1176,6 +1176,9 @@
 .timeAttack {
   width: 100%;
   margin-top: 18px;
+  /* Clears the sticky top bar when this section is linked to directly (the
+     race route's "← Your times"), so the heading is not hidden underneath it. */
+  scroll-margin-top: 76px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   background:

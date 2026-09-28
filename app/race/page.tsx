@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import styles from "./race.module.css";
 import {
@@ -460,6 +461,17 @@ function RaceContent() {
         {!qualifyingSession && <div ref={positionRef} className={styles.raceDataPosition}>P1</div>}
         <div ref={deltaRef} className={styles.delta} />
         <div ref={sectorsRef} className={styles.sectors} />
+        {/* The only mode with no way off the track. A race and a qualifying
+            session both end, and ending is what puts the MENU link on screen
+            (see the result banner in Car.tsx) - a time attack is deliberately
+            open-ended, so without this there is no visible way back at all.
+            Scoped to the time attack so the race HUD is untouched. The strip
+            is pointer-events:none, so the link opts back in. */}
+        {timeAttack && (
+          <Link className={styles.raceDataHome} href="/#time-attack">
+            &larr; Your times
+          </Link>
+        )}
       </div>
       <div className={styles.perf} ref={perfRef} aria-live="off" />
       <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />

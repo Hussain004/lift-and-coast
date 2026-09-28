@@ -584,6 +584,39 @@
   text-align: center;
 }
 
+/* The time attack's way home. Styled to sit in the strip rather than float
+   over the scene, and deliberately quiet: it must be findable without being
+   the first thing a driver looks at mid-corner. The strip itself is
+   pointer-events:none (the HUD is an overlay, not a UI layer), so this is the
+   one cell that opts back in. */
+.raceDataHome {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 3px;
+  background: rgba(7, 9, 13, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  text-decoration: none;
+  pointer-events: auto;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.raceDataHome:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.raceDataHome:focus-visible {
+  outline: 2px solid #e10600;
+  outline-offset: 2px;
+}
+
 .raceDataStrip .delta,
 .raceDataStrip .sectors {
   min-height: 30px;

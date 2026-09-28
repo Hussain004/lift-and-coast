@@ -185,7 +185,22 @@ export function TimeAttackAccount() {
     setBusy(false);
   }, [busy, session, applySession]);
 
-  if (!configured) return null;
+  // A build with no project cannot sign anyone up, so there is no form worth
+  // showing - but it says so rather than vanishing. This used to return null,
+  // and the result was a deployed build missing its Supabase variables looking
+  // exactly like a build where the feature was never implemented: the sign-up
+  // was simply not there, with nothing to say why. One line is the difference
+  // between a diagnosable deployment and a mystery.
+  if (!configured) {
+    return (
+      <div className={styles.account} data-testid="time-attack-account">
+        <p className={styles.accountNote}>
+          Accounts are unavailable on this build - it has no lap-time board
+          configured. Laps are still timed and shown above.
+        </p>
+      </div>
+    );
+  }
 
   if (session !== null) {
     return (

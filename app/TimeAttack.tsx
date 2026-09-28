@@ -91,7 +91,10 @@ export function TimeAttack() {
   const myBest = ownSeconds !== null && ownSeconds.trackId === trackId ? ownSeconds.seconds : null;
 
   return (
-    <div className={styles.timeAttack} data-testid="time-attack">
+    // The id is what the race route's "← Your times" link targets, so coming
+    // back from the track lands on this section rather than the top of a long
+    // page with the times somewhere below the fold.
+    <div className={styles.timeAttack} id="time-attack" data-testid="time-attack">
       <div className={styles.recordsHeader}>
         <span className={styles.recordsEyebrow}>04 &nbsp;TIME ATTACK</span>
         <span className={styles.recordsTrack}>{circuit}</span>
