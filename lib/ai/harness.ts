@@ -103,6 +103,12 @@ export interface StabilityOptions {
    * same chassis, same raycast suspension, same world.
    */
   spawn?: { x: number; z: number; headingRad: number; speedMs?: number };
+  /**
+   * Extra downforce multiplier on top of the aero mode, for simulating a
+   * player car build (see lib/physics/carSetup.ts). Defaults to 1, so the AI
+   * gates stay measurements of the AI's own fixed neutral setup.
+   */
+  downforceScale?: number;
   /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
   aeroMode?: AeroMode;
   /**
@@ -411,6 +417,11 @@ export async function simulateDrive(
   let previousStepPos = startPos;
   const steps = Math.round(seconds / timestep);
   const defaultAeroMode = options.aeroMode ?? "high-downforce";
+  // Player car build (see lib/physics/carSetup.ts). Defaults to 1, so the AI
+  // gates and every existing caller are bit-for-bit unchanged - the AI runs
+  // the neutral setup by design, and this exists so a setup can be MEASURED
+  // rather than only asserted about.
+  const downforceScale = options.downforceScale ?? 1;
   // Resolved once, not per step, so a scenario cannot change the surface
   // mid-lap by mutating its options object - and so the identity case (1) is a
   // value the physics sees exactly as before this option existed.
@@ -509,7 +520,11 @@ export async function simulateDrive(
     controller.updateVehicle(timestep);
 
     applyVehicleStabilityTorques(chassis, options.stabilizeStrength, timestep);
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), stepAeroMode);
+    const downforceN = computeDownforceN(
+      controller.currentVehicleSpeed(),
+      stepAeroMode,
+      downforceScale
+    );
     chassis.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
     applyDragImpulse(chassis, stepAeroMode, timestep);
     applySurfaceDragImpulse(

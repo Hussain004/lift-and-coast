@@ -11,6 +11,7 @@ import {
   useRapier,
   type RapierRigidBody,
 } from "@react-three/rapier";
+import { DEFAULT_CAR_SETUP, type CarSetup } from "@/lib/physics/carSetup";
 import { Car } from "./Car";
 import { AICar } from "./AICar";
 import { RemoteCar, type RemoteCarFrame } from "./RemoteCar";
@@ -660,6 +661,12 @@ export function Scene({
   /** Meeting AI difficulty (see lib/ai/personalities.ts) - host-owned in
    * net rooms, since the host simulates the whole field. */
   difficulty = "pro" as AIDifficulty,
+  /**
+   * The player's car build (see lib/physics/carSetup.ts). Defaults to the
+   * neutral setup, which is also exactly what the AI runs - see that file's
+   * scope note for why the setup is the player's alone.
+   */
+  carSetup = DEFAULT_CAR_SETUP,
   netRole = null,
   netHumanSlots = [],
   countdownGoAtMs = 0,
@@ -771,6 +778,8 @@ export function Scene({
    * Meeting AI difficulty (see lib/ai/personalities.ts).
    */
   difficulty?: AIDifficulty;
+  /** The player's car build. See lib/physics/carSetup.ts. */
+  carSetup?: CarSetup;
   /**
    * Plan section 16: net-room role. Null is a solo session (every car
    * simulated locally). Host simulates the player, all AI and every
@@ -959,6 +968,7 @@ export function Scene({
           difficulty={difficulty}
         />
         <Car
+          carSetup={carSetup}
           chassisRef={chassisRef}
           visualRef={visualRef}
           cameraModeRef={cameraModeRef}

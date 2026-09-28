@@ -101,6 +101,7 @@ import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
+import { DEFAULT_CAR_SETUP, setupDownforceScale, setupDragScale, type CarSetup } from "@/lib/physics/carSetup";
 import { F1CarBody } from "./F1CarBody";
 import { HelmetCockpit, SteeringWheel } from "./CarBodyMesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
@@ -226,6 +227,11 @@ const SECTOR_COLOR_HEX: Record<SectorColor, string> = {
 };
 
 export function Car({
+  /**
+   * The player's car build (see lib/physics/carSetup.ts). Defaults to the
+   * neutral setup so every other embed of <Car> is unchanged.
+   */
+  carSetup = DEFAULT_CAR_SETUP,
   chassisRef,
   visualRef,
   cameraModeRef,
@@ -287,6 +293,11 @@ export function Car({
   raceOpsSnapshotRef,
   telemetryRef,
 }: {
+  /**
+   * The player's car build (see lib/physics/carSetup.ts). Optional, defaulting
+   * to the neutral setup, so any other embed of <Car> is unchanged.
+   */
+  carSetup?: CarSetup;
   chassisRef: React.RefObject<RapierRigidBody | null>;
   /**
    * A ref to the car body group itself, not the physics body - see its usage
@@ -461,6 +472,11 @@ export function Car({
   // Dashboard/cockpit rails drawn only in helmet view, as a sibling of the
   // hidden-chassis group so the camera still sees them.
   const helmetCockpitRef = useRef<THREE.Group | null>(null);
+  // The setup's aero multipliers, resolved once per render (both are pure
+  // functions of the prop). The player's car only - the AI runs the neutral
+  // setup so every stability gate stays a measurement of what it measured.
+  const setupDown = setupDownforceScale(carSetup);
+  const setupDrag = setupDragScale(carSetup);
   // Rear-wing flap pivot (see app/race/F1CarBody.tsx) - rotated open in
   // low-drag mode, like the real active-aero flap.
   const flapRef = useRef<THREE.Group | null>(null);
@@ -753,9 +769,13 @@ export function Car({
         controller.updateVehicle(timestep);
 
         applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, timestep);
-        const downforceN = computeDownforceN(controller.currentVehicleSpeed());
+        const downforceN = computeDownforceN(
+          controller.currentVehicleSpeed(),
+          aeroMode.current,
+          setupDown
+        );
         body.applyImpulse({ x: 0, y: -downforceN * timestep, z: 0 }, true);
-        applyDragImpulse(body, aeroMode.current, timestep);
+        applyDragImpulse(body, aeroMode.current, timestep, setupDrag);
 
         world.step();
 
@@ -1195,7 +1215,11 @@ export function Car({
     controller.updateVehicle(world.timestep);
 
     applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
-    const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current);
+    const downforceN = computeDownforceN(
+      controller.currentVehicleSpeed(),
+      aeroMode.current,
+      setupDown
+    );
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     // Slipstream (see towDragScale): tucked in behind a rival, less drag.
     const towPos = body.translation();
@@ -1217,7 +1241,7 @@ export function Car({
       body,
       aeroMode.current,
       world.timestep,
-      towDrag * weatherState.dragMultiplier
+      towDrag * weatherState.dragMultiplier * setupDrag
     );
     // Grass/gravel drag (plan section 4 point 7), on top of the aero drag
     // above - a wide moment costs time, and a gravel trap takes the car off

@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  AERO_TRIM_MAX,
+  AERO_TRIM_MIN,
+  DEFAULT_CAR_SETUP,
+  RIDE_HEIGHT_MAX,
+  RIDE_HEIGHT_MIN,
+  carSetupLabel,
+  isDefaultCarSetup,
+  normalizeCarSetup,
+  type CarSetup,
+} from "@/lib/physics/carSetup";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -75,6 +86,11 @@ export function SessionSetup() {
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
   const [weather, setWeather] = useState<WeatherPreset>(initial.weather);
+  // Car build (see lib/physics/carSetup.ts). The player's car only - the AI
+  // runs the neutral default, which is what every stability gate measured.
+  const [carSetup, setCarSetup] = useState<CarSetup>(() =>
+    normalizeCarSetup(initial.carSetup)
+  );
   const { trackId, timeOfDay } = useSessionSetupPrefs();
   // Live roster pick from the team/driver panel above - carried on the Drive
   // link so the race grid dresses both cars (see lib/race/roster.ts).
@@ -97,6 +113,8 @@ export function SessionSetup() {
       weather,
       qformat: sessionMode === "qualifying" ? qualiFormat : undefined,
       rivals: sessionMode === "practice" ? undefined : rivals,
+      rideHeight: carSetup.rideHeight,
+      aeroTrim: carSetup.aeroTrim,
       difficulty: sessionMode === "practice" ? undefined : difficulty,
       // A fresh grid every Drive click (see ?seed=): plain clicks deal
       // via router so each visit shuffles; modified clicks / new tabs
@@ -111,9 +129,10 @@ export function SessionSetup() {
     tod: TimeOfDay,
     weatherPreset: WeatherPreset = weather,
     rivalCount: number = rivals,
-    diff: AIDifficulty = difficulty
+    diff: AIDifficulty = difficulty,
+    setup: CarSetup = carSetup
   ) => {
-    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, weather: weatherPreset, rivals: rivalCount, difficulty: diff });
+    saveSessionSetupPrefs({ raceLaps: laps, trackId: id, timeOfDay: tod, weather: weatherPreset, rivals: rivalCount, difficulty: diff, carSetup: setup });
   };
 
   return (
@@ -282,6 +301,67 @@ export function SessionSetup() {
           </div>
         </>
       )}
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>CAR SETUP</span>
+        <span className={styles.readout} aria-live="polite">
+          {carSetupLabel(carSetup)}
+        </span>
+      </div>
+      <div className={styles.scale}>
+        <span>Built for your car only - the AI runs the standard setup</span>
+      </div>
+      <input
+        type="range"
+        min={RIDE_HEIGHT_MIN}
+        max={RIDE_HEIGHT_MAX}
+        step={0.05}
+        value={carSetup.rideHeight}
+        onChange={(e) => {
+          const next = normalizeCarSetup({ ...carSetup, rideHeight: Number(e.target.value) });
+          setCarSetup(next);
+          persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+        }}
+        className={styles.slider}
+        aria-label="Ride height: low generates more downforce, high is smoother over kerbs"
+      />
+      <div className={styles.scale}>
+        <span>LOW (more grip, skips kerbs)</span>
+        <span>HIGH (less grip, settles)</span>
+      </div>
+      <input
+        type="range"
+        min={AERO_TRIM_MIN}
+        max={AERO_TRIM_MAX}
+        step={0.05}
+        value={carSetup.aeroTrim}
+        onChange={(e) => {
+          const next = normalizeCarSetup({ ...carSetup, aeroTrim: Number(e.target.value) });
+          setCarSetup(next);
+          persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+        }}
+        className={styles.slider}
+        aria-label="Aero trim: more downforce and more drag, or less of both"
+      />
+      <div className={styles.scale}>
+        <span>LOW DRAG (faster, less grip)</span>
+        <span>MAX DOWNFORCE (cornering, more drag)</span>
+      </div>
+      <div className={styles.presets} role="radiogroup" aria-label="Car setup presets">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={isDefaultCarSetup(carSetup)}
+          title="Back to the standard build"
+          onClick={() => {
+            const next = { ...DEFAULT_CAR_SETUP };
+            setCarSetup(next);
+            persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+          }}
+          className={isDefaultCarSetup(carSetup) ? styles.presetActive : styles.preset}
+        >
+          STANDARD
+        </button>
+      </div>
       <div className={styles.sliderRow}>
         <span className={styles.label}>GRAPHICS</span>
       </div>

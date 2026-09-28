@@ -5,6 +5,7 @@
 // tuning knob - an unbounded value would let a typo (or a shared link)
 // produce a 0-lap "race" that finishes on the very first crossing, or one
 // so long it's never realistically finished.
+import { normalizeCarSetup, DEFAULT_CAR_SETUP, type CarSetup } from "../physics/carSetup";
 import { useEffect, useState } from "react";
 import { DEFAULT_TRACK_ID, isKnownTrackId } from "../tracks/registry";
 import {
@@ -50,6 +51,33 @@ export function parseQualifyingFormat(raw: string | null): QualifyingFormat {
  */
 export function parseTimeAttack(raw: string | null): boolean {
   return raw === "1" || raw === "true";
+}
+
+/**
+ * Car setup from ?rh= (ride height) and ?at= (aero trim), both 0-1.
+ *
+ * Two params rather than one packed string, so each is independently
+ * validatable and a hand-edited link can change just one. Both are OPTIONAL
+ * and omitted at the neutral default, so every link that predates car setup
+ * keeps working and produces exactly today's car. Parsing is deliberately
+ * total: anything unparseable falls back to the default rather than
+ * producing a half-applied setup, because these arrive from a URL and the
+ * alternative is a NaN reaching the downforce term (see lib/physics/carSetup.ts).
+ */
+export function parseCarSetup(rawRideHeight: string | null, rawAeroTrim: string | null): CarSetup {
+  // An EMPTY param is a truncated or hand-mangled link, not a value: Number("")
+  // is 0, which is finite and would otherwise clamp to the slider minimum and
+  // silently hand the player the most downforce the setup can give. Blank
+  // means absent, so it falls back to the neutral default like any other
+  // missing param.
+  const read = (raw: string | null): number | undefined => {
+    if (raw === null || raw.trim().length === 0) return undefined;
+    return Number(raw);
+  };
+  return normalizeCarSetup({
+    rideHeight: read(rawRideHeight),
+    aeroTrim: read(rawAeroTrim),
+  });
 }
 
 /** Grid spot for the player from ?grid=, or null (staggered from pole). */
@@ -101,6 +129,10 @@ export interface RaceUrlParams {
   champ?: number | null;
   grid?: number | null;
   qformat?: QualifyingFormat;
+  /** Player car setup (see lib/physics/carSetup.ts). Omitted at the neutral
+   *  default so existing links are unchanged. */
+  rideHeight?: number;
+  aeroTrim?: number;
   rivals?: number;
   difficulty?: AIDifficulty;
   /**
@@ -176,6 +208,14 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.rivals !== undefined) query.set("rivals", String(params.rivals));
   if (params.difficulty !== undefined) query.set("diff", params.difficulty);
   if (params.seed !== undefined) query.set("seed", String(params.seed));
+  // Only emitted when they differ from neutral, so a default setup adds
+  // nothing to the URL and a shared link stays readable.
+  if (params.rideHeight !== undefined && params.rideHeight !== DEFAULT_CAR_SETUP.rideHeight) {
+    query.set("rh", params.rideHeight.toFixed(2));
+  }
+  if (params.aeroTrim !== undefined && params.aeroTrim !== DEFAULT_CAR_SETUP.aeroTrim) {
+    query.set("at", params.aeroTrim.toFixed(2));
+  }
   if (params.order !== undefined && params.order.length > 0) {
     query.set("order", params.order.join(","));
   }
@@ -218,6 +258,17 @@ export interface SessionSetupPrefs {
   weather: WeatherPreset;
   rivals: number;
   difficulty: AIDifficulty;
+  /**
+   * The player's car build (see lib/physics/carSetup.ts). Persisted with the
+   * rest of the pre-race choices so the setup screen comes back up where the
+   * player left it.
+   *
+   * Optional, and read through normalizeCarSetup rather than trusted
+   * directly: a prefs blob written before car setup existed simply has no
+   * such key, and every other untrusted value in this module is defaulted
+   * rather than required at the type level for exactly that reason.
+   */
+  carSetup?: CarSetup;
 }
 
 function clampLaps(n: unknown): number {
@@ -268,12 +319,13 @@ export function loadSessionSetupPrefs(
     weather: "clear",
     rivals: DEFAULT_RIVALS,
     difficulty: DEFAULT_DIFFICULTY,
+    carSetup: { ...DEFAULT_CAR_SETUP },
   };
   if (!storage) return defaults;
   try {
     const raw = storage.getItem(SESSION_SETUP_KEY);
     if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; weather?: unknown; rivals?: unknown; difficulty?: unknown };
+    const parsed = JSON.parse(raw) as { raceLaps?: unknown; trackId?: unknown; timeOfDay?: unknown; weather?: unknown; rivals?: unknown; difficulty?: unknown; carSetup?: unknown };
     return {
       raceLaps: clampLaps(parsed.raceLaps),
       trackId: clampTrackId(parsed.trackId),
@@ -281,6 +333,7 @@ export function loadSessionSetupPrefs(
       weather: clampWeather(parsed.weather),
       rivals: clampRivals(parsed.rivals),
       difficulty: clampDifficulty(parsed.difficulty),
+      carSetup: normalizeCarSetup(parsed.carSetup as Partial<CarSetup> | undefined),
     };
   } catch {
     return defaults;
@@ -302,6 +355,7 @@ export function saveSessionSetupPrefs(
         weather: clampWeather(prefs.weather),
         rivals: clampRivals(prefs.rivals),
         difficulty: clampDifficulty(prefs.difficulty),
+        carSetup: normalizeCarSetup(prefs.carSetup),
       })
     );
   } catch {

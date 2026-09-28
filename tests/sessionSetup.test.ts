@@ -22,6 +22,7 @@ import {
 } from "../lib/race/sessionSetup";
 import { DEFAULT_TRACK_ID } from "../lib/tracks/registry";
 import { DEFAULT_DIFFICULTY } from "../lib/ai/personalities";
+import { DEFAULT_CAR_SETUP } from "../lib/physics/carSetup";
 
 describe("parseRaceLaps", () => {
   it("returns the default for no param", () => {
@@ -82,6 +83,7 @@ describe("loadSessionSetupPrefs", () => {
       weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
+      carSetup: DEFAULT_CAR_SETUP,
     });
   });
 
@@ -93,6 +95,7 @@ describe("loadSessionSetupPrefs", () => {
       weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
+      carSetup: DEFAULT_CAR_SETUP,
     });
   });
 
@@ -111,6 +114,7 @@ describe("loadSessionSetupPrefs", () => {
       weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
+      carSetup: DEFAULT_CAR_SETUP,
     });
   });
 
@@ -149,6 +153,7 @@ describe("loadSessionSetupPrefs", () => {
       weather: "clear",
       rivals: DEFAULT_RIVALS,
       difficulty: DEFAULT_DIFFICULTY,
+      carSetup: DEFAULT_CAR_SETUP,
     });
 
     const wrongShape = fakeStorage({
@@ -179,9 +184,10 @@ describe("saveSessionSetupPrefs", () => {
       weather: "rain",
       rivals: 5,
       difficulty: "ace",
+      carSetup: DEFAULT_CAR_SETUP,
     });
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", weather: "rain", rivals: 5, difficulty: "ace" })
+      JSON.stringify({ raceLaps: 9, trackId: "monza", timeOfDay: "overcast", weather: "rain", rivals: 5, difficulty: "ace", carSetup: DEFAULT_CAR_SETUP })
     );
   });
 
@@ -191,7 +197,7 @@ describe("saveSessionSetupPrefs", () => {
     expect(loadSessionSetupPrefs(storage).raceLaps).toBe(5);
     saveSessionSetupPrefs({ raceLaps: 0, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: 99, difficulty: "club" }, storage);
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: MAX_RIVALS, difficulty: "club" })
+      JSON.stringify({ raceLaps: MIN_RACE_LAPS, trackId: "suzuka", timeOfDay: "day", weather: "clear", rivals: MAX_RIVALS, difficulty: "club", carSetup: DEFAULT_CAR_SETUP })
     );
   });
 
@@ -202,7 +208,7 @@ describe("saveSessionSetupPrefs", () => {
       storage
     );
     expect(dump()["lift-and-coast.session-setup.v1"]).toBe(
-      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", weather: "clear", rivals: 2, difficulty: "rookie" })
+      JSON.stringify({ raceLaps: 3, trackId: DEFAULT_TRACK_ID, timeOfDay: "day", weather: "clear", rivals: 2, difficulty: "rookie", carSetup: DEFAULT_CAR_SETUP })
     );
   });
 

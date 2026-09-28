@@ -48,20 +48,34 @@ export function aeroGripMultiplier(mode: AeroMode): number {
   return AERO_MODE_MULTIPLIERS[mode].grip;
 }
 
+/**
+ * `scale` is the car setup's own downforce multiplier (see
+ * lib/physics/carSetup.ts) folded in on top of the mode. It defaults to 1,
+ * so every existing caller - including racingLine.ts's AI lateral-accel
+ * estimate, which must keep describing the AI's fixed neutral setup - is
+ * bit-for-bit unchanged. Applied as a multiplier on an existing term rather
+ * than as a new force, so it composes with the mode, the tyre compound, the
+ * surface and the damage model instead of sitting beside them.
+ */
 export function computeDownforceN(
   speedMs: number,
-  mode: AeroMode = "high-downforce"
+  mode: AeroMode = "high-downforce",
+  scale = 1
 ): number {
   const speed = Math.abs(speedMs);
-  return DOWNFORCE_COEFFICIENT_N_PER_MS2 * AERO_MODE_MULTIPLIERS[mode].downforce * speed * speed;
+  return (
+    DOWNFORCE_COEFFICIENT_N_PER_MS2 * AERO_MODE_MULTIPLIERS[mode].downforce * scale * speed * speed
+  );
 }
 
+/** `scale` is the car setup's drag multiplier - see computeDownforceN. */
 export function computeDragN(
   speedMs: number,
-  mode: AeroMode = "high-downforce"
+  mode: AeroMode = "high-downforce",
+  scale = 1
 ): number {
   const speed = Math.abs(speedMs);
-  return DRAG_COEFFICIENT_N_PER_MS2 * AERO_MODE_MULTIPLIERS[mode].drag * speed * speed;
+  return DRAG_COEFFICIENT_N_PER_MS2 * AERO_MODE_MULTIPLIERS[mode].drag * scale * speed * speed;
 }
 
 /** Most of a car's aero drag it can lose tucked in behind another: 14%

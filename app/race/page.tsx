@@ -15,7 +15,7 @@ import { parseTrackId } from "@/lib/tracks/registry";
 import { parseWeatherPreset } from "@/lib/physics/weather";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
-import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseTimeAttack, parseGridSpot, parseRivals, parseDifficulty, parseSeed, MAX_FIELD_SIZE, type SessionMode } from "@/lib/race/sessionSetup";
+import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseTimeAttack, parseGridSpot, parseRivals, parseDifficulty, parseSeed, parseCarSetup, MAX_FIELD_SIZE, type SessionMode } from "@/lib/race/sessionSetup";
 import { parseChampRound } from "@/lib/race/championship";
 import { parseDriverCode, parseTeamId, resolveFieldRoster, resolveNetGridRoster } from "@/lib/race/roster";
 import { hashSeed, parseGridOrder, randomSeed, shuffledGridOrder } from "@/lib/race/rosterData";
@@ -120,6 +120,12 @@ function RaceContent() {
   // fast-line reference. In net rooms the host simulates, so the host's
   // tier sets the field.
   const difficulty = parseDifficulty(searchParams.get("diff"));
+  // The player's car build (?rh= ride height, ?at= aero trim). Parsed
+  // through the same total validator as every other param here, so a
+  // hand-edited or truncated link yields a valid setup rather than a NaN
+  // reaching the downforce term. The AI is unaffected - see the scope note
+  // in lib/physics/carSetup.ts.
+  const carSetup = parseCarSetup(searchParams.get("rh"), searchParams.get("at"));
   // Plan section 16 (online multiplayer): a live room turns this visit
   // into a net session (?room= + ?role= + ?slot=, all set by the lobby's
   // START navigation). The room lives in a module singleton that survives
@@ -449,6 +455,7 @@ function RaceContent() {
         countdownGoAtMs={countdownGoAtMs}
         playerGridSpot={playerGridSpot}
         difficulty={difficulty}
+        carSetup={carSetup}
         countdownRef={countdownRef}
         countdownValueRef={countdownValueRef}
         qualifyingDisplayRef={qualifyingDisplayRef}

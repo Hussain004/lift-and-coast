@@ -1,0 +1,169 @@
+
+/**
+ * Car setup: the player's pre-race choice of how their car is built.
+ *
+ * SCOPE, and it is a deliberate one. This applies to the PLAYER's car only.
+ * The AI runs the same `createCarController` physics the player does, so a
+ * setup that changed handling would move the AI too - and every stability
+ * gate in this repo (tests/trackAIStability.test.ts, the ace harnesses) is a
+ * measurement of the AI at a FIXED setup. Changing the shared dynamics would
+ * silently invalidate all of them, and Suzuka in particular is already a
+ * documented knife edge (see lib/ai/pathFollower.ts's Suzuka crossover
+ * block). Real F1 works the same way round: you set up your car, the
+ * opposition is not your problem. So the AI keeps the neutral default below
+ * and stays exactly as validated.
+ *
+ * WHY NOT BRAKE BALANCE. It is the obvious third slider and the user asked
+ * for it, so this records the reason it is absent rather than leaving a
+ * silent gap. Front brake bias was already tried on this physics and measured
+ * strictly worse: 0.6-0.7 to the front gave near-flips at 0.59 rad where the
+ * even front/rear split is clean, because in this tire model the pitch torque
+ * follows FRONT-axle force, so loading the axle that already carries the
+ * transferred weight overloads it (see DEFAULT_BRAKE_FORCE's own comment in
+ * vehicle.ts). Shipping a slider into that region would hand the player a
+ * one-click flip. It could be added later bounded to a measured-safe range,
+ * but "bounded to a range nobody has measured yet" is exactly the kind of
+ * value this codebase has been bitten by shipping (see the same file's
+ * boost and rev-axis notes), so it is left out rather than guessed at.
+ *
+ * Every value here is a pure function of the setup with no I/O, so it is
+ * testable without a physics world and safe to call per frame.
+ */
+
+/** Ride height trim, 0 (lowest, most downforce) to 1 (highest, least). */
+export type RideHeight = number;
+
+/** Aero trim, 0 (lowest drag) to 1 (most downforce). */
+export type AeroTrim = number;
+
+export interface CarSetup {
+  rideHeight: RideHeight;
+  aeroTrim: AeroTrim;
+}
+
+export const RIDE_HEIGHT_MIN = 0;
+export const RIDE_HEIGHT_MAX = 1;
+/** Ride height as a fraction of nominal. Real cars run a small window, and
+ *  this model's downforce term is linear, so the useful range is narrow on
+ *  purpose - a full 0-100% swing would be a different car, not a setup. */
+export const RIDE_HEIGHT_NOMINAL = 0.5;
+
+export const AERO_TRIM_MIN = 0;
+export const AERO_TRIM_MAX = 1;
+
+export const DEFAULT_CAR_SETUP: CarSetup = {
+  // The neutral build: nominal ride height, and the aero mode the whole
+  // physics model is written around (AeroMode's "identity" state, per
+  // aero.ts). The AI runs exactly this.
+  rideHeight: RIDE_HEIGHT_NOMINAL,
+  aeroTrim: 1,
+};
+
+const clamp = (value: number, min: number, max: number): number => {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+};
+
+/**
+ * A slider value that is safe to use, or null when it is not.
+ *
+ * The null is load-bearing: a non-finite or out-of-range value must fall back
+ * to the DEFAULT, not to the nearest bound. Falling back to a bound would mean
+ * a junk `?rh=banana` silently hands the player the most downforce the slider
+ * can give, which is the opposite of "ignore what I could not understand".
+ */
+function usableSlider(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return clamp(value, min, max);
+}
+
+/** Coerces anything (a URL param, a stale localStorage blob) into a valid
+ *  setup, rather than trusting it. Never throws, never returns NaN. */
+export function normalizeCarSetup(input: Partial<CarSetup> | null | undefined): CarSetup {
+  if (input === null || input === undefined) return { ...DEFAULT_CAR_SETUP };
+  return {
+    rideHeight: usableSlider(
+      input.rideHeight,
+      DEFAULT_CAR_SETUP.rideHeight,
+      RIDE_HEIGHT_MIN,
+      RIDE_HEIGHT_MAX
+    ),
+    aeroTrim: usableSlider(
+      input.aeroTrim,
+      DEFAULT_CAR_SETUP.aeroTrim,
+      AERO_TRIM_MIN,
+      AERO_TRIM_MAX
+    ),
+  };
+}
+
+/** Ride height's effect on downforce.
+ *
+ *  A lower ride height gives a more efficient underfloor: more downforce for
+ *  the same speed, and in this model downforce IS grip (see
+ *  computeDownforceN and racingLine.ts's maxLateralAccelMs2, which both
+ *  scale with it). The trade is that a low car is less tolerant of the
+ *  surface - it skips over kerbs rather than settling on them - so the
+ *  downforce gain is capped below 1.0 at the very bottom of the range and
+ *  never exceeds the validated high-downforce reference.
+ *
+ *  Deliberately a MULTIPLIER ON AN EXISTING TERM, not a new force: it
+ *  therefore composes with the aero mode, the damage model, the AI's
+ *  assumptions and every existing gate instead of sitting beside them.
+ */
+export function rideHeightDownforceScale(rideHeight: RideHeight): number {
+  const clamped = clamp(rideHeight, RIDE_HEIGHT_MIN, RIDE_HEIGHT_MAX);
+  // Nominal is exactly 1.0 (no change to today's car); the low end is
+  // capped at +12% and the high end at -8%, so the whole slider stays a
+  // setup rather than a different car.
+  const offset = (RIDE_HEIGHT_NOMINAL - clamped) * (clamped < RIDE_HEIGHT_NOMINAL ? 0.24 : 0.16);
+  return 1 + offset;
+}
+
+/** Extra downforce from the aero trim, on top of the mode's own multiplier.
+ *  Neutral (1.0) exactly at trim 1, tapering to 0.9 at trim 0 - a bounded
+ *  ~10% either way, so the trim cannot make the car meaningfully faster than
+ *  the configuration the gates measured. */
+export function aeroDownforceScale(setup: CarSetup): number {
+  return 0.9 + 0.1 * clamp(setup.aeroTrim, AERO_TRIM_MIN, AERO_TRIM_MAX);
+}
+
+/** Drag from the aero trim: a higher trim is a bigger wing, so more drag.
+ *  Paired with the downforce scale above so the trade is real. */
+export function aeroDragScale(setup: CarSetup): number {
+  return 1 + 0.12 * clamp(setup.aeroTrim, AERO_TRIM_MIN, AERO_TRIM_MAX);
+}
+
+/** The combined downforce multiplier this setup applies. */
+export function setupDownforceScale(setup: CarSetup): number {
+  return rideHeightDownforceScale(setup.rideHeight) * aeroDownforceScale(setup);
+}
+
+/** The combined drag multiplier this setup applies. */
+export function setupDragScale(setup: CarSetup): number {
+  return aeroDragScale(setup);
+}
+
+/** True when this setup is the neutral build - drives the STANDARD button's
+ *  selected state, so the button reflects reality rather than assuming. */
+export function isDefaultCarSetup(setup: CarSetup): boolean {
+  return (
+    setup.rideHeight === DEFAULT_CAR_SETUP.rideHeight &&
+    setup.aeroTrim === DEFAULT_CAR_SETUP.aeroTrim
+  );
+}
+
+/**
+ * A short human label for the setup screen's readout. Phrased as what the
+ * car does rather than as numbers, because a bare "0.65" tells a player
+ * nothing about whether they have made it faster or slower.
+ */
+export function carSetupLabel(setup: CarSetup): string {
+  const low = setup.rideHeight < RIDE_HEIGHT_NOMINAL - 0.05;
+  const high = setup.rideHeight > RIDE_HEIGHT_NOMINAL + 0.05;
+  const drag = setup.aeroTrim < 0.45;
+  const down = setup.aeroTrim > 0.55;
+  const ride = low ? "LOW" : high ? "HIGH" : "STANDARD";
+  const aero = drag ? "LOW DRAG" : down ? "MAX DOWNFORCE" : "BALANCED";
+  return `${ride} · ${aero}`;
+}
