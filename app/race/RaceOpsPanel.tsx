@@ -16,6 +16,13 @@ function send(commandRef: React.RefObject<RaceOpsCommand[]>, command: RaceOpsCom
   commandRef.current.push(command);
 }
 
+/** Full compound names for the strategy buttons. */
+const COMPOUND_LABELS: Record<TireCompoundId, string> = {
+  soft: "SOFT",
+  medium: "MEDIUM",
+  hard: "HARD",
+};
+
 function TelemetryInputs({ sample }: { sample: TelemetryFrame | undefined }) {
   if (!sample) return null;
   return (
@@ -123,7 +130,10 @@ export function RaceOpsPanel({
               ))}
               {compounds.map((compound) => (
                 <button key={compound} type="button" className={snapshot.strategy.compound === compound ? styles.opsButtonActive : styles.opsButton} onClick={() => send(commandRef, { type: "set-compound", compound })}>
-                  {compound[0].toUpperCase()}
+                  {/* Spelled out rather than a single initial. There is room in
+                      this panel, and "S / M / H" on its own tells a player
+                      nothing about which compound they are selecting. */}
+                  {COMPOUND_LABELS[compound]}
                 </button>
               ))}
             </div>

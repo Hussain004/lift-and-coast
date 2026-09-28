@@ -1039,7 +1039,10 @@
   position: absolute;
   top: 376px;
   right: 16px;
-  max-height: calc(100% - 392px);
+  /* Same minimap clearance as the later combined rule below; kept in step so
+     the two copies cannot disagree. */
+  max-height: calc(100% - 604px);
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -2500,12 +2503,23 @@
   position: absolute;
   top: 376px;
   right: 16px;
-  max-height: calc(100% - 392px);
+  /* Bounded ABOVE the minimap, which owns the bottom of this column (see
+     .minimapBlock: bottom 12px, 188px block). This used to be
+     calc(100% - 392px), which runs to within 16px of the stage bottom - so a
+     tall panel sat on top of the minimap. 604px is the slot's top (376) plus
+     the minimap's footprint, with a few px of padding. */
+  max-height: calc(100% - 604px);
+  /* No horizontal scrollbar: the corner map and the g-g box sit side by side,
+     and a fixed-width canvas beside a flexible column can tip the row a pixel
+     or two past the panel on a narrow viewport. */
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
 .telemetryPanel {
-  width: 286px;
+  /* Wide enough that the corner map and the g-g box sit side by side without
+     the map's value columns being squeezed into a horizontal scrollbar. */
+  width: 336px;
   background: linear-gradient(160deg, rgba(8, 10, 14, 0.97), rgba(19, 23, 28, 0.95));
   border: 1px solid #333c46;
   border-top: 2px solid #2fbf6b;
@@ -2717,7 +2731,10 @@
    to fit between the right mirror and the minimap without scrolling. */
 .telemetryTopRow {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* minmax(0, 1fr) rather than 1fr: a bare 1fr track has an automatic minimum
+     sized to its content, so the corner map's two value columns could push the
+     row wider than the panel and produce a horizontal scrollbar. */
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 10px;
 }
