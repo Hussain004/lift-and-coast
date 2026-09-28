@@ -16,6 +16,12 @@ import {
 import type { AeroMode } from "@/lib/physics/aero";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 import type { TouchDriveInput } from "./touch";
+import {
+  applySteerSettings,
+  getBindings,
+  getControlSettings,
+  type ControlAction,
+} from "./keyBindings";
 
 export type CameraMode = "chase" | "cockpit" | "helmet" | "t-cam" | "tv" | "orbit";
 /** Every mode except the free orbit, which sits outside the C cycle. */
@@ -98,34 +104,21 @@ export interface DriveInput {
 
 const STEER_RATE = 5;
 const STEER_CENTER_RATE = 7;
-const THROTTLE_KEYS = ["KeyW", "ArrowUp"];
-const BRAKE_KEYS = ["KeyS", "ArrowDown"];
-const LEFT_KEYS = ["KeyA", "ArrowLeft"];
-const RIGHT_KEYS = ["KeyD", "ArrowRight"];
-const REWIND_KEYS = ["KeyR"];
-const DEPLOY_KEYS = ["ShiftLeft", "ShiftRight"];
-const SHIFT_UP_KEYS = ["KeyQ"];
-const SHIFT_DOWN_KEYS = ["KeyZ"];
-// 5 is the reverse request. 1-3 are tyre compounds and 4 is the telemetry
-// overlay, so 5 is the next free key on an otherwise fully-bound board.
-const SELECT_REVERSE_KEYS = ["Digit5"];
-const AERO_MODE_TOGGLE_KEY = "KeyE";
-const CAMERA_MODE_TOGGLE_KEY = "KeyC";
-const ORBIT_TOGGLE_KEY = "KeyV";
-const TRACTION_CONTROL_TOGGLE_KEY = "KeyT";
-const ABS_TOGGLE_KEY = "KeyB";
-const RACING_LINE_TOGGLE_KEY = "KeyL";
-const AUTO_GEAR_TOGGLE_KEY = "KeyG";
-const OVERTAKE_KEY = "KeyX";
-const PIT_REQUEST_KEY = "KeyO";
-// J is instant replay; P is reserved for the singleplayer pause controller
-// in Scene.tsx, which must keep listening while the physics world is paused.
-const REPLAY_TOGGLE_KEY = "KeyJ";
-const ERS_MODE_CYCLE_KEY = "KeyI";
-const STRATEGY_MODE_CYCLE_KEY = "KeyY";
-const WEATHER_CYCLE_KEY = "KeyU";
+/**
+ * The keys currently bound to an action.
+ *
+ * Read through this rather than a module constant, because the table is
+ * user-editable at runtime. The keydown handler and update() both resolve
+ * through it on every event, so a rebind takes effect on the very next key
+ * press with no reload and no stale closure - which is the whole reason the
+ * bindings became data instead of constants.
+ *
+ * A table can never leave an action empty (setBindings refuses one that does),
+ * so this always has at least one entry and callers need no fallback.
+ */
+const boundKeys = (action: ControlAction): readonly string[] => getBindings()[action];
 
-const anyPressed = (keys: Set<string>, codes: string[]) =>
+const anyPressed = (keys: Set<string>, codes: readonly string[]) =>
   codes.some((code) => keys.has(code));
 
 /**
@@ -196,14 +189,14 @@ export function useDriveInput(
     const onKeyDown = (e: KeyboardEvent) => {
       // Edge-triggered on the actual first press, not OS key-repeat, since
       // this is a mode toggle (press to switch) rather than a held input.
-      if (e.code === AERO_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("aeroMode")[0] === e.code && !keys.current.has(e.code)) {
         aeroMode.current =
           aeroMode.current === "high-downforce" ? "low-drag" : "high-downforce";
       }
-      if (e.code === CAMERA_MODE_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("cameraMode")[0] === e.code && !keys.current.has(e.code)) {
         cameraMode.current = cycleDrivingCamera(cameraMode.current, lastDrivingMode.current);
       }
-      if (e.code === ORBIT_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("orbitCamera")[0] === e.code && !keys.current.has(e.code)) {
         const next = toggleOrbitCamera(cameraMode.current, lastDrivingMode.current);
         cameraMode.current = next.mode;
         lastDrivingMode.current = next.lastDriving;
@@ -212,43 +205,43 @@ export function useDriveInput(
       if (selectedCompound && !keys.current.has(e.code)) {
         tireCompound.current = selectedCompound;
       }
-      if (e.code === TRACTION_CONTROL_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("tractionControl")[0] === e.code && !keys.current.has(e.code)) {
         tractionControlEnabled.current = !tractionControlEnabled.current;
       }
-      if (e.code === ABS_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("abs")[0] === e.code && !keys.current.has(e.code)) {
         absEnabled.current = !absEnabled.current;
       }
-      if (e.code === RACING_LINE_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("racingLine")[0] === e.code && !keys.current.has(e.code)) {
         racingLineVisible.current = !racingLineVisible.current;
       }
-      if (e.code === AUTO_GEAR_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("autoGear")[0] === e.code && !keys.current.has(e.code)) {
         autoGear.current = !autoGear.current;
       }
-      if (e.code === PIT_REQUEST_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("pitRequest")[0] === e.code && !keys.current.has(e.code)) {
         input.current.pitRequested = true;
       }
-      if (e.code === REPLAY_TOGGLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("instantReplay")[0] === e.code && !keys.current.has(e.code)) {
         input.current.replayToggle = true;
       }
-      if (e.code === ERS_MODE_CYCLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("ersMode")[0] === e.code && !keys.current.has(e.code)) {
         input.current.ersModeCycle = true;
       }
-      if (e.code === STRATEGY_MODE_CYCLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("strategyMode")[0] === e.code && !keys.current.has(e.code)) {
         input.current.strategyModeCycle = true;
       }
-      if (e.code === WEATHER_CYCLE_KEY && !keys.current.has(e.code)) {
+      if (boundKeys("weatherCycle")[0] === e.code && !keys.current.has(e.code)) {
         input.current.weatherCycle = true;
       }
       // Shift requests latch on the rising edge (no OS key-repeat, same
       // edge detection as the toggles above) and are consumed by the next
       // update() - see the copy/clear/restore in update() below.
-      if (SHIFT_UP_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+      if (boundKeys("shiftUp").includes(e.code) && !keys.current.has(e.code)) {
         input.current.shiftUp = true;
       }
-      if (SHIFT_DOWN_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+      if (boundKeys("shiftDown").includes(e.code) && !keys.current.has(e.code)) {
         input.current.shiftDown = true;
       }
-      if (SELECT_REVERSE_KEYS.includes(e.code) && !keys.current.has(e.code)) {
+      if (boundKeys("reverse").includes(e.code) && !keys.current.has(e.code)) {
         input.current.selectReverse = true;
       }
       keys.current.add(e.code);
@@ -305,8 +298,8 @@ export function useDriveInput(
       input.current.strategyModeCycle = false;
       input.current.weatherCycle = false;
       const steerTarget =
-        (anyPressed(pressed, LEFT_KEYS) ? 1 : 0) -
-        (anyPressed(pressed, RIGHT_KEYS) ? 1 : 0);
+        (anyPressed(pressed, boundKeys("steerLeft")) ? 1 : 0) -
+        (anyPressed(pressed, boundKeys("steerRight")) ? 1 : 0);
 
       // Gamepad/wheel analog input (plan section 5): polled at 60Hz like
       // the keyboard, merged per-channel. Steering is pure analog (shaped
@@ -335,21 +328,28 @@ export function useDriveInput(
         }
       }
 
-      input.current.steer =
+      // The steer the car will actually see. The raw value - keyboard, analog
+      // pad, or the ramped keyboard path - goes through the player's
+      // sensitivity settings LAST, so a setting applies uniformly to every
+      // input source instead of only the keyboard. Doing it here rather than
+      // inside each branch is what makes the setting mean "my steering" and
+      // not "my steering on the keyboard".
+      const rawSteer =
         touchSteering !== null
           ? touchSteering
           : padSteer !== null
             ? padSteer
             : stepSteering(input.current.steer, steerTarget, dt, STEER_RATE, STEER_CENTER_RATE);
+      input.current.steer = applySteerSettings(rawSteer, getControlSettings());
 
-      const keyboardThrottle = anyPressed(pressed, THROTTLE_KEYS) ? 1 : 0;
+      const keyboardThrottle = anyPressed(pressed, boundKeys("throttle")) ? 1 : 0;
       input.current.throttle = Math.max(keyboardThrottle, padThrottle ?? 0, touchThrottle);
 
       // Unified brake target from both input sources, ramped with the same
       // guard as the keyboard path: instant release, rate-limited
       // application (and raw full-force application with ABS off - the
       // documented ABS-off tradeoff applies to gamepad braking too).
-      const keyboardBrake = anyPressed(pressed, BRAKE_KEYS) ? 1 : 0;
+      const keyboardBrake = anyPressed(pressed, boundKeys("brake")) ? 1 : 0;
       const brakeTarget = Math.max(keyboardBrake, padBrake ?? 0, touchBrake);
       input.current.brake =
         brakeTarget === 0
@@ -357,9 +357,9 @@ export function useDriveInput(
           : absEnabled.current
             ? Math.min(input.current.brake + dt / BRAKE_RAMP_SECONDS, brakeTarget)
             : brakeTarget;
-      input.current.rewind = anyPressed(pressed, REWIND_KEYS);
-      input.current.deploy = anyPressed(pressed, DEPLOY_KEYS) || (touch?.deploy ?? false);
-      input.current.overtake = anyPressed(pressed, [OVERTAKE_KEY]) || (touch?.overtake ?? false);
+      input.current.rewind = anyPressed(pressed, boundKeys("rewind"));
+      input.current.deploy = anyPressed(pressed, boundKeys("deploy")) || (touch?.deploy ?? false);
+      input.current.overtake = anyPressed(pressed, boundKeys("overtake")) || (touch?.overtake ?? false);
       input.current.pitRequested = pitRequested;
       input.current.replayToggle = replayToggle;
       input.current.ersModeCycle = ersModeCycle;

@@ -34,6 +34,18 @@ export interface StoredControls {
   settings: ControlSettings;
 }
 
+/** The page's localStorage, or null where it is unavailable. Guarded, because
+ *  a browser with storage disabled throws on access rather than returning
+ *  null, and that must not take the race page down with it. */
+export function defaultStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads the local copy, or null when there is none or it is unreadable. */
 export function loadLocalControls(
   storage: Pick<Storage, "getItem"> | null

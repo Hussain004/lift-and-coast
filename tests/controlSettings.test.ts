@@ -38,6 +38,7 @@ import type { AccountSession } from "../lib/race/accounts";
 const SESSION: AccountSession = {
   userId: "11111111-1111-4111-8111-111111111111",
   accessToken: "jwt-token",
+  refreshToken: "refresh-token",
   username: "tester",
   expiresAtMs: Date.now() + 3_600_000,
 };

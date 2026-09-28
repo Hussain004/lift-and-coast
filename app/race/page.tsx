@@ -26,6 +26,8 @@ import { ControlsPanel } from "./ControlsPanel";
 import { RaceAudioRig } from "./RaceAudioRig";
 import { RaceOpsPanel } from "./RaceOpsPanel";
 import { TelemetryPanel } from "./TelemetryPanel";
+import { ControlSettingsPanel } from "./ControlSettingsPanel";
+import { applyControls, loadLocalControls, defaultStorage } from "@/lib/settings/controlStorage";
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 
@@ -75,14 +77,14 @@ const MINIMAP_MARKER_POINTS =
   `${MINIMAP_CENTER_PX + 6},${MINIMAP_CENTER_PX + 6}`;
 
 /**
- * The right-hand HUD column holds exactly one of three panels at a time, so
+ * The right-hand HUD column holds exactly one of four panels at a time, so
  * they can never stack on each other or fight the mirror above them. H cycles
  * in this order; 4 jumps straight to telemetry.
  */
-type HudSlot = "controls" | "telemetry" | "ops";
+type HudSlot = "controls" | "telemetry" | "ops" | "settings";
 
 /** H cycles the right-hand panel in this order. */
-const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["controls", "telemetry", "ops"];
+const HUD_SLOT_ORDER: ReadonlyArray<HudSlot> = ["controls", "telemetry", "ops", "settings"];
 
 export default function RacePage() {
   return (
@@ -315,6 +317,16 @@ function RaceContent() {
   const penaltyToastRef = useRef<HTMLDivElement>(null);
   const muteRef = useRef<HTMLDivElement>(null);
   const perfRef = useRef<HTMLDivElement>(null);
+
+  // Apply the player's saved control bindings and steering feel BEFORE the
+  // first input is read. useDriveInput resolves keys through the live table
+  // rather than a captured constant, so this has to happen at mount rather
+  // than on a later tick - otherwise the first moments of a session are
+  // driven with the default controls regardless of what the player set.
+  useEffect(() => {
+    const stored = loadLocalControls(defaultStorage());
+    if (stored !== null) applyControls(stored);
+  }, []);
   const ersModeRef = useRef<HTMLDivElement>(null);
   const fuelRef = useRef<HTMLDivElement>(null);
   // Shared with the race audio rig (see app/race/RaceAudioRig.tsx): both
@@ -342,6 +354,7 @@ function RaceContent() {
   // which is also what makes the car's per-step work conditional.
   const telemetryRef = useRef<TelemetrySample | null>(null);
   const telemetryOpen = hudSlot === "telemetry";
+  const settingsOpen = hudSlot === "settings";
   const cycleHudSlot = useCallback(() => {
     setHudSlot((current) => {
       const next = HUD_SLOT_ORDER[(HUD_SLOT_ORDER.indexOf(current) + 1) % HUD_SLOT_ORDER.length];
@@ -481,7 +494,9 @@ function RaceContent() {
         open={raceOpsOpen}
         onToggle={toggleRaceOps}
       />
-      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
+      {telemetryOpen && <TelemetryPanel sampleRef={telemetryRef} />}
+      {settingsOpen && <ControlSettingsPanel />}
+      {/* Compact F1 timing tower: driver, interval and gap only. Car.tsx
           rewrites the rows ~10Hz (see renderTowerHtml), while this static
           first-paint version keeps the grid populated before lights out. */}
       {!qualifyingSession && (
@@ -627,7 +642,7 @@ function RaceContent() {
       <ControlsPanel
         sideMirrorsEnabled={sideMirrorsEnabled}
         onToggleSideMirrors={toggleSideMirrors}
-        hidden={raceOpsOpen || telemetryOpen}
+        hidden={raceOpsOpen || telemetryOpen || settingsOpen}
         onCycleSlot={cycleHudSlot}
       />
       </div>

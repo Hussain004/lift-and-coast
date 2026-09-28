@@ -87,7 +87,7 @@ export function ControlsPanel({
           className={styles.controlsToggle}
           onClick={onCycleSlot}
           aria-keyshortcuts="H"
-          title="Cycle the right-hand panel: controls, telemetry, Race Ops (H)"
+          title="Cycle the right-hand panel: controls, telemetry, Race Ops, control settings (H)"
         >
           PANEL H
         </button>
