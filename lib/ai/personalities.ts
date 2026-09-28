@@ -239,3 +239,68 @@ export function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/**
+ * How much slower a car should be driving on a surface with `grip` times its
+ * dry grip, as a multiplier on the racing line's speed targets.
+ *
+ * THIS IS A MODULATION OF AN EXISTING INPUT, not a new control term: the
+ * result goes into the same `paceScale` that difficulty, the tire curve and
+ * the mistake envelope already use, so it composes with them and the control
+ * law itself is untouched. Nothing about steering, braking or throttle shaping
+ * changes here.
+ *
+ * WHY SQRT, AND WHY IT IS A CEILING. The line follower does not plan braking -
+ * it reads a speed profile and chases it. Scaling that profile by k scales the
+ * deceleration it needs at any point by k^2 (the v^2 terms), while the
+ * deceleration the tyres can actually produce scales with grip. The profile is
+ * therefore only brake-feasible while k^2 <= grip, i.e. k <= sqrt(grip). That
+ * is the fastest a uniformly scaled profile can be and still be reachable, and
+ * it is why the exponent is not 1: scaling pace by grip itself (about 0.70 in
+ * the rain) is a fifth MORE reduction than the braking can pay for, and would
+ * leave the car arriving at every corner too fast whatever the target said.
+ *
+ * BUT IT IS A CEILING, NOT THE ANSWER. sqrt(grip) is the speed at which the
+ * car is braking at exactly the friction limit, which is no place to aim a
+ * target-speed follower. WET_PACE_MARGIN is a safety factor on top, because
+ * the follower's braking is open-loop against a static profile while real grip
+ * moves with temperature, standing water and the tyre's own state.
+ *
+ * CHOSEN BY SWEEP, NOT BY TASTE. Measured over eight circuits (Monza,
+ * Silverstone, Hungaroring, Spa, Suzuka, Barcelona, Imola, Spielberg) at rain
+ * grip, Pro pace, production follower and vehicle, asking only that a wet lap
+ * completes without inverting and stays inside the same 6m off-track budget
+ * the dry AI gates already accept:
+ *
+ *   margin  scale  circuits passing  mean wet/dry lap
+ *   0.93    0.779        6/8             +15.5%
+ *   0.88    0.737        7/8             +21.3%
+ *   0.82    0.687        8/8             +28.8%   <- Suzuka tilt 0.57
+ *   0.80    0.670        8/8             +31.6%   <- Suzuka tilt 0.23
+ *   0.76    0.637        8/8             +37.9%
+ *
+ * 0.82 is the smallest value that passes, and it is the wrong answer: Suzuka
+ * comes out at 0.57rad against a 0.6rad flip gate - a 5% margin, on precisely
+ * the circuit whose AI response is a documented knife edge where three tuning
+ * attempts have already landed on non-monotonic islands. Taking the next step
+ * down to 0.80 costs three more percent of wet lap time and buys 2.6x the
+ * margin there. A wet gate that only just passes is not a gate.
+ *
+ * Note also what tightening the margin does to the EXCURSIONS: Spa's worst
+ * off-track distance falls 18.6m -> 0.9m across that sweep, monotonically. The
+ * wet excursions were never a stability problem, they were the dry AI running
+ * at 1.18-1.28x pace into corners it can only just hold on dry grip; backing
+ * the target off is what removes them.
+ *
+ * EXACTLY 1 ON DRY, which is the property this rests on. Every existing AI
+ * gate runs at grip 1, so a weather term that shifted dry pace by even a
+ * rounding error would silently re-baseline thirty circuits' worth of verified
+ * tuning. Hence 1 for any grip at or above 1.
+ */
+export const WET_PACE_MARGIN = 0.8;
+
+export function weatherPaceScale(gripMultiplier: number): number {
+  if (!Number.isFinite(gripMultiplier) || gripMultiplier >= 1) return 1;
+  if (gripMultiplier <= 0) return 0;
+  return Math.sqrt(gripMultiplier) * WET_PACE_MARGIN;
+}

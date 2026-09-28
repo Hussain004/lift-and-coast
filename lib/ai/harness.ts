@@ -106,6 +106,22 @@ export interface StabilityOptions {
   /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
   aeroMode?: AeroMode;
   /**
+   * Tyre grip as a fraction of dry, 1 being a dry fresh tyre on dry asphalt.
+   * This is the compound/weather product the live game feeds
+   * applyLoadSensitiveFriction: pass weatherState.gripMultiplier to run the car
+   * in the conditions it is actually in.
+   *
+   * Defaults to 1, so every scenario that does not ask for weather measures
+   * exactly the car it measured before this option existed - a new default
+   * would silently re-baseline every stability gate in the suite.
+   *
+   * Only GRIP is modelled, not weather's drag. Rain adds ~3% drag against grip
+   * dropping ~30% (see physics/weather.ts), so the grip half is the whole
+   * story for anything a stability or pace gate is deciding; the drag half
+   * would move lap times by a tenth of a percent.
+   */
+  gripMultiplier?: number;
+  /**
    * Push-to-Pass's engine force multiplier (see energy.ts) - defaults to 1
    * (no boost). Matches Car.tsx: applied via applyCarControls, not by
    * pre-multiplying engineForce, since applyCarControls clamps the boosted
@@ -395,6 +411,10 @@ export async function simulateDrive(
   let previousStepPos = startPos;
   const steps = Math.round(seconds / timestep);
   const defaultAeroMode = options.aeroMode ?? "high-downforce";
+  // Resolved once, not per step, so a scenario cannot change the surface
+  // mid-lap by mutating its options object - and so the identity case (1) is a
+  // value the physics sees exactly as before this option existed.
+  const gripMultiplier = options.gripMultiplier ?? 1;
   for (let i = 0; i < steps; i++) {
     // Matches Car.tsx: past this distance off-track, snap back to the start
     // line rather than let the car keep going - a long enough straight-line
@@ -472,12 +492,19 @@ export async function simulateDrive(
       applyLoadSensitiveFriction(
         controller,
         stepAeroMode,
-        1,
+        // The tyre/weather product. 1 is a dry, fresh tyre on dry asphalt, and
+        // is what every gate that does not ask for weather gets - so a run with
+        // no weather is bit-for-bit the car it always was. The wet scenarios
+        // pass weatherState.gripMultiplier (about 0.70 in rain), which is what
+        // makes a wet AI gate measure anything at all: before this existed the
+        // harness had no weather input whatsoever, so the AI was never verified
+        // on the surface it actually races on.
+        gripMultiplier,
         wheelSurfaceGrips(surfaceSamples),
         1
       );
     } else {
-      applyLoadSensitiveFriction(controller, stepAeroMode);
+      applyLoadSensitiveFriction(controller, stepAeroMode, gripMultiplier);
     }
     controller.updateVehicle(timestep);
 

@@ -60,6 +60,7 @@ import {
   mulberry32,
   tireCurveMultiplier,
   traitsForDriver,
+  weatherPaceScale,
   type AIDifficulty,
 } from "@/lib/ai/personalities";
 import {
@@ -580,7 +581,16 @@ export function AICar({
       const myLap = myEntry?.lapCount ?? 0;
       const raceProgress = Math.min(1, Math.max(0, myLap / Math.max(1, raceLaps)));
       let paceMult =
-        traits.pace * difficultyPaceScale(difficulty, track.id) * tireCurveMultiplier(traits.latePace, raceProgress);
+        traits.pace *
+        difficultyPaceScale(difficulty, track.id) *
+        tireCurveMultiplier(traits.latePace, raceProgress) *
+        // Weather: the racing line's speed profile is built for dry grip, so in
+        // the rain the same target has the car arriving at every corner at a
+        // speed the tyres cannot scrub off. Scaling that target by the
+        // surface's grip is a modulation of the pace input that difficulty and
+        // the tire curve already use - the control law is untouched, and on a
+        // dry track the factor is exactly 1, so no dry AI gate is affected.
+        weatherPaceScale(weatherState.gripMultiplier);
       // Mistake envelope: an armed moment triggers when the car reaches
       // the scheduled point, then reads as a lift for under a second -
       // pace only, the steering never wavers.
