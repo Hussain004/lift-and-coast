@@ -12,6 +12,7 @@ import {
 import { ControlSettingsPanel } from "../ControlSettingsPanel";
 import { EngineerSetting } from "../../EngineerSetting";
 import { CameraSetting } from "../../CameraSetting";
+import { RacingLineSetting } from "../../RacingLineSetting";
 import styles from "./hud.module.css";
 
 /** Keys that are not rebindable, so they are not in the bindings table. */
@@ -146,6 +147,8 @@ export function PauseMenu({
               <>
                 <div className={styles.pauseSubhead}>RACE ENGINEER</div>
                 <EngineerSetting />
+                <div className={styles.pauseSubhead}>RACING LINE</div>
+                <RacingLineSetting />
                 <div className={styles.pauseSubhead}>CAMERA</div>
                 <CameraSetting />
                 <div className={styles.pauseSubhead}>CONTROLS</div>

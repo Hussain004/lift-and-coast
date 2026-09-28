@@ -19,6 +19,45 @@ import type { AIDifficulty } from "@/lib/ai/personalities";
 import { chunkMesh, chunkPoints, thin } from "@/lib/render/chunks";
 import { asphaltTexture, planarUvs } from "@/lib/render/textures";
 import { SurfaceMaterial, useQuality } from "./renderQuality";
+import { loadRacingLineStyle, subscribeRacingLineStyle } from "@/lib/settings/racingLinePref";
+
+/** Chevron repeat along the racing line. */
+const CHEVRON_SPACING_METERS = 3.2;
+/** Half-width of the dark rubbered-in band under the ideal line. */
+const RUBBER_HALF_WIDTH_METERS = 1.5;
+
+/**
+ * The racing line's arrow texture: a solid chevron pointing along +v (the
+ * direction of travel), white so the vertex zone colours tint it, with a
+ * faint fill between arrows so the line still reads as a line at distance.
+ */
+function chevronTexture(): THREE.Texture | null {
+  if (typeof document === "undefined") return null;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 128;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  g.fillStyle = "rgba(255,255,255,0.45)";
+  g.fillRect(8, 0, 48, 128);
+  g.fillStyle = "#ffffff";
+  g.beginPath();
+  // Canvas top is +v (textures flip Y), so the point is at the top.
+  g.moveTo(32, 10);
+  g.lineTo(64, 58);
+  g.lineTo(64, 92);
+  g.lineTo(32, 44);
+  g.lineTo(0, 92);
+  g.lineTo(0, 58);
+  g.closePath();
+  g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 /** Cell size for circuit-wide static geometry (see lib/render/chunks.ts). */
 const CHUNK_METERS = 180;
@@ -70,7 +109,15 @@ function RacingLine({
   // player's nearest point moves a couple of line points per frame, so
   // the next frame's windowed search is equivalent to the full scan.
   const nearestIdxRef = useRef(0);
-  const { geometry, line } = useMemo(() => {
+  const cornersOnlyRef = useRef(false);
+  useLayoutEffect(() => {
+    cornersOnlyRef.current = loadRacingLineStyle() === "corners";
+    return subscribeRacingLineStyle(() => {
+      cornersOnlyRef.current = loadRacingLineStyle() === "corners";
+    });
+  }, []);
+  const chevrons = useMemo(() => chevronTexture(), []);
+  const { geometry, line, zoneColors, rubber } = useMemo(() => {
     const line = getRacingLine(
       track,
       difficulty === "ace" ? "ace" : difficulty === "pro" ? "pro" : "default"
@@ -89,13 +136,41 @@ function RacingLine({
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const colorAttr = new THREE.BufferAttribute(colors, 3);
+    // Chevron UVs: u across the stripe, v = metres along the line / spacing,
+    // so the arrow texture repeats down the lap pointing the way you drive.
+    const uvs = new Float32Array((positions.length / 3) * 2);
+    let travelled = 0;
+    for (let i = 0; i < line.length; i++) {
+      if (i > 0) {
+        const [ax, , az] = line[i - 1].position;
+        const [bx, , bz] = line[i].position;
+        travelled += Math.hypot(bx - ax, bz - az);
+      }
+      uvs[i * 4] = 0;
+      uvs[i * 4 + 1] = travelled / CHEVRON_SPACING_METERS;
+      uvs[i * 4 + 2] = 1;
+      uvs[i * 4 + 3] = travelled / CHEVRON_SPACING_METERS;
+    }
+    geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    // The lib writes zone colours as RGB into `colors`; what the GPU draws is
+    // an RGBA copy, so "corners only" can hide the full-throttle stretches.
+    const rgba = new Float32Array((colors.length / 3) * 4);
+    const colorAttr = new THREE.BufferAttribute(rgba, 4);
     // Colors are rewritten every frame below - hints three.js to allocate
     // the GPU buffer for frequent updates instead of a static one.
     colorAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute("color", colorAttr);
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
-    return { geometry: geo, line };
+
+    // The rubbered-in line: a wider, faint dark band under the ideal line,
+    // the way a real circuit shows its grip. Drawn always - it is the track,
+    // not the assist.
+    const band = buildRacingLineRibbon(line, RUBBER_HALF_WIDTH_METERS, ZONE_COLOR);
+    for (let i = 1; i < band.positions.length; i += 3) band.positions[i] += RACING_LINE_HEIGHT_OFFSET * 0.5;
+    const rubberGeo = new THREE.BufferGeometry();
+    rubberGeo.setAttribute("position", new THREE.BufferAttribute(band.positions, 3));
+    rubberGeo.setIndex(new THREE.BufferAttribute(band.indices, 1));
+    return { geometry: geo, line, zoneColors: colors, rubber: rubberGeo };
   }, [track, difficulty]);
 
   useFrame(() => {
@@ -121,7 +196,7 @@ function RacingLine({
     const colorAttr = geometry.getAttribute("color") as THREE.BufferAttribute;
     const nearest = updateLiveZoneColors(
       line,
-      colorAttr.array as Float32Array,
+      zoneColors,
       t.x,
       t.z,
       speedMs,
@@ -130,17 +205,37 @@ function RacingLine({
       nearestIdxRef.current
     );
     nearestIdxRef.current = nearest;
+    const rgba = colorAttr.array as Float32Array;
+    // Float32 copies of the throttle colour: the zone buffer is a
+    // Float32Array, so the plain doubles would never compare equal.
+    const [tr, tg, tb] = ZONE_COLOR.throttle.map(Math.fround);
+    const cornersOnly = cornersOnlyRef.current;
+    for (let v = 0, n = zoneColors.length / 3; v < n; v++) {
+      const r = zoneColors[v * 3];
+      const g = zoneColors[v * 3 + 1];
+      const b = zoneColors[v * 3 + 2];
+      rgba[v * 4] = r;
+      rgba[v * 4 + 1] = g;
+      rgba[v * 4 + 2] = b;
+      rgba[v * 4 + 3] = cornersOnly && r === tr && g === tg && b === tb ? 0 : 1;
+    }
     colorAttr.needsUpdate = true;
   });
 
   return (
-    <mesh ref={meshRef} geometry={geometry}>
-      {/* vertexColors, not a single material color - each vertex carries
-          its own throttle/brake zone color (see ZONE_COLOR). basic (not
-          standard) so scene lighting doesn't tint or darken the colors -
-          this is a flat HUD-style overlay, not a lit surface. */}
-      <meshBasicMaterial vertexColors toneMapped={false} />
-    </mesh>
+    <>
+      <mesh geometry={rubber} renderOrder={1}>
+        <meshBasicMaterial color="#000000" transparent opacity={0.16} depthWrite={false} />
+      </mesh>
+      <mesh ref={meshRef} geometry={geometry} renderOrder={2}>
+        {/* vertexColors (RGBA), not a single material color - each vertex
+            carries its own throttle/brake zone color (see ZONE_COLOR) and,
+            in corners-only mode, its visibility. basic (not standard) so
+            scene lighting doesn't tint the colors - this is a flat HUD-style
+            overlay, not a lit surface. The chevron map repeats down the lap. */}
+        <meshBasicMaterial vertexColors map={chevrons} transparent alphaTest={0.35} depthWrite={false} toneMapped={false} />
+      </mesh>
+    </>
   );
 }
 

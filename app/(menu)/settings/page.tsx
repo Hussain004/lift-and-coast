@@ -6,6 +6,7 @@ import { EngineerSetting } from "../../EngineerSetting";
 import { CameraSetting } from "../../CameraSetting";
 import { HapticsSetting } from "../../HapticsSetting";
 import { AudioSetting } from "../../AudioSetting";
+import { RacingLineSetting } from "../../RacingLineSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -27,6 +28,11 @@ export default function SettingsPage() {
           <h2 className={styles.cardTitle} style={{ marginTop: 18 }}>VIBRATION</h2>
           <p className={styles.cardNote}>Gamepad rumble on kerbs, slides and impacts (Chromium browsers), and phone vibration on impacts.</p>
           <HapticsSetting />
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>RACING LINE</h2>
+          <p className={styles.cardNote}>The full line, or only where you need to lift or brake. L shows or hides it in a race.</p>
+          <RacingLineSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>SOUND</h2>
