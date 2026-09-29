@@ -14,14 +14,15 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - AI difficulty tiers from Rookie to Ace, with personality, mistakes, tire curves, traffic, overtakes, and active racing
 - Seven-speed sequential manual gears with an auto-gear assist
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
-- Dynamic clear, cloudy, and rain weather with changing grip, drag, visibility, and track temperature
-- Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, compound selection, and pit service
+- Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
+- Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
 - Knockout qualifying in the real F1 format: Q1/Q2/Q3 with eliminations between phases
 - Track-derived 2026 overtake zones with race proximity and practice/qualifying access
 - Race Ops telemetry, steward decisions, FIA-style penalties (5s/10s/drive-through/stop-go), license points, the 12-point race ban, invalid laps, and disqualification status
 - Rolling instant replay with a synchronized TV camera, seek controls, and a speed trace
 - Active Aero with high-downforce and low-drag modes
-- Tire compounds, wear, grip changes, damage, and per-wheel surface effects
+- Tire compounds, wear, grip changes, component damage (front wing, rear wing, floor, punctures), and per-wheel surface effects
+- A full F1-style HUD: timing tower, MFD pages, minimap, radio engineer, results and pause screens, chase-camera feel, sparks, spray, skid marks and braking boards
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
@@ -61,7 +62,13 @@ Weather is shared by the track, player, and AI. Rain reduces grip and increases 
 
 Track limits follow the FIA ladder: three warnings, then a black-and-white flag, then escalating time penalties for repeat offenses (+5s, +10s, a drive-through, a stop-go). Unsafe rejoins and pit-lane speeding are drive-through penalties. Every penalty carries super-license points, and a driver who collects 12 points in a season receives an automatic race ban. The five red start lights illuminate one by one, then extinguish - lights out and away we go.
 
-Pit service currently uses the marked start-finish service window as a playable vertical slice. A full drivable pit-lane route and route-aware championship classification are the next simulation milestone.
+## Pit stops, tyres and weather
+
+Circuits with room for one get a drivable pit lane. Press `O` to request a stop, peel off into the lane before the start line (the limiter holds 80 km/h), and stop in the green box: the crew changes tyres, refuels and repairs any damage (a broken front wing adds time). Street circuits with no room keep the old marked service window. Tyres are `1` soft, `2` medium, `3` hard, `4` intermediate, `5` wet; inters peak on a damp track and wets on a soaked one, and both overheat on a dry track. Choose **Changeable** weather in session setup for a seeded rain window announced on the MFD weather page and by the engineer.
+
+Flashbacks are limited in a race by AI level (Rookie unlimited, Club 5, Pro 3, Ace 1). Damage can be Off, Reduced or Simulation in Settings.
+
+Drive-through and stop-go penalties are still served as a flat time cost rather than through the lane, and AI cars do not make pit stops yet.
 
 ## Controls
 
@@ -81,7 +88,7 @@ Pit service currently uses the marked start-finish service window as a playable 
 | Active Aero | `E` | Assign as a button if supported |
 | Camera (includes helmet view) | `C` | Assign as a button if supported |
 | Side mirrors | `N` | Mirror button in the HUD/touch deck |
-| Tires | `1` / `2` / `3` | Assign as buttons if supported |
+| Tires | `1` – `5` (soft, medium, hard, inter, wet) | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
 | Race Ops panel | `H` | Header click |
 | Overtake arm | Hold `X` | Assign as a button if supported |
@@ -152,7 +159,7 @@ To add a circuit, place its raw GeoJSON in `data/tracks/raw/`, add it to `script
 
 ## Deployment
 
-The project is ready for Vercel or any static Node host. There are no environment variables, server database, or server-side game-state requirements. The race route loads circuit data in the browser, while the menu route stays light.
+The project is ready for Vercel or any static Node host. The game runs client-side; the only optional server pieces are the public Time Trial leaderboard and accounts, which need `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (without them the game simply hides online features). Multiplayer rooms use PeerJS peer-to-peer connections. The race route loads circuit data in the browser, while the menu route stays light.
 
 ## Support
 
