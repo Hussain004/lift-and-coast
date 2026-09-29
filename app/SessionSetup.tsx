@@ -8,7 +8,6 @@ import {
   RIDE_HEIGHT_MIN,
   carSetupAeroLabel,
   carSetupRideLabel,
-  isDefaultCarSetup,
   normalizeCarSetup,
   type CarSetup,
 } from "@/lib/physics/carSetup";
@@ -45,6 +44,14 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "day", label: "Day" },
   { id: "sunset", label: "Sunset" },
   { id: "overcast", label: "Overcast" },
+];
+
+/** One-tap builds inside the measured slider range (see lib/physics/carSetup.ts). */
+const SETUP_PRESETS: { label: string; title: string; setup: { rideHeight: number; aeroTrim: number } }[] = [
+  { label: "STANDARD", title: "Back to the standard build", setup: DEFAULT_CAR_SETUP },
+  { label: "LOW DOWNFORCE", title: "Less drag for Monza, Spa and Vegas style straights", setup: { rideHeight: 0.6, aeroTrim: 0.3 } },
+  { label: "HIGH DOWNFORCE", title: "Lower and fully loaded for Monaco, Budapest and Singapore", setup: { rideHeight: 0.3, aeroTrim: 1 } },
+  { label: "WET", title: "Higher and fully loaded: settles over standing water", setup: { rideHeight: 0.75, aeroTrim: 1 } },
 ];
 
 const WEATHER_OPTIONS: { id: WeatherSetting; label: string }[] = [
@@ -351,20 +358,27 @@ export function SessionSetup() {
         <span>MAX DOWNFORCE (more drag)</span>
       </div>
       <div className={styles.presets} role="radiogroup" aria-label="Car setup presets">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={isDefaultCarSetup(carSetup)}
-          title="Back to the standard build"
-          onClick={() => {
-            const next = { ...DEFAULT_CAR_SETUP };
-            setCarSetup(next);
-            persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
-          }}
-          className={isDefaultCarSetup(carSetup) ? styles.presetActive : styles.preset}
-        >
-          STANDARD
-        </button>
+        {SETUP_PRESETS.map((preset) => {
+          const active = normalizeCarSetup(preset.setup);
+          const selected = Math.abs(active.rideHeight - carSetup.rideHeight) < 0.001 && Math.abs(active.aeroTrim - carSetup.aeroTrim) < 0.001;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              title={preset.title}
+              onClick={() => {
+                const next = normalizeCarSetup(preset.setup);
+                setCarSetup(next);
+                persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+              }}
+              className={selected ? styles.presetActive : styles.preset}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
       </div>
       <div className={styles.sliderRow}>
         <span className={styles.label}>GRAPHICS</span>
