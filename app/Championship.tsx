@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { objectiveFor, reputationTitle, seasonObjectives } from "@/lib/race/objectives";
 import { useEffect, useState } from "react";
 import {
   completedRounds,
@@ -128,6 +129,9 @@ export function Championship() {
   const total = totalRounds(season);
   const you = drivers.find((d) => d.isPlayer);
   const yourPosition = you ? drivers.indexOf(you) + 1 : null;
+  const playerTeam = you?.teamId ?? parseTeamId(teamId);
+  const objectives = seasonObjectives(season, playerTeam);
+  const nextObjective = complete ? null : objectiveFor(playerTeam, next);
 
   return (
     <div className={styles.wrap}>
@@ -146,6 +150,11 @@ export function Championship() {
           <div className={styles.progress} aria-hidden="true">
             <span style={{ width: `${(done / Math.max(1, total)) * 100}%` }} />
           </div>
+          {nextObjective && (
+            <div className={styles.note}>
+              TEAM OBJECTIVE · {nextObjective.label.toUpperCase()}
+            </div>
+          )}
         </div>
         <dl className={styles.stats}>
           <div>
@@ -159,6 +168,10 @@ export function Championship() {
           <div>
             <dt>WINS</dt>
             <dd>{you?.wins ?? 0}</dd>
+          </div>
+          <div title={reputationTitle(objectives.reputation)}>
+            <dt>REPUTATION</dt>
+            <dd>{objectives.reputation}</dd>
           </div>
         </dl>
       </div>
@@ -269,7 +282,7 @@ export function Championship() {
                 <span className={styles.roundTrack}>{getTrackName(round.trackId)}</span>
                 <span className={styles.roundResult}>
                   {round.playerPosition !== null
-                    ? `P${round.playerPosition}${winner && !winner.isPlayer ? ` · won by ${winner.code}` : ""}`
+                    ? `P${round.playerPosition}${winner && !winner.isPlayer ? ` · won by ${winner.code}` : ""}${objectives.outcomes[i] === null ? "" : objectives.outcomes[i] ? " · objective met" : " · objective missed"}`
                     : i === next
                       ? round.qualiSpot !== null
                         ? `NEXT · QUALIFIED P${round.qualiSpot}`
