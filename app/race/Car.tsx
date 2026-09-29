@@ -563,6 +563,11 @@ export function Car({
   // per-wheel grip and downforce that follow from them, and how many hits
   // this session (it varies which wing a side hit clips).
   const damageRef = useRef(createDamageState());
+  // Dev builds only: lets a headless check break the wings on demand.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __liftDamage?: React.RefObject<DamageState> }).__liftDamage = damageRef;
+  }, []);
   const damageGripsRef = useRef<number[]>([1, 1, 1, 1]);
   const damageDownforceRef = useRef(1);
   const hitCountRef = useRef(0);
@@ -2025,6 +2030,7 @@ export function Car({
             steerRefs={steerRefs}
             spinRefs={spinRefs}
             flapRef={flapRef}
+            damageRef={damageRef}
             compoundRef={tireCompound}
             raceNumber={playerNumber ?? null}
           />

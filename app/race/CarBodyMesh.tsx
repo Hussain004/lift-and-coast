@@ -16,10 +16,13 @@ import {
 import {
   COMPOUND_STRIPE_COLOR,
   FLAP_PIVOT,
+  FRONT_WING_PIVOT,
+  REAR_WING_PIVOT,
   buildCarGeometry,
   buildWheelGeometry,
   type CarGeometry,
 } from "@/lib/race/carSculpt";
+import type { DamageState } from "@/lib/physics/damage";
 import { useQuality } from "./renderQuality";
 
 // Shared renderer for the car (see lib/race/carSculpt.ts for the shapes):
@@ -130,11 +133,14 @@ export function CarBodyShell({
   bodyColor,
   accentColor,
   flapRef,
+  damageRef,
   ghost = false,
   studio = false,
   raceNumber = null,
 }: {
   raceNumber?: number | null;
+  /** The player's live component damage: the wings droop, then break off. */
+  damageRef?: React.RefObject<DamageState>;
   bodyColor: string;
   /** Team secondary paint; derived from the primary when absent. */
   accentColor?: string;
@@ -145,10 +151,46 @@ export function CarBodyShell({
   const { cheapMaterials: cheap } = useQuality();
   const geometry = carGeometry(bodyColor, accentColor ?? computeAccentColor(bodyColor));
   const options = { ghost, studio, cheap };
+  const frontWingRef = useRef<THREE.Group | null>(null);
+  const rearWingRef = useRef<THREE.Group | null>(null);
+  useFrame(() => {
+    const d = damageRef?.current;
+    if (!d) return;
+    const front = frontWingRef.current;
+    if (front) {
+      const loss = 1 - d.frontWing;
+      front.visible = d.frontWing > 0.12;
+      front.rotation.set(-loss * 0.22, 0, loss * 0.3);
+      front.position.y = FRONT_WING_PIVOT[1] - loss * 0.05;
+    }
+    const rear = rearWingRef.current;
+    if (rear) {
+      const loss = 1 - d.rearWing;
+      rear.visible = d.rearWing > 0.12;
+      rear.rotation.set(loss * 0.14, 0, loss * 0.18);
+      if (flapRef?.current) flapRef.current.visible = rear.visible;
+    }
+  });
   return (
     <>
       <mesh geometry={geometry.paint} material={material("paint", options)} castShadow={!ghost} />
       <mesh geometry={geometry.carbon} material={material("carbon", options)} castShadow={!ghost} />
+      <group ref={frontWingRef} position={FRONT_WING_PIVOT}>
+        <mesh
+          geometry={geometry.frontWing}
+          material={material("paint", options)}
+          position={[-FRONT_WING_PIVOT[0], -FRONT_WING_PIVOT[1], -FRONT_WING_PIVOT[2]]}
+          castShadow={!ghost}
+        />
+      </group>
+      <group ref={rearWingRef} position={REAR_WING_PIVOT}>
+        <mesh
+          geometry={geometry.rearWing}
+          material={material("paint", options)}
+          position={[-REAR_WING_PIVOT[0], -REAR_WING_PIVOT[1], -REAR_WING_PIVOT[2]]}
+          castShadow={!ghost}
+        />
+      </group>
       <group ref={flapRef} position={FLAP_PIVOT}>
         <mesh
           rotation={[FLAP_CLOSED_INCLINE_RAD, 0, 0]}

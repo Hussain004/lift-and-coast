@@ -320,7 +320,7 @@ function box(size: P3, at: P3): THREE.BufferGeometry {
 
 const WHEEL_Z = 1.3;
 
-function paintParts(livery: string, accent: string): THREE.BufferGeometry[] {
+function paintParts(livery: string, accent: string, frontWing: THREE.BufferGeometry[], rearWing: THREE.BufferGeometry[]): THREE.BufferGeometry[] {
   const L = (g: THREE.BufferGeometry) => colorize(normalize(g), livery);
   const A = (g: THREE.BufferGeometry) => colorize(normalize(g), accent);
   const parts: THREE.BufferGeometry[] = [];
@@ -385,8 +385,9 @@ function paintParts(livery: string, accent: string): THREE.BufferGeometry[] {
   ])));
   parts.push(...pair(box([0.3, 0.03, 0.7], [0.56, 0.1, 0.1])).map((g) => colorize(g, accent)));
   parts.push(A(box([0.08, 0.02, 0.9], [0, 0.34, 1.0])));
-  // Front wing endplates and rear wing endplates.
-  parts.push(
+  // Front wing endplates and rear wing endplates (their own meshes, see
+  // CarGeometry: the player's car can lose them).
+  frontWing.push(
     ...pair(
       sidePlate(
         [
@@ -401,7 +402,7 @@ function paintParts(livery: string, accent: string): THREE.BufferGeometry[] {
       )
     ).map((g) => colorize(g, livery))
   );
-  parts.push(
+  rearWing.push(
     ...pair(
       sidePlate(
         [
@@ -428,7 +429,7 @@ function paintParts(livery: string, accent: string): THREE.BufferGeometry[] {
   return parts;
 }
 
-function carbonParts(): THREE.BufferGeometry[] {
+function carbonParts(frontWing: THREE.BufferGeometry[], rearWing: THREE.BufferGeometry[]): THREE.BufferGeometry[] {
   const C = (g: THREE.BufferGeometry) => colorize(normalize(g), CARBON_COLOR);
   const parts: THREE.BufferGeometry[] = [];
   // Floor: plan outline clear of all four tyres, with a diffuser ramp.
@@ -444,14 +445,14 @@ function carbonParts(): THREE.BufferGeometry[] {
   parts.push(C(prism(outline, -0.4, -0.36, (x, z, y) => [x, y, z])));
   parts.push(C(prism([[1.6, -0.36], [2.05, -0.36], [2.05, -0.2]], -0.55, 0.55, (z, y, x) => [x, y, z])));
   // Front wing: three elements; rear wing main plane; beam wing.
-  parts.push(C(wing(0.42, 1.86, [-2.28, -0.33], 0.05)));
-  parts.push(C(wing(0.26, 1.8, [-2.0, -0.28], 0.28)));
-  parts.push(C(wing(0.18, 1.7, [-1.86, -0.21], 0.5)));
-  parts.push(C(wing(0.36, 1.44, [1.52, 0.52], 0.16)));
-  parts.push(C(wing(0.24, 1.2, [1.72, 0.14], 0.12)));
+  frontWing.push(C(wing(0.42, 1.86, [-2.28, -0.33], 0.05)));
+  frontWing.push(C(wing(0.26, 1.8, [-2.0, -0.28], 0.28)));
+  frontWing.push(C(wing(0.18, 1.7, [-1.86, -0.21], 0.5)));
+  rearWing.push(C(wing(0.36, 1.44, [1.52, 0.52], 0.16)));
+  rearWing.push(C(wing(0.24, 1.2, [1.72, 0.14], 0.12)));
   // Swan-neck pylons, front wing pylons, halo, airbox intake, cockpit rim.
-  parts.push(...pair(sidePlate([[1.62, 0.1], [1.78, 0.1], [1.74, 0.56], [1.64, 0.56]], 0.1, 0.13)).map((g) => colorize(g, CARBON_COLOR)));
-  parts.push(...pair(sidePlate([[-2.1, -0.32], [-1.9, -0.32], [-1.9, -0.18], [-2.02, -0.16]], 0.1, 0.13)).map((g) => colorize(g, CARBON_COLOR)));
+  rearWing.push(...pair(sidePlate([[1.62, 0.1], [1.78, 0.1], [1.74, 0.56], [1.64, 0.56]], 0.1, 0.13)).map((g) => colorize(g, CARBON_COLOR)));
+  frontWing.push(...pair(sidePlate([[-2.1, -0.32], [-1.9, -0.32], [-1.9, -0.18], [-2.02, -0.16]], 0.1, 0.13)).map((g) => colorize(g, CARBON_COLOR)));
   const halo = new THREE.CatmullRomCurve3(
     [
       [-0.24, 0.3, 0.64],
@@ -499,20 +500,32 @@ function carbonParts(): THREE.BufferGeometry[] {
   return parts;
 }
 
+/** Where each wing assembly bends when damaged (car space). */
+export const FRONT_WING_PIVOT: P3 = [0, -0.28, -2.0];
+export const REAR_WING_PIVOT: P3 = [0, 0.4, 1.7];
+
 export interface CarGeometry {
   paint: THREE.BufferGeometry;
   carbon: THREE.BufferGeometry;
   /** In the flap's own frame: leading edge at the origin, chord along +z. */
   flap: THREE.BufferGeometry;
+  /** Front/rear wing assemblies (elements, endplates, pylons) in car space,
+   * separate meshes so damage can droop or shed them. */
+  frontWing: THREE.BufferGeometry;
+  rearWing: THREE.BufferGeometry;
 }
 
 export function buildCarGeometry(livery: string, accent: string): CarGeometry {
-  const paint = mergeGeometries(paintParts(livery, accent), false);
-  const carbon = mergeGeometries(carbonParts(), false);
+  const front: THREE.BufferGeometry[] = [];
+  const rear: THREE.BufferGeometry[] = [];
+  const paint = mergeGeometries(paintParts(livery, accent, front, rear), false);
+  const carbon = mergeGeometries(carbonParts(front, rear), false);
+  const frontWing = mergeGeometries(front, false);
+  const rearWing = mergeGeometries(rear, false);
   const flap = colorize(normalize(wing(FLAP_CHORD, FLAP_SPAN, [0, 0], 0, 0.1, 0.06)), accent);
-  if (!paint || !carbon) throw new Error("car geometry merge failed");
-  for (const g of [paint, carbon, flap]) g.computeBoundingSphere();
-  return { paint, carbon, flap };
+  if (!paint || !carbon || !frontWing || !rearWing) throw new Error("car geometry merge failed");
+  for (const g of [paint, carbon, flap, frontWing, rearWing]) g.computeBoundingSphere();
+  return { paint, carbon, flap, frontWing, rearWing };
 }
 
 /**

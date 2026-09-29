@@ -29,7 +29,7 @@ function box(geometry: THREE.BufferGeometry): THREE.Box3 {
 
 describe("sculpted car", () => {
   it("stays inside the collider envelope plus wing overhang", () => {
-    for (const g of [car.paint, car.carbon]) {
+    for (const g of [car.paint, car.carbon, car.frontWing, car.rearWing]) {
       const b = box(g);
       expect(Math.max(-b.min.x, b.max.x)).toBeLessThanOrEqual(HX + 0.15);
       expect(b.min.y).toBeGreaterThanOrEqual(-0.45);
@@ -40,7 +40,7 @@ describe("sculpted car", () => {
   });
 
   it("is mirror-symmetric across the spine", () => {
-    for (const g of [car.paint, car.carbon]) {
+    for (const g of [car.paint, car.carbon, car.frontWing, car.rearWing]) {
       const b = box(g);
       expect(b.min.x).toBeCloseTo(-b.max.x, 3);
     }
@@ -67,11 +67,12 @@ describe("sculpted car", () => {
   });
 
   it("carries vertex colours and stays inside a draw budget", () => {
-    for (const g of [car.paint, car.carbon, car.flap]) {
+    for (const g of [car.paint, car.carbon, car.flap, car.frontWing, car.rearWing]) {
       expect(g.getAttribute("color")).toBeDefined();
       expect(g.getAttribute("normal")).toBeDefined();
     }
-    const triangles = (car.paint.getAttribute("position").count + car.carbon.getAttribute("position").count) / 3;
+    const triangles =
+      [car.paint, car.carbon, car.frontWing, car.rearWing].reduce((n, g) => n + g.getAttribute("position").count, 0) / 3;
     expect(triangles).toBeLessThan(12000);
     // Livery paint really is on the paint mesh.
     const colors = car.paint.getAttribute("color");
