@@ -469,6 +469,8 @@ function ChaseCamera({
   // the offset from the car stays exact, so no speed-dependent gap can open.
   const camYaw = useRef<number | null>(null);
   const lookBackHeld = useRef(false);
+  // -1 looking left, +1 right, 0 straight ahead (the later press wins).
+  const lookSide = useRef(0);
   const photoPrevMode = useRef<CameraMode | null>(null);
   const shakeOn = useRef(true);
   useEffect(() => {
@@ -477,7 +479,10 @@ function ChaseCamera({
       shakeOn.current = loadCameraShake();
     });
     const key = (down: boolean) => (e: KeyboardEvent) => {
-      if (getBindings().lookBack.includes(e.code)) lookBackHeld.current = down;
+      const bindings = getBindings();
+      if (bindings.lookBack.includes(e.code)) lookBackHeld.current = down;
+      if (bindings.lookLeft.includes(e.code)) lookSide.current = down ? -1 : lookSide.current === -1 ? 0 : lookSide.current;
+      if (bindings.lookRight.includes(e.code)) lookSide.current = down ? 1 : lookSide.current === 1 ? 0 : lookSide.current;
     };
     const onDown = key(true);
     const onUp = key(false);
@@ -625,6 +630,16 @@ function ChaseCamera({
       camera.position.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
       forward.current.copy(LOOK_BACK_AIM).applyEuler(yawEuler.current);
       camera.lookAt(t.x + forward.current.x, t.y + forward.current.y, t.z + forward.current.z);
+      setPerspectiveFov(camera, CHASE_FOV);
+      camYaw.current = yaw;
+    } else if (lookSide.current !== 0 && mode !== "tv" && mode !== "orbit") {
+      // Glance out of the cockpit: eye at the driver's head, aimed square
+      // left or right of the car (yaw-only, like every other mode here).
+      setCamEuler(yawEuler.current, yaw);
+      offset.current.copy(HELMET_OFFSET).applyEuler(yawEuler.current);
+      camera.position.set(t.x + offset.current.x, t.y + offset.current.y, t.z + offset.current.z);
+      forward.current.set(lookSide.current * 20, 0, 0).applyEuler(yawEuler.current);
+      camera.lookAt(camera.position.x + forward.current.x, camera.position.y + forward.current.y, camera.position.z + forward.current.z);
       setPerspectiveFov(camera, CHASE_FOV);
       camYaw.current = yaw;
     } else if (mode === "helmet") {

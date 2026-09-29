@@ -1552,6 +1552,7 @@ export function Car({
         gear: gearboxRef.current.gear,
         kerb01: kerbContactRef.current,
         shiftSerial: shiftSerialRef.current,
+        pitLimiter: inPitLaneRef.current,
       };
       // Rubber on the road (see TrackFx.tsx): while the rear tyres slide or
       // lock, lay a strip along the path they travelled since the last one.

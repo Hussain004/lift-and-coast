@@ -42,6 +42,8 @@ export interface AudioCarSnapshot {
   /** Monotonic player shift event counter, so audio never guesses from a
    * render-sampled gear delta. Remote/AI sources may leave this at zero. */
   shiftSerial: number;
+  /** Pit-lane speed limiter engaged (player only): the cockpit beeps. */
+  pitLimiter?: boolean;
 }
 
 export interface AudioSnapshot {
@@ -472,6 +474,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
   let liftAt = -Infinity;
   let blipAt = -Infinity;
   let lastUpdateAt = 0;
+  let lastBeepAt = -Infinity;
 
   /** Turbo/exhaust spool-down whistle after a lift: a thin sine falling away. */
   const spoolDown = (startHz: number, seconds: number, peak: number) => {
@@ -568,6 +571,21 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
         p.limiter01,
         when < shiftCutUntil
       );
+
+      // Pit limiter: the same steady cockpit beep as the real car's.
+      if (p.pitLimiter && when - lastBeepAt >= 0.6) {
+        lastBeepAt = when;
+        const beep = context.createOscillator();
+        beep.frequency.value = 1000;
+        const beepGain = context.createGain();
+        beepGain.gain.setValueAtTime(0.05, when);
+        beepGain.gain.setValueAtTime(0.05, when + 0.09);
+        beepGain.gain.linearRampToValueAtTime(0, when + 0.11);
+        beep.connect(beepGain);
+        beepGain.connect(master);
+        beep.start(when);
+        beep.stop(when + 0.12);
+      }
 
       // Lift and coast: coming off the throttle at speed, the note drops away
       // with the engine gain (see engineGain01) and the turbo lets go.
