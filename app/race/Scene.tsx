@@ -1137,6 +1137,7 @@ export function Scene({
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
                 driverCode={rival.code}
+                driverNumber={rival.number ?? null}
                 weatherRef={weatherRef}
                 sessionMode={sessionMode}
                 difficulty={difficulty}

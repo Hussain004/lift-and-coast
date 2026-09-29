@@ -24,7 +24,10 @@ export function F1CarBody({
   /** Ghost replay (see Car.tsx): translucent silhouette of the real car,
    * no shadows, wheels parked - a replay pose, not a driven chassis. */
   ghost = false,
+  raceNumber = null,
 }: {
+  /** The number worn on the engine cover; none if absent (remote cars, the showroom). */
+  raceNumber?: number | null;
   bodyColor: string;
   /** Team secondary paint for the livery stripes (see page.tsx's roster
    * pick); derived from the primary when the caller has no second color -
@@ -47,6 +50,7 @@ export function F1CarBody({
         accentColor={accentColor}
         flapRef={flapRef}
         ghost={ghost}
+        raceNumber={raceNumber}
       />
       <CarWheels steerRefs={steerRefs} spinRefs={spinRefs} compoundRef={compoundRef} ghost={ghost} />
     </>

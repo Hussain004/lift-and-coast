@@ -173,6 +173,7 @@ export function AICar({
   /** This rival's FIA code - selects its deterministic personality (pace,
    * aggression, risk, tire curve, passing side; see personalities.ts). */
   driverCode = "YOU",
+  driverNumber = null,
   /** Meeting difficulty tier (see personalities.ts) - scales AI pace and
    * aggression only; the player's car is untouched. */
   difficulty = "pro" as AIDifficulty,
@@ -231,6 +232,8 @@ export function AICar({
    * aggression, risk, tire curve, passing side; see personalities.ts).
    */
   driverCode?: string;
+  /** Race number worn on the engine cover (see CarBodyMesh). */
+  driverNumber?: number | null;
   /**
    * Meeting difficulty tier (see personalities.ts) - scales AI pace and
    * aggression only; the player's car is untouched.
@@ -955,7 +958,7 @@ export function AICar({
       {/* colliders={false} + one explicit collider - see Car.tsx's own
           comment for why the auto-collider generation is unsafe here. */}
       <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
+      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} raceNumber={driverNumber ?? null} />
     </RigidBody>
   );
 }

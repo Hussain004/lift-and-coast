@@ -87,13 +87,54 @@ function material(finish: Finish, options: { ghost: boolean; studio: boolean; ch
 export const rainLightMaterial = new THREE.MeshBasicMaterial({ color: "#ff1414", toneMapped: false, visible: false });
 const rainLightGeometry = new THREE.BoxGeometry(0.18, 0.1, 0.03);
 
+// Race numbers: one small transparent decal texture per number, shared by
+// every car that wears it, laid on the engine cover where the chase camera
+// looks down on it.
+const numberMaterials = new Map<number, THREE.Material>();
+const numberGeometry = new THREE.PlaneGeometry(0.62, 0.34).rotateX(-Math.PI / 2);
+
+function numberMaterial(n: number): THREE.Material | null {
+  if (typeof document === "undefined") return null;
+  let material = numberMaterials.get(n);
+  if (!material) {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 64;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    g.font = "900 54px system-ui, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineWidth = 8;
+    g.strokeStyle = "rgba(10,10,14,0.9)";
+    g.strokeText(String(n), 64, 34);
+    g.fillStyle = "#ffffff";
+    g.fillText(String(n), 64, 34);
+    const texture = new THREE.CanvasTexture(c);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    numberMaterials.set(n, material);
+  }
+  return material;
+}
+
 export function CarBodyShell({
   bodyColor,
   accentColor,
   flapRef,
   ghost = false,
   studio = false,
+  raceNumber = null,
 }: {
+  raceNumber?: number | null;
   bodyColor: string;
   /** Team secondary paint; derived from the primary when absent. */
   accentColor?: string;
@@ -116,6 +157,9 @@ export function CarBodyShell({
           castShadow={!ghost}
         />
       </group>
+      {!ghost && raceNumber !== null && numberMaterial(raceNumber) && (
+        <mesh geometry={numberGeometry} material={numberMaterial(raceNumber)!} position={[0, 0.66, 1.2]} />
+      )}
       {!ghost && !studio && (
         <mesh geometry={rainLightGeometry} material={rainLightMaterial} position={[0, 0.2, 2.06]} />
       )}

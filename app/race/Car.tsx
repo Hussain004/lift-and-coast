@@ -2022,6 +2022,7 @@ export function Car({
             spinRefs={spinRefs}
             flapRef={flapRef}
             compoundRef={tireCompound}
+            raceNumber={playerNumber ?? null}
           />
         </group>
         <SteeringWheel wheelRef={steeringWheelRef} />
