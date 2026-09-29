@@ -68,7 +68,7 @@ Circuits with room for one get a drivable pit lane. Press `O` to request a stop,
 
 Flashbacks are unlimited (hold `R`, up to 15 seconds back, with a scrub bar). Damage can be Off, Reduced or Simulation in Settings.
 
-In races of five laps or more each AI car makes one stop around half distance: it leaves the racing line for the lane, parks in its own box for a few seconds, and rejoins with a small pace bonus for fresh tyres (the AI's on-track driving is untouched; the lane run is scripted). Drive-through and stop-go penalties are still served as a flat time cost rather than through the lane.
+In races of five laps or more each AI car makes one stop around half distance: it leaves the racing line for the lane, parks in its own box for a few seconds, and rejoins with a small pace bonus for fresh tyres (the AI's on-track driving is untouched; the lane run is scripted). Drive-through and stop-go penalties are served in the pit lane on circuits that have one (drive through it, or hold still in your box for 10 s); the time charge is refunded once served, and stays as a time penalty if you never serve it or the circuit has no lane.
 
 ## Controls
 

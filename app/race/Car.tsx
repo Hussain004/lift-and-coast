@@ -114,6 +114,7 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
 import { weatherGripForCompound } from "@/lib/physics/tireModel";
+import { createServeState, queuePenalty, servePrompt, stepServe } from "@/lib/race/penaltyServing";
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
@@ -437,6 +438,8 @@ export function Car({
   const inPitLaneRef = useRef(false);
   const flagStateRef = useRef(createFlagState(rivals.length));
   const pitBoxMetersRef = useRef<number | null>(null);
+  // Drive-through / stop-go waiting to be served in the pit lane.
+  const serveRef = useRef(createServeState());
   const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
   // penalties, the per-car flag state, and when the results go up.
@@ -567,6 +570,7 @@ export function Car({
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     (window as unknown as { __liftDamage?: React.RefObject<DamageState> }).__liftDamage = damageRef;
+    (window as unknown as { __liftServe?: React.RefObject<ReturnType<typeof createServeState>> }).__liftServe = serveRef;
   }, []);
   const damageGripsRef = useRef<number[]>([1, 1, 1, 1]);
   const damageDownforceRef = useRef(1);
@@ -1030,6 +1034,18 @@ export function Car({
       }
     }
     pitBoxMetersRef.current = laneNow.boxAheadMeters;
+    const served = stepServe(serveRef.current, {
+      inLane: laneNow.inLane,
+      inBox: laneNow.boxAheadMeters !== null && Math.abs(laneNow.boxAheadMeters) <= PIT_BOX_HALF_LENGTH,
+      speedMs: Math.hypot(body.linvel().x, body.linvel().z),
+      dt: world.timestep,
+    });
+    if (served) {
+      // Served in the lane: the up-front time charge is refunded.
+      effectiveRaceControlRef.current.state.penaltySeconds -= served.seconds;
+      raceElapsedSecondsRef.current -= served.seconds;
+      if (hudRef?.current) pushHudEvent(hudRef.current, "good", "PENALTY SERVED", served.kind === "stop-go" ? "STOP-GO" : "DRIVE-THROUGH", 3);
+    }
     if (hudRef && laneNow.inLane !== inPitLaneRef.current) {
       inPitLaneRef.current = laneNow.inLane;
       pushHudEvent(hudRef.current, "info", laneNow.inLane ? "PIT LANE · LIMITER 80 KM/H" : "PIT EXIT", undefined, 1.8);
@@ -1509,6 +1525,10 @@ export function Car({
       hud.hasPitLane = getPitLane(track) !== null;
       hud.pitProgress = strategy.pitProgress;
       hud.pitBoxMeters = pitBoxMetersRef.current;
+      hud.servePrompt = servePrompt(serveRef.current, {
+        inLane: inPitLaneRef.current,
+        inBox: pitBoxMetersRef.current !== null && Math.abs(pitBoxMetersRef.current) <= PIT_BOX_HALF_LENGTH,
+      });
       hud.damage = damageGripMultiplierRef.current;
       hud.damageParts.frontWing = damageRef.current.frontWing;
       hud.damageParts.rearWing = damageRef.current.rearWing;
@@ -1629,10 +1649,14 @@ export function Car({
       // decided, not a flat five seconds.
       const penaltySeconds = trackLimitSequenceRef.current.lastPenaltySeconds;
       const penaltyLabel = trackLimitPenaltyLabel(trackLimitSequenceRef.current.penaltyCount);
+      const severity = penaltySeconds > 10 ? "stop-go" : penaltySeconds > 5 ? "drive-through" : "time";
       effectiveRaceControlRef.current.reportIncident("track-limits", raceElapsedSecondsRef.current, {
         penaltySeconds,
-        severity: penaltySeconds > 10 ? "stop-go" : penaltySeconds > 5 ? "drive-through" : "time",
+        severity,
       });
+      // Where there is a pit lane the penalty can be served in it (refunding
+      // the charge above); street circuits keep the flat time cost.
+      if (severity !== "time" && getPitLane(track)) queuePenalty(serveRef.current, severity, penaltySeconds);
       if (!raceFinishedRef.current) {
         raceElapsedSecondsRef.current += penaltySeconds;
         if (hudRef?.current) pushHudEvent(hudRef.current, "penalty", penaltyLabel, "TRACK LIMITS", 3.2);

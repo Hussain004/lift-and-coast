@@ -112,6 +112,8 @@ export interface HudSnapshot {
   pitProgress: number;
   /** Metres to your box along the lane (negative once passed); null off the lane or on circuits without one. */
   pitBoxMeters: number | null;
+  /** Chip text while a drive-through/stop-go waits to be served, else "". */
+  servePrompt: string;
   /** 1 = undamaged. */
   damage: number;
   /** Health of each part, 1 = intact (see lib/physics/damage.ts); puncture = wheel index or -1. */
@@ -195,6 +197,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     hasPitLane: false,
     pitProgress: 0,
     pitBoxMeters: null,
+    servePrompt: "",
     damage: 1,
     damageParts: { frontWing: 1, rearWing: 1, floor: 1, puncture: -1 },
     damageRepairSeconds: 0,
@@ -301,6 +304,7 @@ export function compactTowerRows(count: number, playerIndex: number, rows = 5): 
 /** The pit prompt chip's text, or "" when there is nothing to say. */
 export function pitPrompt(hud: HudSnapshot): string {
   if (hud.pitPhase === "service") return `PIT STOP · ${Math.round(hud.pitProgress * 100)}%`;
+  if (hud.servePrompt) return hud.servePrompt;
   if (hud.inPitLane) {
     const box = hud.pitBoxMeters;
     if (hud.pitPhase === "requested" && box !== null) {
