@@ -21,6 +21,8 @@ const COMPOUND_LABELS: Record<TireCompoundId, string> = {
   soft: "SOFT",
   medium: "MEDIUM",
   hard: "HARD",
+  intermediate: "INTER",
+  wet: "WET",
 };
 
 function TelemetryInputs({ sample }: { sample: TelemetryFrame | undefined }) {
@@ -78,7 +80,7 @@ export function RaceOpsPanel({
   const speedTrace = snapshot.telemetry.slice(-80).map((sample) => Math.abs(sample.speedMs) / 100);
   const ersModes: EnergyMode[] = ["harvest", "balanced", "attack"];
   const strategyModes: StrategyMode[] = ["save", "balanced", "push"];
-  const compounds: TireCompoundId[] = ["soft", "medium", "hard"];
+  const compounds: TireCompoundId[] = ["soft", "medium", "hard", "intermediate", "wet"];
 
   return (
     <section className={styles.raceOpsPanel} aria-label="Race operations">

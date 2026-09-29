@@ -93,7 +93,10 @@ export function computeTireForces(inputs: TireForceInputs): TireForcesN {
   return { lateralForceN: rawLateralN * scale, longitudinalForceN: rawLongitudinalN * scale };
 }
 
-export type TireCompoundId = "soft" | "medium" | "hard";
+export type TireCompoundId = "soft" | "medium" | "hard" | "intermediate" | "wet";
+
+/** The three slicks; inters and wets only earn their keep on a wet track. */
+export const isSlick = (id: TireCompoundId): boolean => id === "soft" || id === "medium" || id === "hard";
 
 export interface TireCompound {
   id: TireCompoundId;
@@ -126,7 +129,36 @@ export const TIRE_COMPOUNDS: Record<TireCompoundId, TireCompound> = {
   soft: { id: "soft", degradationPerMeter: FULL_WEAR_FRACTION / (2 * 5891) },
   medium: { id: "medium", degradationPerMeter: FULL_WEAR_FRACTION / (5 * 5891) },
   hard: { id: "hard", degradationPerMeter: FULL_WEAR_FRACTION / (10 * 5891) },
+  // Grooved tyres shed heat and wear quickly, especially on a drying track.
+  intermediate: { id: "intermediate", degradationPerMeter: FULL_WEAR_FRACTION / (4 * 5891) },
+  wet: { id: "wet", degradationPerMeter: FULL_WEAR_FRACTION / (6 * 5891) },
 };
+
+/**
+ * Weather grip for the fitted compound - the wet-track term that replaces
+ * WeatherState.gripMultiplier for the player. Slicks keep the weather's own
+ * curve untouched (that is the validated one, and the AI still uses it).
+ * Inters peak on a damp track (wetness ~0.35-0.65) and wets on a soaked
+ * one; on a dry track both overheat and lose grip. Every value is <= 1, so
+ * this composes below the friction safety cap exactly like the weather term
+ * it replaces - a wet tyre in the wet only ever loses LESS than a slick.
+ */
+export function weatherGripForCompound(
+  id: TireCompoundId,
+  weather: { wetness: number; rainIntensity: number; gripMultiplier: number }
+): number {
+  const wetness = Math.min(1, Math.max(0, weather.wetness));
+  const rain = Math.min(1, Math.max(0, weather.rainIntensity));
+  if (id === "intermediate") {
+    const curve =
+      wetness < 0.35 ? 0.9 + 0.07 * (wetness / 0.35) : wetness < 0.65 ? 0.97 : 0.97 - 0.06 * ((wetness - 0.65) / 0.35);
+    return Math.min(1, curve - rain * 0.02);
+  }
+  if (id === "wet") {
+    return Math.min(1, 0.8 + 0.15 * Math.min(1, wetness / 0.7) - rain * 0.02);
+  }
+  return weather.gripMultiplier;
+}
 
 // Floor on how much grip degradation alone can take away - a compound run
 // well past its intended life should feel notably worse, never undrivable

@@ -5,6 +5,7 @@ import {
   computeCompoundGripMultiplier,
   computeTireForces,
   loadSensitivityScale,
+  weatherGripForCompound,
 } from "../lib/physics/tireModel";
 
 const NOMINAL_LOAD_N = 2000;
@@ -196,5 +197,32 @@ describe("computeCompoundGripMultiplier", () => {
       expect(computeCompoundGripMultiplier(compound, 0)).toBeLessThanOrEqual(1);
       expect(computeCompoundGripMultiplier(compound, 5891)).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe("wet-weather compounds", () => {
+  const w = (wetness: number, rain = wetness) => ({ wetness, rainIntensity: rain, gripMultiplier: Math.max(0.58, 1 - wetness * 0.32 - rain * 0.04) });
+
+  it("never exceed 1x grip anywhere on the wetness range", () => {
+    for (const id of ["soft", "medium", "hard", "intermediate", "wet"] as const) {
+      for (let t = 0; t <= 1.0001; t += 0.05) {
+        const g = weatherGripForCompound(id, w(t));
+        expect(g).toBeLessThanOrEqual(1);
+        expect(g).toBeGreaterThan(0.5);
+      }
+    }
+  });
+
+  it("slicks keep the weather curve; wets and inters beat them only when it is wet", () => {
+    expect(weatherGripForCompound("medium", w(0.5))).toBe(w(0.5).gripMultiplier);
+    expect(weatherGripForCompound("wet", w(0.82))).toBeGreaterThan(weatherGripForCompound("medium", w(0.82)));
+    expect(weatherGripForCompound("intermediate", w(0.5))).toBeGreaterThan(weatherGripForCompound("medium", w(0.5)));
+    expect(weatherGripForCompound("wet", w(0))).toBeLessThan(weatherGripForCompound("medium", w(0)));
+    expect(weatherGripForCompound("intermediate", w(0))).toBeLessThan(weatherGripForCompound("medium", w(0)));
+  });
+
+  it("inters are the best tyre on a damp track, wets on a soaked one", () => {
+    expect(weatherGripForCompound("intermediate", w(0.5, 0.3))).toBeGreaterThan(weatherGripForCompound("wet", w(0.5, 0.3)));
+    expect(weatherGripForCompound("wet", w(1))).toBeGreaterThan(weatherGripForCompound("intermediate", w(1)));
   });
 });

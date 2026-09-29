@@ -21,7 +21,13 @@ export const VISOR_COLOR = "#0b0e12";
 export const TIRE_COLOR = "#141414";
 export const RIM_COLOR = "#2b2d31";
 /** Sidewall stripe per compound, as painted on the real tyres. */
-export const COMPOUND_STRIPE_COLOR = { soft: "#e3322b", medium: "#f2c230", hard: "#f4f4f4" } as const;
+export const COMPOUND_STRIPE_COLOR = {
+  soft: "#e3322b",
+  medium: "#f2c230",
+  hard: "#f4f4f4",
+  intermediate: "#2fb24a",
+  wet: "#2f7fe0",
+} as const;
 export const HELMET_COLOR = "#f2f2f2";
 export const LIGHT_COLOR = "#ff2a2a";
 

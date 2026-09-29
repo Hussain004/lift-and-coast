@@ -100,6 +100,7 @@ import { createReplayController, REPLAY_CAPACITY_SECONDS, type SharedReplay, typ
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
+import { weatherGripForCompound } from "@/lib/physics/tireModel";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { DEFAULT_CAR_SETUP, setupDownforceScale, setupDragScale, type CarSetup } from "@/lib/physics/carSetup";
@@ -1053,6 +1054,8 @@ export function Car({
       strategyRef.current.setCompound(tireCompound.current);
     }
     const compoundGripMultiplier = strategyState.compoundGripMultiplier;
+    // Wet-track grip for the fitted compound (slicks: the weather's own curve).
+    const weatherGrip = weatherGripForCompound(strategyState.compound, weatherState);
     // Per-wheel surfaces (plan section 4 point 7 / section 5 depth feature 6),
     // replacing the old single chassis-center distanceFromEdgeMeters
     // approximation: each wheel is classified separately, so clipping an apex
@@ -1066,7 +1069,7 @@ export function Car({
     applyLoadSensitiveFriction(
       controller,
       aeroMode.current,
-      compoundGripMultiplier * weatherState.gripMultiplier,
+      compoundGripMultiplier * weatherGrip,
       wheelSurfaces.grips,
       damageGripMultiplierRef.current
     );
@@ -1089,9 +1092,7 @@ export function Car({
       const angvelNow = body.angvel();
       const speedNow = controller.currentVehicleSpeed();
       const effectiveGrip =
-        compoundGripMultiplier *
-        weatherState.gripMultiplier *
-        damageGripMultiplierRef.current;
+        compoundGripMultiplier * weatherGrip * damageGripMultiplierRef.current;
 
       // CAR_WHEELS order is front-left, front-right, rear-left, rear-right,
       // which is exactly WHEEL_ORDER's order.
@@ -1187,7 +1188,7 @@ export function Car({
         gear: gearboxRef.current.gear,
         rpm: rpmForGear(gearboxSpeedMs(gearboxRef.current, speedForOps), gearboxRef.current.gear),
         batteryFraction: energyStatus.batteryFraction,
-        tireGrip: strategyState.compoundGripMultiplier * weatherState.gripMultiplier,
+        tireGrip: strategyState.compoundGripMultiplier * weatherGrip,
         overtakeActive: overtakeState.active,
         weather: weatherLabel(weatherState.preset),
       } satisfies TelemetryFrame,
@@ -1382,7 +1383,7 @@ export function Car({
       hud.lowDrag = aeroMode.current === "low-drag";
       hud.overtakeActive = overtakeStateRef.current.active;
       hud.compound = strategy.compound;
-      hud.tyreGrip = strategy.compoundGripMultiplier * weatherStateRef.current.gripMultiplier;
+      hud.tyreGrip = strategy.compoundGripMultiplier * weatherGripForCompound(strategy.compound, weatherStateRef.current);
       hud.tyreTempC = strategy.tireTemperatureC;
       hud.tyreWear01 = tyreWear01(strategy.compound, strategy.tireAgeMeters);
       hud.fuelKg = strategy.fuelKg;

@@ -632,6 +632,14 @@
   border-color: var(--hard);
 }
 
+.mfdPage[data-compound="intermediate"] .compound {
+  border-color: #2fb24a;
+}
+
+.mfdPage[data-compound="wet"] .compound {
+  border-color: #2f7fe0;
+}
+
 .mfdGrid dl,
 .mfdList {
   display: grid;

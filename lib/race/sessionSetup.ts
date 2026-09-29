@@ -12,7 +12,7 @@ import {
   DEFAULT_DIFFICULTY,
   type AIDifficulty,
 } from "../ai/personalities";
-import { isWeatherPreset, type WeatherPreset } from "../physics/weather";
+import { isWeatherSetting, type WeatherSetting } from "../physics/weatherForecast";
 
 export const MIN_RACE_LAPS = 1;
 export const MAX_RACE_LAPS = 20;
@@ -129,7 +129,7 @@ export interface RaceUrlParams {
   team?: string;
   driver?: string;
   tod?: TimeOfDay;
-  weather?: WeatherPreset;
+  weather?: WeatherSetting;
   champ?: number | null;
   grid?: number | null;
   qformat?: QualifyingFormat;
@@ -259,7 +259,7 @@ export interface SessionSetupPrefs {
   raceLaps: number;
   trackId: string;
   timeOfDay: TimeOfDay;
-  weather: WeatherPreset;
+  weather: WeatherSetting;
   rivals: number;
   difficulty: AIDifficulty;
   /**
@@ -293,8 +293,8 @@ function clampTimeOfDay(raw: unknown): TimeOfDay {
   return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
 }
 
-function clampWeather(raw: unknown): WeatherPreset {
-  return isWeatherPreset(raw) ? raw : "clear";
+function clampWeather(raw: unknown): WeatherSetting {
+  return isWeatherSetting(raw) ? raw : "clear";
 }
 
 function clampDifficulty(raw: unknown): AIDifficulty {

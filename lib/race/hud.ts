@@ -113,6 +113,9 @@ export interface HudSnapshot {
   pad: boolean;
   racingLine: boolean;
   weather: WeatherPreset;
+  /** Changeable weather: seconds to the next scripted change and what it brings. */
+  forecastInSeconds: number | null;
+  forecastTo: WeatherPreset | null;
   trackTempC: number;
   // Timing
   sessionMode: SessionMode;
@@ -177,6 +180,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pad: false,
     racingLine: true,
     weather: "clear",
+    forecastInSeconds: null,
+    forecastTo: null,
     trackTempC: 30,
     sessionMode,
     timeAttack: false,

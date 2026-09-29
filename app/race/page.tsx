@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsClient } from "../useIsClient";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -10,7 +10,7 @@ import { getTrack } from "@/lib/tracks/trackData";
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { buildMinimapPath, computeFullMapTransform } from "@/lib/tracks/minimap";
 import type { TrackData } from "@/lib/tracks/types";
-import { parseWeatherPreset } from "@/lib/physics/weather";
+import { createWeatherPlan, parseWeatherSetting } from "@/lib/physics/weatherForecast";
 import type { TelemetrySample } from "@/lib/race/telemetry";
 import type { RaceOpsCommand, RaceOpsSnapshot } from "@/lib/race/raceOps";
 import { parseRaceLaps, parseTimeOfDay, parseSessionMode, parseQualifyingFormat, parseTimeAttack, parseGridSpot, parseRivals, parseDifficulty, parseSeed, parseCarSetup, MAX_FIELD_SIZE, type SessionMode } from "@/lib/race/sessionSetup";
@@ -311,7 +311,13 @@ function RaceContent() {
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
-  const weatherPreset = parseWeatherPreset(searchParams.get("weather"));
+  const weatherSetting = parseWeatherSetting(searchParams.get("weather"));
+  // Changeable weather: a seeded rain timeline (see lib/physics/weatherForecast.ts).
+  const weatherPlan = useMemo(
+    () => (weatherSetting === "changeable" ? createWeatherPlan(fieldSeed) : null),
+    [weatherSetting, fieldSeed]
+  );
+  const weatherPreset = weatherPlan ? weatherPlan.start : weatherSetting === "changeable" ? "clear" : weatherSetting;
   // One shared mutable HUD snapshot (see lib/race/hud.ts): Car writes it,
   // the widgets in ./hud draw it. Recreated on restart, so a fresh grid never
   // inherits the last session's result or banners.
@@ -423,7 +429,7 @@ function RaceContent() {
   // identities, hidden reference times). Keep those inputs in the remount
   // key so a same-sized client navigation cannot reuse stale classification.
   const rosterKey = `${driver.code}/${driver.name}/${team.id}/${rivals.map((rival) => rival.code).join(",")}`;
-  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherPreset}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}-r${restartCount}`;
+  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherSetting}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}-r${restartCount}`;
   const sceneReady = readySceneKey === sceneKey;
   const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
   const sessionLabel =
@@ -470,6 +476,7 @@ function RaceContent() {
           onPauseToggle={singlePlayer ? toggleMenu : undefined}
           onReady={handleSceneReady}
           weatherPreset={weatherPreset}
+          weatherPlan={weatherPlan}
           raceCommandsRef={raceCommandsRef}
           raceOpsSnapshotRef={raceOpsSnapshotRef}
           telemetryRef={telemetryOpen ? telemetryRef : undefined}

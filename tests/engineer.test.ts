@@ -71,4 +71,20 @@ describe("race engineer", () => {
     expect(engineerStep(state, hud, 0.25)).toEqual(["P2, that's a podium! Great job."]);
     expect(engineerStep(state, hud, 0.25)).toEqual([]);
   });
+
+  it("warns of forecast rain once early and once when it is close, and knows what tyre you are on", () => {
+    const { hud, state } = running();
+    hud.forecastTo = "rain";
+    hud.forecastInSeconds = 100;
+    expect(engineerStep(state, hud, 0.25)).toEqual(["Rain is forecast in about 100 seconds. Think about inters."]);
+    expect(engineerStep(state, hud, 0.25)).toEqual([]);
+    hud.forecastInSeconds = 20;
+    expect(engineerStep(state, hud, 0.25)).toEqual(["Rain is very close now. Inters are the safe call."]);
+    hud.weather = "rain";
+    expect(engineerStep(state, hud, 0.25)).toEqual(["Rain is here. Grip is way down. Fit inters, press 4."]);
+    hud.weather = "clear";
+    hud.compound = "intermediate";
+    hud.forecastTo = null;
+    expect(engineerStep(state, hud, 0.25)).toEqual(["Rain has stopped. The track will dry, slicks soon."]);
+  });
 });

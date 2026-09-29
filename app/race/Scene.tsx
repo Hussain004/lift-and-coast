@@ -68,6 +68,7 @@ import { SkyDome } from "./Sky";
 import { asphaltTexture, grassTexture, gravelTexture, planarUvs } from "@/lib/render/textures";
 import { runoffKindForTrack } from "@/lib/tracks/environment";
 import { createWeatherSystem, type WeatherPreset } from "@/lib/physics/weather";
+import { nextWeatherChange, planPresetAt, type WeatherPlan } from "@/lib/physics/weatherForecast";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
@@ -241,6 +242,34 @@ function RaceOpsTicker({ weatherRef }: { weatherRef: React.RefObject<WeatherHand
   const { world } = useRapier();
   useBeforePhysicsStep(() => {
     weatherRef.current?.update(world.timestep);
+  });
+  return null;
+}
+
+/**
+ * Changeable weather (see lib/physics/weatherForecast.ts): steers the weather
+ * system toward the scripted preset on the physics clock and publishes the
+ * forecast for the HUD and the engineer. Renders nothing.
+ */
+function WeatherScheduler({
+  plan,
+  weatherRef,
+  hudRef,
+}: {
+  plan: WeatherPlan;
+  weatherRef: React.RefObject<WeatherHandle>;
+  hudRef: React.RefObject<HudSnapshot>;
+}) {
+  const { world } = useRapier();
+  const clockRef = useRef(0);
+  useBeforePhysicsStep(() => {
+    clockRef.current += world.timestep;
+    const t = clockRef.current;
+    const want = planPresetAt(plan, t);
+    if (weatherRef.current.state.preset !== want) weatherRef.current.setPreset(want);
+    const next = nextWeatherChange(plan, t);
+    hudRef.current.forecastInSeconds = next ? next.inSeconds : null;
+    hudRef.current.forecastTo = next ? next.preset : null;
   });
   return null;
 }
@@ -737,6 +766,7 @@ export function Scene({
   onPauseToggle,
   onReady,
   weatherPreset = "clear",
+  weatherPlan = null,
   raceCommandsRef,
   raceOpsSnapshotRef,
   telemetryRef,
@@ -774,6 +804,8 @@ export function Scene({
   paused?: boolean;
   onPauseToggle?: () => void;
   weatherPreset?: WeatherPreset;
+  /** Changeable weather: the scripted timeline (null = a fixed preset). */
+  weatherPlan?: WeatherPlan | null;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
   /** Live telemetry target for the player car (see lib/race/telemetry.ts).
@@ -919,10 +951,11 @@ export function Scene({
   const lighting = TIME_OF_DAY_LIGHTING[timeOfDay] ?? TIME_OF_DAY_LIGHTING.day;
   // Cloud cover for the sky dome (see Sky.tsx): the weather preset dominates,
   // with the overcast time-of-day adding a baseline ceiling of its own.
+  const skyPreset = weatherPlan ? "cloudy" : weatherPreset;
   const cloudCover =
-    weatherPreset === "rain"
+    skyPreset === "rain"
       ? 0.92
-      : weatherPreset === "cloudy"
+      : skyPreset === "cloudy"
         ? timeOfDay === "overcast"
           ? 0.95
           : 0.62
@@ -994,6 +1027,7 @@ export function Scene({
       <PauseInput enabled={netRole === null} onToggle={onPauseToggle} />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} paused={paused}>
         <RaceOpsTicker weatherRef={weatherRef} />
+        {weatherPlan && <WeatherScheduler plan={weatherPlan} weatherRef={weatherRef} hudRef={hudRef} />}
         <Ground track={track} />
         <Track
           track={track}

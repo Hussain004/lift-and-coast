@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { HudSnapshot } from "@/lib/race/hud";
+import { forecastLabel } from "@/lib/physics/weatherForecast";
 import { useHudFrame } from "./useHudFrame";
 import styles from "./hud.module.css";
 
@@ -12,7 +13,7 @@ const LED_START = 0.5;
 const PAGES = ["TYRES", "ENERGY", "CAR", "WEATHER"] as const;
 type Page = (typeof PAGES)[number];
 
-const COMPOUND_LETTER = { soft: "S", medium: "M", hard: "H" } as const;
+const COMPOUND_LETTER = { soft: "S", medium: "M", hard: "H", intermediate: "I", wet: "W" } as const;
 
 function pct(v: number): string {
   return `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
@@ -98,6 +99,7 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
     } else {
       set("weather", hud.weather.toUpperCase());
       set("track", `${Math.round(hud.trackTempC)}°C`);
+      set("forecast", forecastLabel(hud.forecastInSeconds === null || !hud.forecastTo ? null : { inSeconds: hud.forecastInSeconds, preset: hud.forecastTo }) ?? "STABLE");
     }
   });
 
@@ -182,6 +184,7 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
           <dl className={styles.mfdList}>
             <div><dt>CONDITIONS</dt><dd data-k="weather" /></div>
             <div><dt>TRACK</dt><dd data-k="track" /></div>
+            <div><dt>FORECAST</dt><dd data-k="forecast" /></div>
           </dl>
         )}
       </div>

@@ -156,9 +156,29 @@ export function engineerStep(state: EngineerState, hud: HudSnapshot, dt: number)
   if (hud.trackLimitText.includes("2/3") && can("limits", 60)) {
     out.push("Careful with track limits. One more and it's a flag.");
   }
+  if (race || hud.sessionMode === "practice") {
+    if (hud.forecastTo === "rain" && hud.forecastInSeconds !== null) {
+      if (hud.forecastInSeconds < 110 && once("rain-soon")) {
+        const s = Math.round(hud.forecastInSeconds / 10) * 10;
+        out.push(`Rain is forecast in about ${s} seconds. Think about inters.`);
+      } else if (hud.forecastInSeconds < 35 && once("rain-imminent")) {
+        out.push("Rain is very close now. Inters are the safe call.");
+      }
+    }
+  }
   if (hud.weather !== state.lastWeather) {
-    if (hud.weather === "rain") out.push("Rain is here. Grip is way down, be gentle on the throttle.");
-    else if (state.lastWeather === "rain") out.push("Rain has stopped. The track will come back to you.");
+    const slicks = hud.compound === "soft" || hud.compound === "medium" || hud.compound === "hard";
+    if (hud.weather === "rain") {
+      out.push(
+        slicks
+          ? "Rain is here. Grip is way down. Fit inters, press 4."
+          : "Rain is here. You're on the right tyre, keep it tidy."
+      );
+    } else if (state.lastWeather === "rain") {
+      out.push(
+        slicks ? "Rain has stopped. The track will come back to you." : "Rain has stopped. The track will dry, slicks soon."
+      );
+    }
     state.lastWeather = hud.weather;
   }
   if (hud.clockSeconds !== null && hud.clockSeconds < 60 && hud.clockSeconds > 1 && once(`clock-${hud.phase}`)) {

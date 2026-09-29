@@ -37,7 +37,7 @@ import {
 import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
-import type { WeatherPreset } from "@/lib/physics/weather";
+import type { WeatherSetting } from "@/lib/physics/weatherForecast";
 import { GraphicsSetting } from "./GraphicsSetting";
 import styles from "./sessionSetup.module.css";
 
@@ -47,10 +47,11 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "overcast", label: "Overcast" },
 ];
 
-const WEATHER_OPTIONS: { id: WeatherPreset; label: string }[] = [
+const WEATHER_OPTIONS: { id: WeatherSetting; label: string }[] = [
   { id: "clear", label: "Clear" },
   { id: "cloudy", label: "Cloudy" },
   { id: "rain", label: "Rain" },
+  { id: "changeable", label: "Changeable" },
 ];
 
 const SESSION_MODES: { id: SessionMode; label: string }[] = [
@@ -81,7 +82,7 @@ export function SessionSetup() {
   const [difficulty, setDifficulty] = useState<AIDifficulty>(initial.difficulty);
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
-  const [weather, setWeather] = useState<WeatherPreset>(initial.weather);
+  const [weather, setWeather] = useState<WeatherSetting>(initial.weather);
   // Car build (see lib/physics/carSetup.ts). The player's car only - the AI
   // runs the neutral default, which is what every stability gate measured.
   const [carSetup, setCarSetup] = useState<CarSetup>(() =>
@@ -121,7 +122,7 @@ export function SessionSetup() {
     laps: number,
     id: string,
     tod: TimeOfDay,
-    weatherPreset: WeatherPreset = weather,
+    weatherPreset: WeatherSetting = weather,
     rivalCount: number = rivals,
     diff: AIDifficulty = difficulty,
     setup: CarSetup = carSetup
