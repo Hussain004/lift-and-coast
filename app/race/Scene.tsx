@@ -71,7 +71,7 @@ import { createWeatherSystem, type WeatherPreset } from "@/lib/physics/weather";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
-import { createFxBus, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
+import { createFxBus, RainLightDriver, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -1147,6 +1147,7 @@ export function Scene({
         <>
           <Sparks audioRef={audioRef} />
           <Spray audioRef={audioRef} weatherRef={weatherRef} />
+          <RainLightDriver weatherRef={weatherRef} />
           <SkidMarks fxRef={fxRef} />
         </>
       )}

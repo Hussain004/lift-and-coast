@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import type { AudioCarSnapshot, AudioSnapshot } from "@/lib/audio/raceAudio";
 import type { WeatherHandle } from "@/lib/race/raceOps";
+import { rainLightMaterial } from "./CarBodyMesh";
 
 /**
  * Per-frame effects that make the circuit feel alive, all bounded, all one
@@ -199,7 +200,7 @@ export function Spray({
   weatherRef: React.RefObject<WeatherHandle>;
 }) {
   const pool = useMemo(
-    () => createParticlePool({ capacity: 900, size: 2.0, color: [0.2, 0.21, 0.22], gravity: 1.0, drag: 2.4, texture: dotTexture(false) }),
+    () => createParticlePool({ capacity: 900, size: 1.7, color: [0.13, 0.14, 0.15], gravity: 1.0, drag: 2.4, texture: dotTexture(false) }),
     []
   );
   useFrame((_, rawDt) => {
@@ -235,6 +236,15 @@ export function Spray({
     stepParticles(pool, dt);
   });
   return <points geometry={pool.geometry} material={pool.material} frustumCulled={false} renderOrder={4} />;
+}
+
+/** Flashes every car's rear rain light (CarBodyMesh) while the track is wet. */
+export function RainLightDriver({ weatherRef }: { weatherRef: React.RefObject<WeatherHandle> }) {
+  useFrame((state) => {
+    const wet = weatherRef.current?.snapshot().wetness ?? 0;
+    rainLightMaterial.visible = wet > 0.25 && Math.floor(state.clock.elapsedTime * 4) % 2 === 0;
+  });
+  return null;
 }
 
 // ---------- skid marks ----------

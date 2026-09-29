@@ -79,6 +79,14 @@ function material(finish: Finish, options: { ghost: boolean; studio: boolean; ch
  * Car.tsx); without one the flap stays parked shut, which is what the AI,
  * the remote cars and the showroom want.
  */
+/**
+ * The rear rain light every car shows in the wet (the real rule). One shared
+ * material for the whole grid: TrackFx's RainLightDriver flashes it, so no
+ * car does any per-frame work. Hidden (invisible material) when dry.
+ */
+export const rainLightMaterial = new THREE.MeshBasicMaterial({ color: "#ff1414", toneMapped: false, visible: false });
+const rainLightGeometry = new THREE.BoxGeometry(0.18, 0.1, 0.03);
+
 export function CarBodyShell({
   bodyColor,
   accentColor,
@@ -108,6 +116,9 @@ export function CarBodyShell({
           castShadow={!ghost}
         />
       </group>
+      {!ghost && !studio && (
+        <mesh geometry={rainLightGeometry} material={rainLightMaterial} position={[0, 0.2, 2.06]} />
+      )}
     </>
   );
 }
