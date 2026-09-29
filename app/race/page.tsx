@@ -411,9 +411,9 @@ function RaceContent() {
         event.preventDefault();
         cycleHudSlot();
       }
-      // Digit 4, not a letter: every one of the 26 letters is already bound
-      // and 1-3 are the tyre compounds.
-      if (event.code === "Digit4") {
+      // Digit 0, not a letter: every one of the 26 letters is already bound
+      // and 1-4 and 6 are the tyre compounds (5 is reverse).
+      if (event.code === "Digit0") {
         event.preventDefault();
         toggleTelemetry();
       }

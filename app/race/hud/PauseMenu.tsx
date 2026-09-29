@@ -22,7 +22,7 @@ const FIXED_KEYS: [string, string][] = [
   [", / .", "Wheel display page"],
   ["1-4, 6", "Tyre: soft, medium, hard, inter, wet"],
   ["H", "Race Ops / telemetry panel"],
-  ["4", "Telemetry"],
+  ["0", "Telemetry"],
   ["N", "Mirrors (cockpit cams)"],
   ["M", "Mute"],
   ["K", "Graphics quality"],
