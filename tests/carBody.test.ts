@@ -92,11 +92,11 @@ describe("sculpted car", () => {
       }
       return false;
     };
-    for (const compound of ["soft", "medium", "hard"] as const) {
+    for (const compound of ["soft", "medium", "hard", "intermediate", "wet"] as const) {
       const wheel = buildWheelGeometry(COMPOUND_STRIPE_COLOR[compound]);
       expect(hasColor(wheel, COMPOUND_STRIPE_COLOR[compound])).toBe(true);
     }
-    expect(new Set(Object.values(COMPOUND_STRIPE_COLOR)).size).toBe(3);
+    expect(new Set(Object.values(COMPOUND_STRIPE_COLOR)).size).toBe(5);
   });
 
   it("builds a wheel on the physics radius with its axle along x", () => {
