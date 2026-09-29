@@ -159,7 +159,7 @@ To add a circuit, place its raw GeoJSON in `data/tracks/raw/`, add it to `script
 
 ## Deployment
 
-The project is ready for Vercel or any static Node host. The game runs client-side; the only optional server pieces are the public Time Trial leaderboard and accounts, which need `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (without them the game simply hides online features). Multiplayer rooms use PeerJS peer-to-peer connections. The race route loads circuit data in the browser, while the menu route stays light.
+The project is ready for Vercel or any static Node host. The game runs client-side; the only optional server pieces are the public Time Trial leaderboard and accounts, which need `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (without them the leaderboard simply stays empty and everything else works). Multiplayer rooms use PeerJS peer-to-peer connections. The race route loads circuit data in the browser, while the menu route stays light.
 
 ## Support
 
