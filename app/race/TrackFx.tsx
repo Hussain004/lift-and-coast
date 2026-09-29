@@ -154,7 +154,7 @@ const MAX_SPARKS_PER_FRAME = 48;
 
 export function Sparks({ audioRef }: { audioRef: React.RefObject<AudioSnapshot> }) {
   const pool = useMemo(
-    () => createParticlePool({ capacity: 600, size: 0.26, color: [1, 0.82, 0.42], gravity: 9, drag: 1.5, texture: dotTexture(true) }),
+    () => createParticlePool({ capacity: 400, size: 0.15, color: [0.75, 0.5, 0.22], gravity: 9, drag: 1.5, texture: dotTexture(true) }),
     []
   );
   useFrame((_, rawDt) => {
@@ -167,11 +167,11 @@ export function Sparks({ audioRef }: { audioRef: React.RefObject<AudioSnapshot> 
       // Bursts, not a stream: showers per second rise with speed and with
       // kerb contact (the floor bottoming out). A rate, not a per-frame
       // chance, so a 144Hz screen does not throw more sparks than a 60Hz one.
-      const perSecond = (speed >= SPARK_SPEED_MS ? 6 + ((speed - SPARK_SPEED_MS) / 40) * 24 : 0) + car.kerb01 * 30;
+      const perSecond = (speed >= SPARK_SPEED_MS ? 3 + ((speed - SPARK_SPEED_MS) / 40) * 12 : 0) + car.kerb01 * 18;
       if (Math.random() > 1 - Math.exp(-perSecond * dt)) return;
       const fx = -Math.sin(car.yawRad);
       const fz = -Math.cos(car.yawRad);
-      const n = 8 + Math.floor(Math.random() * 9);
+      const n = 3 + Math.floor(Math.random() * 4);
       for (let k = 0; k < n && budget > 0; k++, budget--) {
         const lateral = (Math.random() - 0.5) * 0.9;
         spawnParticle(
@@ -182,7 +182,7 @@ export function Sparks({ audioRef }: { audioRef: React.RefObject<AudioSnapshot> 
           car.vx * 0.82 + (Math.random() - 0.5) * 4,
           1.2 + Math.random() * 2.6,
           car.vz * 0.82 + (Math.random() - 0.5) * 4,
-          0.25 + Math.random() * 0.4
+          0.2 + Math.random() * 0.3
         );
       }
     });
