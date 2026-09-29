@@ -118,6 +118,9 @@ export interface HudSnapshot {
   damageParts: { frontWing: number; rearWing: number; floor: number; puncture: number };
   /** Extra pit-stop seconds the current damage would cost. */
   damageRepairSeconds: number;
+  /** While a flashback is being scrubbed: seconds rewound so far and how far back it can go (0 when idle). */
+  flashbackSeconds: number;
+  flashbackCapacity: number;
   /** Flashbacks left this session; null = unlimited. */
   flashbacksLeft: number | null;
   tc: boolean;
@@ -195,6 +198,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     damage: 1,
     damageParts: { frontWing: 1, rearWing: 1, floor: 1, puncture: -1 },
     damageRepairSeconds: 0,
+    flashbackSeconds: 0,
+    flashbackCapacity: 0,
     flashbacksLeft: null,
     tc: true,
     abs: true,

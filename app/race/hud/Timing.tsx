@@ -80,12 +80,22 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   const limitRef = useRef<HTMLDivElement>(null);
   const pitRef = useRef<HTMLDivElement>(null);
   const flagRef = useRef<HTMLDivElement>(null);
+  const flashRef = useRef<HTMLDivElement>(null);
+  const flashFillRef = useRef<HTMLDivElement>(null);
 
   useHudFrame((now) => {
     const hud = hudRef.current;
     if (limitRef.current) {
       limitRef.current.textContent = hud.trackLimitText;
       limitRef.current.dataset.on = hud.trackLimitText ? "1" : "0";
+    }
+    if (flashRef.current && flashFillRef.current) {
+      const on = hud.flashbackCapacity > 0;
+      flashRef.current.dataset.on = on ? "1" : "0";
+      if (on) {
+        flashFillRef.current.style.transform = `scaleX(${Math.min(1, hud.flashbackSeconds / hud.flashbackCapacity).toFixed(3)})`;
+        flashRef.current.dataset.label = `FLASHBACK  -${hud.flashbackSeconds.toFixed(1)} S`;
+      }
     }
     if (flagRef.current) {
       flagRef.current.textContent = hud.flagText;
@@ -112,6 +122,9 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   return (
     <div className={styles.notices} aria-live="polite">
       <div className={styles.limitChip} ref={limitRef} data-on="0" />
+      <div className={styles.flashback} ref={flashRef} data-on="0">
+        <div className={styles.flashbackFill} ref={flashFillRef} />
+      </div>
       <div className={styles.flagChip} ref={flagRef} data-on="0" />
       <div className={styles.pitChip} ref={pitRef} data-on="0" />
       {shown.map((e) => (

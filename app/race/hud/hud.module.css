@@ -1246,3 +1246,35 @@
 .hudHidden {
   display: none !important;
 }
+
+.flashback {
+  position: relative;
+  width: 320px;
+  height: 26px;
+  background: rgba(10, 12, 16, 0.85);
+  border-left: 4px solid #2f7fe0;
+  overflow: hidden;
+}
+
+.flashback[data-on="0"] {
+  display: none;
+}
+
+.flashback::after {
+  content: attr(data-label);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  color: #fff;
+}
+
+.flashbackFill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  background: rgba(47, 127, 224, 0.55);
+}

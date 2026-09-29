@@ -1510,6 +1510,8 @@ export function Car({
       hud.damageParts.puncture = damageRef.current.puncture;
       hud.damageRepairSeconds = damageRepairSeconds(damageRef.current);
       hud.flashbacksLeft = flashbacksLeftRef.current;
+      hud.flashbackSeconds = wasRewindingRef.current ? rewindCursorRef.current : 0;
+      hud.flashbackCapacity = wasRewindingRef.current ? rewindBufferRef.current.oldestAvailableSeconds() : 0;
       hud.tc = tractionControlEnabled.current;
       hud.abs = absEnabled.current;
       hud.autoGear = autoGear.current;

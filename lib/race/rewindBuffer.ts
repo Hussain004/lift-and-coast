@@ -16,7 +16,7 @@ export interface RewindSample {
 /** Length of the rewindable past, shared by the player and the AI so both
  * cars scrub the same timeline (see Scene.tsx's shared rewind flag) - one
  * constant, not two that can drift apart. */
-export const REWIND_CAPACITY_SECONDS = 5;
+export const REWIND_CAPACITY_SECONDS = 15;
 
 /**
  * Fixed-timestep ring buffer of recent physics states, for a "hold to
