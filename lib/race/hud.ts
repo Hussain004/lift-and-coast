@@ -157,6 +157,8 @@ export interface HudSnapshot {
   offTrack: boolean;
   /** Live track-limits state while all four wheels are off, "" otherwise. */
   trackLimitText: string;
+  /** Marshal flag in force for the player ("YELLOW ..." / "BLUE FLAG ..."), or "". */
+  flagText: string;
   chequered: boolean;
   // Messages and the end of the session
   events: HudEvent[];
@@ -224,6 +226,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     yaw: 0,
     offTrack: false,
     trackLimitText: "",
+    flagText: "",
     chequered: false,
     events: [],
     result: null,

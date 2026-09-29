@@ -94,6 +94,7 @@ import {
 } from "@/lib/race/trackLimitSequence";
 import { computeRacePositions, buildTowerEntries, towerOpponents, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, isQualifyingLapValid, type QualifyingTimes } from "@/lib/race/qualifying";
+import { createFlagState, flagChipText, stepFlags } from "@/lib/race/flags";
 import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
@@ -434,6 +435,7 @@ export function Car({
   const towerClockRef = useRef(0);
   const skidTravelRef = useRef(0);
   const inPitLaneRef = useRef(false);
+  const flagStateRef = useRef(createFlagState(rivals.length));
   const pitBoxMetersRef = useRef<number | null>(null);
   const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
@@ -1295,6 +1297,33 @@ export function Car({
    * crossing. The results go up a few seconds after the player takes the
    * flag - a short cool-down, the way a broadcast holds on the finish.
    */
+  function updateFlags(dt: number) {
+    const hud = hudRef?.current;
+    const race = raceRef?.current;
+    if (!hud || !race) return;
+    const status = stepFlags(
+      flagStateRef.current,
+      rivals,
+      race.player,
+      race.opponents,
+      track.lengthMeters,
+      dt,
+      raceClockRef.current
+    );
+    const text = flagChipText(status);
+    if (text !== hud.flagText) {
+      const was = hud.flagText;
+      hud.flagText = text;
+      if (status.yellow && !was.startsWith("YELLOW")) {
+        pushHudEvent(hud, "flag", "YELLOW FLAG", `${status.yellow.code} STOPPED AHEAD`, 2.6);
+      } else if (status.blue && !was.startsWith("BLUE")) {
+        pushHudEvent(hud, "flag", "BLUE FLAG", `LET ${status.blue.code} PASS`, 2.6);
+      } else if (!text && was.startsWith("YELLOW")) {
+        pushHudEvent(hud, "flag", "TRACK CLEAR", undefined, 1.6);
+      }
+    }
+  }
+
   function updateRaceFinish(playerLaps: number, dt: number) {
     const hud = hudRef?.current;
     const race = raceRef?.current;
@@ -1780,6 +1809,7 @@ export function Car({
 
     if (sessionMode === "race" && hudRef?.current && raceRef?.current && hudRef.current.result === null) {
       updateRaceFinish(lap.lapCount, dt);
+      updateFlags(dt);
     }
 
     const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);

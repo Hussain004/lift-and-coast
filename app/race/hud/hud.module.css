@@ -330,6 +330,25 @@
   display: none;
 }
 
+.flagChip {
+  padding: 6px 14px;
+  background: #f2c230;
+  color: #000;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.flagChip[data-kind="blue"] {
+  background: #2f7fe0;
+  color: #fff;
+}
+
+.flagChip[data-on="0"] {
+  display: none;
+}
+
 .pitChip {
   padding: 6px 14px;
   background: #1c6dd0;

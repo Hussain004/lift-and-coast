@@ -79,12 +79,18 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   const seenRef = useRef(0);
   const limitRef = useRef<HTMLDivElement>(null);
   const pitRef = useRef<HTMLDivElement>(null);
+  const flagRef = useRef<HTMLDivElement>(null);
 
   useHudFrame((now) => {
     const hud = hudRef.current;
     if (limitRef.current) {
       limitRef.current.textContent = hud.trackLimitText;
       limitRef.current.dataset.on = hud.trackLimitText ? "1" : "0";
+    }
+    if (flagRef.current) {
+      flagRef.current.textContent = hud.flagText;
+      flagRef.current.dataset.on = hud.flagText ? "1" : "0";
+      flagRef.current.dataset.kind = hud.flagText.startsWith("BLUE") ? "blue" : "yellow";
     }
     if (pitRef.current) {
       const text = pitPrompt(hud);
@@ -106,6 +112,7 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   return (
     <div className={styles.notices} aria-live="polite">
       <div className={styles.limitChip} ref={limitRef} data-on="0" />
+      <div className={styles.flagChip} ref={flagRef} data-on="0" />
       <div className={styles.pitChip} ref={pitRef} data-on="0" />
       {shown.map((e) => (
         <div key={e.id} className={styles.notice} data-kind={e.kind}>
