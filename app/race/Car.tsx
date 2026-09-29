@@ -114,6 +114,7 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
 import { weatherGripForCompound } from "@/lib/physics/tireModel";
+import { createWheelTemps, stepWheelTemps } from "@/lib/race/wheelTemps";
 import { createServeState, queuePenalty, servePrompt, stepServe } from "@/lib/race/penaltyServing";
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
@@ -440,6 +441,7 @@ export function Car({
   const pitBoxMetersRef = useRef<number | null>(null);
   // Drive-through / stop-go waiting to be served in the pit lane.
   const serveRef = useRef(createServeState());
+  const wheelTempsRef = useRef(createWheelTemps());
   const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
   // penalties, the per-car flag state, and when the results go up.
@@ -1515,6 +1517,13 @@ export function Car({
       hud.compound = strategy.compound;
       hud.tyreGrip = strategy.compoundGripMultiplier * weatherGripForCompound(strategy.compound, weatherStateRef.current);
       hud.tyreTempC = strategy.tireTemperatureC;
+      stepWheelTemps(wheelTempsRef.current, strategy.tireTemperatureC, {
+        latG: (Math.abs(controller.currentVehicleSpeed()) * body.angvel().y) / 9.81,
+        brake01: input.current.brake,
+        throttle01: input.current.throttle,
+        dt,
+      });
+      for (let i = 0; i < 4; i++) hud.wheelTempC[i] = wheelTempsRef.current[i];
       hud.tyreWear01 = tyreWear01(strategy.compound, strategy.tireAgeMeters);
       hud.fuelKg = strategy.fuelKg;
       hud.fuelWarning = strategy.fuelWarning;

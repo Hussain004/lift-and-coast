@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { simulateDrive } from "../lib/ai/harness";
 import { getTrack } from "../lib/tracks/trackData";
 import { TRACKS } from "../lib/tracks/registry";
@@ -7,6 +7,10 @@ import { buildTerrainGeometry } from "../lib/tracks/terrain";
 import { checkTrackLimits } from "../lib/tracks/trackLimits";
 import { sampleSurface } from "../lib/tracks/surfaces";
 import { barrierProfileForTrack, hasGravelTraps, runoffKindForTrack } from "../lib/tracks/environment";
+
+// Builds terrain for every circuit: ~5 s alone, but over the 20 s default when
+// the whole suite is competing for CPU.
+vi.setConfig({ testTimeout: 60000 });
 
 /**
  * The barrier line is the one piece of trackside geometry that is physical

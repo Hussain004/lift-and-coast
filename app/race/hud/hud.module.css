@@ -1282,3 +1282,27 @@
   transform-origin: left;
   background: rgba(47, 127, 224, 0.55);
 }
+
+/* Per-corner tyre temperatures: FL FR over RL RR, tinted against the mean. */
+.wheelTemps {
+  display: grid;
+  grid-template-columns: repeat(2, 34px);
+  gap: 3px;
+}
+
+.wheelTemps span {
+  padding: 3px 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.wheelTemps span[data-heat="hot"] {
+  background: rgba(225, 60, 40, 0.55);
+}
+
+.wheelTemps span[data-heat="cool"] {
+  background: rgba(60, 130, 225, 0.55);
+}

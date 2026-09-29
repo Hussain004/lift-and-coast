@@ -98,6 +98,8 @@ export interface HudSnapshot {
   /** Live tyre grip fraction (wear x temperature x weather). */
   tyreGrip: number;
   tyreTempC: number;
+  /** Estimated per-corner temperatures, FL FR RL RR (see wheelTemps.ts). */
+  wheelTempC: [number, number, number, number];
   /** 0 fresh .. 1 at the end of the compound's intended life. */
   tyreWear01: number;
   fuelKg: number;
@@ -187,6 +189,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     compound: "medium",
     tyreGrip: 1,
     tyreTempC: 24,
+    wheelTempC: [24, 24, 24, 24],
     tyreWear01: 0,
     fuelKg: 0,
     fuelWarning: false,

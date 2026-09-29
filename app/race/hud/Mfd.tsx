@@ -5,6 +5,7 @@ import type { HudSnapshot } from "@/lib/race/hud";
 import { flashbackLabel } from "@/lib/race/flashbacks";
 import { forecastLabel } from "@/lib/physics/weatherForecast";
 import { useHudFrame } from "./useHudFrame";
+import { wheelHeat } from "@/lib/race/wheelTemps";
 import styles from "./hud.module.css";
 
 const LEDS = 15;
@@ -83,6 +84,14 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
       set("wear", pct(hud.tyreWear01));
       set("temp", `${Math.round(hud.tyreTempC)}°C`);
       set("grip", pct(hud.tyreGrip));
+      // Tinted against the four-corner mean, so a tyre still warming up
+      // does not read as "cool" across the board.
+      const mean = hud.wheelTempC.reduce((a, b) => a + b, 0) / 4;
+      hud.wheelTempC.forEach((t, i) => {
+        set(`w${i}`, `${Math.round(t)}`);
+        const cell = el.querySelector<HTMLElement>(`[data-k="w${i}"]`);
+        if (cell) cell.dataset.heat = wheelHeat(t, mean);
+      });
     } else if (page === "ENERGY") {
       set("battery", pct(hud.ers01));
       set("budget", pct(hud.deployBudget01));
@@ -174,6 +183,11 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
               <div><dt>TEMP</dt><dd data-k="temp" /></div>
               <div><dt>GRIP</dt><dd data-k="grip" /></div>
             </dl>
+            <div className={styles.wheelTemps} aria-label="Tyre temperatures, front left, front right, rear left, rear right">
+              {[0, 1, 2, 3].map((i) => (
+                <span key={i} data-k={`w${i}`} />
+              ))}
+            </div>
           </div>
         )}
         {page === "ENERGY" && (
