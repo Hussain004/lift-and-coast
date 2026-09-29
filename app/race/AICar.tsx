@@ -600,10 +600,9 @@ export function AICar({
     const pitRun = pitRunRef.current;
     if (pitRun) {
       stepPitRun(pitRun.state, pitRun.path, world.timestep, pitRun.stopSeconds);
-      const entry = raceRef?.current?.opponents[aiIndex];
-      if (entry) {
-        entry.inPit = true;
-        entry.speedMs = pitRun.state.v;
+      if (raceRef?.current) {
+        const opponents = raceRef.current.opponents;
+        if (opponents[aiIndex]) opponents[aiIndex] = { ...opponents[aiIndex], inPit: true, speedMs: pitRun.state.v };
       }
       const pose = samplePath(pitRun.path, pitRun.state.s, pitPoseRef.current);
       const half = pose.yaw / 2;
