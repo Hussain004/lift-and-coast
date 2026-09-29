@@ -104,12 +104,15 @@ import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { DEFAULT_CAR_SETUP, setupDownforceScale, setupDragScale, type CarSetup } from "@/lib/physics/carSetup";
 import { F1CarBody } from "./F1CarBody";
+import type { FxBus } from "./TrackFx";
 import { HelmetCockpit, SteeringWheel } from "./CarBodyMesh";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { impactGain01, limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import { FLAP_OPEN_RAD, steeringWheelAngle, stepFlapAngle } from "@/lib/race/carBody";
 
 const SECTOR_COUNT = 3;
+/** Rear (driven) wheels, where skid marks are laid. */
+const REAR_WHEELS = CAR_WHEELS.flatMap((wheel, i) => (wheel.isSteering ? [] : [i]));
 
 function qualifyingColor(value: string | undefined): string {
   return value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#7d8795";
@@ -182,6 +185,7 @@ export function Car({
   racingLineVisibleRef,
   raceRef,
   hudRef,
+  fxRef,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
   sessionMode = "race",
@@ -245,6 +249,8 @@ export function Car({
   raceRef?: React.RefObject<RaceState>;
   /** The HUD's data (see lib/race/hud.ts): written here, drawn by app/race/hud/. */
   hudRef?: React.RefObject<HudSnapshot>;
+  /** Skid-mark stamps for TrackFx (Scene.tsx). */
+  fxRef?: React.RefObject<FxBus>;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /**
@@ -409,6 +415,8 @@ export function Car({
   // Tower repaint throttle: rows rebuild at a real ~10Hz. A frame counter
   // would run faster on a 144Hz display, so keep an elapsed-time clock.
   const towerClockRef = useRef(0);
+  const skidTravelRef = useRef(0);
+  const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
   // penalties, the per-car flag state, and when the results go up.
   const raceClockRef = useRef(0);
@@ -1053,6 +1061,7 @@ export function Car({
     // different car from four, which is the skill this exists to create.
     const wheelSurfaces = sampleWheelSurfaces(track, wheelGroundPositions(body));
     kerbContactRef.current = wheelSurfaces.kerbContactFraction;
+    wheelGripsRef.current = wheelSurfaces.grips;
     applyKerbRideHeights(controller, wheelSurfaces.rideHeights);
     applyLoadSensitiveFriction(
       controller,
@@ -1406,12 +1415,14 @@ export function Car({
         gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
         gearboxRef.current.gear
       );
+      const skid01 = skidAmount01(lateralMs, forwardMs);
       audioRef.current.player = {
         rpm01: rpmTo01(audioRpm),
         limiter01: limiterAmount(audioRpm),
         throttle01: Math.min(1, Math.max(0, input.current.throttle)),
-        skid01: skidAmount01(lateralMs, forwardMs),
+        skid01,
         x: p.x,
+        y: p.y,
         z: p.z,
         yawRad: yaw,
         vx: lv.x,
@@ -1420,6 +1431,31 @@ export function Car({
         kerb01: kerbContactRef.current,
         shiftSerial: shiftSerialRef.current,
       };
+      // Rubber on the road (see TrackFx.tsx): while the rear tyres slide or
+      // lock, lay a strip along the path they travelled since the last one.
+      if (fxRef) {
+        const speed = Math.hypot(lv.x, lv.z);
+        const locking = input.current.brake > 0.95 && !absEnabled.current && speed > 12;
+        if ((skid01 > 0.3 || locking) && speed > 4) {
+          skidTravelRef.current += speed * dt;
+          if (skidTravelRef.current >= 0.5) {
+            const len = skidTravelRef.current;
+            skidTravelRef.current = 0;
+            const heading = Math.atan2(-lv.x, -lv.z);
+            for (const w of REAR_WHEELS) {
+              // Tarmac only: rubber does not show on grass or gravel.
+              if ((wheelGripsRef.current[w] ?? 1) < 0.9 || !controller.wheelIsInContact(w)) continue;
+              const c = controller.wheelContactPoint(w);
+              if (!c) continue;
+              // Centred on the stretch just driven, not on where the tyre is now.
+              const back = len / 2 / speed;
+              fxRef.current.skids.push(c.x - lv.x * back, c.y, c.z - lv.z * back, heading, len);
+            }
+          }
+        } else {
+          skidTravelRef.current = 0;
+        }
+      }
     }
 
     if (isRewindingRef.current) return;

@@ -920,6 +920,7 @@ export function AICar({
         throttle01: Math.min(1, Math.max(0, c.throttle)),
         skid01: skidAmount01(lateralMs, forwardMs),
         x: pos.x,
+        y: pos.y,
         z: pos.z,
         yawRad: c.yaw,
         vx: c.lvx,

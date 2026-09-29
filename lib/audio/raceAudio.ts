@@ -24,6 +24,8 @@ export interface AudioCarSnapshot {
   skid01: number;
   x: number;
   z: number;
+  /** Chassis height, for effects placed at the car (sparks, spray). */
+  y?: number;
   yawRad: number;
   /** Planar velocity (Doppler, wind). */
   vx: number;

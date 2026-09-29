@@ -71,6 +71,7 @@ import { createWeatherSystem, type WeatherPreset } from "@/lib/physics/weather";
 import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle } from "@/lib/race/raceOps";
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
+import { createFxBus, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
 
 // Grid start (plan section 7): counts down on screen, then flips
 // raceStartRef so Car.tsx/AICar.tsx unlock throttle at the same instant -
@@ -897,6 +898,8 @@ export function Scene({
   // owns the R key, and every AI car scrubs its own past while it's held
   // so a flashback rewinds the whole world, not just the player's car.
   const sharedRewindActiveRef = useRef(false);
+  // Skid-mark stamps from the player's car to the effects layer (TrackFx).
+  const fxRef = useRef<FxBus>(createFxBus());
   // Instant replay clock (see Car.tsx's sharedReplayRef): the player's
   // replay writes it, every AI car follows it.
   const sharedReplayRef = useRef<SharedReplay>({ active: false, secondsBack: 0 });
@@ -1006,6 +1009,7 @@ export function Scene({
           racingLineVisibleRef={racingLineVisibleRef}
           touchInputRef={touchInputRef}
           hudRef={hudRef}
+          fxRef={fxRef}
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
@@ -1139,6 +1143,13 @@ export function Scene({
         audioRef={audioRef}
       />
       <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} cameraModeRef={cameraModeRef} />
+      {settings.effects && audioRef && (
+        <>
+          <Sparks audioRef={audioRef} />
+          <Spray audioRef={audioRef} weatherRef={weatherRef} />
+          <SkidMarks fxRef={fxRef} />
+        </>
+      )}
       <RaceStartCountdown
         raceStartRef={raceStartRef}
         countdownRef={countdownRef}

@@ -24,6 +24,8 @@ export interface QualitySettings {
   /** Fog end = draw distance: nothing past it is visible, so the camera's
    * far plane sits just behind it and the GPU clips the rest. */
   fogFar: number;
+  /** Sparks, rain spray and skid marks (see app/race/TrackFx.tsx). */
+  effects: boolean;
 }
 
 export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
@@ -36,6 +38,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     cheapMaterials: true,
     floraDensity: 0.45,
     fogFar: 190,
+    effects: false,
   },
   medium: {
     maxDpr: 1,
@@ -46,6 +49,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     cheapMaterials: false,
     floraDensity: 0.8,
     fogFar: 240,
+    effects: true,
   },
   high: {
     maxDpr: 1.75,
@@ -56,6 +60,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     cheapMaterials: false,
     floraDensity: 1,
     fogFar: 320,
+    effects: true,
   },
 };
 
