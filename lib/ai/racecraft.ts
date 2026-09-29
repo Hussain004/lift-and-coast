@@ -49,8 +49,24 @@ export const AI_LAUNCH_LATERAL_RATE_NARROW_MS = 0.3;
 /** Spa's long grid-to-turn transition also benefits from a gentler first
  * lateral blend, while the launch throttle and traffic gates stay unchanged. */
 export const AI_LAUNCH_LATERAL_RATE_SPA_MS = 0.6;
-const AI_LAUNCH_TRAFFIC_CLEARANCE_METERS = 24;
+/** A car in the same lane ahead closer than this blocks the launch floor.
+ * The grid is two staggered columns eight metres a row, so the next car in a
+ * column is sixteen metres ahead: the whole field launches together, and only
+ * a car that has been left close behind another one backs off. (At 24 m every
+ * car but pole waited on the one ahead, and the back rows started moving a
+ * second or more after lights out.) */
+const AI_LAUNCH_TRAFFIC_CLEARANCE_METERS = 12;
 /** A rolling launch is not a queue: leave a little room, but do not brake to a crawl. */
+/** For this long after lights out a grid-sized gap to a car that has not yet
+ * moved is not a reason to wait: every car launches at once, as on a real
+ * grid. Without it each row waited for the row ahead to get going, so the
+ * start rippled back through the field and the last cars moved a second or
+ * more after lights out. A car closer than the minimum gap (a stall, a shove)
+ * still counts, and after the grace everything is judged as before. */
+const LAUNCH_GRACE_SECONDS = 0.5;
+const LAUNCH_GRACE_MIN_GAP_METERS = 7;
+/** ...and only while this car has barely moved, so a stalled car ahead is still seen in time. */
+const LAUNCH_GRACE_MAX_OWN_SPEED_MS = 3;
 const LAUNCH_FOLLOW_GAP_METERS = 8;
 const LAUNCH_FOLLOW_SPEED_FLOOR_MS = 16;
 const ATTACK_TIMEOUT_SECONDS = 10;
@@ -501,6 +517,11 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
 
   const find = (key: string | null): FieldCarView | undefined =>
     key === null ? undefined : cars.find((car) => car.key === key);
+  const launchGrace = (car: FieldCarView): boolean =>
+    state.raceSeconds < LAUNCH_GRACE_SECONDS &&
+    own < LAUNCH_GRACE_MAX_OWN_SPEED_MS &&
+    car.speedMs < 3 &&
+    car.gapMeters > LAUNCH_GRACE_MIN_GAP_METERS;
   const inLaneOf = (car: FieldCarView, lateral: number): boolean =>
     car.lateralMeters === null || Math.abs(car.lateralMeters - lateral) < LANE_HALF_WIDTH_METERS;
 
@@ -573,6 +594,7 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   for (const car of cars) {
     if (car.lateralMeters === null) continue;
     if (car.gapMeters < -2 || car.gapMeters > avoidRange) continue;
+    if (launchGrace(car)) continue;
     const slow =
       (own > 6 && car.speedMs < Math.max(3, own * 0.4)) ||
       ((own > 2 || state.raceSeconds > 1) && car.speedMs < 1 && car.gapMeters < 30);
@@ -798,6 +820,7 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   const lane = state.offset;
   for (const car of cars) {
     if (car.gapMeters <= 0 || car.gapMeters > FOLLOW_SCAN_METERS) continue;
+    if (launchGrace(car)) continue;
     // The lane being moved into counts for moving cars; a stationary one
     // there is the avoidance's job (it already aims round it).
     if (!inLaneOf(car, ownLat) && !(car.speedMs >= 1 && inLaneOf(car, lane))) continue;
@@ -884,7 +907,10 @@ export function stepRacecraft(state: RacecraftState, input: RacecraftInput): Rac
   // grid neighbour opts out entirely: full launch power there would turn a
   // normal standing-start queue into a contact event.
   const launchTrafficClear = cars.every(
-    (car) => car.gapMeters < -OVERLAP_METERS || car.gapMeters > AI_LAUNCH_TRAFFIC_CLEARANCE_METERS
+    (car) =>
+      car.gapMeters < -OVERLAP_METERS ||
+      car.gapMeters > AI_LAUNCH_TRAFFIC_CLEARANCE_METERS ||
+      !inLaneOf(car, ownLat)
   );
   const launchThrottleFloor =
     state.raceSeconds < AI_LAUNCH_THROTTLE_SECONDS &&

@@ -273,9 +273,13 @@
 .timingBest {
   grid-column: 1;
   justify-self: end;
-  color: var(--muted);
-  font-size: 11px;
+  padding: 3px 10px;
+  background: rgba(10, 12, 16, 0.78);
+  color: #e6e9ef;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 1px;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
 }
 
 .delta {

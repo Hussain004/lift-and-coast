@@ -66,7 +66,7 @@ Track limits follow the FIA ladder: three warnings, then a black-and-white flag,
 
 Circuits with room for one get a drivable pit lane. Press `O` to request a stop, peel off into the lane before the start line (the limiter holds 80 km/h), and stop in the green box: the crew changes tyres, refuels and repairs any damage (a broken front wing adds time). Street circuits with no room keep the old marked service window. Tyres are `1` soft, `2` medium, `3` hard, `4` intermediate, `6` wet; inters peak on a damp track and wets on a soaked one, and both overheat on a dry track. Choose **Changeable** weather in session setup for a seeded rain window announced on the MFD weather page and by the engineer.
 
-Flashbacks are limited in a race by AI level (Rookie unlimited, Club 5, Pro 3, Ace 1). Damage can be Off, Reduced or Simulation in Settings.
+Flashbacks are unlimited (hold `R`, up to 15 seconds back, with a scrub bar). Damage can be Off, Reduced or Simulation in Settings.
 
 In races of five laps or more each AI car makes one stop around half distance: it leaves the racing line for the lane, parks in its own box for a few seconds, and rejoins with a small pace bonus for fresh tyres (the AI's on-track driving is untouched; the lane run is scripted). Drive-through and stop-go penalties are still served as a flat time cost rather than through the lane.
 

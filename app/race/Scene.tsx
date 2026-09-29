@@ -902,6 +902,11 @@ export function Scene({
 }) {
   const chassisRef = useRef<RapierRigidBody>(null);
   const raceRef = useRef<RaceState>(createRaceState(rivals.length));
+  // Dev builds only: the live field on window for headless checks (see page.tsx's __liftHud).
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __raceState?: React.RefObject<RaceState> }).__raceState = raceRef;
+  }, []);
   const weatherRef = useRef<WeatherHandle>(createWeatherSystem(weatherPreset));
   const raceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
   const raceStartRef = useRef(false);
