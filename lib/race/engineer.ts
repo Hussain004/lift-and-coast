@@ -149,7 +149,19 @@ export function engineerStep(state: EngineerState, hud: HudSnapshot, dt: number)
     out.push("Fuel is critical. Lift and coast into the braking zones.");
   }
   if (hud.damage < state.lastDamage - 0.04) {
-    if (can("damage", 15)) out.push(`We've got damage. About ${Math.round((1 - hud.damage) * 100)} percent grip gone.`);
+    if (can("damage", 15)) {
+      const parts = hud.damageParts;
+      const worst = (
+        [
+          ["front wing", parts.frontWing],
+          ["rear wing", parts.rearWing],
+          ["floor", parts.floor],
+        ] as const
+      ).reduce((a, b) => (b[1] < a[1] ? b : a));
+      out.push(
+        `Damage to the ${worst[0]}. About ${Math.round((1 - hud.damage) * 100)} percent grip gone, we can fix it at a stop.`
+      );
+    }
   }
   state.lastDamage = hud.damage;
 

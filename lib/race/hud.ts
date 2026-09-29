@@ -114,6 +114,10 @@ export interface HudSnapshot {
   pitBoxMeters: number | null;
   /** 1 = undamaged. */
   damage: number;
+  /** Health of each part, 1 = intact (see lib/physics/damage.ts); puncture = wheel index or -1. */
+  damageParts: { frontWing: number; rearWing: number; floor: number; puncture: number };
+  /** Extra pit-stop seconds the current damage would cost. */
+  damageRepairSeconds: number;
   /** Flashbacks left this session; null = unlimited. */
   flashbacksLeft: number | null;
   tc: boolean;
@@ -187,6 +191,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pitProgress: 0,
     pitBoxMeters: null,
     damage: 1,
+    damageParts: { frontWing: 1, rearWing: 1, floor: 1, puncture: -1 },
+    damageRepairSeconds: 0,
     flashbacksLeft: null,
     tc: true,
     abs: true,

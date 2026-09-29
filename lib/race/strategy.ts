@@ -49,6 +49,8 @@ export interface StrategyUpdate {
   trackHalfWidthMeters?: number;
   /** On circuits with a drivable pit lane: is the car stopped-capable inside its box? Overrides the virtual window. */
   inPitBox?: boolean;
+  /** Extra service time to repair damage (damage.ts damageRepairSeconds), locked in when the stop starts. */
+  repairSeconds?: number;
   airTemperatureC?: number;
   trackTemperatureC?: number;
 }
@@ -112,6 +114,8 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     compoundGripMultiplier: 1,
     fuelWarning: false,
   };
+
+  let serviceSeconds = PIT_SERVICE_SECONDS;
 
   function recalculate() {
     const wearGrip = computeCompoundGripMultiplier(TIRE_COMPOUNDS[state.compound], state.tireAgeMeters);
@@ -208,9 +212,10 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     if (state.pitPhase === "requested" && state.pitWindow && speed < 1.5) {
       state.pitPhase = "service";
       state.pitProgress = 0;
+      serviceSeconds = PIT_SERVICE_SECONDS + Math.max(0, input.repairSeconds ?? 0);
     }
     if (state.pitPhase === "service") {
-      state.pitProgress = clamp(state.pitProgress + dt / PIT_SERVICE_SECONDS, 0, 1);
+      state.pitProgress = clamp(state.pitProgress + dt / serviceSeconds, 0, 1);
       if (state.pitProgress >= 1) {
         state.pitPhase = "none";
         state.pitProgress = 0;

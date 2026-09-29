@@ -1,3 +1,4 @@
+import type { DamageState } from "../physics/damage";
 import type { RapierRigidBody } from "@react-three/rapier";
 
 export interface RewindSample {
@@ -8,6 +9,8 @@ export interface RewindSample {
   /** The car's damage grip multiplier at this instant (player only), so a
    * flashback to before a hit also undoes the damage from it. */
   damage?: number;
+  /** The per-part damage at this instant (player only). */
+  damageParts?: DamageState;
 }
 
 /** Length of the rewindable past, shared by the player and the AI so both

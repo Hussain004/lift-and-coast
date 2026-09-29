@@ -349,18 +349,17 @@ export function applyLoadSensitiveFriction(
   aeroMode: AeroMode = "high-downforce",
   compoundGripMultiplier: number = 1,
   surfaceGripMultiplier: number | readonly number[] = 1,
-  damageGripMultiplier: number = 1
+  damageGripMultiplier: number | readonly number[] = 1
 ) {
-  const sharedGripScale =
-    aeroGripMultiplier(aeroMode) *
-    compoundGripMultiplier *
-    damageGripMultiplier;
+  const sharedGripScale = aeroGripMultiplier(aeroMode) * compoundGripMultiplier;
   for (let i = 0; i < CAR_WHEELS.length; i++) {
     const surfaceScale =
       typeof surfaceGripMultiplier === "number"
         ? surfaceGripMultiplier
         : (surfaceGripMultiplier[i] ?? 1);
-    const gripScale = sharedGripScale * surfaceScale;
+    const damageScale =
+      typeof damageGripMultiplier === "number" ? damageGripMultiplier : (damageGripMultiplier[i] ?? 1);
+    const gripScale = sharedGripScale * surfaceScale * damageScale;
     const loadN = controller.wheelSuspensionForce(i) ?? STATIC_WHEEL_LOAD_N;
     const scale = loadSensitivityScale(loadN, STATIC_WHEEL_LOAD_N) * gripScale;
     controller.setWheelFrictionSlip(i, BASE_FRICTION_SLIP * scale);

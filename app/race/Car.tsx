@@ -48,7 +48,18 @@ import {
   SHIFT_UP_RPM,
   isReverse,
 } from "@/lib/physics/gearbox";
-import { applyImpactDamage } from "@/lib/physics/damage";
+import {
+  applyComponentDamage,
+  classifyHit,
+  copyDamageState,
+  createDamageState,
+  damageAggregate,
+  damageDownforceScale,
+  damageRepairSeconds,
+  damageWheelGrips,
+  type DamageState,
+} from "@/lib/physics/damage";
+import { loadDamageMode } from "@/lib/settings/damagePref";
 import {
   WHEEL_ORDER,
   emptyTelemetrySample,
@@ -546,6 +557,21 @@ export function Car({
   // state below: a new lap starting, or the off-track/world-edge teleport
   // reset snapping the car back to the start line.
   const damageGripMultiplierRef = useRef(1);
+  // Component damage (lib/physics/damage.ts): which parts are broken, the
+  // per-wheel grip and downforce that follow from them, and how many hits
+  // this session (it varies which wing a side hit clips).
+  const damageRef = useRef(createDamageState());
+  const damageGripsRef = useRef<number[]>([1, 1, 1, 1]);
+  const damageDownforceRef = useRef(1);
+  const hitCountRef = useRef(0);
+  const damageModeRef = useRef(loadDamageMode());
+  // Recomputes everything derived from the damage state; call after any change.
+  const setDamage = (next: DamageState) => {
+    if (next !== damageRef.current) copyDamageState(next, damageRef.current);
+    damageWheelGrips(damageRef.current, damageGripsRef.current);
+    damageDownforceRef.current = damageDownforceScale(damageRef.current);
+    damageGripMultiplierRef.current = damageAggregate(damageRef.current);
+  };
   useEffect(() => {
     let cancelled = false;
     loadPersonalBest(track.id)
@@ -907,7 +933,7 @@ export function Car({
       // start line would silently miss gate 0 and later register a
       // garbage split spanning the teleport (see sectorTimer.reset).
       sectorTimerRef.current.reset();
-      damageGripMultiplierRef.current = 1;
+      setDamage(createDamageState());
       resetTrackLimitSequence(trackLimitSequenceRef.current);
       return;
     }
@@ -929,7 +955,8 @@ export function Car({
     if (wasRewindingRef.current) {
       const sample = rewindBufferRef.current.resumeFrom(rewindCursorRef.current);
       if (sample) applySnapshot(body, sample, false);
-      if (sample?.damage !== undefined) damageGripMultiplierRef.current = sample.damage;
+      if (sample?.damageParts) setDamage(copyDamageState(sample.damageParts, createDamageState()));
+      else if (sample?.damage !== undefined) damageGripMultiplierRef.current = sample.damage;
       // The rewind can move the car across the finish-line projection. Prime
       // the detector from the restored pose so its old sample cannot cause a
       // duplicate or missed crossing on the next physics/render tick.
@@ -1047,6 +1074,7 @@ export function Car({
       trackLengthMeters: track.lengthMeters,
       lateralMeters: limitStatus.lateralMeters,
       trackHalfWidthMeters: track.width[0] / 2,
+      repairSeconds: damageRepairSeconds(damageRef.current),
       inPitBox: pitLane ? laneNow.boxAheadMeters !== null && Math.abs(laneNow.boxAheadMeters) <= PIT_BOX_HALF_LENGTH : undefined,
       lap: race?.player.lapCount ?? 0,
       racing: raceStarted,
@@ -1069,7 +1097,7 @@ export function Car({
     // Damage persists until a pit crew fixes it - a completed service (the
     // stop counter ticking over) is the repair, not crossing the line.
     if (strategyState.pitStops > strategyStateRef.current.pitStops) {
-      damageGripMultiplierRef.current = 1;
+      setDamage(createDamageState());
     }
     strategyStateRef.current = strategyState;
     overtakeStateRef.current = overtakeState;
@@ -1121,7 +1149,7 @@ export function Car({
       aeroMode.current,
       compoundGripMultiplier * weatherGrip,
       wheelSurfaces.grips,
-      damageGripMultiplierRef.current
+      damageGripsRef.current
     );
 
     // Live telemetry for the engineer overlay (see lib/race/telemetry.ts).
@@ -1192,11 +1220,8 @@ export function Car({
     controller.updateVehicle(world.timestep);
 
     applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
-    const downforceN = computeDownforceN(
-      controller.currentVehicleSpeed(),
-      aeroMode.current,
-      setupDown
-    );
+    const downforceN =
+      computeDownforceN(controller.currentVehicleSpeed(), aeroMode.current, setupDown) * damageDownforceRef.current;
     body.applyImpulse({ x: 0, y: -downforceN * world.timestep, z: 0 }, true);
     // Slipstream (see towDragScale): tucked in behind a rival, less drag.
     const towPos = body.translation();
@@ -1226,7 +1251,11 @@ export function Car({
     applySurfaceDragImpulse(body, wheelSurfaces.meanDragCoefficient, world.timestep);
 
     const replaySample = snapshotOf(body);
-    rewindBufferRef.current.push({ ...replaySample, damage: damageGripMultiplierRef.current });
+    rewindBufferRef.current.push({
+      ...replaySample,
+      damage: damageGripMultiplierRef.current,
+      damageParts: copyDamageState(damageRef.current, createDamageState()),
+    });
     replayRef.current.record({
       ...replaySample,
       telemetry: {
@@ -1446,6 +1475,11 @@ export function Car({
       hud.pitProgress = strategy.pitProgress;
       hud.pitBoxMeters = pitBoxMetersRef.current;
       hud.damage = damageGripMultiplierRef.current;
+      hud.damageParts.frontWing = damageRef.current.frontWing;
+      hud.damageParts.rearWing = damageRef.current.rearWing;
+      hud.damageParts.floor = damageRef.current.floor;
+      hud.damageParts.puncture = damageRef.current.puncture;
+      hud.damageRepairSeconds = damageRepairSeconds(damageRef.current);
       hud.flashbacksLeft = flashbacksLeftRef.current;
       hud.tc = tractionControlEnabled.current;
       hud.abs = absEnabled.current;
@@ -1915,10 +1949,18 @@ export function Car({
         angularDamping={ANGULAR_DAMPING}
         canSleep={false}
         onContactForce={(payload: ContactForcePayload) => {
-          damageGripMultiplierRef.current = applyImpactDamage(
-            damageGripMultiplierRef.current,
-            payload.totalForceMagnitude
-          );
+          const chassis = chassisRef.current;
+          if (chassis) {
+            const rot = chassis.rotation();
+            const yawNow = yawFromQuaternion(rot.x, rot.y, rot.z, rot.w);
+            const fx = -Math.sin(yawNow);
+            const fz = -Math.cos(yawNow);
+            const d = payload.maxForceDirection;
+            const zone = classifyHit({ forward: d.x * fx + d.z * fz, right: d.x * fz - d.z * fx, up: d.y });
+            if (applyComponentDamage(damageRef.current, zone, payload.totalForceMagnitude, damageModeRef.current, hitCountRef.current++)) {
+              setDamage(damageRef.current);
+            }
+          }
           // Thump for the race audio rig (see app/race/RaceAudioRig.tsx) -
           // same force scale as the damage model, so only chassis-scale hits
           // speak.

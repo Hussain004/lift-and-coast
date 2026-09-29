@@ -7,6 +7,7 @@ import { CameraSetting } from "../../CameraSetting";
 import { HapticsSetting } from "../../HapticsSetting";
 import { AudioSetting } from "../../AudioSetting";
 import { RacingLineSetting } from "../../RacingLineSetting";
+import { DamageSetting } from "../../DamageSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -33,6 +34,11 @@ export default function SettingsPage() {
           <h2 className={styles.cardTitle}>RACING LINE</h2>
           <p className={styles.cardNote}>The full line, or only where you need to lift or brake. L shows or hides it in a race.</p>
           <RacingLineSetting />
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>DAMAGE</h2>
+          <p className={styles.cardNote}>Front wing, rear wing and floor take hits and cost grip and downforce until you pit. Simulation adds punctures.</p>
+          <DamageSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>SOUND</h2>

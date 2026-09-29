@@ -1170,3 +1170,29 @@
 .pauseSubhead:first-of-type {
   margin-top: 0;
 }
+
+.damageMap {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  gap: 14px;
+}
+
+.damageMap svg {
+  width: 70px;
+  height: 112px;
+}
+
+.damageMap rect {
+  fill: #2a8f56;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.8;
+}
+
+.damageMap rect[data-state="warn"] {
+  fill: #e0a21a;
+}
+
+.damageMap rect[data-state="bad"] {
+  fill: #d63030;
+}

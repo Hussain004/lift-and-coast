@@ -11,7 +11,7 @@ const LEDS = 15;
 /** The shift lights start filling at this fraction of the rev range. */
 const LED_START = 0.5;
 
-const PAGES = ["TYRES", "ENERGY", "CAR", "WEATHER"] as const;
+const PAGES = ["TYRES", "ENERGY", "CAR", "DAMAGE", "WEATHER"] as const;
 type Page = (typeof PAGES)[number];
 
 const COMPOUND_LETTER = { soft: "S", medium: "M", hard: "H", intermediate: "I", wet: "W" } as const;
@@ -98,6 +98,18 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
       set("flashbacks", flashbackLabel(hud.flashbacksLeft));
       set("damage", hud.damage >= 0.999 ? "NONE" : `${Math.round((1 - hud.damage) * 100)}% GRIP LOST`);
       el.dataset.damaged = hud.damage < 0.999 ? "1" : "0";
+    } else if (page === "DAMAGE") {
+      const parts = hud.damageParts;
+      const state = (v: number) => (v > 0.85 ? "ok" : v > 0.55 ? "warn" : "bad");
+      const paint = (key: string, v: number) => {
+        const node = el.querySelector<SVGElement>(`[data-part="${key}"]`);
+        if (node) node.dataset.state = state(v);
+      };
+      paint("front", parts.frontWing);
+      paint("rear", parts.rearWing);
+      paint("floor", parts.floor);
+      for (let w = 0; w < 4; w++) paint(`wheel${w}`, parts.puncture === w ? 0 : 1);
+      set("repair", hud.damageRepairSeconds > 0 ? `+${hud.damageRepairSeconds.toFixed(1)} S AT A STOP` : "NONE");
     } else {
       set("weather", hud.weather.toUpperCase());
       set("track", `${Math.round(hud.trackTempC)}°C`);
@@ -182,6 +194,22 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
             <div><dt>FLASHBACKS</dt><dd data-k="flashbacks" /></div>
             <div><dt>DAMAGE</dt><dd data-k="damage" /></div>
           </dl>
+        )}
+        {page === "DAMAGE" && (
+          <div className={styles.damageMap}>
+            <svg viewBox="0 0 60 100" aria-label="Car damage">
+              <rect data-part="front" x="8" y="4" width="44" height="7" rx="2" />
+              <rect data-part="rear" x="10" y="90" width="40" height="7" rx="2" />
+              <rect data-part="floor" x="20" y="18" width="20" height="66" rx="8" />
+              <rect data-part="wheel0" x="4" y="20" width="10" height="16" rx="3" />
+              <rect data-part="wheel1" x="46" y="20" width="10" height="16" rx="3" />
+              <rect data-part="wheel2" x="3" y="62" width="11" height="18" rx="3" />
+              <rect data-part="wheel3" x="46" y="62" width="11" height="18" rx="3" />
+            </svg>
+            <dl className={styles.mfdList}>
+              <div><dt>REPAIR</dt><dd data-k="repair" /></div>
+            </dl>
+          </div>
         )}
         {page === "WEATHER" && (
           <dl className={styles.mfdList}>
