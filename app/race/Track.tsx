@@ -394,8 +394,9 @@ function BarrierWalls({ track }: { track: TrackData }) {
  * of anywhere the car is actually driving).
  */
 function Structures({ track }: { track: TrackData }) {
+  const { crowd } = useQuality();
   const { solid, visual } = useMemo(() => {
-    const { solid, visual } = buildStructureGeometry(track);
+    const { solid, visual } = buildStructureGeometry(track, { crowd });
     const make = (positions: Float32Array, indices: Uint32Array, colors: Float32Array) =>
       positions.length === 0
         ? []
@@ -412,7 +413,7 @@ function Structures({ track }: { track: TrackData }) {
       solid: make(solid.positions, solid.indices, solid.colors),
       visual: make(visual.positions, visual.indices, visual.colors),
     };
-  }, [track]);
+  }, [track, crowd]);
 
   return (
     <>

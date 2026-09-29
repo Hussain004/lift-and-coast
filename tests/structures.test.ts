@@ -392,3 +392,15 @@ describe("buildStructureGeometry (real circuits)", () => {
     }
   );
 });
+
+describe("grandstand crowd", () => {
+  it("adds visual-only people without touching the colliders", () => {
+    const track = getTrack("monza");
+    const plain = buildStructureGeometry(track);
+    const crowded = buildStructureGeometry(track, { crowd: true });
+    expect(crowded.solid.positions.length).toBe(plain.solid.positions.length);
+    expect(crowded.visual.positions.length).toBeGreaterThan(plain.visual.positions.length);
+    // Deterministic: the same stand always fills the same way.
+    expect(buildStructureGeometry(track, { crowd: true }).visual.positions.length).toBe(crowded.visual.positions.length);
+  });
+});

@@ -26,6 +26,8 @@ export interface QualitySettings {
   fogFar: number;
   /** Sparks, rain spray and skid marks (see app/race/TrackFx.tsx). */
   effects: boolean;
+  /** People on the grandstands (see structures.ts emitCrowd). */
+  crowd: boolean;
 }
 
 export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
@@ -39,6 +41,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     floraDensity: 0.45,
     fogFar: 190,
     effects: false,
+    crowd: false,
   },
   medium: {
     maxDpr: 1,
@@ -50,6 +53,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     floraDensity: 0.8,
     fogFar: 240,
     effects: true,
+    crowd: true,
   },
   high: {
     maxDpr: 1.75,
@@ -61,6 +65,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     floraDensity: 1,
     fogFar: 320,
     effects: true,
+    crowd: true,
   },
 };
 

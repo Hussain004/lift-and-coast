@@ -406,6 +406,69 @@ function emitGrandstand(
   }
 }
 
+// Shirt colours for the crowd: team-ish blues and reds, whites, a few loud ones.
+const CROWD_SHIRTS = ["#d7263d", "#1e4fa8", "#f2f2f2", "#f28f1c", "#121216", "#23a37a", "#3aa0d8", "#e8c62a", "#8a2f9e", "#b01e2b"].map(hexToLinearRgb);
+const CROWD_HEADS = ["#d8a47f", "#8a5a3c", "#f0c9a0", "#3a2a20", "#c98b62"].map(hexToLinearRgb);
+const CROWD_SLOT_METERS = 0.9;
+
+/**
+ * A crowd on a stand's three seating steps: a row of shirt and head quads
+ * standing on each step, facing the track, with the odd empty seat. Visual
+ * only (it goes in the no-collider mesh), and seeded from the stand's own
+ * position so the same stand always fills the same way.
+ */
+function emitCrowd(emitter: Emitter, fp: Footprint, facing: [number, number], ground: number): void {
+  const L = fp.lengthM;
+  const W = Math.max(fp.widthM, 10);
+  const ux = Math.cos(fp.yaw);
+  const uz = Math.sin(fp.yaw);
+  let vx = -uz;
+  let vz = ux;
+  if (vx * facing[0] + vz * facing[1] < 0) {
+    vx = -vx;
+    vz = -vz;
+  }
+  let seed = (Math.round(fp.cx * 7) * 73856093) ^ (Math.round(fp.cz * 13) * 19349663);
+  const rand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    return ((seed >>> 0) % 10000) / 10000;
+  };
+  const stepDepth = W / 3.4;
+  const slots = Math.max(1, Math.floor(L / CROWD_SLOT_METERS));
+  const quad = (
+    du0: number,
+    du1: number,
+    dv: number,
+    y0: number,
+    y1: number,
+    color: readonly [number, number, number]
+  ) => {
+    const base = emitter.positions.length / 3;
+    const p = (du: number, y: number) => {
+      emitter.positions.push(fp.cx + du * ux + dv * vx, y, fp.cz + du * uz + dv * vz);
+      emitter.colors.push(color[0], color[1], color[2]);
+    };
+    p(du0, y0);
+    p(du1, y0);
+    p(du1, y1);
+    p(du0, y1);
+    emitter.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  for (let k = 0; k < 3; k++) {
+    const dv = W / 2 - (k + 0.5) * stepDepth + stepDepth * 0.15;
+    const top = ground + 2.5 + (k + 1) * 1.1;
+    for (let s = 0; s < slots; s++) {
+      if (rand() < 0.14) continue; // an empty seat
+      const du = -L / 2 + (s + 0.5) * (L / slots);
+      const half = (L / slots) * 0.3;
+      const shirt = CROWD_SHIRTS[Math.floor(rand() * CROWD_SHIRTS.length)];
+      const head = CROWD_HEADS[Math.floor(rand() * CROWD_HEADS.length)];
+      quad(du - half, du + half, dv, top, top + 0.62, shirt);
+      quad(du - half * 0.5, du + half * 0.5, dv, top + 0.64, top + 0.9, head);
+    }
+  }
+}
+
 function validHexColor(raw: string | null): readonly [number, number, number] | null {
   if (!raw || !/^#[0-9a-fA-F]{6}$/.test(raw)) return null;
   return hexToLinearRgb(raw);
@@ -1274,7 +1337,7 @@ function splitRunAtRibbon(track: TrackData, pts: [number, number][]): [number, n
  * a park boundary. Pit lanes themselves stay unrendered (no mapped surface
  * data) - they contribute the pit walls only.
  */
-export function buildStructureGeometry(track: TrackData): StructuresBuild {
+export function buildStructureGeometry(track: TrackData, options: { crowd?: boolean } = {}): StructuresBuild {
   const empty = (): StructureGeometry => ({
     positions: new Float32Array(0),
     indices: new Uint32Array(0),
@@ -1319,6 +1382,7 @@ export function buildStructureGeometry(track: TrackData): StructuresBuild {
         fx /= fl;
         fz /= fl;
         emitGrandstand(solid, sfp, [fx, fz], groundY(terrain, sfp.cx, sfp.cz));
+        if (options.crowd) emitCrowd(visual, sfp, [fx, fz], groundY(terrain, sfp.cx, sfp.cz));
         break;
       }
       case "building": {
@@ -1342,6 +1406,7 @@ export function buildStructureGeometry(track: TrackData): StructuresBuild {
           const fz = track.centerline[tIdx][2] - sfp.cz;
           const fl = Math.hypot(fx, fz) || 1;
           emitGrandstand(solid, sfp, [fx / fl, fz / fl], groundY(terrain, sfp.cx, sfp.cz));
+          if (options.crowd) emitCrowd(visual, sfp, [fx / fl, fz / fl], groundY(terrain, sfp.cx, sfp.cz));
           break;
         }
         emitBuilding(
