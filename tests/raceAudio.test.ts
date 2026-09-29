@@ -5,7 +5,10 @@ import {
   defaultCarSnapshot,
   dopplerFactor,
   engineCutoffHz,
+  AUDIO_HIGH_RPM,
+  AUDIO_LOW_RPM,
   engineFrequencyHz,
+  engineHarmonics,
   engineGain01,
   impactGain01,
   kerbRumbleHz,
@@ -47,22 +50,29 @@ describe("race audio mappings", () => {
     expect(limiterAmount(REV_LIMITER_RPM)).toBe(1);
     expect(limiterAmount(REV_LIMITER_RPM + 5000)).toBe(1);
     expect(limiterAmount(REDLINE_RPM + 400)).toBeGreaterThan(0);
-    // The fundamental is the V6's firing rate - three times crank. At the
-    // redline that is 750 Hz; the guard cap only exists to catch a
-    // nonsensical remote snapshot, so it must not bind here.
-    expect(engineFrequencyHz(1)).toBeCloseTo((REDLINE_RPM / 60) * 3, 6);
+    // The fundamental is the V6's firing rate - three times crank.
+    expect(engineFrequencyHz(1)).toBeCloseTo((AUDIO_HIGH_RPM / 60) * 3, 6);
     expect(engineFrequencyHz(1)).toBeLessThanOrEqual(800);
-    // ...and at idle it is the same fact applied to IDLE_RPM.
-    expect(engineFrequencyHz(0)).toBeCloseTo((IDLE_RPM / 60) * 3, 6);
+    expect(engineFrequencyHz(0)).toBeCloseTo((AUDIO_LOW_RPM / 60) * 3, 6);
   });
 
-  it("tracks the firing rate across the rev range, not half of it", () => {
-    // A waveform repeating every firing event has its fundamental AT the
-    // firing rate. Half of it (one octave down) is what this used to emit.
+  it("voices the engine over a real F1 rev window, not down to a tractor idle", () => {
+    // 4,200 rpm is 210 Hz; the sim's 3,000 rpm floor would be 150 Hz.
+    expect(engineFrequencyHz(0)).toBeGreaterThan((IDLE_RPM / 60) * 3);
     for (const rpm01 of [0, 0.25, 0.5, 0.75, 1]) {
-      const rpm = IDLE_RPM + rpm01 * (REDLINE_RPM - IDLE_RPM);
+      const rpm = AUDIO_LOW_RPM + rpm01 * (AUDIO_HIGH_RPM - AUDIO_LOW_RPM);
       expect(engineFrequencyHz(rpm01)).toBeCloseTo((rpm / 60) * 3, 6);
     }
+  });
+
+  it("shapes a smooth mid-range spectrum: held-back fundamental, falling tail", () => {
+    const h = engineHarmonics();
+    expect(h[0]).toBe(0);
+    expect(h[1]).toBeLessThan(h[2]);
+    // The resonance hump peaks by the fifth order, then only falls.
+    for (let n = 6; n < h.length - 1; n++) expect(h[n + 1]).toBeLessThan(h[n]);
+    // Little energy left in the harsh top orders.
+    expect(h[24]).toBeLessThan(0.1 * h[2]);
   });
 
   it("smooths rpm toward a new target without overshooting", () => {
@@ -77,6 +87,10 @@ describe("race audio mappings", () => {
     expect(engineGain01(0)).toBeGreaterThan(0);
     expect(engineGain01(1)).toBeGreaterThan(engineGain01(0));
     expect(engineCutoffHz(0.5, 1)).toBeGreaterThan(engineCutoffHz(0.5, 0));
+    // Lifting must be audible: coast is several times quieter than full power.
+    expect(engineGain01(1)).toBeGreaterThan(3 * engineGain01(0));
+    // ...and the bright top end stays short of the harsh band.
+    expect(engineCutoffHz(1, 1)).toBeLessThanOrEqual(4000);
   });
 
   it("keeps the screech silent in normal driving", () => {

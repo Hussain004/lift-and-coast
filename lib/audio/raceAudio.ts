@@ -3,11 +3,14 @@
 // the browser's audio thread, so the cost to the frame is the few
 // parameter writes a tick below.
 //
-// - Engine: a custom harmonic waveform tuned to a V6's firing order (a
-//   half-order fundamental with a strong firing harmonic), soft-clipped for
-//   grit, opened by the throttle, with a combustion-roar noise band, a
-//   hybrid/turbo whine, overrun exhaust pops and a cut on every upshift.
+// - Engine: a V6 hybrid at its firing rate (see engineFrequencyHz) with a
+//   smooth, mid-heavy harmonic spectrum, opened by the throttle, plus a
+//   combustion-roar noise band and an MGU-K whine that swells on harvest.
 //   Pitch follows the same rpm the HUD shift bar reads (see gearbox.ts).
+// - Gearbox and lift-and-coast: an upshift drops the ignition for a few
+//   hundredths, kicks back and clunks; a downshift blips the revs and
+//   cracks; lifting off at speed lets the note fall away, whooshes the
+//   turbo and crackles on the overrun.
 // - Around it: speed-scaled wind, a kerb rumble pitched by speed, and a
 //   two-band tyre squeal keyed off lateral slide (the rig has no slip-angle
 //   signal - see skidAmount01).
@@ -108,35 +111,32 @@ export function skidAmount01(lateralMs: number, forwardMs: number): number {
   return clamp01((Math.abs(lateralMs) - 2) / 6);
 }
 
+/** The rpm the note is voiced over. A real F1 V6 idles near 4,000 and the
+ * sim's own floor (IDLE_RPM) is lower than that, so the audio window starts
+ * higher: idling and crawling in first no longer sound like a tractor. */
+export const AUDIO_LOW_RPM = 4200;
+export const AUDIO_HIGH_RPM = 12000;
+
 /** Oscillator fundamental: a V6 four-stroke fires three times a crank
- * revolution, evenly spaced, so the exhaust pulse train is periodic at
- * exactly the firing rate - rpm/60 x 3. Over this sim's 3,000-12,000 rpm
- * range that is 150 Hz at idle to 600 Hz on the limiter, which is where a
- * real V6 sits.
- *
- * This used to read rpm/60 x 1.5 and cap at 320 Hz, which is one octave
- * low. The reasoning was that the fundamental sits at half the firing
- * rate, but that only holds for a waveform with two pulses per cycle; a
- * V6's three evenly-spaced firings per crank revolution put the
- * fundamental at the firing rate itself. An F1 engine therefore idled an
- * octave below where it should. The cap is raised past the limiter
- * frequency so it only ever bites on a nonsensical remote snapshot, which
- * is what it was for. */
+ * revolution, evenly spaced, so the exhaust pulse train is periodic at the
+ * firing rate itself - rpm/60 x 3, 210 Hz at the bottom of the window to
+ * 600 Hz at the redline. */
 export function engineFrequencyHz(rpm01: number): number {
-  const rpm = IDLE_RPM + clamp01(rpm01) * (REDLINE_RPM - IDLE_RPM);
+  const rpm = AUDIO_LOW_RPM + clamp01(rpm01) * (AUDIO_HIGH_RPM - AUDIO_LOW_RPM);
   // Keep the fundamental in a musical, non-aliasing band even if a remote
   // snapshot reports a nonsensical normalized rpm.
   return Math.min(800, (rpm / 60) * 3);
 }
 
-/** Throttle opens the lowpass: coasting muted and dark, full power bright. */
+/** Throttle opens the lowpass: coasting is duller, full power bright but
+ * capped short of the harsh 4 kHz+ band. */
 export function engineCutoffHz(rpm01: number, throttle01: number): number {
-  return 500 + 3800 * clamp01(rpm01) * (0.3 + 0.7 * clamp01(throttle01));
+  return 800 + 3000 * clamp01(rpm01) * (0.3 + 0.7 * clamp01(throttle01));
 }
 
 /** Audible at idle, present under power, never a bed of noise. */
 export function engineGain01(throttle01: number): number {
-  return 0.05 + 0.11 * clamp01(throttle01);
+  return 0.035 + 0.125 * clamp01(throttle01);
 }
 
 /** Audible slide hiss, full slide clearly over the engine. */
@@ -230,10 +230,18 @@ function makeNoiseBuffer(context: BaseAudioContext): AudioBuffer {
   return buffer;
 }
 
-/** Harmonic amplitudes over the half-order fundamental: the 2nd (the
- * firing frequency) dominates, even orders carry the V6 buzz, odd half-
- * orders the growl. */
-const ENGINE_HARMONICS = [0, 0.4, 1.0, 0.5, 0.62, 0.28, 0.42, 0.16, 0.25, 0.1, 0.15, 0.07, 0.09, 0.04, 0.05];
+/** Harmonic amplitudes over the firing frequency: a steeper-than-sawtooth tilt with
+ * an exhaust-resonance hump around the 5th order and a held-back
+ * fundamental, so the note is a smooth mid-range wail rather than a boomy
+ * drone or a harsh pulse buzz. */
+export function engineHarmonics(count = 30): number[] {
+  const amps = [0];
+  for (let n = 1; n <= count; n++) {
+    const hump = 1 + 1.6 * Math.exp(-((n - 5) ** 2) / 14);
+    amps.push(((n === 1 ? 0.5 : 1) * hump) / n ** 1.25);
+  }
+  return amps;
+}
 
 function softClipCurve(amount: number): Float32Array<ArrayBuffer> {
   const n = 1024;
@@ -256,6 +264,9 @@ interface EngineVoice {
     limiter01?: number,
     holdGain?: boolean
   ): void;
+  /** Jump the smoothed rpm to a new value - a gear change moves the note in
+   * tens of milliseconds, not the ~100 ms glide of a throttle response. */
+  snapRpm(rpm01: number): void;
   output: GainNode;
 }
 
@@ -268,35 +279,41 @@ function makeEngineVoice(
 ): EngineVoice {
   const osc = context.createOscillator();
   osc.setPeriodicWave(wave);
-  // A second, slightly detuned copy thickens the tone like the two banks.
-  const bank = context.createOscillator();
-  bank.setPeriodicWave(wave);
-  bank.detune.value = 3;
+  // Combustion irregularity: a few cents of slow wobble, so the note is an
+  // engine and not a test tone. (A detuned second oscillator did this before
+  // and beat audibly at ~0.5 Hz - a drone.)
+  const wobble = context.createOscillator();
+  wobble.frequency.value = 9;
+  const wobbleDepth = context.createGain();
+  wobbleDepth.gain.value = 5;
+  wobble.connect(wobbleDepth);
+  wobbleDepth.connect(osc.detune);
   const shaper = context.createWaveShaper();
-  shaper.curve = softClipCurve(2.2);
+  shaper.curve = softClipCurve(1.4);
+  // The boom below the fundamental is the "low pitched drone": cut it.
+  const highpass = context.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.value = 130;
+  highpass.Q.value = 0.7;
   const filter = context.createBiquadFilter();
   filter.type = "lowpass";
-  filter.Q.value = 0.9;
+  filter.Q.value = 0.8;
   const gain = context.createGain();
   gain.gain.value = 0;
   osc.connect(shaper);
-  bank.connect(shaper);
-  shaper.connect(filter);
+  shaper.connect(highpass);
+  highpass.connect(filter);
   filter.connect(gain);
   gain.connect(destination);
   osc.start();
-  bank.start();
+  wobble.start();
 
   let smoothedRpm01 = 0;
-  // Combustion roar: noise banded around the firing frequency.
+  // Combustion roar: broad noise around the third order.
   let roarFilter: BiquadFilterNode | null = null;
   let roarGain: GainNode | null = null;
-  // Intake/induction roar: a tighter noise band tracked just above the
-  // fundamental, giving the throttle a physical induction sound that fills
-  // the mid-range between the combustion roar and the turbo whine.
-  let intakeFilter: BiquadFilterNode | null = null;
-  let intakeGain: GainNode | null = null;
-  // Hybrid/turbo whine: a thin high sine that climbs with the revs.
+  // MGU-K whine: a thin sine that climbs with the revs and swells while the
+  // motor harvests (off the throttle), the sound of lift and coast.
   let whine: OscillatorNode | null = null;
   let whineGain: GainNode | null = null;
   if (rich) {
@@ -305,26 +322,13 @@ function makeEngineVoice(
     roar.loop = true;
     roarFilter = context.createBiquadFilter();
     roarFilter.type = "bandpass";
-    roarFilter.Q.value = 1.4;
+    roarFilter.Q.value = 0.8;
     roarGain = context.createGain();
     roarGain.gain.value = 0;
     roar.connect(roarFilter);
     roarFilter.connect(roarGain);
     roarGain.connect(gain);
     roar.start();
-    const intake = context.createBufferSource();
-    intake.buffer = noise;
-    intake.loop = true;
-    intake.playbackRate.value = 0.85;
-    intakeFilter = context.createBiquadFilter();
-    intakeFilter.type = "bandpass";
-    intakeFilter.Q.value = 3;
-    intakeGain = context.createGain();
-    intakeGain.gain.value = 0;
-    intake.connect(intakeFilter);
-    intakeFilter.connect(intakeGain);
-    intakeGain.connect(gain);
-    intake.start();
     whine = context.createOscillator();
     whine.type = "sine";
     whineGain = context.createGain();
@@ -336,37 +340,33 @@ function makeEngineVoice(
 
   return {
     output: gain,
+    snapRpm(rpm01) {
+      smoothedRpm01 = clamp01(rpm01);
+    },
     setState(rpm01, throttle01, gainScale, pitch, when, limiter01 = 0, holdGain = false) {
       smoothedRpm01 = smoothRpm01(smoothedRpm01, rpm01);
       const limiter = clamp01(limiter01);
+      const throttle = clamp01(throttle01);
       const freq = engineFrequencyHz(smoothedRpm01) * pitch;
-      osc.frequency.setTargetAtTime(freq, when, 0.03);
-      bank.frequency.setTargetAtTime(freq, when, 0.03);
-      filter.frequency.setTargetAtTime(engineCutoffHz(smoothedRpm01, throttle01), when, 0.05);
+      osc.frequency.setTargetAtTime(freq, when, 0.02);
+      filter.frequency.setTargetAtTime(engineCutoffHz(smoothedRpm01, throttle), when, 0.05);
       if (!holdGain) {
         const limiterCut = 1 - 0.2 * limiter;
-        gain.gain.setTargetAtTime(engineGain01(throttle01) * gainScale * limiterCut, when, 0.05);
+        gain.gain.setTargetAtTime(engineGain01(throttle) * gainScale * limiterCut, when, 0.05);
       }
       if (roarFilter && roarGain) {
-        roarFilter.frequency.setTargetAtTime(freq * 2, when, 0.04);
+        roarFilter.frequency.setTargetAtTime(freq * 3, when, 0.04);
         roarGain.gain.setTargetAtTime(
-          0.9 * clamp01(throttle01) * (0.3 + smoothedRpm01) * (1 - 0.25 * limiter),
+          0.6 * throttle * (0.3 + smoothedRpm01) * (1 - 0.25 * limiter),
           when,
           0.06
         );
       }
-      if (intakeFilter && intakeGain) {
-        intakeFilter.frequency.setTargetAtTime(freq * 1.5, when, 0.04);
-        intakeGain.gain.setTargetAtTime(
-          0.5 * clamp01(throttle01) * (0.25 + 0.75 * smoothedRpm01) * (1 - 0.3 * limiter),
-          when,
-          0.05
-        );
-      }
       if (whine && whineGain) {
-        whine.frequency.setTargetAtTime((2400 + 2600 * smoothedRpm01) * pitch, when, 0.05);
+        whine.frequency.setTargetAtTime((1300 + 1500 * smoothedRpm01) * pitch, when, 0.05);
+        // Quiet under power (deploy), clearly there off the throttle (harvest).
         whineGain.gain.setTargetAtTime(
-          0.006 * gainScale * (0.3 + clamp01(throttle01)) * (1 - 0.35 * limiter),
+          gainScale * (0.01 * smoothedRpm01 + 0.03 * (1 - throttle) * smoothedRpm01 ** 2),
           when,
           0.08
         );
@@ -385,23 +385,37 @@ const MASTER_GAIN = 0.9;
  * resume() runs inside a user gesture (autoplay policy), so construct on
  * mount and resume on first input.
  */
-export function createRaceAudio(): RaceAudioEngine | null {
-  if (typeof window === "undefined") return null;
-  const Context =
-    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!Context) return null;
-  const context = new Context();
+export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine | null {
+  // `offline` lets a test render the mix to samples instead of the speakers;
+  // it has no user-gesture gate and no realtime clock to wait for.
+  let context: BaseAudioContext;
+  if (offline) {
+    context = offline;
+  } else {
+    if (typeof window === "undefined") return null;
+    const Context =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) return null;
+    context = new Context();
+  }
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = -16;
   compressor.knee.value = 12;
   compressor.ratio.value = 4;
   const master = context.createGain();
   master.gain.value = MASTER_GAIN;
-  master.connect(compressor);
+  // Nothing in the mix is worth hearing past 6.5 kHz, and the saturated
+  // engine and noise bursts are exactly what makes it tiring there.
+  const tame = context.createBiquadFilter();
+  tame.type = "lowpass";
+  tame.frequency.value = 6500;
+  tame.Q.value = 0.5;
+  master.connect(tame);
+  tame.connect(compressor);
   compressor.connect(context.destination);
 
   const noise = makeNoiseBuffer(context);
-  const imag = new Float32Array(ENGINE_HARMONICS);
+  const imag = new Float32Array(engineHarmonics());
   const wave = context.createPeriodicWave(new Float32Array(imag.length), imag);
   const playerVoice = makeEngineVoice(context, master, wave, noise, true);
 
@@ -454,15 +468,41 @@ export function createRaceAudio(): RaceAudioEngine | null {
   let lastGear = 1;
   let lastPopAt = 0;
   let shiftCutUntil = 0;
+  let lastThrottle = 0;
+  let liftAt = -Infinity;
+  let blipAt = -Infinity;
+  let lastUpdateAt = 0;
+
+  /** Turbo/exhaust spool-down whistle after a lift: a thin sine falling away. */
+  const spoolDown = (startHz: number, seconds: number, peak: number) => {
+    const when = context.currentTime;
+    const whistle = context.createOscillator();
+    whistle.type = "sine";
+    whistle.frequency.setValueAtTime(startHz, when);
+    whistle.frequency.exponentialRampToValueAtTime(startHz * 0.35, when + seconds);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(peak, when);
+    gain.gain.exponentialRampToValueAtTime(0.0005, when + seconds);
+    whistle.connect(gain);
+    gain.connect(master);
+    whistle.start(when);
+    whistle.stop(when + seconds + 0.05);
+  };
 
   /** A short filtered noise burst - impacts, shift cracks, exhaust pops. */
-  const burst = (gainPeak: number, cutoffHz: number, seconds: number, rate = 0.8) => {
+  const burst = (
+    gainPeak: number,
+    cutoffHz: number,
+    seconds: number,
+    rate = 0.8,
+    type: BiquadFilterType = "lowpass"
+  ) => {
     const when = context.currentTime;
     const source = context.createBufferSource();
     source.buffer = noise;
     source.playbackRate.value = rate + Math.random() * 0.3;
     const filter = context.createBiquadFilter();
-    filter.type = "lowpass";
+    filter.type = type;
     filter.frequency.value = cutoffHz;
     const gain = context.createGain();
     gain.gain.setValueAtTime(gainPeak, when);
@@ -476,44 +516,77 @@ export function createRaceAudio(): RaceAudioEngine | null {
 
   return {
     update(snapshot) {
-      if (context.state !== "running") return;
+      if (!offline && context.state !== "running") return;
       const when = context.currentTime;
       const p = snapshot.player;
       const speed = Math.hypot(p.vx, p.vz);
 
+      const dt = Math.min(0.1, Math.max(0, when - lastUpdateAt));
+      lastUpdateAt = when;
+
       // Shift events fire once per shiftSerial increment, and the gear number
-      // gives the direction: an upshift gets the ignition cut (the engine
-      // drops out for a few hundredths), a downshift gets the auto-blip
-      // rev-match crack as the revs rise to the lower gear.
+      // gives the direction. An upshift is the seamless-shift ignition cut:
+      // the engine drops out for a few hundredths, the note falls a gear's
+      // worth, torque kicks back in and the box clunks. A downshift is the
+      // auto-blip: the revs flare to the lower gear with a crack.
       if (p.shiftSerial > lastShiftSerial) {
-        if (p.gear > lastGear && p.throttle01 > 0.3) {
-          const g = playerVoice.output.gain;
+        const g = playerVoice.output.gain;
+        const level = engineGain01(p.throttle01);
+        playerVoice.snapRpm(p.rpm01);
+        if (p.gear > lastGear) {
+          const cut = p.throttle01 > 0.3 ? 0.1 : 0.6;
           g.cancelScheduledValues(when);
           g.setValueAtTime(g.value, when);
-          g.linearRampToValueAtTime(g.value * 0.25, when + 0.025);
-          g.linearRampToValueAtTime(engineGain01(p.throttle01), when + 0.09);
-          shiftCutUntil = when + 0.09;
-          burst(0.22, 2200, 0.08, 1.1);
+          g.linearRampToValueAtTime(level * cut, when + 0.02);
+          g.setValueAtTime(level * cut, when + 0.055);
+          g.linearRampToValueAtTime(level * 1.3, when + 0.08);
+          g.linearRampToValueAtTime(level, when + 0.2);
+          shiftCutUntil = when + 0.2;
+          burst(0.5, 320, 0.1, 0.4);
+          burst(0.3, 2400, 0.05, 1.1, "bandpass");
         } else if (p.gear < lastGear) {
-          burst(0.16, 1500 + Math.random() * 500, 0.08, 0.9);
+          g.cancelScheduledValues(when);
+          g.setValueAtTime(g.value, when);
+          g.linearRampToValueAtTime(level * 1.3, when + 0.02);
+          g.linearRampToValueAtTime(level, when + 0.14);
+          shiftCutUntil = when + 0.14;
+          blipAt = when;
+          burst(0.45, 2000 + Math.random() * 600, 0.07, 0.9, "bandpass");
+          burst(0.4, 280, 0.09, 0.4);
         }
         lastShiftSerial = Math.max(lastShiftSerial, p.shiftSerial);
       }
       lastGear = p.gear;
+      // The rev-match flare decays over ~0.1 s.
+      const blip = 1 + 0.12 * Math.exp(-(when - blipAt) / 0.05);
       playerVoice.setState(
         p.rpm01,
         p.throttle01,
         1,
-        1,
+        blip,
         when,
         p.limiter01,
         when < shiftCutUntil
       );
 
-      // Overrun: off the throttle at high revs the exhaust pops and bangs.
-      if (p.throttle01 < 0.08 && p.rpm01 > 0.45 && speed > 20 && when - lastPopAt > 0.07 && Math.random() < 0.18) {
-        lastPopAt = when;
-        burst(0.1 + Math.random() * 0.12, 700 + Math.random() * 900, 0.05 + Math.random() * 0.05, 0.5);
+      // Lift and coast: coming off the throttle at speed, the note drops away
+      // with the engine gain (see engineGain01) and the turbo lets go.
+      if (lastThrottle > 0.6 && p.throttle01 < 0.2 && p.rpm01 > 0.3 && speed > 20) {
+        liftAt = when;
+        burst(0.12 + 0.08 * p.rpm01, 3000, 0.4, 1, "bandpass");
+        spoolDown(1900 + 1100 * p.rpm01, 0.7, 0.012);
+      }
+      lastThrottle = p.throttle01;
+
+      // Overrun: off the throttle at revs the exhaust crackles and pops -
+      // thickest just after the lift, then a sparse burble down the straight.
+      if (p.throttle01 < 0.1 && p.rpm01 > 0.3 && speed > 15 && when - lastPopAt > 0.05) {
+        const perSecond = (when - liftAt < 1.5 ? 9 : 3) * (0.4 + 0.6 * p.rpm01);
+        if (Math.random() < perSecond * dt) {
+          lastPopAt = when;
+          burst(0.25 + Math.random() * 0.25, 700 + Math.random() * 1400, 0.04 + Math.random() * 0.06, 0.5, "bandpass");
+          if (Math.random() < 0.4) burst(0.25, 250, 0.06, 0.4);
+        }
       }
 
       squealLow.gain.gain.setTargetAtTime(skidGain01(p.skid01), when, 0.05);
@@ -557,7 +630,7 @@ export function createRaceAudio(): RaceAudioEngine | null {
       }
     },
     impact(strength01) {
-      if (context.state !== "running") return;
+      if (!offline && context.state !== "running") return;
       const s = clamp01(strength01);
       if (s <= 0) return;
       burst(0.55 * s, 400 + 2200 * s, 0.06 + 0.22 * s, 0.6);
@@ -570,10 +643,10 @@ export function createRaceAudio(): RaceAudioEngine | null {
       return muted;
     },
     resume() {
-      if (context.state === "suspended") void context.resume();
+      if (context.state === "suspended" && "resume" in context) void (context as AudioContext).resume();
     },
     dispose() {
-      void context.close();
+      if ("close" in context) void (context as AudioContext).close();
     },
   };
 }

@@ -31,7 +31,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
 - Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass
 - Madrid banking at T12 and Zandvoort's Hugenholtzbocht cross-slope
-- Synthesized Web Audio engines, tires, wind, impacts, limiter, and gear shifts
+- Synthesized Web Audio: a V6 hybrid engine voiced over a real F1 rev range, audible ignition-cut upshifts and rev-match downshifts, lift-and-coast turbo whoosh and overrun crackle, MGU-K whine, tyres, wind and impacts
 
 The game is entirely client-side. Your setups, championship, best laps, and preferences stay in the browser unless you export a save.
 

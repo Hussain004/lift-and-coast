@@ -1125,7 +1125,8 @@ export function Car({
         selectReverse: gatedDriveInput.selectReverse,
       }
     );
-    if (gearboxRef.current.gear > gearBeforeControls) shiftSerialRef.current += 1;
+    // Every shift, up or down, so the audio can voice the blip as well as the cut.
+    if (gearboxRef.current.gear !== gearBeforeControls) shiftSerialRef.current += 1;
 
     // The strategy system owns compound life now; keyboard tire selection is
     // still a quick practice-mode fitting shortcut, while a race pit request
