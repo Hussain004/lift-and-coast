@@ -10,6 +10,8 @@ import {
   subscribeToControls,
 } from "@/lib/input/keyBindings";
 import { ControlSettingsPanel } from "../ControlSettingsPanel";
+import { AssistPresets } from "../../AssistPresets";
+import { DamageSetting } from "../../DamageSetting";
 import { EngineerSetting } from "../../EngineerSetting";
 import { CameraSetting } from "../../CameraSetting";
 import { RacingLineSetting } from "../../RacingLineSetting";
@@ -153,6 +155,10 @@ export function PauseMenu({
               </dl>
             ) : (
               <>
+                <div className={styles.pauseSubhead}>DRIVING ASSISTS</div>
+                <AssistPresets />
+                <div className={styles.pauseSubhead}>DAMAGE</div>
+                <DamageSetting />
                 <div className={styles.pauseSubhead}>RACE ENGINEER</div>
                 <EngineerSetting />
                 <div className={styles.pauseSubhead}>RACING LINE</div>
