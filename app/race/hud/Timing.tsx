@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { formatLapTime } from "@/lib/race/lapTimer";
-import { formatGap, type HudEvent, type HudSnapshot } from "@/lib/race/hud";
+import { formatGap, pitPrompt, type HudEvent, type HudSnapshot } from "@/lib/race/hud";
 import { useHudFrame } from "./useHudFrame";
 import styles from "./hud.module.css";
 
@@ -78,12 +78,19 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   const [shown, setShown] = useState<(HudEvent & { until: number })[]>([]);
   const seenRef = useRef(0);
   const limitRef = useRef<HTMLDivElement>(null);
+  const pitRef = useRef<HTMLDivElement>(null);
 
   useHudFrame((now) => {
     const hud = hudRef.current;
     if (limitRef.current) {
       limitRef.current.textContent = hud.trackLimitText;
       limitRef.current.dataset.on = hud.trackLimitText ? "1" : "0";
+    }
+    if (pitRef.current) {
+      const text = pitPrompt(hud);
+      pitRef.current.textContent = text;
+      pitRef.current.dataset.on = text ? "1" : "0";
+      pitRef.current.dataset.go = hud.pitPhase === "service" ? "1" : "0";
     }
     const fresh = hud.events.filter((e) => e.id > seenRef.current);
     const expired = shown.some((e) => e.until <= now);
@@ -99,6 +106,7 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   return (
     <div className={styles.notices} aria-live="polite">
       <div className={styles.limitChip} ref={limitRef} data-on="0" />
+      <div className={styles.pitChip} ref={pitRef} data-on="0" />
       {shown.map((e) => (
         <div key={e.id} className={styles.notice} data-kind={e.kind}>
           <strong>{e.title}</strong>

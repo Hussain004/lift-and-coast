@@ -27,16 +27,18 @@ export function SurfaceMaterial({
   color,
   vertexColors,
   map,
+  side,
 }: {
   color?: string;
   vertexColors?: boolean;
   map?: THREE.Texture;
+  side?: THREE.Side;
 }) {
   const { cheapMaterials } = useQuality();
   return cheapMaterials ? (
-    <meshLambertMaterial color={color} vertexColors={vertexColors} />
+    <meshLambertMaterial color={color} vertexColors={vertexColors} side={side} />
   ) : (
-    <meshStandardMaterial color={color} vertexColors={vertexColors} map={map} roughness={0.95} />
+    <meshStandardMaterial color={color} vertexColors={vertexColors} map={map} roughness={0.95} side={side} />
   );
 }
 

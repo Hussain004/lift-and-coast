@@ -73,6 +73,7 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
 import { flashbackLimit } from "@/lib/race/flashbacks";
+import { PitCrew } from "./PitCrew";
 import { createFxBus, RainLightDriver, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
 
 // Grid start (plan section 7): counts down on screen, then flips
@@ -1030,6 +1031,7 @@ export function Scene({
         <RaceOpsTicker weatherRef={weatherRef} />
         {weatherPlan && <WeatherScheduler plan={weatherPlan} weatherRef={weatherRef} hudRef={hudRef} />}
         <Ground track={track} />
+        <PitCrew track={track} hudRef={hudRef} />
         <Track
           track={track}
           chassisRef={chassisRef}

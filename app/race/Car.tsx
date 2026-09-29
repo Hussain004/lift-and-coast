@@ -102,6 +102,7 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
 import { weatherGripForCompound } from "@/lib/physics/tireModel";
+import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
 import { DEFAULT_CAR_SETUP, setupDownforceScale, setupDragScale, type CarSetup } from "@/lib/physics/carSetup";
@@ -404,7 +405,7 @@ export function Car({
   const lapTimerRef = useRef(
     createLapTimer({
       startPos,
-      lineHalfWidth: LINE_HALF_WIDTH_METERS,
+      lineHalfWidth: pitGateHalfWidth(track, LINE_HALF_WIDTH_METERS),
       startsBehindLine: gridSpot.startsBehindLine,
     })
   );
@@ -421,6 +422,8 @@ export function Car({
   // would run faster on a 144Hz display, so keep an elapsed-time clock.
   const towerClockRef = useRef(0);
   const skidTravelRef = useRef(0);
+  const inPitLaneRef = useRef(false);
+  const pitBoxMetersRef = useRef<number | null>(null);
   const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
   // penalties, the per-car flag state, and when the results go up.
@@ -970,9 +973,33 @@ export function Car({
     // lap the moment it drives forward again.
     const raceStarted = raceStartRef?.current ?? true;
     const disqualified = effectiveRaceControlRef.current.snapshot().disqualified;
-    const gatedDriveInput = !raceStarted || disqualified
+    let gatedDriveInput = !raceStarted || disqualified
       ? { ...driveInput, throttle: 0, deploy: false, brake: 1 }
       : driveInput;
+    // Pit lane (see lib/tracks/pitLane.ts): the limiter takes the throttle
+    // off and brakes gently above 80 km/h, so the lane can never be sped
+    // through. The box is where a requested stop is serviced.
+    const pitLane = getPitLane(track);
+    const laneNow = pitLane
+      ? pitLaneStatus(track, pitLane, limitStatus.nearestIndex, limitStatus.lateralMeters)
+      : { inLane: false, boxAheadMeters: null };
+    if (laneNow.inLane) {
+      const lv = body.linvel();
+      const overspeed = Math.hypot(lv.x, lv.z) - PIT_SPEED_LIMIT_MS;
+      if (overspeed > -1) {
+        gatedDriveInput = {
+          ...gatedDriveInput,
+          throttle: overspeed > 0 ? 0 : Math.min(gatedDriveInput.throttle, 0.25),
+          deploy: false,
+          brake: Math.max(gatedDriveInput.brake, overspeed > 0 ? Math.min(0.6, 0.1 + overspeed / 6) : 0),
+        };
+      }
+    }
+    pitBoxMetersRef.current = laneNow.boxAheadMeters;
+    if (hudRef && laneNow.inLane !== inPitLaneRef.current) {
+      inPitLaneRef.current = laneNow.inLane;
+      pushHudEvent(hudRef.current, "info", laneNow.inLane ? "PIT LANE · LIMITER 80 KM/H" : "PIT EXIT", undefined, 1.8);
+    }
 
     // Guest input upload reads the gated inputs actually applied (see
     // playerInputRef) - what the car does, not what the keys say.
@@ -1020,6 +1047,7 @@ export function Car({
       trackLengthMeters: track.lengthMeters,
       lateralMeters: limitStatus.lateralMeters,
       trackHalfWidthMeters: track.width[0] / 2,
+      inPitBox: pitLane ? laneNow.boxAheadMeters !== null && Math.abs(laneNow.boxAheadMeters) <= PIT_BOX_HALF_LENGTH : undefined,
       lap: race?.player.lapCount ?? 0,
       racing: raceStarted,
       airTemperatureC: weatherStateRef.current.airTemperatureC,
@@ -1413,6 +1441,10 @@ export function Car({
       hud.strategyMode = strategy.mode;
       hud.pitPhase = strategy.pitPhase;
       hud.pitStops = strategy.pitStops;
+      hud.inPitLane = inPitLaneRef.current;
+      hud.hasPitLane = getPitLane(track) !== null;
+      hud.pitProgress = strategy.pitProgress;
+      hud.pitBoxMeters = pitBoxMetersRef.current;
       hud.damage = damageGripMultiplierRef.current;
       hud.flashbacksLeft = flashbacksLeftRef.current;
       hud.tc = tractionControlEnabled.current;

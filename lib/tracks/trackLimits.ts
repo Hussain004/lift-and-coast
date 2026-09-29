@@ -1,3 +1,4 @@
+import { getPitLane, laneCovers } from "./pitLane";
 import type { TrackData } from "./types";
 import {
   TRACK_EDGE_MARGIN_METERS,
@@ -149,8 +150,11 @@ export function nearestCenterlineIndex(
 }
 
 export interface TrackLimitStatus {
-  /** 0 if within the track's width, meters past the edge otherwise. */
+  /** 0 if within the track's width (or in the pit lane), meters past the edge otherwise. */
   distanceFromEdgeMeters: number;
+  /** The plain distance past the painted edge, ignoring the pit lane - lets a kerb or gravel zone that overlaps the lane keep its surface. */
+  rawDistanceFromEdgeMeters: number;
+  inPitLane: boolean;
   isOffTrack: boolean;
   /**
    * Arc-length distance along the centerline from the start/finish line to
@@ -210,9 +214,14 @@ export function checkTrackLimits(track: TrackData, x: number, z: number, y?: num
   const side = (x - center[0]) * rightX + (z - center[2]) * rightZ;
   const distance = Math.sqrt(nearestDistSq);
   const lateralMeters = (side < 0 ? -1 : 1) * distance;
+  // The pit lane is road: no track-limit warning, no grass grip (see pitLane.ts).
+  const lane = getPitLane(track);
+  const inPitLane = lane !== null && laneCovers(lane, nearestIdx, lateralMeters);
   return {
-    distanceFromEdgeMeters,
-    isOffTrack: distanceFromEdgeMeters > 0,
+    distanceFromEdgeMeters: inPitLane ? 0 : distanceFromEdgeMeters,
+    rawDistanceFromEdgeMeters: distanceFromEdgeMeters,
+    inPitLane,
+    isOffTrack: inPitLane ? false : distanceFromEdgeMeters > 0,
     progressMeters,
     lateralMeters,
     nearestIndex: nearestIdx,

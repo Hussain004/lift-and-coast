@@ -330,6 +330,24 @@
   display: none;
 }
 
+.pitChip {
+  padding: 6px 14px;
+  background: #1c6dd0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.pitChip[data-on="0"] {
+  display: none;
+}
+
+.pitChip[data-go="1"] {
+  background: #17a34a;
+}
+
 .notice {
   display: flex;
   align-items: baseline;

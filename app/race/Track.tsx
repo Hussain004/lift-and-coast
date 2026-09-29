@@ -20,6 +20,7 @@ import { chunkMesh, chunkPoints, thin } from "@/lib/render/chunks";
 import { asphaltTexture, planarUvs } from "@/lib/render/textures";
 import { SurfaceMaterial, useQuality } from "./renderQuality";
 import { BrakingBoards } from "./BrakingBoards";
+import { PitLane } from "./PitLane";
 import { loadRacingLineStyle, subscribeRacingLineStyle } from "@/lib/settings/racingLinePref";
 
 /** Chevron repeat along the racing line. */
@@ -335,6 +336,7 @@ export function Track({
       <BarrierWalls track={track} />
       <Structures track={track} />
       <BrakingBoards track={track} />
+      <PitLane track={track} />
       <Flora track={track} />
       <mesh geometry={kerbGeometry}>
         <SurfaceMaterial vertexColors />

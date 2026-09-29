@@ -47,6 +47,8 @@ export interface StrategyUpdate {
   /** Signed distance from the racing centerline, used to find the marked box. */
   lateralMeters?: number;
   trackHalfWidthMeters?: number;
+  /** On circuits with a drivable pit lane: is the car stopped-capable inside its box? Overrides the virtual window. */
+  inPitBox?: boolean;
   airTemperatureC?: number;
   trackTemperatureC?: number;
 }
@@ -166,12 +168,15 @@ export function createStrategySystem(options: StrategyOptions = {}) {
 
   function applyStrategy(input: StrategyUpdate): void {
     const dt = Math.max(0, input.dt);
-    state.pitWindow = pitWindowFor(
-      input.progressMeters,
-      Math.max(1, input.trackLengthMeters),
-      input.lateralMeters,
-      input.trackHalfWidthMeters
-    );
+    state.pitWindow =
+      input.inPitBox !== undefined
+        ? input.inPitBox
+        : pitWindowFor(
+            input.progressMeters,
+            Math.max(1, input.trackLengthMeters),
+            input.lateralMeters,
+            input.trackHalfWidthMeters
+          );
     const speed = Math.abs(input.speedMs);
     const throttle = clamp(input.throttle, 0, 1);
     const brake = clamp(input.brake, 0, 1);

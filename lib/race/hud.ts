@@ -105,6 +105,13 @@ export interface HudSnapshot {
   strategyMode: StrategyMode;
   pitPhase: PitPhase;
   pitStops: number;
+  /** On the drivable pit lane: the limiter is on. */
+  inPitLane: boolean;
+  /** This circuit has a drivable pit lane (else the old virtual window applies). */
+  hasPitLane: boolean;
+  pitProgress: number;
+  /** Metres to your box along the lane (negative once passed); null off the lane or on circuits without one. */
+  pitBoxMeters: number | null;
   /** 1 = undamaged. */
   damage: number;
   /** Flashbacks left this session; null = unlimited. */
@@ -175,6 +182,10 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     strategyMode: "balanced",
     pitPhase: "none",
     pitStops: 0,
+    inPitLane: false,
+    hasPitLane: false,
+    pitProgress: 0,
+    pitBoxMeters: null,
     damage: 1,
     flashbacksLeft: null,
     tc: true,
@@ -271,4 +282,20 @@ export function compactTowerRows(count: number, playerIndex: number, rows = 5): 
   const out = [0];
   for (let i = start; i < start + around; i++) out.push(i);
   return out;
+}
+
+/** The pit prompt chip's text, or "" when there is nothing to say. */
+export function pitPrompt(hud: HudSnapshot): string {
+  if (hud.pitPhase === "service") return `PIT STOP · ${Math.round(hud.pitProgress * 100)}%`;
+  if (hud.inPitLane) {
+    const box = hud.pitBoxMeters;
+    if (hud.pitPhase === "requested" && box !== null) {
+      if (box > 3) return `PIT LANE · BOX ${Math.round(box)} M · STOP IN THE GREEN`;
+      if (box < -3) return "BOX MISSED · CONTINUE TO THE EXIT";
+      return "STOP IN THE BOX";
+    }
+    return "PIT LANE · 80 KM/H";
+  }
+  if (hud.pitPhase === "requested") return hud.hasPitLane ? "BOX THIS LAP · ENTER THE PIT LANE" : "BOX REQUESTED";
+  return "";
 }

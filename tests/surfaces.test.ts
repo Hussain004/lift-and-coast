@@ -1,3 +1,4 @@
+import { getPitLane } from "../lib/tracks/pitLane";
 import { describe, expect, it } from "vitest";
 import {
   GRAVEL_WIDTH_METERS,
@@ -346,8 +347,11 @@ describe("derived zones (real circuits)", () => {
         const b = unit((i + 10) % n);
         return Math.atan2(a.x * b.z - a.z * b.x, a.x * b.x + a.z * b.z);
       };
+      const lane = getPitLane(track);
       const straightIdx = (() => {
         for (let s = 0; s < n; s++) {
+          // Not the pit straight: the pit lane is asphalt where the grass would be.
+          if (lane && !(Number.isNaN(lane.offsetByIndex[s]) && Number.isNaN(lane.offsetByIndex[(s + 20) % n]))) continue;
           if (Math.abs(turnAt(s)) < 0.09 && Math.abs(turnAt((s + 20) % n)) < 0.09) return s;
         }
         return -1;

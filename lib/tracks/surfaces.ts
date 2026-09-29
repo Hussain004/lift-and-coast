@@ -431,10 +431,12 @@ export function sampleSurface(track: TrackData, x: number, z: number): SurfaceSa
  */
 export function classifySurface(track: TrackData, status: TrackLimitStatus): SurfaceSample {
   const zone = surfaceZones(track)[status.nearestIndex];
-  const past = status.distanceFromEdgeMeters;
   const onRight = status.lateralMeters >= 0;
   const kerb = onRight ? zone.right : zone.left;
   const gravel = onRight ? zone.gravelRight : zone.gravelLeft;
+  // The pit lane is road, unless a kerb or gravel trap is cut into the same
+  // ground (a lane ramp beside a corner): then the trap keeps its surface.
+  const past = status.inPitLane && (kerb || gravel) ? status.rawDistanceFromEdgeMeters : status.distanceFromEdgeMeters;
 
   const base = {
     distanceFromEdgeMeters: past,
