@@ -50,6 +50,8 @@ import {
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createQualifyingReferenceTimes } from "@/lib/race/qualifyingField";
+import { Bloom } from "./Bloom";
+import { NightLights } from "./NightLights";
 import { PracticeGates } from "./PracticeGates";
 import { paceTarget } from "@/lib/race/practiceProgrammes";
 import type { QualifyingFormat } from "@/lib/race/qualifying";
@@ -359,8 +361,8 @@ const ORBIT_FOV = 60;
 
 // Plan section 8 (Session Setup): time-of-day lighting presets. One table,
 // not scattered ternaries, so adding a preset is one row and every light in
-// the scene stays consistent by construction. Deliberately no night -
-// driving it fairly would need headlights and lit track furniture.
+// the scene stays consistent by construction. Night is moonlight plus the
+// floodlights and headlight of NightLights.tsx.
 const TIME_OF_DAY_LIGHTING: Record<
   TimeOfDay,
   {
@@ -374,6 +376,7 @@ const TIME_OF_DAY_LIGHTING: Record<
     sunColor: string;
     sunIntensity: number;
     sunPosition: [number, number, number];
+    stars?: boolean;
   }
 > = {
   day: {
@@ -397,6 +400,18 @@ const TIME_OF_DAY_LIGHTING: Record<
     sunColor: "#ffb870",
     sunIntensity: 2.0,
     sunPosition: [90, 22, 10],
+  },
+  night: {
+    sky: "#0a1122",
+    zenith: "#010309",
+    hills: "#0d1420",
+    ambientColor: "#4a63a0",
+    groundColor: "#161c28",
+    ambientIntensity: 0.8,
+    sunColor: "#8ea6e0",
+    sunIntensity: 0.6,
+    sunPosition: [-40, 60, 35],
+    stars: true,
   },
   overcast: {
     sky: "#b8c0c7",
@@ -1035,7 +1050,7 @@ export function Scene({
           ? 0.85
           : 0.15;
   const cloudColor =
-    weatherPreset === "rain" ? "#9aa4ae" : timeOfDay === "sunset" ? "#f5d9c8" : "#e8ecf2";
+    weatherPreset === "rain" ? "#9aa4ae" : timeOfDay === "sunset" ? "#f5d9c8" : timeOfDay === "night" ? "#1b2438" : "#e8ecf2";
   // Graphics tier (see lib/render/quality.ts): resolved once at mount -
   // antialiasing is a context-creation flag - then live: K cycles the
   // preference, and "auto" can step itself down (FrameRateGovernor).
@@ -1088,7 +1103,10 @@ export function Scene({
         sunColor={lighting.sunColor}
         cloudCover={cloudCover}
         cloudColor={cloudColor}
+        stars={lighting.stars && cloudCover < 0.8}
       />
+      {settings.bloom && <Bloom night={timeOfDay === "night"} />}
+      {timeOfDay === "night" && <NightLights track={track} target={visualRef} />}
       <Sun
         direction={lighting.sunPosition}
         color={lighting.sunColor}
@@ -1260,7 +1278,7 @@ export function Scene({
         <>
           <Sparks audioRef={audioRef} />
           <Spray audioRef={audioRef} weatherRef={weatherRef} />
-          <RainLightDriver weatherRef={weatherRef} />
+          <RainLightDriver weatherRef={weatherRef} night={timeOfDay === "night"} />
           <SkidMarks fxRef={fxRef} />
         </>
       )}

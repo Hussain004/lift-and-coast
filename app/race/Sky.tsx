@@ -62,6 +62,7 @@ export function SkyDome({
   sunColor,
   cloudCover = 0,
   cloudColor = "#e8ecf2",
+  stars = false,
 }: {
   zenith: string;
   horizon: string;
@@ -71,9 +72,11 @@ export function SkyDome({
   /** 0 = clear sky, 1 = full overcast ceiling. */
   cloudCover?: number;
   cloudColor?: string;
+  /** A field of stars on the upper dome (night). */
+  stars?: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
-  const { dome, ring, sun, halo, clouds } = useMemo(() => {
+  const { dome, ring, sun, halo, clouds, starGeometry } = useMemo(() => {
     const top = new THREE.Color(zenith);
     const low = new THREE.Color(horizon);
     const dome = new THREE.SphereGeometry(RADIUS, 24, 14);
@@ -133,8 +136,20 @@ export function SkyDome({
         scale: slot.scale,
       });
     }
-    return { dome, ring, sun, halo, clouds };
-  }, [zenith, horizon, hills, sunDirection, cloudCover]);
+    // Stars: fixed points over the upper hemisphere, hashed so the sky is stable.
+    const starGeometry = new THREE.BufferGeometry();
+    if (stars) {
+      const pts: number[] = [];
+      for (let i = 0; i < 420; i++) {
+        const az = hash01(i + 300.5) * Math.PI * 2;
+        const el = Math.asin(0.12 + hash01(i + 700.5) * 0.88);
+        const rs = RADIUS * 0.97;
+        pts.push(Math.cos(az) * Math.cos(el) * rs, Math.sin(el) * rs, Math.sin(az) * Math.cos(el) * rs);
+      }
+      starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    }
+    return { dome, ring, sun, halo, clouds, starGeometry };
+  }, [zenith, horizon, hills, sunDirection, cloudCover, stars]);
 
   useFrame(({ camera }) => {
     group.current?.position.copy(camera.position);
@@ -145,6 +160,11 @@ export function SkyDome({
       <mesh geometry={dome} renderOrder={-30}>
         <meshBasicMaterial vertexColors side={THREE.BackSide} fog={false} depthWrite={false} />
       </mesh>
+      {stars && (
+        <points geometry={starGeometry} renderOrder={-28}>
+          <pointsMaterial color="#dfe8ff" size={1.6} sizeAttenuation={false} fog={false} depthWrite={false} toneMapped={false} />
+        </points>
+      )}
       <mesh geometry={ring} renderOrder={-20}>
         <meshBasicMaterial vertexColors side={THREE.DoubleSide} fog={false} depthWrite={false} />
       </mesh>

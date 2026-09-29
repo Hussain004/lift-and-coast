@@ -230,15 +230,14 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   return `/race${suffix ? `?${suffix}` : ""}`;
 }
 
-// Plan section 8 (Session Setup): time-of-day lighting preset. Deliberately
-// no night: driving it fairly would need headlights and lit track
-// furniture, a whole feature - these three all read with the same lighting
-// rig, only rebalanced.
-export type TimeOfDay = "day" | "sunset" | "overcast";
+// Plan section 8 (Session Setup): time-of-day lighting preset. Day, sunset
+// and overcast are the same lighting rig rebalanced; night adds floodlight
+// masts and a headlight (see app/race/NightLights.tsx).
+export type TimeOfDay = "day" | "sunset" | "overcast" | "night";
 export const DEFAULT_TIME_OF_DAY: TimeOfDay = "day";
 
 export function parseTimeOfDay(raw: string | null): TimeOfDay {
-  return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
+  return raw === "sunset" || raw === "overcast" || raw === "night" ? raw : DEFAULT_TIME_OF_DAY;
 }
 
 export function parseRaceLaps(raw: string | null): number {
@@ -290,7 +289,7 @@ function clampTrackId(raw: unknown): string {
 }
 
 function clampTimeOfDay(raw: unknown): TimeOfDay {
-  return raw === "sunset" || raw === "overcast" ? raw : DEFAULT_TIME_OF_DAY;
+  return raw === "sunset" || raw === "overcast" || raw === "night" ? raw : DEFAULT_TIME_OF_DAY;
 }
 
 function clampWeather(raw: unknown): WeatherSetting {

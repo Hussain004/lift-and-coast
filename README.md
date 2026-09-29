@@ -32,6 +32,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass
 - Madrid banking at T12 and Zandvoort's Hugenholtzbocht cross-slope
 - Synthesized Web Audio: a V6 hybrid engine voiced over a real F1 rev range, audible ignition-cut upshifts and rev-match downshifts, lift-and-coast turbo whoosh and overrun crackle, MGU-K whine, tyres, wind and impacts
+- Night races (pick Night in session setup): moonlit sky and stars, floodlight masts around the circuit, a headlight, and a rear light on every car. The High graphics tier adds bloom, so lamps and rear lights glow
 
 The game is entirely client-side. Your setups, championship, best laps, and preferences stay in the browser unless you export a save.
 

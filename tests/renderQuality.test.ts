@@ -31,6 +31,8 @@ describe("graphics quality", () => {
     expect(low.cheapMaterials).toBe(true);
     expect(low.floraDensity).toBeLessThan(high.floraDensity);
     for (const tier of [low, medium, high]) expect(tier.minDpr).toBeLessThanOrEqual(tier.maxDpr);
+    // Bloom is a full-screen pass chain: High only.
+    expect([low.bloom, medium.bloom, high.bloom]).toEqual([false, false, true]);
   });
 
   it("steps down to low and no further; cycles preferences; parses junk as auto", () => {

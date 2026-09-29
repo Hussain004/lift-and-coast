@@ -239,10 +239,18 @@ export function Spray({
 }
 
 /** Flashes every car's rear rain light (CarBodyMesh) while the track is wet. */
-export function RainLightDriver({ weatherRef }: { weatherRef: React.RefObject<WeatherHandle> }) {
+export function RainLightDriver({
+  weatherRef,
+  night = false,
+}: {
+  weatherRef: React.RefObject<WeatherHandle>;
+  /** After dark the rear light is simply on (it still flashes in the wet). */
+  night?: boolean;
+}) {
   useFrame((state) => {
     const wet = weatherRef.current?.snapshot().wetness ?? 0;
-    rainLightMaterial.visible = wet > 0.25 && Math.floor(state.clock.elapsedTime * 4) % 2 === 0;
+    const flash = Math.floor(state.clock.elapsedTime * 4) % 2 === 0;
+    rainLightMaterial.visible = wet > 0.25 ? flash : night;
   });
   return null;
 }

@@ -28,6 +28,8 @@ export interface QualitySettings {
   effects: boolean;
   /** People on the grandstands (see structures.ts emitCrowd). */
   crowd: boolean;
+  /** Bloom post-processing (see app/race/Bloom.tsx): High only, it costs a full-screen pass chain. */
+  bloom: boolean;
 }
 
 export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
@@ -42,6 +44,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     fogFar: 190,
     effects: false,
     crowd: false,
+    bloom: false,
   },
   medium: {
     maxDpr: 1,
@@ -54,6 +57,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     fogFar: 240,
     effects: true,
     crowd: true,
+    bloom: false,
   },
   high: {
     maxDpr: 1.75,
@@ -66,6 +70,7 @@ export const QUALITY_SETTINGS: Record<GraphicsQuality, QualitySettings> = {
     fogFar: 320,
     effects: true,
     crowd: true,
+    bloom: true,
   },
 };
 

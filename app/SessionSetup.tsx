@@ -44,6 +44,7 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "day", label: "Day" },
   { id: "sunset", label: "Sunset" },
   { id: "overcast", label: "Overcast" },
+  { id: "night", label: "Night" },
 ];
 
 /** One-tap builds inside the measured slider range (see lib/physics/carSetup.ts). */

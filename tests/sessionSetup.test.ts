@@ -50,11 +50,12 @@ describe("parseRaceLaps", () => {
 });
 
 describe("parseTimeOfDay", () => {
-  it("passes the three presets through and defaults everything else", () => {
+  it("passes the four presets through and defaults everything else", () => {
     expect(parseTimeOfDay("day")).toBe("day");
     expect(parseTimeOfDay("sunset")).toBe("sunset");
     expect(parseTimeOfDay("overcast")).toBe("overcast");
-    expect(parseTimeOfDay("night")).toBe(DEFAULT_TIME_OF_DAY);
+    expect(parseTimeOfDay("night")).toBe("night");
+    expect(parseTimeOfDay("midnight")).toBe(DEFAULT_TIME_OF_DAY);
     expect(parseTimeOfDay(null)).toBe(DEFAULT_TIME_OF_DAY);
   });
 });
@@ -132,7 +133,7 @@ describe("loadSessionSetupPrefs", () => {
       "lift-and-coast.session-setup.v1": JSON.stringify({
         raceLaps: 3,
         trackId: "spa",
-        timeOfDay: "night",
+        timeOfDay: "midnight",
       }),
     });
     expect(loadSessionSetupPrefs(bad.storage).timeOfDay).toBe(DEFAULT_TIME_OF_DAY);
