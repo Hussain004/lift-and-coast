@@ -46,4 +46,12 @@ describe("marshalling flags", () => {
     expect(stepFlags(state, rivals, car(1000, 60, 2), [sameLap, car(3000)], L, 0.1, 60).blue).toBeNull();
     expect(flagChipText({ yellow: null, blue: { code: "VER", behindMeters: 100 } })).toBe("BLUE FLAG · LET VER PASS");
   });
+
+  it("does not flag a car parked in its pit box", () => {
+    const state = createFlagState(1);
+    for (let i = 0; i < 6; i++) {
+      const status = stepFlags(state, [{ code: "VER" }], car(1000), [{ ...car(1100, 0), inPit: true }], L, 1, 60 + i);
+      expect(status.yellow).toBeNull();
+    }
+  });
 });

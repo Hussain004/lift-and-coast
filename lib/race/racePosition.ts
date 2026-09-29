@@ -8,6 +8,8 @@ export interface RaceProgress {
    * timing tower's gap seconds (see renderTowerHtml). Optional so older
    * callers and tests keep compiling; missing reads as stopped. */
   speedMs?: number;
+  /** Parked in or driving the pit lane: not an incident for the flags. */
+  inPit?: boolean;
   /** Last completed lap, when one exists. */
   lastLapSeconds?: number | null;
   /** Best completed lap, when one exists. */

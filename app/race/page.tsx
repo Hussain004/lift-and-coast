@@ -310,6 +310,9 @@ function RaceContent() {
       isPlayer: false,
     })),
   ].sort((a, b) => a.grid - b.grid);
+  // ?aipit=N makes every AI pit at the end of lap N (verification aid; normal races pit only from 5 laps).
+  const aiPitRaw = parseInt(searchParams.get("aipit") ?? "", 10);
+  const aiPitLap = Number.isInteger(aiPitRaw) && aiPitRaw >= 0 ? aiPitRaw : null;
   const goAtRaw = parseInt(searchParams.get("goAt") ?? "", 10);
   const countdownGoAtMs = Number.isInteger(goAtRaw) ? goAtRaw : 0;
   const timeOfDay = parseTimeOfDay(searchParams.get("tod"));
@@ -496,6 +499,7 @@ function RaceContent() {
           onReady={handleSceneReady}
           weatherPreset={weatherPreset}
           weatherPlan={weatherPlan}
+          aiPitLap={aiPitLap}
           raceCommandsRef={raceCommandsRef}
           raceOpsSnapshotRef={raceOpsSnapshotRef}
           telemetryRef={telemetryOpen ? telemetryRef : undefined}

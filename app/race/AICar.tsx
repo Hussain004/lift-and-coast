@@ -11,6 +11,9 @@ import {
   type RapierRigidBody,
 } from "@react-three/rapier";
 import type Rapier from "@dimforge/rapier3d-compat";
+import { RigidBodyType } from "@dimforge/rapier3d-compat";
+import { getPitLane, pitGateHalfWidth } from "@/lib/tracks/pitLane";
+import { buildPitPath, planPitLap, samplePath, startPitRun, stepPitRun, type PitPath, type PitRunState } from "@/lib/race/pitRun";
 import {
   ANGULAR_DAMPING,
   CAR_WHEELS,
@@ -140,6 +143,9 @@ import type { TrackData } from "@/lib/tracks/types";
  * which also clears any armed mistake - reseeds only ever happen before
  * the start lights, never mid-race.
  */
+/** How far before the pit entry the AI leaves the racing line for its stop. */
+const PIT_APPROACH_METERS = 150;
+
 function sessionRng(
   sessionSeed: number,
   driverCode: string,
@@ -174,6 +180,7 @@ export function AICar({
    * aggression, risk, tire curve, passing side; see personalities.ts). */
   driverCode = "YOU",
   driverNumber = null,
+  pitLapOverride = null,
   /** Meeting difficulty tier (see personalities.ts) - scales AI pace and
    * aggression only; the player's car is untouched. */
   difficulty = "pro" as AIDifficulty,
@@ -234,6 +241,8 @@ export function AICar({
   driverCode?: string;
   /** Race number worn on the engine cover (see CarBodyMesh). */
   driverNumber?: number | null;
+  /** Debug/verification: force this AI to pit at the end of this lap (?aipit=). */
+  pitLapOverride?: number | null;
   /**
    * Meeting difficulty tier (see personalities.ts) - scales AI pace and
    * aggression only; the player's car is untouched.
@@ -306,7 +315,7 @@ export function AICar({
   const lapTimerRef = useRef(
     createLapTimer({
       startPos: track.startPos,
-      lineHalfWidth: LINE_HALF_WIDTH_METERS,
+      lineHalfWidth: pitGateHalfWidth(track, LINE_HALF_WIDTH_METERS),
       startsBehindLine: gridSlot(track, gridSlotIndex).startsBehindLine,
     })
   );
@@ -362,6 +371,12 @@ export function AICar({
   const racecraftRef = useRef(createRacecraftState());
   const recoveryRef = useRef(createRecoveryState());
   const zoneRef = useRef<ThrottleZone>("throttle");
+  // Pit stop (see lib/race/pitRun.ts): the planned lap, the run in progress
+  // (the car rides a kinematic body along the pit lane meanwhile), and
+  // whether the one stop has been made.
+  const pitRunRef = useRef<{ path: PitPath; state: PitRunState; stopSeconds: number } | null>(null);
+  const pitDoneRef = useRef(false);
+  const pitPoseRef = useRef({ x: 0, y: 0, z: 0, yaw: 0 });
   const rngRef = useRef<(() => number) | null>(null);
   const rngSeedRef = useRef(-1);
   const mistakeArmedRef = useRef(false);
@@ -487,6 +502,11 @@ export function AICar({
     // back on the same scrubbed timeline.
     if (sharedRewindActiveRef?.current ?? false) {
       aiWasRewindingRef.current = true;
+      if (pitRunRef.current) {
+        // A flashback abandons a stop in progress: back to a normal car.
+        pitRunRef.current = null;
+        body.setBodyType(RigidBodyType.Dynamic, true);
+      }
       aiCursorRef.current = Math.min(
         aiCursorRef.current + world.timestep,
         aiBufferRef.current.oldestAvailableSeconds()
@@ -573,6 +593,88 @@ export function AICar({
       }
     }
 
+    // Pit stop: a scripted run down the lane on a kinematic body (see
+    // lib/race/pitRun.ts). The path follower never drives the lane, and on
+    // track nothing about this car changes - it simply leaves the circuit
+    // for the stop and is handed back a dynamic body at the lane exit.
+    const pitRun = pitRunRef.current;
+    if (pitRun) {
+      stepPitRun(pitRun.state, pitRun.path, world.timestep, pitRun.stopSeconds);
+      const entry = raceRef?.current?.opponents[aiIndex];
+      if (entry) {
+        entry.inPit = true;
+        entry.speedMs = pitRun.state.v;
+      }
+      const pose = samplePath(pitRun.path, pitRun.state.s, pitPoseRef.current);
+      const half = pose.yaw / 2;
+      const q = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
+      if (pitRun.state.done) {
+        body.setBodyType(RigidBodyType.Dynamic, true);
+        body.setTranslation({ x: pose.x, y: pose.y, z: pose.z }, true);
+        body.setRotation(q, true);
+        body.setLinvel({ x: -Math.sin(pose.yaw) * pitRun.state.v, y: 0, z: -Math.cos(pose.yaw) * pitRun.state.v }, true);
+        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        pitRunRef.current = null;
+        pitDoneRef.current = true;
+        resetRacecraftState(racecraftRef.current);
+        recoveryRef.current = createRecoveryState();
+      } else {
+        body.setNextKinematicTranslation({ x: pose.x, y: pose.y, z: pose.z });
+        body.setNextKinematicRotation(q);
+      }
+      lastControlsRef.current = {
+        throttle: pitRun.state.phase === "stopped" ? 0 : 0.25,
+        yaw: pose.yaw,
+        lvx: -Math.sin(pose.yaw) * pitRun.state.v,
+        lvz: -Math.cos(pose.yaw) * pitRun.state.v,
+      };
+      return;
+    }
+    if (
+      !pitDoneRef.current &&
+      sessionMode === "race" &&
+      (raceStartRef?.current ?? true) &&
+      !(netInputRef?.current && Date.now() - netInputRef.current.atMs < 500)
+    ) {
+      const lane = getPitLane(track);
+      const planLap = lane ? planPitLap(raceLaps, hashDriverCode(driverCode), pitLapOverride) : null;
+      const myLapNow = raceRef?.current?.opponents[aiIndex]?.lapCount ?? 0;
+      const entryProgress = lane ? (lane.entryIndex / track.centerline.length) * track.lengthMeters : 0;
+      // pitLapOverride 0 (verification only): pit from the grid, which already
+      // sits inside the lane's stretch, two seconds after the lights.
+      const fromGrid =
+        planLap === 0 && lane !== null && !Number.isNaN(lane.offsetByIndex[limitStatus.nearestIndex]) && racecraftRef.current.raceSeconds > 2;
+      if (
+        lane &&
+        planLap !== null &&
+        (fromGrid ||
+          (planLap > 0 &&
+            myLapNow === planLap - 1 &&
+            trackedProgress >= entryProgress - PIT_APPROACH_METERS &&
+            trackedProgress < entryProgress))
+      ) {
+        const v = body.linvel();
+        const idx = limitStatus.nearestIndex;
+        const path = buildPitPath(
+          track,
+          lane,
+          idx,
+          limitStatus.lateralMeters,
+          Math.min(0.9, Math.max(0.55, pos.y - track.centerline[idx][1])),
+          1 + aiIndex
+        );
+        pitRunRef.current = {
+          path,
+          state: startPitRun(Math.hypot(v.x, v.z)),
+          stopSeconds: 3.2 + ((hashDriverCode(driverCode) >>> 3) % 9) / 10,
+        };
+        body.setBodyType(RigidBodyType.KinematicPositionBased, true);
+        body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        return;
+      }
+    }
+
     const rot = body.rotation();
     const yaw = yawFromQuaternion(rot.x, rot.y, rot.z, rot.w);
     // Not controller.currentVehicleSpeed() - see computeSignedForwardSpeed's
@@ -621,6 +723,9 @@ export function AICar({
         // the tire curve already use - the control law is untouched, and on a
         // dry track the factor is exactly 1, so no dry AI gate is affected.
         weatherPaceScale(weatherState.gripMultiplier);
+      // Fresh tyres after the stop (see lib/race/pitRun.ts): about a percent of pace, in
+      // the same range the per-driver tyre curve already moves it.
+      if (pitDoneRef.current) paceMult *= 1.01;
       // Mistake envelope: an armed moment triggers when the car reaches
       // the scheduled point, then reads as a lift for under a second -
       // pace only, the steering never wavers.

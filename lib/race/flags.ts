@@ -57,7 +57,7 @@ export function stepFlags(
   for (let k = 0; k < rivals.length; k++) {
     const opp = opponents[k];
     if (!opp) continue;
-    state.stoppedSeconds[k] = raceSeconds > OPENING_SECONDS && Math.abs(opp.speedMs ?? 0) < STOPPED_SPEED_MS ? (state.stoppedSeconds[k] ?? 0) + dt : 0;
+    state.stoppedSeconds[k] = raceSeconds > OPENING_SECONDS && !opp.inPit && Math.abs(opp.speedMs ?? 0) < STOPPED_SPEED_MS ? (state.stoppedSeconds[k] ?? 0) + dt : 0;
     const ahead = wrappedGap(player.progressMeters, opp.progressMeters, trackLengthMeters);
     if (state.stoppedSeconds[k] >= INCIDENT_SECONDS && ahead >= -YELLOW_AFTER_METERS && ahead <= YELLOW_BEFORE_METERS) {
       if (!status.yellow || ahead < status.yellow.aheadMeters) status.yellow = { code: rivals[k].code, aheadMeters: ahead };

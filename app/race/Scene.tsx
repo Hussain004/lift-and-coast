@@ -802,6 +802,7 @@ export function Scene({
   onReady,
   weatherPreset = "clear",
   weatherPlan = null,
+  aiPitLap = null,
   raceCommandsRef,
   raceOpsSnapshotRef,
   telemetryRef,
@@ -844,6 +845,8 @@ export function Scene({
   weatherPreset?: WeatherPreset;
   /** Changeable weather: the scripted timeline (null = a fixed preset). */
   weatherPlan?: WeatherPlan | null;
+  /** Verification aid (?aipit=): every AI pits at the end of this lap. */
+  aiPitLap?: number | null;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
   /** Live telemetry target for the player car (see lib/race/telemetry.ts).
@@ -1138,6 +1141,7 @@ export function Scene({
                 aiIndex={k}
                 driverCode={rival.code}
                 driverNumber={rival.number ?? null}
+                pitLapOverride={aiPitLap}
                 weatherRef={weatherRef}
                 sessionMode={sessionMode}
                 difficulty={difficulty}

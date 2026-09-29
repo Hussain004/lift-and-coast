@@ -68,7 +68,7 @@ Circuits with room for one get a drivable pit lane. Press `O` to request a stop,
 
 Flashbacks are limited in a race by AI level (Rookie unlimited, Club 5, Pro 3, Ace 1). Damage can be Off, Reduced or Simulation in Settings.
 
-Drive-through and stop-go penalties are still served as a flat time cost rather than through the lane, and AI cars do not make pit stops yet.
+In races of five laps or more each AI car makes one stop around half distance: it leaves the racing line for the lane, parks in its own box for a few seconds, and rejoins with a small pace bonus for fresh tyres (the AI's on-track driving is untouched; the lane run is scripted). Drive-through and stop-go penalties are still served as a flat time cost rather than through the lane.
 
 ## Controls
 
