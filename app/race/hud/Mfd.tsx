@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { HudSnapshot } from "@/lib/race/hud";
+import { flashbackLabel } from "@/lib/race/flashbacks";
 import { forecastLabel } from "@/lib/physics/weatherForecast";
 import { useHudFrame } from "./useHudFrame";
 import styles from "./hud.module.css";
@@ -94,6 +95,7 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
       set("abs", hud.abs ? "ON" : "OFF");
       set("gears", hud.autoGear ? "AUTO" : "MANUAL");
       set("line", hud.racingLine ? "ON" : "OFF");
+      set("flashbacks", flashbackLabel(hud.flashbacksLeft));
       set("damage", hud.damage >= 0.999 ? "NONE" : `${Math.round((1 - hud.damage) * 100)}% GRIP LOST`);
       el.dataset.damaged = hud.damage < 0.999 ? "1" : "0";
     } else {
@@ -177,6 +179,7 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
             <div><dt>ABS</dt><dd data-k="abs" /></div>
             <div><dt>GEARBOX</dt><dd data-k="gears" /></div>
             <div><dt>RACING LINE</dt><dd data-k="line" /></div>
+            <div><dt>FLASHBACKS</dt><dd data-k="flashbacks" /></div>
             <div><dt>DAMAGE</dt><dd data-k="damage" /></div>
           </dl>
         )}

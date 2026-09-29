@@ -107,6 +107,8 @@ export interface HudSnapshot {
   pitStops: number;
   /** 1 = undamaged. */
   damage: number;
+  /** Flashbacks left this session; null = unlimited. */
+  flashbacksLeft: number | null;
   tc: boolean;
   abs: boolean;
   autoGear: boolean;
@@ -174,6 +176,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pitPhase: "none",
     pitStops: 0,
     damage: 1,
+    flashbacksLeft: null,
     tc: true,
     abs: true,
     autoGear: true,

@@ -83,6 +83,7 @@ import {
 } from "@/lib/race/trackLimitSequence";
 import { computeRacePositions, buildTowerEntries, towerOpponents, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, isQualifyingLapValid, type QualifyingTimes } from "@/lib/race/qualifying";
+import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
@@ -187,6 +188,7 @@ export function Car({
   raceRef,
   hudRef,
   fxRef,
+  flashbackLimit = null,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
   sessionMode = "race",
@@ -252,6 +254,8 @@ export function Car({
   hudRef?: React.RefObject<HudSnapshot>;
   /** Skid-mark stamps for TrackFx (Scene.tsx). */
   fxRef?: React.RefObject<FxBus>;
+  /** Flashbacks allowed this session (lib/race/flashbacks.ts); null = unlimited. */
+  flashbackLimit?: number | null;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /**
@@ -560,6 +564,8 @@ export function Car({
 
   const rewindBufferRef = useRef(createRewindBuffer(REWIND_CAPACITY_SECONDS, 1 / 60));
   const rewindCursorRef = useRef(0);
+  const flashbacksLeftRef = useRef<number | null>(flashbackLimit);
+  const noFlashbackToldRef = useRef(false);
   const wasRewindingRef = useRef(false);
   const isRewindingRef = useRef(false);
   const lapTimerPrimedRef = useRef(false);
@@ -829,8 +835,18 @@ export function Car({
         return;
       }
     }
-    isRewindingRef.current = driveInput.rewind;
-    if (sharedRewindActiveRef) sharedRewindActiveRef.current = driveInput.rewind;
+    // Flashbacks are limited in a race (see lib/race/flashbacks.ts); a hold
+    // already under way is always allowed to finish.
+    const flashbacksLeft = flashbacksLeftRef.current;
+    const canRewind = flashbacksLeft === null || flashbacksLeft > 0 || wasRewindingRef.current;
+    const rewinding = driveInput.rewind && canRewind;
+    if (driveInput.rewind && !canRewind && !noFlashbackToldRef.current && hudRef) {
+      noFlashbackToldRef.current = true;
+      pushHudEvent(hudRef.current, "warn", "NO FLASHBACKS LEFT", undefined, 1.6);
+    }
+    if (!driveInput.rewind) noFlashbackToldRef.current = false;
+    isRewindingRef.current = rewinding;
+    if (sharedRewindActiveRef) sharedRewindActiveRef.current = rewinding;
 
     // Snap back to the start line if the car ends up this far off-track
     // (e.g. spun off pointing away from the circuit and held throttle
@@ -893,7 +909,7 @@ export function Car({
       return;
     }
 
-    if (driveInput.rewind) {
+    if (rewinding) {
       lapHadDiscontinuityRef.current = true;
       qualifyingDiscontinuityRef.current = true;
       wasRewindingRef.current = true;
@@ -936,6 +952,12 @@ export function Car({
         lapInvalidAtSecondsRef.current = null;
         resetTrackLimitSequence(trackLimitSequenceRef.current);
         if (sessionMode === "qualifying") qualifyingDiscontinuityRef.current = false;
+      }
+      if (flashbacksLeftRef.current !== null && rewindCursorRef.current >= MIN_FLASHBACK_SECONDS) {
+        flashbacksLeftRef.current = Math.max(0, flashbacksLeftRef.current - 1);
+        if (hudRef) {
+          pushHudEvent(hudRef.current, "info", `FLASHBACK · ${flashbackLabel(flashbacksLeftRef.current)}`, undefined, 2);
+        }
       }
       rewindCursorRef.current = 0;
       wasRewindingRef.current = false;
@@ -1392,6 +1414,7 @@ export function Car({
       hud.pitPhase = strategy.pitPhase;
       hud.pitStops = strategy.pitStops;
       hud.damage = damageGripMultiplierRef.current;
+      hud.flashbacksLeft = flashbacksLeftRef.current;
       hud.tc = tractionControlEnabled.current;
       hud.abs = absEnabled.current;
       hud.autoGear = autoGear.current;
