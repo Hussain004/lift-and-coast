@@ -79,7 +79,7 @@ const TIRE_COMPOUND_KEYS: Record<string, TireCompoundId> = {
   Digit2: "medium",
   Digit3: "hard",
   Digit4: "intermediate",
-  Digit5: "wet",
+  Digit6: "wet",
 };
 
 export interface DriveInput {

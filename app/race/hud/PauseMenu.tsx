@@ -20,7 +20,7 @@ const FIXED_KEYS: [string, string][] = [
   ["P / Esc", "Pause menu"],
   ["Tab", "Full timing tower"],
   [", / .", "Wheel display page"],
-  ["1 - 5", "Tyre compound (S M H I W)"],
+  ["1-4, 6", "Tyre: soft, medium, hard, inter, wet"],
   ["H", "Race Ops / telemetry panel"],
   ["4", "Telemetry"],
   ["N", "Mirrors (cockpit cams)"],

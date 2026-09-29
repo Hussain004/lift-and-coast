@@ -64,7 +64,7 @@ Track limits follow the FIA ladder: three warnings, then a black-and-white flag,
 
 ## Pit stops, tyres and weather
 
-Circuits with room for one get a drivable pit lane. Press `O` to request a stop, peel off into the lane before the start line (the limiter holds 80 km/h), and stop in the green box: the crew changes tyres, refuels and repairs any damage (a broken front wing adds time). Street circuits with no room keep the old marked service window. Tyres are `1` soft, `2` medium, `3` hard, `4` intermediate, `5` wet; inters peak on a damp track and wets on a soaked one, and both overheat on a dry track. Choose **Changeable** weather in session setup for a seeded rain window announced on the MFD weather page and by the engineer.
+Circuits with room for one get a drivable pit lane. Press `O` to request a stop, peel off into the lane before the start line (the limiter holds 80 km/h), and stop in the green box: the crew changes tyres, refuels and repairs any damage (a broken front wing adds time). Street circuits with no room keep the old marked service window. Tyres are `1` soft, `2` medium, `3` hard, `4` intermediate, `6` wet; inters peak on a damp track and wets on a soaked one, and both overheat on a dry track. Choose **Changeable** weather in session setup for a seeded rain window announced on the MFD weather page and by the engineer.
 
 Flashbacks are limited in a race by AI level (Rookie unlimited, Club 5, Pro 3, Ace 1). Damage can be Off, Reduced or Simulation in Settings.
 
@@ -88,7 +88,7 @@ Drive-through and stop-go penalties are still served as a flat time cost rather 
 | Active Aero | `E` | Assign as a button if supported |
 | Camera (includes helmet view) | `C` | Assign as a button if supported |
 | Side mirrors | `N` | Mirror button in the HUD/touch deck |
-| Tires | `1` – `5` (soft, medium, hard, inter, wet) | Assign as buttons if supported |
+| Tires | `1` `2` `3` `4` `6` (soft, medium, hard, inter, wet; `5` is reverse) | Assign as buttons if supported |
 | Mute | `M` | Assign as a button if supported |
 | Race Ops panel | `H` | Header click |
 | Overtake arm | Hold `X` | Assign as a button if supported |

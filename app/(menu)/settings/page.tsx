@@ -8,6 +8,7 @@ import { HapticsSetting } from "../../HapticsSetting";
 import { AudioSetting } from "../../AudioSetting";
 import { RacingLineSetting } from "../../RacingLineSetting";
 import { DamageSetting } from "../../DamageSetting";
+import { AssistPresets } from "../../AssistPresets";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -20,6 +21,11 @@ export default function SettingsPage() {
         <ControlSettingsPanel inline />
       </section>
       <div className={styles.stack}>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>DRIVING AIDS</h2>
+          <p className={styles.cardNote}>A preset sets traction control, ABS, the racing line and damage together. Gearbox and AI level are chosen per session.</p>
+          <AssistPresets />
+        </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>GRAPHICS</h2>
           <GraphicsSetting />
