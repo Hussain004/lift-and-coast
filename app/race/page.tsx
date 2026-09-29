@@ -570,14 +570,16 @@ function RaceContent() {
           </div>
         )}
       </div>
-      <MobileControls
-        inputRef={touchInputRef}
-        disabled={singlePlayer && menuOpen}
-        onPause={toggleMenu}
-        onReplay={toggleMobileReplay}
-        onToggleSideMirrors={toggleSideMirrors}
-        sideMirrorsEnabled={sideMirrorsEnabled}
-      />
+      {!photoOpen && (
+        <MobileControls
+          inputRef={touchInputRef}
+          disabled={singlePlayer && menuOpen}
+          onPause={toggleMenu}
+          onReplay={toggleMobileReplay}
+          onToggleSideMirrors={toggleSideMirrors}
+          sideMirrorsEnabled={sideMirrorsEnabled}
+        />
+      )}
       {menuOpen && !result && photoOpen && (
         <PhotoPanel photoRef={photoRef} trackName={track.name} onExit={exitPhoto} />
       )}
