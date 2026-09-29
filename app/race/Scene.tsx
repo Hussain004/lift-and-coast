@@ -801,6 +801,7 @@ export function Scene({
   hudRef,
   raceLaps,
   champRound,
+  sprint,
   sessionMode = "race",
   qualiFormat = "timed",
   timeAttack = false,
@@ -886,6 +887,7 @@ export function Scene({
   telemetryRef?: React.RefObject<TelemetrySample | null>;
   /** Championship round index from ?champ=, or null for a one-off race. */
   champRound?: number | null;
+  sprint?: boolean;
   /** What kind of session this visit is - see ?mode= (default race). */
   sessionMode?: SessionMode;
   /** Qualifying format from ?qformat= (default timed). */
@@ -1140,6 +1142,7 @@ export function Scene({
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
+          sprint={sprint}
           practiceTargetSeconds={practiceTargetSeconds}
           sessionMode={sessionMode}
           qualiFormat={qualiFormat}

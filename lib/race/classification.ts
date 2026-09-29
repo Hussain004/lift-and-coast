@@ -3,7 +3,7 @@
 // completes the race distance, and from then on every car is classified the
 // next time it crosses the line - lapped cars included, one lap short.
 // Car.tsx feeds this every frame; the results screen shows the rows.
-import { pointsForPosition } from "./championship";
+import { fastestLapPoint, pointsForPosition, sprintPointsForPosition } from "./championship";
 import type { ClassifiedRow } from "./hud";
 
 export interface FinishTracker {
@@ -95,7 +95,9 @@ export interface ClassificationEntrant {
  */
 export function classifyRace(
   entrants: readonly ClassificationEntrant[],
-  tracker: FinishTracker
+  tracker: FinishTracker,
+  /** A sprint scores 8-1 and has no fastest-lap point. */
+  sprint = false
 ): ClassifiedRow[] {
   let fastest: number | null = null;
   for (const e of entrants) {
@@ -127,7 +129,10 @@ export function classifyRace(
     laps: row.laps,
     bestLapSeconds: row.entrant.bestLapSeconds,
     penaltySeconds: row.entrant.penaltySeconds,
-    points: pointsForPosition(index + 1),
+    points: sprint
+      ? sprintPointsForPosition(index + 1)
+      : pointsForPosition(index + 1) +
+        fastestLapPoint(index + 1, fastest !== null && row.entrant.bestLapSeconds === fastest),
     fastestLap: fastest !== null && row.entrant.bestLapSeconds === fastest,
   }));
 }

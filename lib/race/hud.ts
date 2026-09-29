@@ -67,6 +67,8 @@ export type SessionResult =
       disqualified: boolean;
       champRound: number | null;
       points: number;
+      /** A championship sprint rather than the grand prix. */
+      sprint?: boolean;
     }
   | { kind: "practice"; laps: number; bestLapSeconds: number | null }
   | {

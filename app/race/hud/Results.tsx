@@ -54,7 +54,8 @@ export function Results({
   if (result.kind === "race") {
     const winner = result.rows[0];
     const you = result.rows.find((r) => r.isPlayer);
-    kicker = result.champRound !== null ? `ROUND ${result.champRound + 1} · RACE RESULT` : "RACE RESULT";
+    const what = result.sprint ? "SPRINT RESULT" : "RACE RESULT";
+    kicker = result.champRound !== null ? `ROUND ${result.champRound + 1} · ${what}` : what;
     headline = result.disqualified ? "DSQ" : `P${result.position}`;
     sub = result.disqualified
       ? "RACE BAN · 12 LICENCE POINTS"

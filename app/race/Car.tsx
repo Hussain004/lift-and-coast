@@ -98,7 +98,7 @@ import { createFlagState, flagChipText, stepFlags } from "@/lib/race/flags";
 import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
-import { loadSeason, recordChampionshipPractice, recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
+import { loadSeason, recordChampionshipPractice, recordChampionshipQuali, recordChampionshipResult, recordChampionshipSprint } from "@/lib/persistence/championship";
 import { pointsForPosition } from "@/lib/race/championship";
 import {
   allWheelsOffTrack,
@@ -219,6 +219,7 @@ export function Car({
   flashbackLimit = null,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
+  sprint = false,
   practiceTargetSeconds = null,
   sessionMode = "race",
   qualiFormat = "timed",
@@ -293,6 +294,8 @@ export function Car({
    * active season (see recordChampionshipResult).
    */
   champRound?: number | null;
+  /** Championship sprint: scored 8-1, filed as the round's sprint result. */
+  sprint?: boolean;
   /** Championship practice: the lap time the qualifying-pace programme asks for. */
   practiceTargetSeconds?: number | null;
   /** Session kind from ?mode= (default race) - practice is solo free
@@ -1457,7 +1460,8 @@ export function Car({
           penaltySeconds: 0,
         })),
       ],
-      tracker
+      tracker,
+      sprint
     );
     const classified = rows.find((row) => row.isPlayer)?.position ?? live[0];
     // Net rooms: the host's broadcast order is the result (see
@@ -1469,17 +1473,17 @@ export function Car({
     const scoredRound = champRound !== null && !netActive ? champRound : null;
     if (scoredRound !== null) {
       // Fire-and-forget: the standings panel reads it back on the way home.
-      recordChampionshipResult(
-        scoredRound,
-        classified,
-        rows.map((row) => ({
-          code: row.code,
-          name: row.name,
-          teamId: row.teamId,
-          position: row.position,
-          points: row.points,
-          isPlayer: row.isPlayer,
-        }))
+      const resultRows = rows.map((row) => ({
+        code: row.code,
+        name: row.name,
+        teamId: row.teamId,
+        position: row.position,
+        points: row.points,
+        isPlayer: row.isPlayer,
+      }));
+      (sprint
+        ? recordChampionshipSprint(scoredRound, classified, resultRows)
+        : recordChampionshipResult(scoredRound, classified, resultRows)
       ).catch(() => {});
     }
     hud.result = {
@@ -1490,7 +1494,8 @@ export function Car({
       penaltySeconds: control.penaltySeconds,
       disqualified: control.disqualified,
       champRound: scoredRound,
-      points: pointsForPosition(classified),
+      points: rows.find((row) => row.isPlayer)?.points ?? pointsForPosition(classified),
+      sprint,
     };
   }
 

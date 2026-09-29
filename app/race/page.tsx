@@ -241,6 +241,7 @@ function RaceContent() {
     netActive && netValid ? "race" : (sessionModeOverride ?? parseSessionMode(searchParams.get("mode")));
   const qualifyingSession = sessionMode === "qualifying";
   const champRound = netActive ? null : parseChampRound(searchParams.get("champ"));
+  const sprint = champRound !== null && searchParams.get("sprint") === "1";
   // Random grid for quick races (?seed= from the home Drive link): the
   // whole field - player included - shuffles, so nobody is gifted pole.
   // Explicit grids always win, in this order: a full ?order= board (the
@@ -451,7 +452,7 @@ function RaceContent() {
   // identities, hidden reference times). Keep those inputs in the remount
   // key so a same-sized client navigation cannot reuse stale classification.
   const rosterKey = `${driver.code}/${driver.name}/${team.id}/${rivals.map((rival) => rival.code).join(",")}`;
-  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherSetting}-${timeOfDay}-${champRound ?? "none"}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}-r${restartCount}`;
+  const sceneKey = `${track.id}-${raceLaps}-${rivals.length}-${sessionMode}-${format}-${timeAttack ? "ta" : qualiFormat}-${difficulty}-${playerGridSpot}-${weatherSetting}-${timeOfDay}-${champRound ?? "none"}${sprint ? "s" : ""}-${fullOrder?.join(",") ?? gridSeed ?? "pole"}-${rosterKey}-${netActive ? `${netRole}-${playerSlot}` : "solo"}-r${restartCount}`;
   const sceneReady = readySceneKey === sceneKey;
   const handleSceneReady = useCallback(() => setReadySceneKey(sceneKey), [sceneKey]);
   const sessionLabel =
@@ -480,6 +481,7 @@ function RaceContent() {
           aiMarkerEls={aiMarkerEls}
           raceLaps={raceLaps}
           champRound={champRound}
+          sprint={sprint}
           sessionMode={sessionMode}
           qualiFormat={format}
           timeAttack={timeAttack}

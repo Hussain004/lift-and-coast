@@ -67,7 +67,8 @@ describe("classification", () => {
     );
     expect(rows.map((r) => r.code)).toEqual(["VER", "YOU", "LEC", "NOR"]);
     expect(rows[1].totalSeconds).toBe(105);
-    expect(rows[0].points).toBe(25);
+    expect(rows[0].points).toBe(26);
+    // 25 for the win plus the fastest-lap point (top ten only).
     expect(rows[0].fastestLap).toBe(true);
     expect(rows[2].totalSeconds).toBeNull();
   });

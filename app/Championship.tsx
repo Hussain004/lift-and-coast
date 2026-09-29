@@ -8,11 +8,15 @@ import {
   computeDriverStandings,
   computeTeamStandings,
   createSeason,
+  isSprintRound,
   isSeasonComplete,
   nextRoundIndex,
   seasonChampion,
   seasonTrackIds,
   SEASON_LENGTHS,
+  SPRINT_LAPS,
+  WEEKEND_FORMATS,
+  type WeekendFormat,
   totalRounds,
   weekendStage,
   type ChampionshipSeason,
@@ -50,6 +54,8 @@ export function Championship() {
   const [season, setSeason] = useState<ChampionshipSeason | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [length, setLength] = useState<SeasonLength>("calendar");
+  const [format, setFormat] = useState<WeekendFormat>("full");
+  const [sprints, setSprints] = useState(false);
   const [tab, setTab] = useState<Tab>("drivers");
   const [confirmReset, setConfirmReset] = useState(false);
   const { teamId, driverCode } = useRosterSelection();
@@ -69,7 +75,7 @@ export function Championship() {
 
   function startSeason() {
     const ids = seasonTrackIds(length, TRACKS.map((track) => track.id));
-    const fresh = createSeason(ids, new Date().toISOString());
+    const fresh = createSeason(ids, new Date().toISOString(), { format, sprints });
     setSeason(fresh);
     setTab("drivers");
     void saveSeason(fresh);
@@ -109,10 +115,45 @@ export function Championship() {
             );
           })}
         </div>
+        <div className={styles.lengths} role="radiogroup" aria-label="Weekend format">
+          {WEEKEND_FORMATS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={format === option.id}
+              className={styles.length}
+              data-active={format === option.id ? "1" : undefined}
+              onClick={() => setFormat(option.id)}
+            >
+              <strong>{option.label}</strong>
+              <span>{option.blurb}</span>
+            </button>
+          ))}
+        </div>
+        <div className={styles.lengths} role="radiogroup" aria-label="Sprint weekends">
+          {[
+            { on: false, label: "No sprints", blurb: "one race a weekend" },
+            { on: true, label: "Sprint weekends", blurb: `every 4th round adds a ${SPRINT_LAPS}-lap sprint (8-1 points)` },
+          ].map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              role="radio"
+              aria-checked={sprints === option.on}
+              className={styles.length}
+              data-active={sprints === option.on ? "1" : undefined}
+              onClick={() => setSprints(option.on)}
+            >
+              <strong>{option.label}</strong>
+              <span>{option.blurb}</span>
+            </button>
+          ))}
+        </div>
         <p className={styles.note}>
-          Full grid, real points (25-18-15-12-10-8-6-4-2-1). Each weekend: optional practice, knockout
-          qualifying, then a {DEFAULT_RACE_LAPS}-lap race. Your team and AI level come from the Garage and
-          Grand Prix setup.
+          Full grid, real points (25-18-15-12-10-8-6-4-2-1, plus one for the fastest lap inside the top ten).
+          Each weekend runs the format above, then a {DEFAULT_RACE_LAPS}-lap race. Your team and AI level come
+          from the Garage and Grand Prix setup.
         </p>
         <button type="button" className={styles.primary} onClick={startSeason} data-nav-default>
           START SEASON
@@ -280,7 +321,10 @@ export function Championship() {
             return (
               <li key={`${round.trackId}-${i}`} data-state={round.playerPosition !== null ? "done" : i === next ? "next" : "later"}>
                 <span className={styles.round}>R{i + 1}</span>
-                <span className={styles.roundTrack}>{getTrackName(round.trackId)}</span>
+                <span className={styles.roundTrack}>
+                  {getTrackName(round.trackId)}
+                  {isSprintRound(season, i) ? " · SPRINT" : ""}
+                </span>
                 <span className={styles.roundResult}>
                   {round.playerPosition !== null
                     ? `P${round.playerPosition}${winner && !winner.isPlayer ? ` · won by ${winner.code}` : ""}${objectives.outcomes[i] === null ? "" : objectives.outcomes[i] ? " · objective met" : " · objective missed"}`
@@ -317,7 +361,7 @@ export function Championship() {
   );
 }
 
-/** The next weekend: practice (optional), qualifying, then the race. */
+/** The next weekend: practice (optional), qualifying, an optional sprint, then the race. */
 function Weekend({
   season,
   next,
@@ -329,41 +373,60 @@ function Weekend({
 }) {
   const round = season.rounds[next];
   const stage = weekendStage(season, next);
+  const format = season.format ?? "full";
   // Championship weekends run the full grid (see MAX_RIVALS).
   const url = { ...base, track: round.trackId, champ: next, rivals: MAX_RIVALS };
   const qualified = round.qualiSpot !== null;
+  const sprintWeekend = isSprintRound(season, next);
+  const gridParam = format === "race" ? undefined : (round.qualiSpot ?? undefined);
+  // Steps are numbered in the order this weekend actually runs them.
+  let step = 0;
+  const number = () => String(++step).padStart(2, "0");
+  const showQuali = format !== "race" && (stage === "qualifying" || stage === "sprint" || stage === "race");
   return (
     <div className={styles.weekend}>
       <div className={styles.weekendSteps}>
-        <Link className={styles.step} href={buildRaceUrl({ ...url, mode: "practice", laps: DEFAULT_RACE_LAPS })}>
-          <small>01</small> PRACTICE
-          <small className={styles.programmes}>
-            {PROGRAMME_IDS.map((id) => (round.practice?.[id] ? "✓ " : "· ") + PROGRAMME_LABELS[id].toUpperCase()).join("   ")}
-          </small>
-        </Link>
-        {(stage === "qualifying" || stage === "race") && (
+        {format === "full" && (
+          <Link className={styles.step} href={buildRaceUrl({ ...url, mode: "practice", laps: DEFAULT_RACE_LAPS })}>
+            <small>{number()}</small> PRACTICE
+            <small className={styles.programmes}>
+              {PROGRAMME_IDS.map((id) => (round.practice?.[id] ? "✓ " : "· ") + PROGRAMME_LABELS[id].toUpperCase()).join("   ")}
+            </small>
+          </Link>
+        )}
+        {showQuali && (
           <Link
             className={styles.step}
             data-primary={!qualified ? "1" : undefined}
             data-nav-default={!qualified ? true : undefined}
             href={buildRaceUrl({ ...url, mode: "qualifying", qformat: "knockout" })}
           >
-            <small>02</small> {qualified ? `RE-QUALIFY (P${round.qualiSpot})` : "QUALIFYING"}
+            <small>{number()}</small> {qualified ? `RE-QUALIFY (P${round.qualiSpot})` : "QUALIFYING"}
           </Link>
         )}
-        {(stage === "qualifying" || stage === "race") && !qualified && (
+        {showQuali && !qualified && (
           <Link className={styles.stepAlt} href={buildRaceUrl({ ...url, mode: "qualifying", qformat: "oneshot" })}>
             ONE-SHOT QUALI
           </Link>
         )}
-        {stage === "race" && qualified && (
+        {sprintWeekend && format !== "race" && qualified && (
+          <Link
+            className={styles.step}
+            data-primary={stage === "sprint" ? "1" : undefined}
+            data-nav-default={stage === "sprint" ? true : undefined}
+            href={buildRaceUrl({ ...url, mode: "race", laps: SPRINT_LAPS, grid: round.qualiSpot ?? undefined, sprint: true })}
+          >
+            <small>{number()}</small> {round.sprint ? `SPRINT DONE (P${round.sprint.position})` : `SPRINT FROM P${round.qualiSpot}`}
+          </Link>
+        )}
+        {stage === "race" && (qualified || format === "race") && (
           <Link
             className={styles.step}
             data-primary="1"
             data-nav-default
-            href={buildRaceUrl({ ...url, mode: "race", laps: DEFAULT_RACE_LAPS, grid: round.qualiSpot ?? undefined })}
+            href={buildRaceUrl({ ...url, mode: "race", laps: DEFAULT_RACE_LAPS, grid: gridParam })}
           >
-            <small>03</small> RACE FROM P{round.qualiSpot}
+            <small>{number()}</small> {gridParam ? `RACE FROM P${gridParam}` : "RACE"}
           </Link>
         )}
       </div>

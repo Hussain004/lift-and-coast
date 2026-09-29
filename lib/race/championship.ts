@@ -22,6 +22,21 @@ export function pointsForPosition(position: number): number {
   return CHAMPIONSHIP_POINTS[position - 1] ?? 0;
 }
 
+/** Sprint points: the top eight, 8 down to 1. */
+export const SPRINT_POINTS: readonly number[] = [8, 7, 6, 5, 4, 3, 2, 1];
+export const SPRINT_LAPS = 2;
+
+export function sprintPointsForPosition(position: number): number {
+  if (!Number.isInteger(position) || position < 1) return 0;
+  return SPRINT_POINTS[position - 1] ?? 0;
+}
+
+/** One point for the fastest lap, if the driver finished in the top ten. */
+export const FASTEST_LAP_POINT = 1;
+export function fastestLapPoint(position: number, hasFastestLap: boolean): number {
+  return hasFastestLap && position >= 1 && position <= 10 ? FASTEST_LAP_POINT : 0;
+}
+
 /** One car's line in a raced round's classification. */
 export interface RoundResultRow {
   code: string;
@@ -50,23 +65,61 @@ export interface ChampionshipRound {
   qualiSpot: number | null;
   /** Practice programmes completed this weekend (see practiceProgrammes.ts). */
   practice?: Partial<Record<"acclimatisation" | "consistency" | "pace", true>>;
+  /** The sprint's classification, once driven (sprint weekends only). */
+  sprint?: { position: number; result: RoundResultRow[] };
 }
+
+/** Which sessions a weekend runs: everything, skip practice, or just the race. */
+export type WeekendFormat = "full" | "quali-race" | "race";
+
+export const WEEKEND_FORMATS: { id: WeekendFormat; label: string; blurb: string }[] = [
+  { id: "full", label: "Full weekend", blurb: "practice, qualifying, race" },
+  { id: "quali-race", label: "Quali + race", blurb: "skip practice" },
+  { id: "race", label: "Race only", blurb: "straight to the grid" },
+];
+
+/** Every fourth round of a sprint season is a sprint weekend. */
+export const SPRINT_EVERY = 4;
 
 export interface ChampionshipSeason {
   schemaVersion: 1;
   createdAt: string;
   rounds: ChampionshipRound[];
+  /** Absent on older saves: a full weekend, no sprints. */
+  format?: WeekendFormat;
+  sprints?: boolean;
 }
 
 export function createSeason(
   trackIds: readonly string[],
-  createdAt: string
+  createdAt: string,
+  options: { format?: WeekendFormat; sprints?: boolean } = {}
 ): ChampionshipSeason {
   return {
     schemaVersion: 1,
     createdAt,
     rounds: trackIds.map((trackId) => ({ trackId, playerPosition: null, qualiSpot: null })),
+    ...(options.format && options.format !== "full" ? { format: options.format } : {}),
+    ...(options.sprints ? { sprints: true } : {}),
   };
+}
+
+export function isSprintRound(season: ChampionshipSeason, roundIndex: number): boolean {
+  return !!season.sprints && (roundIndex + 1) % SPRINT_EVERY === 0;
+}
+
+/** Records the sprint's classification for a round (bad indices and non-sprint rounds are no-ops). */
+export function recordSprintResult(
+  season: ChampionshipSeason,
+  roundIndex: number,
+  playerPosition: number,
+  result: readonly RoundResultRow[]
+): ChampionshipSeason {
+  if (!isSprintRound(season, roundIndex) || !Number.isInteger(playerPosition) || playerPosition < 1) return season;
+  const rounds = season.rounds.map((round, i) =>
+    i === roundIndex ? { ...round, sprint: { position: playerPosition, result: [...result] } } : round
+  );
+  return { ...season, rounds };
 }
 
 export function totalRounds(season: ChampionshipSeason): number {
@@ -145,12 +198,15 @@ export function recordPracticeProgramme(
 export function weekendStage(
   season: ChampionshipSeason,
   roundIndex: number
-): "qualifying" | "race" | "done" | null {
+): "qualifying" | "sprint" | "race" | "done" | null {
   const round = season.rounds[roundIndex];
   if (!round) return null;
   if (round.playerPosition !== null) return "done";
+  // Race-only weekends go straight to the grid.
+  if (season.format === "race") return "race";
   // Loose check: seasons saved before qualiSpot existed carry undefined.
   if (round.qualiSpot == null) return "qualifying";
+  if (isSprintRound(season, roundIndex) && !round.sprint) return "sprint";
   return "race";
 }
 
@@ -203,6 +259,13 @@ export function computeDriverStandings(season: ChampionshipSeason): DriverStandi
     r.finishes[round] = position;
   };
   season.rounds.forEach((round, i) => {
+    // Sprint points count for the tables (not for wins, podiums or the form line).
+    for (const entry of round.sprint?.result ?? []) {
+      const key = entry.isPlayer ? PLAYER_KEY : entry.code;
+      const r = row(key, { key, code: entry.code, name: entry.name, teamId: entry.teamId, isPlayer: entry.isPlayer });
+      if (entry.isPlayer) Object.assign(r, { code: entry.code, name: entry.name, teamId: entry.teamId });
+      r.points += entry.points;
+    }
     if (round.playerPosition === null) return;
     if (round.result && round.result.length > 0) {
       for (const entry of round.result) {
@@ -319,6 +382,12 @@ export function isChampionshipSeason(value: unknown): value is ChampionshipSeaso
     };
     if (typeof trackId !== "string" || !isKnownTrackId(trackId)) return false;
     if (result !== undefined && !(Array.isArray(result) && result.every(isRoundResultRow))) return false;
+    const sprint = (round as { sprint?: unknown }).sprint;
+    if (sprint !== undefined) {
+      const sp = sprint as { position?: unknown; result?: unknown } | null;
+      if (typeof sp !== "object" || sp === null) return false;
+      if (typeof sp.position !== "number" || !Array.isArray(sp.result) || !sp.result.every(isRoundResultRow)) return false;
+    }
     // qualiSpot is newer than some saved seasons - absent counts as
     // unqualified (the weekend flow treats it as "qualifying next").
     if (

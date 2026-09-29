@@ -131,6 +131,8 @@ export interface RaceUrlParams {
   tod?: TimeOfDay;
   weather?: WeatherSetting;
   champ?: number | null;
+  /** A championship sprint (?sprint=1): short race, 8-1 points, grid from qualifying. */
+  sprint?: boolean;
   grid?: number | null;
   qformat?: QualifyingFormat;
   /** Player car setup (see lib/physics/carSetup.ts). Omitted at the neutral
@@ -207,6 +209,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   if (params.tod !== undefined) query.set("tod", params.tod);
   if (params.weather !== undefined) query.set("weather", params.weather);
   if (params.champ !== undefined && params.champ !== null) query.set("champ", String(params.champ));
+  if (params.sprint) query.set("sprint", "1");
   if (params.grid !== undefined && params.grid !== null) query.set("grid", String(params.grid));
   if (params.qformat !== undefined) query.set("qformat", params.qformat);
   if (params.rivals !== undefined) query.set("rivals", String(params.rivals));

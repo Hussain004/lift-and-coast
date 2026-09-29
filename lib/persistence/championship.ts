@@ -12,6 +12,7 @@ import {
 import {
   isChampionshipSeason,
   recordPracticeProgramme,
+  recordSprintResult,
   recordQualiResult,
   recordRoundResult,
   type ChampionshipSeason,
@@ -57,6 +58,20 @@ export async function recordChampionshipQuali(
   const season = await loadSeason();
   if (!season) return null;
   const updated = recordQualiResult(season, roundIndex, qualiSpot);
+  if (updated === season) return season;
+  await saveSeason(updated);
+  return updated;
+}
+
+/** Sprint writer: stores the sprint classification for a sprint round (same no-op discipline). */
+export async function recordChampionshipSprint(
+  roundIndex: number,
+  playerPosition: number,
+  result: readonly RoundResultRow[]
+): Promise<ChampionshipSeason | null> {
+  const season = await loadSeason();
+  if (!season) return null;
+  const updated = recordSprintResult(season, roundIndex, playerPosition, result);
   if (updated === season) return season;
   await saveSeason(updated);
   return updated;
