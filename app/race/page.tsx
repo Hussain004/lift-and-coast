@@ -29,6 +29,8 @@ import { applyControls, loadLocalControls, defaultStorage } from "@/lib/settings
 import { MobileControls } from "./MobileControls";
 import { createTouchDriveInput, type TouchDriveInput } from "@/lib/input/touch";
 import { createHudSnapshot, type HudSnapshot, type SessionResult } from "@/lib/race/hud";
+import { createPhotoState } from "@/lib/race/photo";
+import { PhotoPanel } from "./PhotoPanel";
 import { Tower } from "./hud/Tower";
 import { Notifications, Timing } from "./hud/Timing";
 import { Engineer } from "./hud/Engineer";
@@ -380,7 +382,24 @@ function RaceContent() {
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const [result, setResult] = useState<SessionResult | null>(null);
   const [restartCount, setRestartCount] = useState(0);
-  const toggleMenu = useCallback(() => setMenuOpen((value) => !value), []);
+  // Photo mode (lib/race/photo.ts): the pause menu's free camera. Toggling the
+  // menu (Esc, P) always ends it, so closing the menu can never leave the
+  // camera detached.
+  const photoRef = useRef(createPhotoState());
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const toggleMenu = useCallback(() => {
+    photoRef.current.active = false;
+    setPhotoOpen(false);
+    setMenuOpen((value) => !value);
+  }, []);
+  const enterPhoto = useCallback(() => {
+    Object.assign(photoRef.current, createPhotoState(), { active: true });
+    setPhotoOpen(true);
+  }, []);
+  const exitPhoto = useCallback(() => {
+    photoRef.current.active = false;
+    setPhotoOpen(false);
+  }, []);
   const toggleSideMirrors = useCallback(() => {
     setSideMirrorsEnabled((value) => !value);
   }, []);
@@ -481,10 +500,11 @@ function RaceContent() {
           raceOpsSnapshotRef={raceOpsSnapshotRef}
           telemetryRef={telemetryOpen ? telemetryRef : undefined}
           perfRef={perfRef}
+          photoRef={photoRef}
           sideMirrorsEnabled={sideMirrorsEnabled}
         />
         {!sceneReady && <TrackLoadingFallback track={track} />}
-        <div className={hudStyles.hud}>
+        <div className={photoOpen ? hudStyles.hudHidden : hudStyles.hud}>
           {!qualifyingSession && (
             <Tower hudRef={hudRef} trackName={trackName} initialRows={initialTowerRows} />
           )}
@@ -558,13 +578,17 @@ function RaceContent() {
         onToggleSideMirrors={toggleSideMirrors}
         sideMirrorsEnabled={sideMirrorsEnabled}
       />
-      {menuOpen && !result && (
+      {menuOpen && !result && photoOpen && (
+        <PhotoPanel photoRef={photoRef} trackName={track.name} onExit={exitPhoto} />
+      )}
+      {menuOpen && !result && !photoOpen && (
         <PauseMenu
           trackName={track.name}
           sessionLabel={sessionLabel}
           online={!singlePlayer}
           onResume={toggleMenu}
           onRestart={restart}
+          onPhoto={singlePlayer ? enterPhoto : undefined}
         />
       )}
       {result && <Results result={result} trackName={track.name.toUpperCase()} onRestart={restart} />}

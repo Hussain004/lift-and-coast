@@ -1215,3 +1215,34 @@
 .damageMap rect[data-state="bad"] {
   fill: #d63030;
 }
+
+.photoPanel {
+  position: fixed;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  width: 260px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  background: rgba(10, 12, 16, 0.9);
+  border-left: 4px solid #e10600;
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 1.2px;
+}
+
+.photoPanel label {
+  display: grid;
+  gap: 6px;
+}
+
+.photoPanel p {
+  margin: 0;
+  opacity: 0.65;
+}
+
+.hudHidden {
+  display: none !important;
+}

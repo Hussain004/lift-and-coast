@@ -74,6 +74,7 @@ import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
 import { flashbackLimit } from "@/lib/race/flashbacks";
 import { PitCrew } from "./PitCrew";
+import type { PhotoState } from "@/lib/race/photo";
 import { createFxBus, RainLightDriver, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
 
 // Grid start (plan section 7): counts down on screen, then flips
@@ -444,14 +445,17 @@ function setCamEuler(
 
 function ChaseCamera({
   target,
-  cameraMode,
+  cameraModeRef,
   raceRef,
   track,
   hudRef,
   audioRef,
+  photoRef,
 }: {
   target: React.RefObject<THREE.Object3D | null>;
-  cameraMode: React.RefObject<CameraMode>;
+  cameraModeRef: React.RefObject<CameraMode>;
+  /** Photo mode (lib/race/photo.ts): forces the orbit camera and applies its fov and roll. */
+  photoRef?: React.RefObject<PhotoState>;
   /** Car.tsx writes the player's live progress here every frame. */
   raceRef: React.RefObject<RaceState>;
   track: TrackData;
@@ -465,6 +469,7 @@ function ChaseCamera({
   // the offset from the car stays exact, so no speed-dependent gap can open.
   const camYaw = useRef<number | null>(null);
   const lookBackHeld = useRef(false);
+  const photoPrevMode = useRef<CameraMode | null>(null);
   const shakeOn = useRef(true);
   useEffect(() => {
     shakeOn.current = loadCameraShake();
@@ -517,7 +522,7 @@ function ChaseCamera({
       ly = e.clientY;
     };
     const move = (e: PointerEvent) => {
-      if (!dragging || cameraMode.current !== "orbit" || !orbit.current) return;
+      if (!dragging || cameraModeRef.current !== "orbit" || !orbit.current) return;
       const o = orbit.current;
       o.yaw -= (e.clientX - lx) * 0.005;
       o.pitch += (e.clientY - ly) * 0.005;
@@ -529,7 +534,7 @@ function ChaseCamera({
       dragging = false;
     };
     const zoom = (e: WheelEvent) => {
-      if (cameraMode.current !== "orbit" || !orbit.current) return;
+      if (cameraModeRef.current !== "orbit" || !orbit.current) return;
       e.preventDefault();
       const o = orbit.current;
       o.radius *= Math.exp(e.deltaY * 0.001);
@@ -545,13 +550,21 @@ function ChaseCamera({
       window.removeEventListener("pointerup", up);
       el.removeEventListener("wheel", zoom);
     };
-  }, [gl, cameraMode]);
+  }, [gl, cameraModeRef]);
 
   useFrame((state, dt) => {
     const object = target.current;
     if (!object) return;
-    const mode = cameraMode.current;
-    if (mode !== prevMode.current && hudRef?.current) {
+    const photo = photoRef?.current;
+    if (photo?.active) {
+      if (photoPrevMode.current === null) photoPrevMode.current = cameraModeRef.current;
+      cameraModeRef.current = "orbit";
+    } else if (photoPrevMode.current !== null) {
+      cameraModeRef.current = photoPrevMode.current;
+      photoPrevMode.current = null;
+    }
+    const mode = cameraModeRef.current;
+    if (mode !== prevMode.current && hudRef?.current && !photo?.active) {
       pushHudEvent(hudRef.current, "info", CAMERA_LABELS[mode], undefined, 1.1);
     }
     const speedMs = raceRef.current?.player.speedMs ?? 0;
@@ -725,6 +738,26 @@ function ChaseCamera({
       setPerspectiveFov(camera, fovForSpeed(CHASE_FOV, speedMs));
     }
     prevMode.current = mode;
+    if (photo?.active) {
+      setPerspectiveFov(camera, photo.fovDeg);
+      camera.rotateZ((photo.rollDeg * Math.PI) / 180);
+      if (photo.capture) {
+        if (photoRef) photoRef.current.capture = false;
+        // Render, then read the canvas in the same tick: the drawing buffer is
+        // only guaranteed to hold the frame until the browser presents it.
+        state.gl.render(state.scene, camera);
+        const filename = photo.filename;
+        state.gl.domElement.toBlob((blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }, "image/png");
+      }
+    }
   });
 
   return null;
@@ -773,10 +806,13 @@ export function Scene({
   raceOpsSnapshotRef,
   telemetryRef,
   perfRef,
+  photoRef,
   sideMirrorsEnabled = true,
 }: {
   /** Optional performance readout (F key) - see FrameRateGovernor. */
   perfRef?: React.RefObject<HTMLDivElement | null>;
+  /** Photo mode state (lib/race/photo.ts), owned by the race page. */
+  photoRef?: React.RefObject<PhotoState>;
   /** Live left/right mirror views in the main camera overlay. */
   sideMirrorsEnabled?: boolean;
   /** Called after the first rendered Physics-tree frame, when the track is ready. */
@@ -1174,11 +1210,12 @@ export function Scene({
       </Physics>
       <ChaseCamera
         target={visualRef}
-        cameraMode={cameraModeRef}
+        cameraModeRef={cameraModeRef}
         raceRef={raceRef}
         track={track}
         hudRef={hudRef}
         audioRef={audioRef}
+        photoRef={photoRef}
       />
       <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} cameraModeRef={cameraModeRef} />
       {settings.effects && audioRef && (

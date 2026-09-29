@@ -42,6 +42,7 @@ export function PauseMenu({
   online,
   onResume,
   onRestart,
+  onPhoto,
 }: {
   trackName: string;
   sessionLabel: string;
@@ -49,6 +50,8 @@ export function PauseMenu({
   online: boolean;
   onResume: () => void;
   onRestart: () => void;
+  /** Enter photo mode (singleplayer only). */
+  onPhoto?: () => void;
 }) {
   const [view, setView] = useState<View>("menu");
   const [confirm, setConfirm] = useState<"restart" | null>(null);
@@ -94,6 +97,11 @@ export function PauseMenu({
                 {!online && (
                   <button type="button" className={styles.pauseItem} onClick={() => setConfirm("restart")}>
                     RESTART SESSION
+                  </button>
+                )}
+                {onPhoto && (
+                  <button type="button" className={styles.pauseItem} onClick={onPhoto}>
+                    PHOTO MODE
                   </button>
                 )}
                 <button type="button" className={styles.pauseItem} onClick={() => setView("controls")}>
