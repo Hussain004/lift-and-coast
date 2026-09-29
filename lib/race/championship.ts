@@ -48,6 +48,8 @@ export interface ChampionshipRound {
    * championship weekend runs practice (optional) -> qualifying -> race.
    */
   qualiSpot: number | null;
+  /** Practice programmes completed this weekend (see practiceProgrammes.ts). */
+  practice?: Partial<Record<"acclimatisation" | "consistency" | "pace", true>>;
 }
 
 export interface ChampionshipSeason {
@@ -119,6 +121,18 @@ export function recordQualiResult(
   const rounds = season.rounds.map((round, i) =>
     i === roundIndex ? { ...round, qualiSpot } : round
   );
+  return { ...season, rounds };
+}
+
+/** Marks a practice programme done for a round (idempotent; bad indices are a no-op). */
+export function recordPracticeProgramme(
+  season: ChampionshipSeason,
+  roundIndex: number,
+  programme: "acclimatisation" | "consistency" | "pace"
+): ChampionshipSeason {
+  const round = season.rounds[roundIndex];
+  if (!round || round.practice?.[programme]) return season;
+  const rounds = season.rounds.map((r, i) => (i === roundIndex ? { ...r, practice: { ...r.practice, [programme]: true as const } } : r));
   return { ...season, rounds };
 }
 

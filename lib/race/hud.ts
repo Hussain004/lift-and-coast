@@ -116,6 +116,11 @@ export interface HudSnapshot {
   pitBoxMeters: number | null;
   /** Chip text while a drive-through/stop-go waits to be served, else "". */
   servePrompt: string;
+  /** Practice-programme progress line (championship practice only), else "". */
+  programmeText: string;
+  /** Practice gates on the racing line; hits mutate in place as they are driven through. */
+  gates: { x: number; y: number; z: number }[];
+  gateHits: boolean[];
   /** 1 = undamaged. */
   damage: number;
   /** Health of each part, 1 = intact (see lib/physics/damage.ts); puncture = wheel index or -1. */
@@ -201,6 +206,9 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pitProgress: 0,
     pitBoxMeters: null,
     servePrompt: "",
+    programmeText: "",
+    gates: [],
+    gateHits: [],
     damage: 1,
     damageParts: { frontWing: 1, rearWing: 1, floor: 1, puncture: -1 },
     damageRepairSeconds: 0,

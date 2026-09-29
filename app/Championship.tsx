@@ -23,6 +23,7 @@ import { DEFAULT_RACE_LAPS, MAX_RIVALS, buildRaceUrl, type RaceUrlParams } from 
 import { parseDriverCode, parseTeamId, TEAMS, useRosterSelection } from "@/lib/race/roster";
 import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
+import { PROGRAMME_IDS, PROGRAMME_LABELS } from "@/lib/race/practiceProgrammes";
 import styles from "./championship.module.css";
 
 const TEAM_BY_ID = new Map(TEAMS.map((team) => [team.id, team]));
@@ -336,6 +337,9 @@ function Weekend({
       <div className={styles.weekendSteps}>
         <Link className={styles.step} href={buildRaceUrl({ ...url, mode: "practice", laps: DEFAULT_RACE_LAPS })}>
           <small>01</small> PRACTICE
+          <small className={styles.programmes}>
+            {PROGRAMME_IDS.map((id) => (round.practice?.[id] ? "✓ " : "· ") + PROGRAMME_LABELS[id].toUpperCase()).join("   ")}
+          </small>
         </Link>
         {(stage === "qualifying" || stage === "race") && (
           <Link

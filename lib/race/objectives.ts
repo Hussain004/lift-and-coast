@@ -51,6 +51,8 @@ function raceTeam(round: ChampionshipRound): string | null {
 export const REPUTATION_START = 30;
 const MET_GAIN = 8;
 const MISSED_LOSS = 4;
+/** Reputation per practice programme completed. */
+export const PROGRAMME_GAIN = 2;
 
 export interface SeasonObjectives {
   /** Per round: met / missed / null (not raced). */
@@ -65,6 +67,7 @@ export function seasonObjectives(season: ChampionshipSeason, currentTeamId: stri
   const outcomes = season.rounds.map((round, i) => {
     const met = objectiveMet(objectiveFor(raceTeam(round) ?? currentTeamId, i), round);
     if (met !== null) reputation += met ? MET_GAIN : -MISSED_LOSS;
+    reputation += PROGRAMME_GAIN * Math.min(3, Object.keys(round.practice ?? {}).length);
     return met;
   });
   return { outcomes, reputation: Math.max(0, Math.min(100, reputation)) };

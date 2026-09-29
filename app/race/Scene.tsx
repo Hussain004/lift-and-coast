@@ -50,6 +50,8 @@ import {
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createQualifyingReferenceTimes } from "@/lib/race/qualifyingField";
+import { PracticeGates } from "./PracticeGates";
+import { paceTarget } from "@/lib/race/practiceProgrammes";
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
 import type { AIDifficulty } from "@/lib/ai/personalities";
@@ -1006,6 +1008,15 @@ export function Scene({
       : createQualifyingTimes(rivals.length)
   );
   const qualifyingRef = useRef<QualifyingTimes>(initialQualifyingTimes);
+  // Championship practice programme: the "qualifying pace" target is the
+  // reference lap of a mid-grid slot (see practiceProgrammes.ts).
+  const [practiceTargetSeconds] = useState<number | null>(() =>
+    sessionMode === "practice" && champRound !== null
+      ? paceTarget(
+          createQualifyingReferenceTimes(track, rivals, difficulty).opponents.filter((t): t is number => t !== null)
+        )
+      : null
+  );
   const visualRef = useRef<THREE.Group>(null);
   const cameraModeRef = useRef<CameraMode>("chase");
   const racingLineVisibleRef = useRef(true);
@@ -1091,6 +1102,7 @@ export function Scene({
         {weatherPlan && <WeatherScheduler plan={weatherPlan} weatherRef={weatherRef} hudRef={hudRef} />}
         <Ground track={track} />
         <PitCrew track={track} hudRef={hudRef} />
+        {sessionMode === "practice" && champRound !== null && <PracticeGates hudRef={hudRef} />}
         <Track
           track={track}
           chassisRef={chassisRef}
@@ -1110,6 +1122,7 @@ export function Scene({
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
+          practiceTargetSeconds={practiceTargetSeconds}
           sessionMode={sessionMode}
           qualiFormat={qualiFormat}
           timeAttack={timeAttack}

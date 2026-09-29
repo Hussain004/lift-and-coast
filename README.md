@@ -26,7 +26,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
-- Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends
+- Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends. Championship practice has three programmes (drive through 10 racing-line gates, two consistent clean laps, beat a mid-grid reference lap), each worth team reputation, plus per-round team objectives
 - Multiplayer rooms with synchronized timing and race-control telemetry at 30Hz snapshots for smooth wheel-to-wheel racing
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
 - Procedural trackside architecture, barriers, flora, kerbs, gravel, paved runoff, and grass

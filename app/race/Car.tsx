@@ -98,7 +98,7 @@ import { createFlagState, flagChipText, stepFlags } from "@/lib/race/flags";
 import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
-import { recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
+import { loadSeason, recordChampionshipPractice, recordChampionshipQuali, recordChampionshipResult } from "@/lib/persistence/championship";
 import { pointsForPosition } from "@/lib/race/championship";
 import {
   allWheelsOffTrack,
@@ -114,6 +114,19 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { weatherLabel } from "@/lib/physics/weather";
 import { weatherGripForCompound } from "@/lib/physics/tireModel";
+import {
+  GATE_COUNT,
+  PROGRAMME_LABELS,
+  buildGates,
+  createProgrammeState,
+  programmeSummary,
+  recordProgrammeLap,
+  stepGates,
+  type ProgrammeId,
+  type ProgrammeState,
+} from "@/lib/race/practiceProgrammes";
+import { PROGRAMME_GAIN } from "@/lib/race/objectives";
+import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import { createWheelTemps, stepWheelTemps } from "@/lib/race/wheelTemps";
 import { createServeState, queuePenalty, servePrompt, stepServe } from "@/lib/race/penaltyServing";
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
@@ -206,6 +219,7 @@ export function Car({
   flashbackLimit = null,
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
+  practiceTargetSeconds = null,
   sessionMode = "race",
   qualiFormat = "timed",
   timeAttack = false,
@@ -279,6 +293,8 @@ export function Car({
    * active season (see recordChampionshipResult).
    */
   champRound?: number | null;
+  /** Championship practice: the lap time the qualifying-pace programme asks for. */
+  practiceTargetSeconds?: number | null;
   /** Session kind from ?mode= (default race) - practice is solo free
    * driving, qualifying sets a grid, race is wheel-to-wheel. */
   sessionMode?: SessionMode;
@@ -441,6 +457,46 @@ export function Car({
   const pitBoxMetersRef = useRef<number | null>(null);
   // Drive-through / stop-go waiting to be served in the pit lane.
   const serveRef = useRef(createServeState());
+  // Championship practice programmes (see lib/race/practiceProgrammes.ts):
+  // gates on the racing line, lap consistency, and a qualifying-pace target.
+  const programmesActive = sessionMode === "practice" && champRound !== null;
+  const gatesRef = useRef<ReturnType<typeof buildGates>>([]);
+  const programmeRef = useRef<ProgrammeState | null>(null);
+  const programmeHitsRef = useRef(-1);
+  useEffect(() => {
+    if (!programmesActive) return;
+    const gates = buildGates(getRacingLine(track));
+    const state = createProgrammeState(GATE_COUNT, practiceTargetSeconds);
+    gatesRef.current = gates;
+    programmeRef.current = state;
+    if (hudRef?.current) {
+      hudRef.current.gates = gates;
+      hudRef.current.gateHits = state.gateHits;
+      hudRef.current.programmeText = programmeSummary(state);
+    }
+    // Programmes already banked earlier in the weekend stay ticked.
+    let cancelled = false;
+    loadSeason()
+      .then((season) => {
+        const done = season?.rounds[champRound ?? -1]?.practice;
+        if (cancelled || !done) return;
+        for (const id of Object.keys(done) as ProgrammeId[]) state.done[id] = true;
+        programmeHitsRef.current = -1;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // The session is fixed for this mount (the scene remounts on any change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const completeProgramme = (id: ProgrammeId) => {
+    if (hudRef?.current) {
+      pushHudEvent(hudRef.current, "good", `${PROGRAMME_LABELS[id].toUpperCase()} COMPLETE`, `+${PROGRAMME_GAIN} REPUTATION`, 3.5);
+    }
+    if (champRound !== null) recordChampionshipPractice(champRound, id).catch(() => {});
+    programmeHitsRef.current = -1;
+  };
   const wheelTempsRef = useRef(createWheelTemps());
   const wheelGripsRef = useRef<readonly number[]>([]);
   // Race finish (see lib/race/classification.ts): the race clock without
@@ -1678,6 +1734,18 @@ export function Car({
     // between P1 and P20. Edge/lateral/surfaces below keep the scan.
     const tracked = trackProgress(track, t.x, t.z, progressTrackerRef.current, t.y);
 
+    const programmes = programmeRef.current;
+    if (programmes) {
+      const finished = stepGates(programmes, gatesRef.current, t.x, t.z);
+      if (finished) completeProgramme(finished);
+      // Rebuild the readout only when something changed.
+      const hits = programmes.gateHits.filter(Boolean).length;
+      if (hits !== programmeHitsRef.current && hudRef?.current) {
+        programmeHitsRef.current = hits;
+        hudRef.current.programmeText = programmeSummary(programmes);
+      }
+    }
+
     if (!raceFinishedRef.current) {
       raceElapsedSecondsRef.current += dt;
     }
@@ -1760,6 +1828,10 @@ export function Car({
           4
         );
       }
+    }
+
+    if (lap.crossedFinishLine && lap.lastLapSeconds !== null && programmes) {
+      recordProgrammeLap(programmes, lap.lastLapSeconds, eligible).forEach(completeProgramme);
     }
 
     if (lap.crossedFinishLine && lap.lastLapSeconds !== null) {

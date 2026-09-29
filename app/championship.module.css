@@ -338,3 +338,12 @@
     display: none;
   }
 }
+
+/* Practice programme ticks under the PRACTICE step. */
+.programmes {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  opacity: 0.75;
+}

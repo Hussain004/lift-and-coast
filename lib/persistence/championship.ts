@@ -11,6 +11,7 @@ import {
 } from "./db";
 import {
   isChampionshipSeason,
+  recordPracticeProgramme,
   recordQualiResult,
   recordRoundResult,
   type ChampionshipSeason,
@@ -56,6 +57,19 @@ export async function recordChampionshipQuali(
   const season = await loadSeason();
   if (!season) return null;
   const updated = recordQualiResult(season, roundIndex, qualiSpot);
+  if (updated === season) return season;
+  await saveSeason(updated);
+  return updated;
+}
+
+/** Practice writer: records a completed programme for `roundIndex` (same no-op discipline). */
+export async function recordChampionshipPractice(
+  roundIndex: number,
+  programme: "acclimatisation" | "consistency" | "pace"
+): Promise<ChampionshipSeason | null> {
+  const season = await loadSeason();
+  if (!season) return null;
+  const updated = recordPracticeProgramme(season, roundIndex, programme);
   if (updated === season) return season;
   await saveSeason(updated);
   return updated;
