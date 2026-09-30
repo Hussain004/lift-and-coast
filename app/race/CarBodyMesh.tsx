@@ -19,6 +19,7 @@ import {
   FRONT_WING_PIVOT,
   REAR_WING_PIVOT,
   buildCarGeometry,
+  buildFarCarGeometry,
   buildWheelGeometry,
   type CarGeometry,
 } from "@/lib/race/carSculpt";
@@ -33,7 +34,8 @@ import { useQuality } from "./renderQuality";
 // geometry set per team. Materials are cached per finish.
 
 const bodyCache = new Map<string, CarGeometry>();
-const wheelCache = new Map<TireCompoundId, THREE.BufferGeometry>();
+const wheelCache = new Map<string, THREE.BufferGeometry>();
+const farCache = new Map<string, THREE.BufferGeometry>();
 const materialCache = new Map<string, THREE.Material>();
 
 function carGeometry(livery: string, accent: string): CarGeometry {
@@ -43,18 +45,22 @@ function carGeometry(livery: string, accent: string): CarGeometry {
   return geometry;
 }
 
-function wheels(compound: TireCompoundId): THREE.BufferGeometry {
-  let geometry = wheelCache.get(compound);
-  if (!geometry) wheelCache.set(compound, (geometry = buildWheelGeometry(COMPOUND_STRIPE_COLOR[compound])));
+/** Front and rear tyres differ in width, so each compound has two wheel meshes. */
+function wheels(compound: TireCompoundId, rear: boolean): THREE.BufferGeometry {
+  const key = `${compound}|${rear}`;
+  let geometry = wheelCache.get(key);
+  if (!geometry) wheelCache.set(key, (geometry = buildWheelGeometry(COMPOUND_STRIPE_COLOR[compound], rear)));
   return geometry;
 }
 
-type Finish = "paint" | "carbon" | "rubber";
+type Finish = "paint" | "carbon" | "rubber" | "far";
 
 const FINISH: Record<Finish, { roughness: number; metalness: number }> = {
   paint: { roughness: 0.3, metalness: 0.35 },
   carbon: { roughness: 0.55, metalness: 0.3 },
   rubber: { roughness: 0.85, metalness: 0.05 },
+  // The merged far-away car has paint, carbon and rubber in one mesh.
+  far: { roughness: 0.45, metalness: 0.15 },
 };
 
 /** One material per (finish, ghost, studio, tier) - shared by every car. */
@@ -89,6 +95,7 @@ function material(finish: Finish, options: { ghost: boolean; studio: boolean; ch
  */
 export const rainLightMaterial = new THREE.MeshBasicMaterial({ color: "#ff1414", toneMapped: false, visible: false });
 const rainLightGeometry = new THREE.BoxGeometry(0.18, 0.1, 0.03);
+const RAIN_LIGHT_POSITION: [number, number, number] = [0, 0.2, 2.06];
 
 // Race numbers: one small transparent decal texture per number, shared by
 // every car that wears it, laid on the engine cover where the chase camera
@@ -211,9 +218,36 @@ export function CarBodyShell({
         <mesh geometry={numberGeometry} material={numberMaterial(raceNumber)!} position={[0, 0.66, 1.2]} />
       )}
       {!ghost && !studio && (
-        <mesh geometry={rainLightGeometry} material={rainLightMaterial} position={[0, 0.2, 2.06]} />
+        <mesh geometry={rainLightGeometry} material={rainLightMaterial} position={RAIN_LIGHT_POSITION} />
       )}
     </>
+  );
+}
+
+/**
+ * The rival car seen from afar: one merged mesh (see buildFarCarGeometry)
+ * plus the wet-weather rain light. Starts hidden; F1CarBody's distance check
+ * shows it and hides the full car.
+ */
+export function FarCarShell({
+  bodyColor,
+  accentColor,
+  groupRef,
+}: {
+  bodyColor: string;
+  accentColor?: string;
+  groupRef: React.RefObject<THREE.Group | null>;
+}) {
+  const { cheapMaterials: cheap } = useQuality();
+  const accent = accentColor ?? computeAccentColor(bodyColor);
+  const key = `${bodyColor}|${accent}`;
+  let geometry = farCache.get(key);
+  if (!geometry) farCache.set(key, (geometry = buildFarCarGeometry(bodyColor, accent)));
+  return (
+    <group ref={groupRef} visible={false}>
+      <mesh geometry={geometry} material={material("far", { ghost: false, studio: false, cheap })} />
+      <mesh geometry={rainLightGeometry} material={rainLightMaterial} position={RAIN_LIGHT_POSITION} />
+    </group>
   );
 }
 
@@ -402,8 +436,10 @@ export function CarWheels({
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   useFrame(() => {
     if (!compoundRef) return;
-    const want = wheels(compoundRef.current ?? "medium");
-    for (const mesh of meshRefs.current) if (mesh && mesh.geometry !== want) mesh.geometry = want;
+    meshRefs.current.forEach((mesh, i) => {
+      const want = wheels(compoundRef.current ?? "medium", CAR_WHEELS[i].isDriven);
+      if (mesh && mesh.geometry !== want) mesh.geometry = want;
+    });
   });
   return (
     <>
@@ -415,7 +451,7 @@ export function CarWheels({
                 ref={(el) => {
                   meshRefs.current[i] = el;
                 }}
-                geometry={wheels("medium")}
+                geometry={wheels("medium", wheel.isDriven)}
                 material={rubber}
                 castShadow={!ghost}
               />

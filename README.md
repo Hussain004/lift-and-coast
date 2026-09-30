@@ -22,6 +22,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Rolling instant replay with a synchronized TV camera, seek controls, and a speed trace
 - Active Aero with high-downforce and low-drag modes
 - Tire compounds, wear, grip changes, component damage (front wing, rear wing, floor, punctures), and per-wheel surface effects
+- A sculpted car with livery bands, slotted wheel covers and wider rear tyres; rivals beyond 80 m swap to a single merged low-poly mesh, so a full grid costs fewer draw calls than before
 - A full F1-style HUD: timing tower, MFD pages, minimap, radio engineer, results and pause screens, chase-camera feel, sparks, spray, skid marks and braking boards
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking

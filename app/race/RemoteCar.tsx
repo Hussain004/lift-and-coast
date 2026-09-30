@@ -153,7 +153,7 @@ export function RemoteCar({
 
   return (
     <group ref={groupRef} visible={false}>
-      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} />
+      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} lod />
     </group>
   );
 }

@@ -1,9 +1,14 @@
 "use client";
 
-import type * as THREE from "three";
+import { useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
 import type { TireCompoundId } from "@/lib/physics/tireModel";
 import type { DamageState } from "@/lib/physics/damage";
-import { CarBodyShell, CarWheels } from "./CarBodyMesh";
+import { wantsFarLod } from "@/lib/race/carLod";
+import { CarBodyShell, CarWheels, FarCarShell } from "./CarBodyMesh";
+
+const cameraDelta = new THREE.Vector3();
 
 /**
  * The F1 car visual shared by the player (Car.tsx), the AI rivals
@@ -27,7 +32,11 @@ export function F1CarBody({
    * no shadows, wheels parked - a replay pose, not a driven chassis. */
   ghost = false,
   raceNumber = null,
+  lod = false,
 }: {
+  /** Swap to a single merged low-poly mesh when far from the camera (AI and
+   * remote rivals; the player's and the showroom's car always draw in full). */
+  lod?: boolean;
   /** The number worn on the engine cover; none if absent (remote cars, the showroom). */
   raceNumber?: number | null;
   bodyColor: string;
@@ -47,17 +56,34 @@ export function F1CarBody({
   compoundRef?: React.RefObject<TireCompoundId>;
   ghost?: boolean;
 }) {
+  const nearRef = useRef<THREE.Group>(null);
+  const farRef = useRef<THREE.Group>(null);
+  const isFarRef = useRef(false);
+  useFrame(({ camera }) => {
+    const near = nearRef.current;
+    const far = farRef.current;
+    if (!lod || !near || !far) return;
+    near.getWorldPosition(cameraDelta).sub(camera.position);
+    const wantFar = wantsFarLod(isFarRef.current, cameraDelta.lengthSq());
+    if (wantFar === isFarRef.current) return;
+    isFarRef.current = wantFar;
+    near.visible = !wantFar;
+    far.visible = wantFar;
+  });
   return (
     <>
-      <CarBodyShell
-        bodyColor={bodyColor}
-        accentColor={accentColor}
-        flapRef={flapRef}
-        damageRef={damageRef}
-        ghost={ghost}
-        raceNumber={raceNumber}
-      />
-      <CarWheels steerRefs={steerRefs} spinRefs={spinRefs} compoundRef={compoundRef} ghost={ghost} />
+      {lod && <FarCarShell bodyColor={bodyColor} accentColor={accentColor} groupRef={farRef} />}
+      <group ref={nearRef}>
+        <CarBodyShell
+          bodyColor={bodyColor}
+          accentColor={accentColor}
+          flapRef={flapRef}
+          damageRef={damageRef}
+          ghost={ghost}
+          raceNumber={raceNumber}
+        />
+        <CarWheels steerRefs={steerRefs} spinRefs={spinRefs} compoundRef={compoundRef} ghost={ghost} />
+      </group>
     </>
   );
 }

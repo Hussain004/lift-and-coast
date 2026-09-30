@@ -13,9 +13,11 @@ import {
   COMPOUND_STRIPE_COLOR,
   FLAP_PIVOT,
   FLAP_SPAN,
+  REAR_TIRE_WIDTH,
   TIRE_WIDTH,
   WHEEL_RADIUS,
   buildCarGeometry,
+  buildFarCarGeometry,
   buildWheelGeometry,
 } from "../lib/race/carSculpt";
 
@@ -51,7 +53,7 @@ describe("sculpted car", () => {
     for (const w of CAR_WHEELS) {
       const [wx, wy, wz] = w.position;
       for (let i = 0; i < pos.count; i++) {
-        const insideWidth = Math.abs(pos.getX(i) - wx) < TIRE_WIDTH / 2;
+        const insideWidth = Math.abs(pos.getX(i) - wx) < (w.isDriven ? REAR_TIRE_WIDTH : TIRE_WIDTH) / 2;
         const insideRadius = Math.hypot(pos.getY(i) - wy, pos.getZ(i) - wz) < WHEEL_RADIUS;
         expect(insideWidth && insideRadius).toBe(false);
       }
@@ -110,6 +112,29 @@ describe("sculpted car", () => {
     expect(b.max.y).toBeCloseTo(WHEEL_RADIUS, 2);
     expect(b.max.z).toBeCloseTo(WHEEL_RADIUS, 2);
     expect(b.max.x).toBeLessThan(TIRE_WIDTH / 2 + 0.02);
+  });
+
+  it("gives the driven rear tyres more width than the fronts", () => {
+    const front = box(buildWheelGeometry(undefined, false));
+    const rear = box(buildWheelGeometry(undefined, true));
+    expect(rear.max.x).toBeGreaterThan(front.max.x + 0.03);
+    expect(rear.max.x).toBeLessThan(REAR_TIRE_WIDTH / 2 + 0.02);
+  });
+
+  it("builds a one-mesh far version that is far cheaper than the full car", () => {
+    const far = buildFarCarGeometry("#0d2c5c", "#ff5aa0");
+    const count = (g: THREE.BufferGeometry) => g.getAttribute("position").count;
+    const full = [car.paint, car.carbon, car.frontWing, car.rearWing, car.flap].reduce((n, g) => n + count(g), 0) + 4 * count(buildWheelGeometry());
+    expect(count(far)).toBeLessThan(full * 0.55);
+    expect(far.getAttribute("color")).toBeDefined();
+    // Same footprint as the full car: it must not visibly pop on the swap.
+    const f = box(far);
+    const p = box(car.paintWithWings);
+    expect(f.max.z).toBeCloseTo(p.max.z, 0);
+    expect(f.min.z).toBeCloseTo(p.min.z, 0);
+    expect(f.max.y).toBeLessThan(0.95);
+    // Building it must not leave the shared tessellation lowered for the next full car.
+    expect(count(buildCarGeometry("#0d2c5c", "#ff5aa0").paint)).toBe(count(car.paint));
   });
 });
 

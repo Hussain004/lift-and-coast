@@ -1077,7 +1077,7 @@ export function AICar({
       {/* colliders={false} + one explicit collider - see Car.tsx's own
           comment for why the auto-collider generation is unsafe here. */}
       <CuboidCollider args={CHASSIS_HALF_EXTENTS} mass={CHASSIS_MASS} />
-      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} raceNumber={driverNumber ?? null} />
+      <F1CarBody bodyColor={bodyColor} steerRefs={steerRefs} spinRefs={spinRefs} raceNumber={driverNumber ?? null} lod />
     </RigidBody>
   );
 }
