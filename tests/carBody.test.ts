@@ -84,6 +84,11 @@ describe("sculpted car", () => {
     expect(found).toBe(true);
   });
 
+  it("offers a one-mesh paint-plus-wings body for cars that cannot be damaged", () => {
+    const count = (g: THREE.BufferGeometry) => g.getAttribute("position").count;
+    expect(count(car.paintWithWings)).toBe(count(car.paint) + count(car.frontWing) + count(car.rearWing));
+  });
+
   it("paints each compound's sidewall stripe in its own colour", () => {
     const hasColor = (g: THREE.BufferGeometry, hex: string): boolean => {
       const c = new THREE.Color(hex);

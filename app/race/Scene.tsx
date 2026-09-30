@@ -50,7 +50,6 @@ import {
 import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createQualifyingReferenceTimes } from "@/lib/race/qualifyingField";
-import { Bloom } from "./Bloom";
 import { NightLights } from "./NightLights";
 import { PracticeGates } from "./PracticeGates";
 import { paceTarget } from "@/lib/race/practiceProgrammes";
@@ -1107,7 +1106,6 @@ export function Scene({
         cloudColor={cloudColor}
         stars={lighting.stars && cloudCover < 0.8}
       />
-      {settings.bloom && <Bloom night={timeOfDay === "night"} />}
       {timeOfDay === "night" && <NightLights track={track} target={visualRef} />}
       <Sun
         direction={lighting.sunPosition}

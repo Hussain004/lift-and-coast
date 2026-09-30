@@ -513,6 +513,8 @@ export interface CarGeometry {
    * separate meshes so damage can droop or shed them. */
   frontWing: THREE.BufferGeometry;
   rearWing: THREE.BufferGeometry;
+  /** Paint plus both wings in one mesh: cars that cannot be damaged (every rival) draw this and save two draw calls each. */
+  paintWithWings: THREE.BufferGeometry;
 }
 
 export function buildCarGeometry(livery: string, accent: string): CarGeometry {
@@ -524,8 +526,10 @@ export function buildCarGeometry(livery: string, accent: string): CarGeometry {
   const rearWing = mergeGeometries(rear, false);
   const flap = colorize(normalize(wing(FLAP_CHORD, FLAP_SPAN, [0, 0], 0, 0.1, 0.06)), accent);
   if (!paint || !carbon || !frontWing || !rearWing) throw new Error("car geometry merge failed");
-  for (const g of [paint, carbon, flap, frontWing, rearWing]) g.computeBoundingSphere();
-  return { paint, carbon, flap, frontWing, rearWing };
+  const paintWithWings = mergeGeometries([paint, frontWing, rearWing], false);
+  if (!paintWithWings) throw new Error("car geometry merge failed");
+  for (const g of [paint, carbon, flap, frontWing, rearWing, paintWithWings]) g.computeBoundingSphere();
+  return { paint, carbon, flap, frontWing, rearWing, paintWithWings };
 }
 
 /**

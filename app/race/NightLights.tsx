@@ -9,7 +9,7 @@ import type { TrackData } from "@/lib/tracks/types";
 import { useQuality } from "./renderQuality";
 
 // Night racing: a floodlight mast along the circuit every ~90 m (drawn
-// always, glowing heads that bloom on the High tier) and a small fixed pool
+// always, with bright emissive heads) and a small fixed pool
 // of real point lights that hop between the masts nearest the player - a
 // constant light count, so nothing recompiles as the car moves - plus a
 // forward headlight so the corner ahead is always readable.
@@ -88,8 +88,7 @@ export function NightLights({
       )}
       {heads && (
         <mesh geometry={heads}>
-          {/* Over-bright on purpose: the Bloom pass picks the heads out. */}
-          <meshBasicMaterial color={new THREE.Color(4, 3.7, 3)} toneMapped={false} fog={false} />
+          <meshBasicMaterial color="#fff4d8" toneMapped={false} fog={false} />
         </mesh>
       )}
       {Array.from({ length: poolSize }, (_, i) => (

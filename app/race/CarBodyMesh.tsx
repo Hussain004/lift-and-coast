@@ -87,7 +87,7 @@ function material(finish: Finish, options: { ghost: boolean; studio: boolean; ch
  * material for the whole grid: TrackFx's RainLightDriver flashes it, so no
  * car does any per-frame work. Hidden (invisible material) when dry.
  */
-export const rainLightMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.1, 0.1), toneMapped: false, visible: false });
+export const rainLightMaterial = new THREE.MeshBasicMaterial({ color: "#ff1414", toneMapped: false, visible: false });
 const rainLightGeometry = new THREE.BoxGeometry(0.18, 0.1, 0.03);
 
 // Race numbers: one small transparent decal texture per number, shared by
@@ -173,8 +173,14 @@ export function CarBodyShell({
   });
   return (
     <>
-      <mesh geometry={geometry.paint} material={material("paint", options)} castShadow={!ghost} />
+      <mesh
+        geometry={damageRef ? geometry.paint : geometry.paintWithWings}
+        material={material("paint", options)}
+        castShadow={!ghost}
+      />
       <mesh geometry={geometry.carbon} material={material("carbon", options)} castShadow={!ghost} />
+      {damageRef && (
+        <>
       <group ref={frontWingRef} position={FRONT_WING_PIVOT}>
         <mesh
           geometry={geometry.frontWing}
@@ -191,6 +197,8 @@ export function CarBodyShell({
           castShadow={!ghost}
         />
       </group>
+        </>
+      )}
       <group ref={flapRef} position={FLAP_PIVOT}>
         <mesh
           rotation={[FLAP_CLOSED_INCLINE_RAD, 0, 0]}
