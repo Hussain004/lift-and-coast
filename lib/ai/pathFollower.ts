@@ -538,10 +538,21 @@ export function computeAIControls(
    * existing caller, test and the headless harness, so the control law below
    * is untouched unless a caller opts in.
    */
-  trackEdge?: TrackEdgeGuard
+  trackEdge?: TrackEdgeGuard,
+  /**
+   * Optional absolute speed ceiling, m/s (the safety car / virtual safety
+   * car). It only lowers targets: a corner already slower than the cap keeps
+   * its validated profile speed, so a capped car drives the same corners at
+   * the same speeds and only its straights are shortened. Omitted by every
+   * caller but the safety-car period, so the reference control law is
+   * unchanged. Scaling the whole profile down instead jams the car in tight
+   * corners (measured at Monaco's hairpin at half pace).
+   */
+  speedCapMs?: number
 ): AIControls {
   const n = line.length;
   const nearest = nearestLineIndex(line, carX, carZ, warmStartIndex);
+  const cap = speedCapMs !== undefined && Number.isFinite(speedCapMs) ? Math.max(1, speedCapMs) : Infinity;
   const nearestPoint = line[nearest];
   // Pace headroom bound: personality/tire/racecraft multipliers stack to
   // ~1.1 at Ace (elite trait x tier x late-race tire curve). The cap bounds
@@ -562,7 +573,7 @@ export function computeAIControls(
   // cannot perturb the separately validated bridge/street profiles.
   const effectivePace = cappedPaceForPoint(nearestPoint, clampedPace);
   const unscaledTarget = useBoostedSpeed ? nearestPoint.boostedTargetSpeedMs : nearestPoint.targetSpeedMs;
-  const profileTarget = unscaledTarget * effectivePace;
+  const profileTarget = Math.min(unscaledTarget * effectivePace, cap);
   // The preview geometry below keeps the pace range it was validated over:
   // a follow cap slowing the car must not also shorten the lookahead to a
   // hairpin's length at 60 m/s.
@@ -703,8 +714,10 @@ export function computeAIControls(
   for (let k = 0; k < n && scanned < BRAKE_PLANNING_METERS; k++) {
     const i = (nearest + k) % n;
     const point = line[i];
-    const candidate =
-      (useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs) * effectivePace;
+    const candidate = Math.min(
+      (useBoostedSpeed ? point.boostedTargetSpeedMs : point.targetSpeedMs) * effectivePace,
+      cap
+    );
     if (scanned > 1e-6) {
       const required = (speed ** 2 - candidate ** 2) / (2 * scanned);
       if (required > maxRequiredDecel) maxRequiredDecel = required;

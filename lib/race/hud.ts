@@ -120,6 +120,8 @@ export interface HudSnapshot {
   servePrompt: string;
   /** Practice-programme progress line (championship practice only), else "". */
   programmeText: string;
+  /** Safety car / VSC banner text (see lib/race/safetyCar.ts), "" when racing. */
+  safetyCarText: string;
   /** Practice gates on the racing line; hits mutate in place as they are driven through. */
   gates: { x: number; y: number; z: number }[];
   gateHits: boolean[];
@@ -209,6 +211,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pitBoxMeters: null,
     servePrompt: "",
     programmeText: "",
+    safetyCarText: "",
     gates: [],
     gateHits: [],
     damage: 1,

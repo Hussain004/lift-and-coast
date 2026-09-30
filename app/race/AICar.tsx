@@ -99,6 +99,7 @@ import {
 import { createPoseRing } from "@/lib/race/poseRing";
 import { REPLAY_CAPACITY_SECONDS, type SharedReplay } from "@/lib/race/replay";
 import { gridSlot } from "@/lib/race/grid";
+import { catchUpBonusMs, safetyCarCapMs, type SafetyCarState } from "@/lib/race/safetyCar";
 import type { AudioSnapshot } from "@/lib/audio/raceAudio";
 import { limiterAmount, rpmTo01, skidAmount01 } from "@/lib/audio/raceAudio";
 import type { RaceState } from "@/lib/race/racePosition";
@@ -188,6 +189,7 @@ export function AICar({
    * traits themselves are session-stable so the same code always has the
    * same character. */
   sessionSeedRef,
+  safetyCarRef,
   /** Total race laps (see Scene.tsx) - the tire curve's clock. */
   raceLaps = 3,
   trafficRef,
@@ -255,6 +257,8 @@ export function AICar({
    * ref, so dealing the seed needs no re-render.
    */
   sessionSeedRef?: React.RefObject<number>;
+  /** Safety car / VSC state (Scene.tsx): caps the straight-line speed and stops overtaking. */
+  safetyCarRef?: React.RefObject<SafetyCarState>;
   /** Total race laps (see Scene.tsx) - the tire curve's clock. */
   raceLaps?: number;
   /**
@@ -812,7 +816,17 @@ export function AICar({
       });
       aeroModeRef.current = step.aeroMode;
       paceMult = step.paceMult;
-      const willDeploy = sessionMode === "race" ? step.deploy : false;
+      // Safety car / VSC: a speed ceiling (the corners keep their validated
+      // speeds), no overtaking, and a small allowance to close up on the car
+      // in front.
+      const scBase = safetyCarRef?.current ? safetyCarCapMs(safetyCarRef.current) : null;
+      let scCap: number | undefined;
+      if (scBase !== null) {
+        let ahead: number | null = null;
+        for (const car of cars) if (car.gapMeters > 0 && car.gapMeters < 400 && (ahead === null || car.gapMeters < ahead)) ahead = car.gapMeters;
+        scCap = scBase + catchUpBonusMs(ahead);
+      }
+      const willDeploy = sessionMode === "race" && scBase === null ? step.deploy : false;
       // Beached, wedged or upside down (see lib/ai/recovery.ts): back onto
       // the line at its own progress once the road there is clear.
       const up = body.rotation();
@@ -850,7 +864,7 @@ export function AICar({
         speedMs,
         willDeploy,
         paceMult,
-        step.steerOffsetMeters,
+        scBase === null ? step.steerOffsetMeters : 0,
         // The anchor above is this car's nearest line point at this exact
         // position - passing it makes the internal scan a confirmed
         // windowed hit (distance 0) instead of a second full-line scan.
@@ -860,7 +874,8 @@ export function AICar({
         // paying for a second nearest-point scan. Returns undefined on the
         // circuits where it is disabled, leaving the reference control law
         // untouched there.
-        buildTrackEdgeGuard(track, pos.x, pos.z, pos.y, limitStatus)
+        buildTrackEdgeGuard(track, pos.x, pos.z, pos.y, limitStatus),
+        scCap
       );
       // Launch control closes the path-follower's deliberate low-speed
       // throttle ramp, but only while the shared racecraft step says the
@@ -880,7 +895,7 @@ export function AICar({
         (nearest, car) => (car.gapMeters > 0 ? Math.min(nearest, car.gapMeters) : nearest),
         Infinity
       );
-      overtakeSystem.setRequested(sessionMode === "race" ? step.override : true);
+      overtakeSystem.setRequested(sessionMode === "race" ? step.override && scBase === null : true);
       overtakeState = overtakeSystem.update(trackedProgress, speedMs, nearestAheadGap);
       const energyStatus = energyRef.current.update(
         {

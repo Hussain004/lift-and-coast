@@ -9,6 +9,7 @@ import { AudioSetting } from "../../AudioSetting";
 import { RacingLineSetting } from "../../RacingLineSetting";
 import { DamageSetting } from "../../DamageSetting";
 import { AssistPresets } from "../../AssistPresets";
+import { SafetyCarSetting } from "../../SafetyCarSetting";
 import styles from "../../menu.module.css";
 
 export const metadata: Metadata = { title: "Settings · LIFT & COAST" };
@@ -45,6 +46,11 @@ export default function SettingsPage() {
           <h2 className={styles.cardTitle}>DAMAGE</h2>
           <p className={styles.cardNote}>Front wing, rear wing and floor take hits and cost grip and downforce until you pit. Simulation adds punctures.</p>
           <DamageSetting />
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>SAFETY CAR</h2>
+          <p className={styles.cardNote}>How often the safety car and virtual safety car come out in races of three laps or more. Everyone is held to a speed limit and overtaking is off until the green flag; a stopped car can also bring out a VSC. Applies from the next race.</p>
+          <SafetyCarSetting />
         </section>
         <section className={styles.card}>
           <h2 className={styles.cardTitle}>SOUND</h2>

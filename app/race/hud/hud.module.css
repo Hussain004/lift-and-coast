@@ -1321,3 +1321,18 @@
 .programmeChip[data-on="0"] {
   display: none;
 }
+
+/* Safety car / virtual safety car banner. */
+.safetyChip {
+  padding: 6px 14px;
+  background: #f5c400;
+  color: #111;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.safetyChip[data-on="0"] {
+  display: none;
+}

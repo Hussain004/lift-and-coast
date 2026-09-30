@@ -80,6 +80,7 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
   const limitRef = useRef<HTMLDivElement>(null);
   const pitRef = useRef<HTMLDivElement>(null);
   const programmeRef = useRef<HTMLDivElement>(null);
+  const safetyRef = useRef<HTMLDivElement>(null);
   const flagRef = useRef<HTMLDivElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const flashFillRef = useRef<HTMLDivElement>(null);
@@ -102,6 +103,10 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
       flagRef.current.textContent = hud.flagText;
       flagRef.current.dataset.on = hud.flagText ? "1" : "0";
       flagRef.current.dataset.kind = hud.flagText.startsWith("BLUE") ? "blue" : "yellow";
+    }
+    if (safetyRef.current) {
+      safetyRef.current.textContent = hud.safetyCarText;
+      safetyRef.current.dataset.on = hud.safetyCarText ? "1" : "0";
     }
     if (programmeRef.current) {
       programmeRef.current.textContent = hud.programmeText;
@@ -132,6 +137,7 @@ export function Notifications({ hudRef }: { hudRef: React.RefObject<HudSnapshot>
       </div>
       <div className={styles.flagChip} ref={flagRef} data-on="0" />
       <div className={styles.pitChip} ref={pitRef} data-on="0" />
+      <div className={styles.safetyChip} ref={safetyRef} data-on="0" />
       <div className={styles.programmeChip} ref={programmeRef} data-on="0" />
       {shown.map((e) => (
         <div key={e.id} className={styles.notice} data-kind={e.kind}>

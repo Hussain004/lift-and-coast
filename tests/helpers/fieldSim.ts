@@ -71,6 +71,7 @@ import {
 } from "../../lib/ai/recovery";
 import { createLapTimer, standingsLapCount } from "../../lib/race/lapTimer";
 import { gridSlot } from "../../lib/race/grid";
+import { catchUpBonusMs } from "../../lib/race/safetyCar";
 import silverstone from "../../data/tracks/silverstone.json";
 import type { TrackData } from "../../lib/tracks/types";
 
@@ -160,6 +161,8 @@ export interface FieldSimOptions {
   /** Race length for the tire curve's clock. */
   raceLaps?: number;
   trace?: boolean;
+  /** A safety-car period: everyone held to `capMs` (plus catch-up), no overtaking, as in AICar.tsx. */
+  safetyCar?: { fromSeconds: number; toSeconds: number; capMs: number };
 }
 
 export async function simulateField(order: string[], options: FieldSimOptions): Promise<FieldResult> {
@@ -172,6 +175,7 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
     difficulty = "pro",
     raceLaps = 3,
     trace = false,
+    safetyCar,
   } = options;
   const track = (options.track ?? silverstone) as TrackData;
   const lineProfile =
@@ -421,7 +425,14 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         if (trace) console.log(`RECOVER t=${(i * timestep).toFixed(1)} ${car.code}`);
       }
       car.maxOffset = Math.max(car.maxOffset, Math.abs(car.racecraft.offset));
-      const deploying = !parkedCar && !held && step.deploy;
+      const scActive = !!safetyCar && i * timestep >= safetyCar.fromSeconds && i * timestep < safetyCar.toSeconds;
+      let scCap: number | undefined;
+      if (scActive && safetyCar) {
+        let ahead: number | null = null;
+        for (const o of others) if (o.gapMeters > 0 && o.gapMeters < 400 && (ahead === null || o.gapMeters < ahead)) ahead = o.gapMeters;
+        scCap = safetyCar.capMs + catchUpBonusMs(ahead);
+      }
+      const deploying = !parkedCar && !held && step.deploy && !scActive;
       const baseControls = parkedCar
         ? { throttle: 0, brake: 1, steer: 0, zone: car.zone, boostEligible: false }
         : held
@@ -434,8 +445,10 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
             car.speedMs,
             deploying,
             step.paceMult,
-            step.steerOffsetMeters,
-            car.anchor
+            scActive ? 0 : step.steerOffsetMeters,
+            car.anchor,
+            undefined,
+            scCap
           );
       const controls = applyLaunchControl(
         baseControls,

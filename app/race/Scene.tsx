@@ -51,7 +51,10 @@ import { createRaceState, type RaceState } from "@/lib/race/racePosition";
 import { createQualifyingTimes, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createQualifyingReferenceTimes } from "@/lib/race/qualifyingField";
 import { NightLights } from "./NightLights";
+import { SafetyCarDriver, SafetyCarVisual } from "./SafetyCar";
 import { PracticeGates } from "./PracticeGates";
+import { createSafetyCarState } from "@/lib/race/safetyCar";
+import { loadSafetyCarSetting } from "@/lib/settings/safetyCarPref";
 import { paceTarget } from "@/lib/race/practiceProgrammes";
 import type { QualifyingFormat } from "@/lib/race/qualifying";
 import type { SessionMode } from "@/lib/race/sessionSetup";
@@ -939,10 +942,16 @@ export function Scene({
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     (window as unknown as { __raceState?: React.RefObject<RaceState> }).__raceState = raceRef;
+    (window as unknown as { __safetyCar?: React.RefObject<ReturnType<typeof createSafetyCarState>> }).__safetyCar = safetyCarRef;
   }, []);
   const weatherRef = useRef<WeatherHandle>(createWeatherSystem(weatherPreset));
   const raceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
   const raceStartRef = useRef(false);
+  // Safety car / VSC (see lib/race/safetyCar.ts): races only, never in a net
+  // room (the host would have to broadcast it), and off by setting.
+  const [safetyCarSetting] = useState(() => loadSafetyCarSetting());
+  const safetyCarActive = sessionMode === "race" && netRole === null && safetyCarSetting !== "off";
+  const safetyCarRef = useRef(createSafetyCarState([]));
   // Per-race mistake seed (see AICar's sessionSeedRef): a ref stamped in
   // an effect (never in render - the clock is impure), read live by each
   // car every tick, so no mount re-render is needed. Traits stay
@@ -1113,10 +1122,23 @@ export function Scene({
         intensity={lighting.sunIntensity}
         target={visualRef}
       />
+      {safetyCarActive && <SafetyCarVisual track={track} stateRef={safetyCarRef} raceRef={raceRef} />}
       <WeatherFX weatherRef={weatherRef} target={visualRef} fogFar={settings.fogFar} />
       <PauseInput enabled={netRole === null} onToggle={onPauseToggle} />
       <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60} paused={paused}>
         <RaceOpsTicker weatherRef={weatherRef} />
+        {safetyCarActive && (
+          <SafetyCarDriver
+            setting={safetyCarSetting}
+            stateRef={safetyCarRef}
+            raceRef={raceRef}
+            raceStartRef={raceStartRef}
+            hudRef={hudRef}
+            sessionSeedRef={sessionSeedRef}
+            raceLaps={raceLaps ?? DEFAULT_RACE_LAPS}
+            trackLengthMeters={track.lengthMeters}
+          />
+        )}
         {weatherPlan && <WeatherScheduler plan={weatherPlan} weatherRef={weatherRef} hudRef={hudRef} />}
         <Ground track={track} />
         <PitCrew track={track} hudRef={hudRef} />
@@ -1141,6 +1163,7 @@ export function Scene({
           raceLaps={raceLaps}
           champRound={champRound}
           sprint={sprint}
+          safetyCarRef={safetyCarRef}
           practiceTargetSeconds={practiceTargetSeconds}
           sessionMode={sessionMode}
           qualiFormat={qualiFormat}
@@ -1198,6 +1221,7 @@ export function Scene({
                 sessionMode={sessionMode}
                 difficulty={difficulty}
                 sessionSeedRef={sessionSeedRef}
+                safetyCarRef={safetyCarRef}
                 raceLaps={raceLaps}
                 trafficRef={trafficRef}
                 trafficKey={`a${k}`}

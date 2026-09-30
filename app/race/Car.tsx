@@ -128,6 +128,7 @@ import {
 import { PROGRAMME_GAIN } from "@/lib/race/objectives";
 import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import { createWheelTemps, stepWheelTemps } from "@/lib/race/wheelTemps";
+import { catchUpBonusMs, gapAheadMeters as roadGapAheadMeters, safetyCarCapMs, type SafetyCarState } from "@/lib/race/safetyCar";
 import { createServeState, queuePenalty, servePrompt, stepServe } from "@/lib/race/penaltyServing";
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
@@ -220,6 +221,7 @@ export function Car({
   raceLaps = DEFAULT_RACE_LAPS,
   champRound = null,
   sprint = false,
+  safetyCarRef,
   practiceTargetSeconds = null,
   sessionMode = "race",
   qualiFormat = "timed",
@@ -296,6 +298,8 @@ export function Car({
   champRound?: number | null;
   /** Championship sprint: scored 8-1, filed as the round's sprint result. */
   sprint?: boolean;
+  /** Safety car / VSC state (Scene.tsx): the player is held to its speed ceiling. */
+  safetyCarRef?: React.RefObject<SafetyCarState>;
   /** Championship practice: the lap time the qualifying-pace programme asks for. */
   practiceTargetSeconds?: number | null;
   /** Session kind from ?mode= (default race) - practice is solo free
@@ -1091,6 +1095,24 @@ export function Car({
           throttle: overspeed > 0 ? 0 : Math.min(gatedDriveInput.throttle, 0.25),
           deploy: false,
           brake: Math.max(gatedDriveInput.brake, overspeed > 0 ? Math.min(0.6, 0.1 + overspeed / 6) : 0),
+        };
+      }
+    }
+    // Safety car / VSC: the same limiter as the pit lane, at the period's
+    // speed ceiling (plus the catch-up allowance behind the leader), and no
+    // ERS deployment.
+    const scBase = safetyCarRef?.current ? safetyCarCapMs(safetyCarRef.current) : null;
+    if (scBase !== null && raceRef?.current) {
+      const race = raceRef.current;
+      const gap = roadGapAheadMeters([race.player, ...race.opponents], 0, track.lengthMeters);
+      const lv = body.linvel();
+      const overspeed = Math.hypot(lv.x, lv.z) - (scBase + catchUpBonusMs(gap));
+      if (overspeed > -1) {
+        gatedDriveInput = {
+          ...gatedDriveInput,
+          throttle: overspeed > 0 ? 0 : Math.min(gatedDriveInput.throttle, 0.25),
+          deploy: false,
+          brake: Math.max(gatedDriveInput.brake, overspeed > 0 ? Math.min(0.8, 0.2 + overspeed / 4) : 0),
         };
       }
     }
