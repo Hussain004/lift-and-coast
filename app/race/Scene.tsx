@@ -79,6 +79,7 @@ import type { RaceControlHandle, RaceOpsCommand, RaceOpsSnapshot, WeatherHandle 
 import { createRaceControlSystem } from "@/lib/race/raceControl";
 import { SideMirrors } from "./SideMirrors";
 import { flashbackLimit } from "@/lib/race/flashbacks";
+import { MarshalPosts } from "./MarshalPosts";
 import { PitCrew } from "./PitCrew";
 import type { PhotoState } from "@/lib/race/photo";
 import { createFxBus, RainLightDriver, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
@@ -942,6 +943,7 @@ export function Scene({
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     (window as unknown as { __raceState?: React.RefObject<RaceState> }).__raceState = raceRef;
+    (window as unknown as { __liftChassis?: React.RefObject<RapierRigidBody | null> }).__liftChassis = chassisRef;
     (window as unknown as { __safetyCar?: React.RefObject<ReturnType<typeof createSafetyCarState>> }).__safetyCar = safetyCarRef;
   }, []);
   const weatherRef = useRef<WeatherHandle>(createWeatherSystem(weatherPreset));
@@ -1142,6 +1144,7 @@ export function Scene({
         {weatherPlan && <WeatherScheduler plan={weatherPlan} weatherRef={weatherRef} hudRef={hudRef} />}
         <Ground track={track} />
         <PitCrew track={track} hudRef={hudRef} />
+        <MarshalPosts track={track} hudRef={hudRef} safetyCarRef={safetyCarRef} />
         {sessionMode === "practice" && champRound !== null && <PracticeGates hudRef={hudRef} />}
         <Track
           track={track}

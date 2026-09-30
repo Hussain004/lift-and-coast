@@ -175,6 +175,8 @@ export interface HudSnapshot {
   trackLimitText: string;
   /** Marshal flag in force for the player ("YELLOW ..." / "BLUE FLAG ..."), or "". */
   flagText: string;
+  /** Distance along the lap of the stopped car the yellow is for, metres; -1 when there is none. */
+  yellowStation: number;
   chequered: boolean;
   // Messages and the end of the session
   events: HudEvent[];
@@ -251,6 +253,7 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     offTrack: false,
     trackLimitText: "",
     flagText: "",
+    yellowStation: -1,
     chequered: false,
     events: [],
     result: null,

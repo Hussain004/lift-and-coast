@@ -1416,6 +1416,8 @@ export function Car({
       raceClockRef.current
     );
     const text = flagChipText(status);
+    const lap = track.lengthMeters;
+    hud.yellowStation = status.yellow ? (((race.player.progressMeters + status.yellow.aheadMeters) % lap) + lap) % lap : -1;
     if (text !== hud.flagText) {
       const was = hud.flagText;
       hud.flagText = text;
