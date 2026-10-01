@@ -10,6 +10,7 @@ import {
   subscribeToControls,
 } from "@/lib/input/keyBindings";
 import { ControlSettingsPanel } from "../ControlSettingsPanel";
+import { TouchControlSettings } from "../TouchControlSettings";
 import { AssistPresets } from "../../AssistPresets";
 import { DamageSetting } from "../../DamageSetting";
 import { EngineerSetting } from "../../EngineerSetting";
@@ -171,6 +172,15 @@ export function PauseMenu({
                 <PitReleaseSetting />
                 <div className={styles.pauseSubhead}>CONTROLS</div>
                 <ControlSettingsPanel inline />
+                {/*
+                  Touch controls live in Settings, not on the deck: the deck's
+                  header is hidden on a phone in landscape because it sat on
+                  top of the race HUD, and the spec wants only Pause and
+                  Overtake/ERS on screen while driving. The tilt permission tap
+                  has to live somewhere reachable, and the pause menu is it.
+                */}
+                <div className={styles.pauseSubhead}>TOUCH CONTROLS</div>
+                <TouchControlSettings />
               </>
             )}
           </div>

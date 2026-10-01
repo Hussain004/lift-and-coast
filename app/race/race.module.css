@@ -563,6 +563,134 @@
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  /*
+   * Safe-area insets on all four edges (roadmap 13). The viewport is already
+   * viewportFit: "cover", so without this the touch deck sits under the home
+   * indicator and the notch crops the top of the header - and on a notched
+   * phone the stick nearest the notch is partly off-screen, which is a
+   * steering input you cannot physically reach.
+   */
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Touch control settings, in the pause menu (see TouchControlSettings.tsx). */
+.touchSettings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.touchSettingsLabel {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.touchSettingsRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.touchSettingsNote {
+  margin: 2px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Tilt-mode bar and the iOS permission tap. */
+.tiltBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(8, 10, 14, 0.9);
+  border-left: 4px solid #2f7fe0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+  margin-bottom: 6px;
+}
+
+.tiltEnable {
+  flex: 1;
+  padding: 12px 10px;
+  background: #2f7fe0;
+  color: #fff;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  touch-action: manipulation;
+}
+
+/* Buttons mode: a full-height steering pad on the left thumb. */
+.steerPad {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 132px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.steerPadLabel {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.steerPadArrowLeft,
+.steerPadArrowRight {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.steerPadArrowLeft {
+  left: 10px;
+}
+
+.steerPadArrowRight {
+  right: 10px;
+}
+
+.pedalPadRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.pedalPad {
+  min-width: 96px;
+  padding: 18px 12px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #e8edf3;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  touch-action: none;
+}
+
+.pedalPad:active {
+  background: rgba(47, 127, 224, 0.5);
 }
 
 .mobileControlsHeader {
@@ -983,12 +1111,21 @@
     pointer-events: auto;
   }
 
+  /*
+    STEERING ON THE LEFT THUMB, PEDALS ON THE RIGHT. These were the wrong way
+    round, which forced a player to cross their hands to turn into a corner.
+    In landscape the sticks are absolutely positioned, so the fix belongs
+    here rather than in the DOM order (the JSX order is corrected too, for
+    the portrait/narrow layouts that do follow it).
+  */
   .mobileStickSteer {
-    right: max(16px, env(safe-area-inset-right));
+    left: max(16px, env(safe-area-inset-left));
+    right: auto;
   }
 
   .mobileStickPedal {
-    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+    left: auto;
   }
 
   .mobileControlHint {
