@@ -87,6 +87,32 @@ export interface DriveInput {
   brake: number;
   steer: number;
   rewind: boolean;
+  /**
+   * Edge-triggered RELEASE of the rewind key.
+   *
+   * Separate from `rewind` (held) because the two gestures have to coexist:
+   * holding R is still the quick "undo that spin" rewind, and a TAP of R opens
+   * the flashback timeline to scrub properly. Only the release edge can tell
+   * the two apart, and it is what lets the timeline be added without changing
+   * the existing hold behaviour at all.
+   */
+  rewindReleased: boolean;
+  /**
+   * Timeline scrub steps, HELD rather than edge-triggered on purpose: the
+   * browser's own key repeat then walks the scrub head at a usable speed,
+   * which is what makes a 15 second window navigable with two keys instead of
+   * requiring 30 separate taps. The head is clamped, so holding a key parks it
+   * at whichever end it was pointing at.
+   */
+  scrubBack: boolean;
+  scrubForward: boolean;
+  /**
+   * Confirm (Enter) and cancel (Escape) for the timeline. Also held, which is
+   * safe: confirming closes the timeline and cancelling closes it, so neither
+   * can fire twice from one held key.
+   */
+  confirm: boolean;
+  cancel: boolean;
   deploy: boolean;
   /** Hold to request an available 2026 overtake zone. */
   overtake: boolean;
@@ -168,6 +194,14 @@ const EDGE_FLAGS = [
   "ersModeCycle",
   "strategyModeCycle",
   "weatherCycle",
+  // The flashback timeline's own edges. Latched here like every other one-shot
+  // so they fire exactly once per press even though the timeline is driven
+  // from useFrame while the physics step is paused.
+  "rewindReleased",
+  "scrubBack",
+  "scrubForward",
+  "confirm",
+  "cancel",
 ] as const;
 type EdgeFlag = (typeof EDGE_FLAGS)[number];
 
@@ -177,11 +211,21 @@ export function useDriveInput(
   touchInputRef?: RefObject<TouchDriveInput | null>
 ) {
   const keys = useRef(new Set<string>());
+  /**
+   * A rewind-key release that survives until a consumer acknowledges it.
+   * See onKeyUp for why a normal one-tick edge does not work here.
+   */
+  const stickyRewindReleased = useRef(false);
   const input = useRef<DriveInput>({
     throttle: 0,
     brake: 0,
     steer: 0,
     rewind: false,
+    rewindReleased: false,
+    scrubBack: false,
+    scrubForward: false,
+    confirm: false,
+    cancel: false,
     deploy: false,
     overtake: false,
     pitRequested: false,
@@ -209,6 +253,11 @@ export function useDriveInput(
     ersModeCycle: false,
     strategyModeCycle: false,
     weatherCycle: false,
+    rewindReleased: false,
+    scrubBack: false,
+    scrubForward: false,
+    confirm: false,
+    cancel: false,
   });
   const aeroMode = useRef<AeroMode>("high-downforce");
   const internalCameraMode = useRef<CameraMode>("chase");
@@ -300,7 +349,25 @@ export function useDriveInput(
       }
       keys.current.add(e.code);
     };
-    const onKeyUp = (e: KeyboardEvent) => keys.current.delete(e.code);
+    const onKeyUp = (e: KeyboardEvent) => {
+      // Latch the release of the rewind key BEFORE deleting it, so the tap that
+      // opens the flashback timeline is a genuine edge. The `keys.current.has`
+      // guard is what makes it an edge and not a repeat: without it, a keyup
+      // for a code that was never down would fire on every stray event.
+      //
+      // It goes into `stickyRewindReleased` rather than straight into
+      // pendingEdges, and that indirection is load-bearing. pendingEdges is
+      // consumed by update(), which Rapier calls once per physics SUBSTEP, and
+      // a slow frame runs several substeps before React's useFrame ever runs.
+      // A one-tick edge is therefore set and then overwritten back to false
+      // within the same frame, and the consumer never sees it - which is
+      // exactly how "tap R does nothing" happened. The sticky flag survives
+      // until a consumer clears it.
+      if (boundKeys("rewind").includes(e.code) && keys.current.has(e.code)) {
+        stickyRewindReleased.current = true;
+      }
+      keys.current.delete(e.code);
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
@@ -401,7 +468,27 @@ export function useDriveInput(
       input.current.deploy = anyPressed(pressed, boundKeys("deploy")) || (touch?.deploy ?? false);
       input.current.overtake = anyPressed(pressed, boundKeys("overtake")) || (touch?.overtake ?? false);
       for (const flag of EDGE_FLAGS) input.current[flag] = edges[flag];
+      // Read back over the edge loop, which would otherwise have overwritten
+      // the sticky release with the always-false pendingEdges value.
+      input.current.rewindReleased = stickyRewindReleased.current;
+      // The timeline's own keys, read straight off the held key state and
+      // assigned AFTER the edge loop for the same reason: they are consumed by
+      // useFrame while the physics step is PAUSED, so they cannot depend on a
+      // tick that is not running, and they must survive the loop that would
+      // otherwise zero them. Held rather than edge-triggered so the browser's
+      // own key repeat walks the scrub at a usable speed.
+      input.current.scrubBack = anyPressed(pressed, ["ArrowLeft", "BracketLeft"]);
+      input.current.scrubForward = anyPressed(pressed, ["ArrowRight", "BracketRight"]);
+      input.current.confirm = anyPressed(pressed, ["Enter", "NumpadEnter"]);
+      input.current.cancel = anyPressed(pressed, ["Escape"]);
       return input.current;
+    },
+    /**
+     * Acknowledges a rewind-key release. The caller MUST call this once it has
+     * acted on it, or the timeline will reopen on every subsequent frame.
+     */
+    clearRewindReleased() {
+      stickyRewindReleased.current = false;
     },
   };
 }

@@ -33,6 +33,7 @@ import { createPhotoState } from "@/lib/race/photo";
 import { PhotoPanel } from "./PhotoPanel";
 import { Tower } from "./hud/Tower";
 import { Notifications, Timing } from "./hud/Timing";
+import { FlashbackTimeline } from "./hud/FlashbackTimeline";
 import { Engineer } from "./hud/Engineer";
 import { TrackMap } from "./hud/TrackMap";
 import { Mfd } from "./hud/Mfd";
@@ -367,6 +368,19 @@ function RaceContent() {
   // The pause menu. Single-player it also pauses physics; online the race
   // runs on underneath (nobody can stop a shared race).
   const [menuOpen, setMenuOpen] = useState(false);
+  // The flashback timeline pauses the simulation, like the pause menu does.
+  // Separate state rather than reusing `menuOpen` so the two stay
+  // distinguishable: the timeline is driven from useFrame inside Car, and
+  // Escape there means "cancel the scrub", not "open the pause menu".
+  const [flashbackTimelineOpen, setFlashbackTimelineOpen] = useState(false);
+  // Mirrored into a ref for the global key handler below, which is registered
+  // once and would otherwise need re-subscribing every time the timeline opens.
+  // Synced in an effect rather than during render: the React Compiler lint
+  // rules forbid touching a ref while rendering.
+  const flashbackTimelineOpenRef = useRef(flashbackTimelineOpen);
+  useEffect(() => {
+    flashbackTimelineOpenRef.current = flashbackTimelineOpen;
+  }, [flashbackTimelineOpen]);
   // Mirrors only ever draw in the cockpit and helmet cameras (see
   // SideMirrors), so "on" is the right default: the chase views stay clean.
   const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(true);
@@ -430,6 +444,14 @@ function RaceContent() {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
       if (event.code === "Escape") {
+        // While the flashback timeline is open, Escape belongs to the
+        // timeline: it means "cancel the scrub and put the car back", not
+        // "open the pause menu". Two handlers both acting on one keypress
+        // would drop the player into the pause menu on top of a half-done
+        // scrub. The timeline closes itself, which clears this flag. Read
+        // through a ref so this long-lived listener does not have to be
+        // re-subscribed on every open/close.
+        if (flashbackTimelineOpenRef.current) return;
         event.preventDefault();
         if (!result) toggleMenu();
         return;
@@ -484,6 +506,7 @@ function RaceContent() {
           playerTeamId={team.id}
           hudRef={hudRef}
           aiMarkerEls={aiMarkerEls}
+          onFlashbackTimelineOpenChange={setFlashbackTimelineOpen}
           raceLaps={raceLaps}
           champRound={champRound}
           sprint={sprint}
@@ -501,7 +524,7 @@ function RaceContent() {
           audioRef={audioRef}
           touchInputRef={touchInputRef}
           timeOfDay={timeOfDay}
-          paused={singlePlayer ? menuOpen || result !== null : false}
+          paused={singlePlayer ? menuOpen || result !== null || flashbackTimelineOpen : false}
           onPauseToggle={singlePlayer ? toggleMenu : undefined}
           onReady={handleSceneReady}
           weatherPreset={weatherPreset}
@@ -521,6 +544,7 @@ function RaceContent() {
           )}
           <Timing hudRef={hudRef} />
           <Notifications hudRef={hudRef} />
+          <FlashbackTimeline hudRef={hudRef} />
           <Engineer hudRef={hudRef} />
           <TrackMap
             hudRef={hudRef}

@@ -9,6 +9,10 @@ import { TIRE_COMPOUNDS } from "../physics/tireModel";
 import type { WeatherPreset } from "../physics/weather";
 import type { PitPhase, StrategyMode } from "./strategy";
 import type { PitReleasePhase } from "./pitRelease";
+import type { createFlashbackTrace } from "./flashbackTimeline";
+
+/** The trace handle carried by reference on the snapshot (see below). */
+export type FlashbackTrace = ReturnType<typeof createFlashbackTrace>;
 import type { SectorColor } from "./sectorTimer";
 import type { TowerEntry } from "./racePosition";
 import type { SessionMode } from "./sessionSetup";
@@ -143,6 +147,21 @@ export interface HudSnapshot {
   /** While a flashback is being scrubbed: seconds rewound so far and how far back it can go (0 when idle). */
   flashbackSeconds: number;
   flashbackCapacity: number;
+  /**
+   * The flashback timeline (lib/race/flashbackTimeline.ts) is open and the race
+   * is paused for it. The strip widget reads this to decide whether to draw,
+   * and `flashbackSeconds` / `flashbackCapacity` carry the scrub head while it
+   * is set.
+   */
+  flashbackTimelineOpen: boolean;
+  /**
+   * The live flash trace, by REFERENCE and never copied (see
+   * lib/race/flashbackTimeline.ts's writeFlashbackStrip). Gameplay code owns
+   * it because it is fed from the physics step; the strip widget reads it on
+   * its own HUD tick. Carrying the reference rather than the samples is what
+   * keeps a 20Hz redraw allocation-free.
+   */
+  flashbackTrace?: FlashbackTrace;
   /** Flashbacks left this session; null = unlimited. */
   flashbacksLeft: number | null;
   tc: boolean;
@@ -245,6 +264,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     damageRepairSeconds: 0,
     flashbackSeconds: 0,
     flashbackCapacity: 0,
+    flashbackTimelineOpen: false,
+    flashbackTrace: undefined,
     flashbacksLeft: null,
     tc: true,
     abs: true,

@@ -105,7 +105,21 @@ import {
   type OvertakeRestriction,
 } from "@/lib/race/overtakePenalties";
 import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
-import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
+import {
+  cancelFlashbackTimeline,
+  confirmFlashbackTimeline,
+  createFlashbackTimeline,
+  createFlashbackTrace,
+  isFlashbackTimelineOpen,
+  openFlashbackTimeline,
+  SCRUB_STEP_SECONDS,
+  scrubFlashbackTimeline,
+  type FlashbackTimelineExit,
+} from "@/lib/race/flashbackTimeline";
+
+/** Chassis contact force, N, above which a hit is marked on the strip. */
+const FLASHBACK_CONTACT_FORCE_N = 9000;
+import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot, type RewindSample } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
 import { loadSeason, recordChampionshipPractice, recordChampionshipQuali, recordChampionshipResult, recordChampionshipSprint } from "@/lib/persistence/championship";
 import { pointsForPosition } from "@/lib/race/championship";
@@ -234,6 +248,7 @@ export function Car({
    * neutral setup so every other embed of <Car> is unchanged.
    */
   carSetup = DEFAULT_CAR_SETUP,
+  onFlashbackTimelineOpenChange,
   chassisRef,
   visualRef,
   cameraModeRef,
@@ -312,6 +327,14 @@ export function Car({
   fxRef?: React.RefObject<FxBus>;
   /** Flashbacks allowed this session (lib/race/flashbacks.ts); null = unlimited. */
   flashbackLimit?: number | null;
+  /**
+   * Called when the flashback timeline opens or closes. The race page uses
+   * this to pause the simulation, because the timeline's own logic has to run
+   * from useFrame - which does keep running while `<Physics paused>` is set,
+   * whereas useBeforePhysicsStep does not, so the scrub cannot live in the
+   * physics step.
+   */
+  onFlashbackTimelineOpenChange?: (open: boolean) => void;
   /** Quick Race lap count - see page.tsx's ?laps= URL param. */
   raceLaps?: number;
   /**
@@ -466,7 +489,7 @@ export function Car({
   // low-drag mode, like the real active-aero flap.
   const flapRef = useRef<THREE.Group | null>(null);
   const { world, rapier } = useRapier();
-  const { update, input, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
+  const { update, input, clearRewindReleased, aeroMode, cameraMode, tireCompound, tractionControlEnabled, absEnabled, racingLineVisible, autoGear, gamepadConnected } =
     useDriveInput(cameraModeRef, racingLineVisibleRef, touchInputRef);
   // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
   // per car. `auto` follows the autoGear toggle (synced each physics tick
@@ -728,6 +751,39 @@ export function Car({
   const rewindCursorRef = useRef(0);
   const flashbacksLeftRef = useRef<number | null>(flashbackLimit);
   const noFlashbackToldRef = useRef(false);
+  // The flashback timeline (lib/race/flashbackTimeline.ts): a paused scrub
+  // over the last REWIND_CAPACITY_SECONDS, plus the cheap numeric trace the
+  // strip is drawn from. The trace is the deliberate stand-in for the F1
+  // game's film frames - see the module header on why there are no
+  // thumbnails.
+  const flashbackTimelineRef = useRef(createFlashbackTimeline());
+  const flashbackTraceRef = useRef(createFlashbackTrace());
+  /** Latched by a collision, consumed by the next 10Hz trace sample. */
+  const flashbackContactRef = useRef(false);
+  /**
+   * The pose the car was in when the timeline opened, so a CANCEL can put it
+   * back exactly. The scrub itself previews poses by writing straight to the
+   * body, which means without this a cancel would leave the car frozen
+   * somewhere in its own past with the race still paused.
+   */
+  const savedPoseRef = useRef<RewindSample | null>(null);
+  /**
+   * Keys the timeline reads itself, in the CAPTURE phase, attached only while
+   * it is open.
+   *
+   * Why not the shared input: the physics step is paused while the timeline is
+   * open, so useDriveInput's update() has to be pumped by hand from useFrame -
+   * which works for the arrow keys but not reliably for Escape, because other
+   * components listen for it too (page.tsx opens the pause menu,
+   * ControlSettingsPanel cancels with it) and one of them can consume the
+   * event first. A capture-phase listener on window runs before every bubble
+   * listener on the page, so nothing else can take the key from it, and
+   * stopPropagation cannot help it either.
+   */
+  const timelineKeysRef = useRef<{ scrubBack: boolean; scrubForward: boolean; confirm: boolean; cancel: boolean } | null>(
+    null
+  );
+  const timelineKeysDetachRef = useRef<(() => void) | null>(null);
   const wasRewindingRef = useRef(false);
   const isRewindingRef = useRef(false);
   const lapTimerPrimedRef = useRef(false);
@@ -1012,6 +1068,23 @@ export function Car({
       pushHudEvent(hudRef.current, "warn", "NO FLASHBACKS LEFT", undefined, 1.6);
     }
     if (!driveInput.rewind) noFlashbackToldRef.current = false;
+    // The flash trace (lib/race/flashbackTimeline.ts): one call per physics
+    // step, decimated to 10Hz inside, fed from the DRIVER's own throttle and
+    // brake so the strip shows what was asked of the car. Recorded here rather
+    // than in useFrame so the trace advances on the physics clock, not the
+    // render clock - otherwise the strip and the rewind buffer would drift
+    // apart on any machine that is not running at exactly 60 FPS. Costs no
+    // draw calls and no allocation. Frozen while the timeline is open, since
+    // the physics step is not running then anyway.
+    if (!isFlashbackTimelineOpen(flashbackTimelineRef.current)) {
+      flashbackTraceRef.current.record(1 / 60, {
+        speedKmh: Math.abs(controller.currentVehicleSpeed()) * 3.6,
+        throttle: driveInput.throttle,
+        brake: driveInput.brake,
+        contact: flashbackContactRef.current,
+      });
+      flashbackContactRef.current = false;
+    }
     isRewindingRef.current = rewinding;
     if (sharedRewindActiveRef) sharedRewindActiveRef.current = rewinding;
 
@@ -1720,7 +1793,146 @@ export function Car({
     );
   }
 
+  /** Attaches the timeline's capture-phase key listener. See timelineKeysRef. */
+  function attachTimelineKeys() {
+    if (timelineKeysRef.current || typeof window === "undefined") return;
+    const state = { scrubBack: false, scrubForward: false, confirm: false, cancel: false };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "ArrowLeft" || event.code === "BracketLeft") state.scrubBack = true;
+      else if (event.code === "ArrowRight" || event.code === "BracketRight") state.scrubForward = true;
+      else if (event.code === "Enter" || event.code === "NumpadEnter") state.confirm = true;
+      else if (event.code === "Escape") state.cancel = true;
+      else return;
+      // Swallow it so the pause menu and the drive bindings behind the
+      // timeline do not also act on the same keypress. stopPropagation, not
+      // preventDefault: we still want the browser's own key repeat to fire.
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    timelineKeysRef.current = state;
+    timelineKeysDetachRef.current = () => window.removeEventListener("keydown", onKeyDown, true);
+  }
+
+  function detachTimelineKeys() {
+    timelineKeysDetachRef.current?.();
+    timelineKeysDetachRef.current = null;
+    timelineKeysRef.current = null;
+  }
+
+  /**
+   * The flashback timeline, driven from useFrame rather than the physics step.
+   *
+   * That placement is the whole reason this works: opening the timeline pauses
+   * the simulation (page.tsx gates `<Physics paused>` on it), and
+   * useBeforePhysicsStep does NOT run while physics is paused - so a scrub
+   * implemented there would freeze the instant it opened. useFrame keeps
+   * running, which is what lets the player scrub a paused race.
+   *
+   * The car is moved kinematically while scrubbing so the player can SEE the
+   * pose they are choosing, exactly as the existing hold-R rewind does
+   * (applySnapshot with zeroed velocity). On confirm the same rewindBuffer
+   * path runs as before, so the physics result of a flashback is unchanged by
+   * this UI existing; on cancel the present pose is put back.
+   */
+  function stepFlashbackTimeline(): void {
+    const timeline = flashbackTimelineRef.current;
+    const hud = hudRef?.current;
+    const controller = controllerRef.current;
+    const body = chassisRef.current;
+    const open = isFlashbackTimelineOpen(timeline);
+    if (!controller || !body) return;
+
+    // Opening: a TAP of R opens the timeline, a HOLD keeps the existing
+    // hold-to-rewind. A player mid-spin gets the quick rewind they already
+    // know; a player who wants to choose the moment gets the scrub.
+    //
+    // The two are told apart by how far the hold actually rewound, measured
+    // with the same MIN_FLASHBACK_SECONDS threshold the allowance is spent
+    // against - so "did this press count as a flashback" has exactly one
+    // definition in this file, and a tap can never spend one. It is NOT
+    // `wasRewindingRef`: that is true for any hold longer than a single frame,
+    // so testing it would mean a tap could never open the timeline at all.
+    if (!open && input.current.rewindReleased && rewindCursorRef.current < MIN_FLASHBACK_SECONDS) {
+      // Acknowledge the release immediately, whether or not there was enough
+      // history to open: a release that is not cleared would reopen the
+      // timeline on every subsequent frame.
+      clearRewindReleased();
+      const capacity = rewindBufferRef.current.oldestAvailableSeconds();
+      if (capacity >= MIN_FLASHBACK_SECONDS) {
+        openFlashbackTimeline(timeline, capacity);
+        savedPoseRef.current = snapshotOf(body);
+        attachTimelineKeys();
+        onFlashbackTimelineOpenChange?.(true);
+        if (hud) pushHudEvent(hud, "info", "FLASHBACK TIMELINE", "SCRUB AND PRESS ENTER", 2.4);
+        return;
+      }
+    }
+
+    if (!open) {
+      // A release with no history behind it still has to be acknowledged, or
+      // it would sit latched and fire the moment a buffer filled up.
+      if (input.current.rewindReleased) clearRewindReleased();
+      if (hud) hud.flashbackTimelineOpen = false;
+      return;
+    }
+    if (hud) hud.flashbackTimelineOpen = true;
+
+    // The trace is frozen while the timeline is open (see the record call in
+    // the physics step), so the strip is stable under the cursor. Keys come
+    // from the capture-phase listener (see timelineKeysRef).
+    const keys = timelineKeysRef.current;
+    const confirm = keys?.confirm ?? false;
+    const cancel = keys?.cancel ?? false;
+    if (keys) {
+      // Consumed every frame, so a held key repeats on its own at the frame
+      // rate rather than relying on the browser's key-repeat.
+      if (keys.scrubBack) scrubFlashbackTimeline(timeline, timeline.secondsAgo + SCRUB_STEP_SECONDS);
+      if (keys.scrubForward) scrubFlashbackTimeline(timeline, timeline.secondsAgo - SCRUB_STEP_SECONDS);
+      keys.scrubBack = false;
+      keys.scrubForward = false;
+      keys.confirm = false;
+      keys.cancel = false;
+    }
+
+    // Preview the scrubbed pose. Kinematic: velocity is zeroed so the car sits
+    // at each past pose instead of driving away from under the player.
+    const sample = rewindBufferRef.current.sampleAt(timeline.secondsAgo);
+    if (sample) applySnapshot(body, sample, true);
+
+    if (confirm) {
+      const exit: FlashbackTimelineExit = confirmFlashbackTimeline(timeline);
+      detachTimelineKeys();
+      onFlashbackTimelineOpenChange?.(false);
+      if (hud) hud.flashbackTimelineOpen = false;
+      if (exit.kind === "confirmed" && exit.secondsAgo >= MIN_FLASHBACK_SECONDS) {
+        // Hand the real rewind to the existing machinery: it discards the
+        // scrubbed-away future, rolls the lap and sector clocks back and
+        // spends a flashback from lib/race/flashbacks.ts.
+        rewindCursorRef.current = exit.secondsAgo;
+        wasRewindingRef.current = true;
+      } else {
+        // Cancelled, or confirmed with the head at zero: put the car back
+        // exactly where it was and resume.
+        const saved = savedPoseRef.current;
+        if (saved) applySnapshot(body, saved, false);
+        savedPoseRef.current = null;
+      }
+      return;
+    }
+    if (cancel) {
+      cancelFlashbackTimeline(timeline);
+      detachTimelineKeys();
+      onFlashbackTimelineOpenChange?.(false);
+      if (hud) hud.flashbackTimelineOpen = false;
+      const saved = savedPoseRef.current;
+      if (saved) applySnapshot(body, saved, false);
+      savedPoseRef.current = null;
+      return;
+    }
+  }
+
   useFrame((_, dt) => {
+    stepFlashbackTimeline();
     // Hide the chassis mesh in cockpit mode - otherwise the camera (see
     // ChaseCamera in Scene.tsx) sits inside a solid box and renders its
     // inside faces. Cheaper and more robust than offsetting the camera
@@ -1848,8 +2060,22 @@ export function Car({
       hud.damageParts.puncture = damageRef.current.puncture;
       hud.damageRepairSeconds = damageRepairSeconds(damageRef.current);
       hud.flashbacksLeft = flashbacksLeftRef.current;
-      hud.flashbackSeconds = wasRewindingRef.current ? rewindCursorRef.current : 0;
-      hud.flashbackCapacity = wasRewindingRef.current ? rewindBufferRef.current.oldestAvailableSeconds() : 0;
+      // Published BY REFERENCE so the strip widget can read the live trace on
+      // its own 20Hz tick without this copying 150 samples per frame.
+      hud.flashbackTrace = flashbackTraceRef.current;
+      // The timeline takes over this readout while it is open; otherwise these
+      // are the hold-R scrub bar's numbers.
+      const timeline = flashbackTimelineRef.current;
+      hud.flashbackSeconds = isFlashbackTimelineOpen(timeline)
+        ? timeline.secondsAgo
+        : wasRewindingRef.current
+          ? rewindCursorRef.current
+          : 0;
+      hud.flashbackCapacity = isFlashbackTimelineOpen(timeline)
+        ? timeline.capacity
+        : wasRewindingRef.current
+          ? rewindBufferRef.current.oldestAvailableSeconds()
+          : 0;
       hud.tc = tractionControlEnabled.current;
       hud.abs = absEnabled.current;
       hud.autoGear = autoGear.current;
@@ -2361,6 +2587,14 @@ export function Car({
             if (strength > 0) {
               audioRef.current.impact = { strength01: strength, atMs: performance.now() };
             }
+          }
+          // A collision is the single most useful thing to see marked on the
+          // flashback strip - it is nearly always what the player is scrubbing
+          // back to find. Latched here and consumed by the next trace sample,
+          // because a contact is a single-step event and the trace decimates
+          // to 10Hz, so recording it directly would drop almost all of them.
+          if (payload.totalForceMagnitude > FLASHBACK_CONTACT_FORCE_N) {
+            flashbackContactRef.current = true;
           }
         }}
       >
