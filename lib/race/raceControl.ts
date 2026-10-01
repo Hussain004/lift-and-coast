@@ -2,6 +2,7 @@ export type RaceControlIncident =
   | "track-limits"
   | "unsafe-rejoin"
   | "pit-speeding"
+  | "overtaking"
   | "red-flag";
 
 /**
@@ -88,6 +89,18 @@ export function createRaceControlSystem() {
         severity: "drive-through" as PenaltySeverity,
         message: "Pit lane speeding: drive-through penalty",
       },
+      // Overtaking under a yellow, VSC or safety car. The seconds and points
+      // here are only the FALLBACK for a caller that does not pass its own:
+      // the ladder in overtakePenalties.ts decides the charge (5s, 10s, 15s)
+      // and passes it explicitly, exactly as the track-limits path passes
+      // trackLimitSequence's ladder. Kept small and time-only so this incident
+      // can never become a drive-through, which would need pit-lane serving.
+      "overtaking": {
+        seconds: 5,
+        points: 2,
+        severity: "time" as PenaltySeverity,
+        message: "Overtaking under a flag: time penalty",
+      },
       "red-flag": { seconds: 0, points: 0, severity: "none" as PenaltySeverity, message: "Race control: red flag" },
     } as const;
     const preset = defaults[incident];
@@ -98,7 +111,11 @@ export function createRaceControlSystem() {
       penaltySeconds: details.penaltySeconds ?? preset.seconds,
       penaltyPoints: details.penaltyPoints ?? preset.points,
       severity: details.severity ?? preset.severity,
-      invalidatedLap: incident === "unsafe-rejoin" || incident === "track-limits",
+      // Overtaking under a flag invalidates the lap, like the other two
+      // on-track offences: the pass itself is the incident, so the lap it
+      // happened on is the lap that gets taken away.
+      invalidatedLap:
+        incident === "unsafe-rejoin" || incident === "track-limits" || incident === "overtaking",
       disqualified: false,
       atSeconds: Math.max(0, atSeconds),
     };

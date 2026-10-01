@@ -182,6 +182,19 @@ export interface HudSnapshot {
   offTrack: boolean;
   /** Live track-limits state while all four wheels are off, "" otherwise. */
   trackLimitText: string;
+  /**
+   * Race control's view of overtaking under a flag, e.g.
+   * "OVERTAKING UNDER FLAG: WARNING 1/2" (see
+   * lib/race/overtakePenalties.ts). "" when there is nothing to say. Carried
+   * on the snapshot rather than pushed straight at the radio so the engineer
+   * stays a pure function of successive snapshots, like every other call.
+   */
+  overtakePenaltyText: string;
+  /**
+   * Lines gameplay code wants the engineer to say, drained by
+   * app/race/hud/Engineer.tsx on its next pass. See queueEngineerLine.
+   */
+  engineerQueue: string[];
   /** Marshal flag in force for the player ("YELLOW ..." / "BLUE FLAG ..."), or "". */
   flagText: string;
   /** Distance along the lap of the stopped car the yellow is for, metres; -1 when there is none. */
@@ -263,6 +276,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     yaw: 0,
     offTrack: false,
     trackLimitText: "",
+    overtakePenaltyText: "",
+    engineerQueue: [],
     flagText: "",
     yellowStation: -1,
     chequered: false,
@@ -284,6 +299,33 @@ export function pushHudEvent(
 ): void {
   hud.events.push({ id: nextEventId++, kind, title, detail, seconds });
   if (hud.events.length > MAX_QUEUED_EVENTS) hud.events.splice(0, hud.events.length - MAX_QUEUED_EVENTS);
+}
+
+/**
+ * Queues a line for the race engineer to say on its next pass.
+ *
+ * The engineer is a pure function of successive HudSnapshots (see
+ * lib/race/engineer.ts) and runs on its own 4Hz timer in
+ * app/race/hud/Engineer.tsx, so gameplay code cannot hand it a line directly
+ * without breaking that one-way flow. A queue on the snapshot is the same
+ * pattern pushHudEvent already uses for banners: the producer writes, the
+ * consumer drains. Bounded for the same reason MAX_QUEUED_EVENTS is - a
+ * player who spins under a yellow must not be able to grow this without
+ * limit, and the oldest line is the least relevant one.
+ */
+const MAX_QUEUED_ENGINEER_LINES = 4;
+
+export function queueEngineerLine(hud: HudSnapshot, line: string): void {
+  hud.engineerQueue.push(line);
+  if (hud.engineerQueue.length > MAX_QUEUED_ENGINEER_LINES) {
+    hud.engineerQueue.splice(0, hud.engineerQueue.length - MAX_QUEUED_ENGINEER_LINES);
+  }
+}
+
+/** Drains the queued lines, oldest first. */
+export function drainEngineerLines(hud: HudSnapshot): string[] {
+  if (hud.engineerQueue.length === 0) return [];
+  return hud.engineerQueue.splice(0, hud.engineerQueue.length);
 }
 
 /** Tyre wear as a 0..1 fraction of the compound's intended life. */

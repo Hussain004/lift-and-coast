@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { createEngineerState, engineerStep } from "@/lib/race/engineer";
-import { pushHudEvent, type HudSnapshot } from "@/lib/race/hud";
+import { drainEngineerLines, pushHudEvent, type HudSnapshot } from "@/lib/race/hud";
 import { loadMuted } from "@/lib/audio/raceAudio";
 import { radioClick } from "@/lib/audio/uiTones";
 import { loadEngineerMode } from "@/lib/settings/engineerVoice";
@@ -34,9 +34,15 @@ export function Engineer({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
     const dt = lastRef.current === null ? 0 : Math.min(1, (now - lastRef.current) / 1000);
     lastRef.current = now;
     const mode = loadEngineerMode();
-    if (mode === "off") return;
     const hud = hudRef.current;
-    const lines = engineerStep(stateRef.current, hud, dt);
+    // Drained before the mode check and before the rules run. Draining first
+    // is what stops a queue of lines piling up while the engineer is off and
+    // then all firing at once if the player switches them back on mid-race;
+    // draining ahead of the rules speaks a race-control decision before the
+    // routine gap calls, because it is the more urgent news.
+    const queued = drainEngineerLines(hud);
+    if (mode === "off") return;
+    const lines = [...queued, ...engineerStep(stateRef.current, hud, dt)];
     if (lines.length === 0) return;
     const voice = mode === "voice" && !loadMuted();
     for (const line of lines) {

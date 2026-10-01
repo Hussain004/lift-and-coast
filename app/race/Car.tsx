@@ -68,7 +68,7 @@ import {
 } from "@/lib/race/telemetry";
 import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
 import type { TouchDriveInput } from "@/lib/input/touch";
-import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount } from "@/lib/race/lapTimer";
+import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount, type LapTimerState } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
 import { isSaveableTimeAttackLap, submitTimeAttackLap } from "@/lib/race/timeAttackBoard";
@@ -80,7 +80,7 @@ import { TRACKS } from "@/lib/tracks/registry";
 import type { CarPose } from "@/lib/net/snapshots";
 import { gridSlot } from "@/lib/race/grid";
 import { createDeltaTracker } from "@/lib/race/deltaTimer";
-import { pushHudEvent, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
+import { pushHudEvent, queueEngineerLine, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
 import { classifyRace, createFinishTracker, updateFinishTracker } from "@/lib/race/classification";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
@@ -92,9 +92,18 @@ import {
   trackLimitStageLabel,
   updateTrackLimitSequence,
 } from "@/lib/race/trackLimitSequence";
-import { computeRacePositions, buildTowerEntries, towerOpponents, type RaceState } from "@/lib/race/racePosition";
+import { computeRacePositions, buildTowerEntries, towerOpponents, type RaceProgress, type RaceState } from "@/lib/race/racePosition";
 import { polePosition, createQualifyingSession, playerGridSpot as gridSpotFromSession, qualifyingLeaderboard, sessionGridOrder, recordQualiLap, tickQualifyingSession, isQualifyingLapValid, type QualifyingTimes } from "@/lib/race/qualifying";
 import { createFlagState, flagChipText, stepFlags } from "@/lib/race/flags";
+import {
+  createOvertakePenaltyState,
+  overtakeEngineerLine,
+  overtakePenaltyLabel,
+  overtakePenaltyMessage,
+  overtakePenaltyText,
+  stepOvertakePenalties,
+  type OvertakeRestriction,
+} from "@/lib/race/overtakePenalties";
 import { flashbackLabel, MIN_FLASHBACK_SECONDS } from "@/lib/race/flashbacks";
 import { createRewindBuffer, REWIND_CAPACITY_SECONDS, snapshotOf, applySnapshot } from "@/lib/race/rewindBuffer";
 import { loadPersonalBest, savePersonalBest } from "@/lib/persistence/personalBests";
@@ -490,6 +499,10 @@ export function Car({
   const skidTravelRef = useRef(0);
   const inPitLaneRef = useRef(false);
   const flagStateRef = useRef(createFlagState(rivals.length));
+  // Overtaking-under-a-flag race control (lib/race/overtakePenalties.ts).
+  // Player only, and read-only over the race progress: it never steers or
+  // slows a car, so the AI is untouched and the stability gates stay valid.
+  const overtakePenaltyRef = useRef(createOvertakePenaltyState(rivals.length));
   const pitBoxMetersRef = useRef<number | null>(null);
   // Drive-through / stop-go waiting to be served in the pit lane.
   const serveRef = useRef(createServeState());
@@ -1506,7 +1519,7 @@ export function Car({
    * crossing. The results go up a few seconds after the player takes the
    * flag - a short cool-down, the way a broadcast holds on the finish.
    */
-  function updateFlags(dt: number) {
+  function updateFlags(dt: number, lapState: LapTimerState) {
     const hud = hudRef?.current;
     const race = raceRef?.current;
     if (!hud || !race) return;
@@ -1533,6 +1546,78 @@ export function Car({
         pushHudEvent(hud, "flag", "TRACK CLEAR", undefined, 1.6);
       }
     }
+    updateOvertakingPenalties(status, race, lapState);
+  }
+
+  /**
+   * Overtaking under a yellow, VSC or safety car (lib/race/overtakePenalties.ts).
+   *
+   * READ-ONLY over the race progress: it watches for the player completing a
+   * pass while a restriction is in force and charges a warning, then a time
+   * penalty through race control. It deliberately does not steer, slow or
+   * otherwise touch any car - the AI in particular is left exactly as it was,
+   * because a feature that moved the AI would invalidate every stability gate
+   * in the suite. The penalty is a time charge on the player's race time,
+   * which is why it cannot affect the 1750 N engine ceiling either.
+   *
+   * The restriction is the most severe thing in force, with a LOCAL yellow
+   * beating a VSC: `status.yellow` is only set for an incident on the
+   * player's own stretch of track (see flags.ts), which is the "local yellow"
+   * the rule is about - a yellow elsewhere on the circuit does not restrict
+   * the player and must not be penalized.
+   */
+  function updateOvertakingPenalties(
+    status: ReturnType<typeof stepFlags>,
+    race: { player: RaceProgress; opponents: RaceProgress[] },
+    lap: LapTimerState
+  ) {
+    const hud = hudRef?.current;
+    if (!hud) return;
+    const safetyCar = safetyCarRef?.current;
+    const scKind = safetyCar && safetyCar.phase !== "none" ? safetyCar.kind : null;
+    const restriction: OvertakeRestriction = status.yellow
+      ? "yellow"
+      : scKind === "sc"
+        ? "sc"
+        : scKind === "vsc"
+          ? "vsc"
+          : "none";
+    const event = stepOvertakePenalties(overtakePenaltyRef.current, {
+      player: race.player,
+      opponents: race.opponents,
+      codes: rivals.map((rival) => rival.code),
+      trackLengthMeters: track.lengthMeters,
+      restriction,
+      racing: !raceFinishedRef.current,
+      raceSeconds: raceElapsedSecondsRef.current,
+    });
+    const chip = overtakePenaltyText(overtakePenaltyRef.current);
+    if (chip !== hud.overtakePenaltyText) hud.overtakePenaltyText = chip;
+    if (!event) return;
+
+    const message = overtakePenaltyMessage(event);
+    if (event.type === "warning") {
+      // A warning is news, not a charge: nothing goes to race control and the
+      // race clock is untouched, so the only cost is the warning itself.
+      pushHudEvent(hud, "warn", "RACE CONTROL WARNING", message, 3.2);
+      queueEngineerLine(hud, overtakeEngineerLine(event));
+      return;
+    }
+    const penaltySeconds = event.penaltySeconds;
+    effectiveRaceControlRef.current.reportIncident("overtaking", raceElapsedSecondsRef.current, {
+      penaltySeconds,
+      severity: "time",
+      message,
+    });
+    if (!raceFinishedRef.current) {
+      raceElapsedSecondsRef.current += penaltySeconds;
+      if (!lapInvalidRef.current) {
+        lapInvalidAtSecondsRef.current = lap.currentLapSeconds;
+      }
+      lapInvalidRef.current = true;
+      if (hud) pushHudEvent(hud, "penalty", overtakePenaltyLabel(event.penaltyCount), message, 3.6);
+    }
+    queueEngineerLine(hud, overtakeEngineerLine(event));
   }
 
   function updateRaceFinish(playerLaps: number, dt: number) {
@@ -2086,7 +2171,7 @@ export function Car({
 
     if (sessionMode === "race" && hudRef?.current && raceRef?.current && hudRef.current.result === null) {
       updateRaceFinish(lap.lapCount, dt);
-      updateFlags(dt);
+      updateFlags(dt, lap);
     }
 
     const sectorCrossing = sectorTimerRef.current.update(t.x, t.z, lap.currentLapSeconds, eligible);

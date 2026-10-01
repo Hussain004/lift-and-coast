@@ -38,6 +38,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Synthesized Web Audio: a V6 hybrid engine voiced over a real F1 rev range, audible ignition-cut upshifts and rev-match downshifts, lift-and-coast turbo whoosh and overrun crackle, MGU-K whine, tyres, wind and impacts
 - Night races (pick Night in session setup): moonlit sky and stars, floodlight masts around the circuit, a headlight, and a rear light on every car
 - Safety car and virtual safety car (Settings: Off / Rare / Frequent): scripted periods plus a VSC when a car stops on track. Everyone is held to a speed ceiling (137 km/h behind the safety car, 198 km/h under a VSC) with no overtaking, the field closes up behind the leader, and a safety car leads the pack until it comes in
+- Race control for passing under a flag: complete a pass while a yellow, VSC or safety car is in force and the stewards warn you twice before it becomes a time penalty that escalates from +5s to +15s. A car you only went past because it pitted, stopped or is a lap down does not count
 
 The game is entirely client-side. Your setups, championship, best laps, and preferences stay in the browser unless you export a save.
 
