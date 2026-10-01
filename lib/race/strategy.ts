@@ -25,6 +25,11 @@ export interface StrategyState {
   paceMultiplier: number;
   compoundGripMultiplier: number;
   fuelWarning: boolean;
+  /**
+   * The player's starting tyre pressure (see StrategyOptions.tyrePressure).
+   * Optional because the AI leaves it unset, which is the neutral setting.
+   */
+  tyrePressure?: number;
 }
 
 export interface StrategyOptions {
@@ -33,6 +38,15 @@ export interface StrategyOptions {
   fuelKg?: number;
   fuelCapacityKg?: number;
   startingBlanketTemperatureC?: number;
+  /**
+   * The player's starting tyre pressure, 0-1 (see lib/physics/tireModel.ts's
+   * TYRE_PRESSURE_GRIP_RANGE). Optional and defaulting to neutral, so the AI
+   * - which builds its strategy system with no options here - keeps exactly
+   * the thermal behaviour every gate measured. This is the WARM-UP half of
+   * the slider: it changes how fast the carcass reaches temperature, and
+   * tyrePressureGripScale turns that into the grip the player actually feels.
+   */
+  tyrePressure?: number;
 }
 
 export interface StrategyUpdate {
@@ -73,6 +87,26 @@ const FUEL_MASS_PACE_LOSS_AT_FULL_TANK = 0.035;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** The baseline tyre thermal time constant, seconds. Neutral pressure returns
+ *  this exactly, which is what keeps every pre-existing caller unchanged. */
+const TIRE_WARMUP_SECONDS = 18;
+/** How much faster a maximum-pressure carcass warms, as a fraction of the
+ *  baseline constant. A bounded +/-30% keeps the slider a setup choice
+ *  rather than a different tyre: the low end is still reaching working
+ *  temperature within a corner or two. */
+const TIRE_PRESSURE_WARMUP_RANGE = 0.3;
+
+/**
+ * Thermal time constant for a starting pressure: lower pressure is a larger,
+ * slower-to-heat carcass (longer constant), higher pressure heats sooner.
+ * Returns TIRE_WARMUP_SECONDS exactly at nominal pressure.
+ */
+export function pressureWarmupTimeConstantSeconds(pressure: number | undefined): number {
+  if (pressure === undefined || !Number.isFinite(pressure)) return TIRE_WARMUP_SECONDS;
+  const clamped = clamp(pressure, 0, 1);
+  return TIRE_WARMUP_SECONDS * (1 + (0.5 - clamped) * 2 * TIRE_PRESSURE_WARMUP_RANGE);
 }
 
 function pitWindowFor(
@@ -116,6 +150,12 @@ export function createStrategySystem(options: StrategyOptions = {}) {
   };
 
   let serviceSeconds = PIT_SERVICE_SECONDS;
+  /**
+   * The player's starting pressure, carried on the state so the warm-up
+   * constant can be read per update. Undefined means neutral, which is what
+   * every AI car and every existing caller gets.
+   */
+  state.tyrePressure = options.tyrePressure;
 
   function recalculate() {
     const wearGrip = computeCompoundGripMultiplier(TIRE_COMPOUNDS[state.compound], state.tireAgeMeters);
@@ -201,7 +241,19 @@ export function createStrategySystem(options: StrategyOptions = {}) {
         state.tireTemperatureC += (state.blanketTemperatureC - state.tireTemperatureC) * (1 - Math.exp(-dt / 12));
       } else {
         const heatTarget = ambient + Math.min(46, speed * 0.34 + throttle * 22 + brake * 5);
-        state.tireTemperatureC += (heatTarget - state.tireTemperatureC) * (1 - Math.exp(-dt / 18));
+        // A higher-pressure carcass has less air and less steel to heat, so
+        // it reaches temperature faster; a low-pressure tyre is the bigger,
+        // slower-to-warm one. This is the warm-up half of the player's
+        // pressure slider (StrategyOptions.tyrePressure). The time constant
+        // is divided rather than the target raised, because scaling the
+        // target would make a high-pressure tyre run HOTTER overall instead
+        // of merely getting there sooner - which would silently turn the
+        // slider into a second thermal-grip term.
+        //
+        // Neutral pressure leaves the constant at exactly 18, so every run
+        // that does not pass the option is bit-for-bit unchanged.
+        state.tireTemperatureC +=
+          (heatTarget - state.tireTemperatureC) * (1 - Math.exp(-dt / pressureWarmupTimeConstantSeconds(state.tyrePressure)));
         if (state.blanketFitted) {
           state.blanketTemperatureC += (TIRE_AMBIENT_C - state.blanketTemperatureC) * (1 - Math.exp(-dt / 35));
           if (state.blanketTemperatureC < 32) state.blanketFitted = false;

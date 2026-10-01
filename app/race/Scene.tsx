@@ -1430,6 +1430,9 @@ function FarPlane({ far }: { far: number }) {
 function RenderStatsProbe() {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
+  const accumMs = useRef(0);
+  const frames = useRef(0);
+  const lastTime = useRef(0);
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     const w = window as unknown as {
@@ -1439,6 +1442,35 @@ function RenderStatsProbe() {
     w.__liftRenderer = gl;
     w.__liftCam = camera as THREE.PerspectiveCamera;
   }, [gl, camera]);
+  // Draw calls and triangles, read INSIDE the frame loop: three resets
+  // info.render every frame, so a timer or a rAF of our own would sample it
+  // after the reset and report zero. Published twice a second with the
+  // average frame time over the frames since the last publish, which is what
+  // makes the number track the tier the governor has settled on rather than
+  // averaging across a tier change. Used by the headless budget checks.
+  useFrame(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const now = performance.now();
+    // The first frame only seeds the clock, so the page-load stall is not
+    // averaged in as one very slow frame.
+    if (lastTime.current !== 0) accumMs.current += now - lastTime.current;
+    lastTime.current = now;
+    frames.current += 1;
+    const w = window as unknown as { __liftRenderInfo?: unknown };
+    w.__liftRenderInfo = {
+      calls: gl.info.render.calls,
+      triangles: gl.info.render.triangles,
+      geometries: gl.info.memory.geometries,
+      textures: gl.info.memory.textures,
+      programs: gl.info.programs ? gl.info.programs.length : null,
+      frames: frames.current,
+      avgFrameMs: frames.current > 0 ? accumMs.current / frames.current : null,
+    };
+    if (frames.current >= 30) {
+      accumMs.current = 0;
+      frames.current = 0;
+    }
+  });
   return null;
 }
 

@@ -6,11 +6,22 @@ import {
   DEFAULT_CAR_SETUP,
   RIDE_HEIGHT_MAX,
   RIDE_HEIGHT_MIN,
+  TYRE_PRESSURE_MAX,
+  TYRE_PRESSURE_MIN,
+  TYRE_PRESSURE_NOMINAL,
   carSetupAeroLabel,
+  carSetupPressureLabel,
   carSetupRideLabel,
+  isDefaultCarSetup,
   normalizeCarSetup,
   type CarSetup,
 } from "@/lib/physics/carSetup";
+import {
+  FINAL_DRIVE_MAX,
+  FINAL_DRIVE_MIN,
+  FINAL_DRIVE_NOMINAL,
+  finalDriveLabel,
+} from "@/lib/physics/gearbox";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -47,12 +58,24 @@ const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
   { id: "night", label: "Night" },
 ];
 
-/** One-tap builds inside the measured slider range (see lib/physics/carSetup.ts). */
-const SETUP_PRESETS: { label: string; title: string; setup: { rideHeight: number; aeroTrim: number } }[] = [
+/**
+ * One-tap builds inside the measured slider range (see lib/physics/carSetup.ts
+ * and the per-slider measurement tests). Every preset pins the final drive and
+ * tyre pressure too rather than leaving them undefined, so clicking a preset
+ * always produces a fully specified, reproducible car instead of silently
+ * resetting the two newer sliders to whatever they were.
+ */
+const SETUP_PRESETS: { label: string; title: string; setup: CarSetup }[] = [
   { label: "STANDARD", title: "Back to the standard build", setup: DEFAULT_CAR_SETUP },
-  { label: "LOW DOWNFORCE", title: "Less drag for Monza, Spa and Vegas style straights", setup: { rideHeight: 0.6, aeroTrim: 0.3 } },
-  { label: "HIGH DOWNFORCE", title: "Lower and fully loaded for Monaco, Budapest and Singapore", setup: { rideHeight: 0.3, aeroTrim: 1 } },
-  { label: "WET", title: "Higher and fully loaded: settles over standing water", setup: { rideHeight: 0.75, aeroTrim: 1 } },
+  { label: "LOW DOWNFORCE", title: "Less drag for Monza, Spa and Vegas style straights", setup: { rideHeight: 0.6, aeroTrim: 0.3, finalDrive: FINAL_DRIVE_NOMINAL, tyrePressure: TYRE_PRESSURE_NOMINAL } },
+  { label: "HIGH DOWNFORCE", title: "Lower and fully loaded for Monaco, Budapest and Singapore", setup: { rideHeight: 0.3, aeroTrim: 1, finalDrive: FINAL_DRIVE_NOMINAL, tyrePressure: TYRE_PRESSURE_NOMINAL } },
+  { label: "WET", title: "Higher and fully loaded: settles over standing water", setup: { rideHeight: 0.75, aeroTrim: 1, finalDrive: FINAL_DRIVE_NOMINAL, tyrePressure: TYRE_PRESSURE_NOMINAL } },
+  // Long-stint build: the high-pressure end warms up sooner, and the shorter
+  // top gear suits a circuit where you rarely see the speedometer's top.
+  { label: "ENDURANCE", title: "High tyre pressure that comes in fast, short top gear", setup: { rideHeight: 0.5, aeroTrim: 1, finalDrive: 1.05, tyrePressure: 0.85 } },
+  // Qualifying build: the grippy low-pressure end, which is only worth having
+  // once the tyre is in its window, and the taller top gear.
+  { label: "QUALIFYING", title: "Low tyre pressure for peak grip once warm, tall top gear", setup: { rideHeight: 0.3, aeroTrim: 1, finalDrive: 0.95, tyrePressure: 0.15 } },
 ];
 
 const WEATHER_OPTIONS: { id: WeatherSetting; label: string }[] = [
@@ -118,6 +141,8 @@ export function SessionSetup() {
       rivals: sessionMode === "practice" ? undefined : rivals,
       rideHeight: carSetup.rideHeight,
       aeroTrim: carSetup.aeroTrim,
+      finalDrive: carSetup.finalDrive,
+      tyrePressure: carSetup.tyrePressure,
       difficulty: sessionMode === "practice" ? undefined : difficulty,
       // A fresh grid every Drive click (see ?seed=): plain clicks deal
       // via router so each visit shuffles; modified clicks / new tabs
@@ -358,10 +383,65 @@ export function SessionSetup() {
         <span>LOW DRAG (faster)</span>
         <span>MAX DOWNFORCE (more drag)</span>
       </div>
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>FINAL DRIVE</span>
+        <span className={styles.setupValue} aria-live="polite">
+          {finalDriveLabel(carSetup.finalDrive ?? FINAL_DRIVE_NOMINAL)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={FINAL_DRIVE_MIN}
+        max={FINAL_DRIVE_MAX}
+        step={0.01}
+        value={carSetup.finalDrive ?? FINAL_DRIVE_NOMINAL}
+        onChange={(e) => {
+          const next = normalizeCarSetup({ ...carSetup, finalDrive: Number(e.target.value) });
+          setCarSetup(next);
+          persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+        }}
+        className={styles.slider}
+        aria-label="Final drive: a short top gear for more speed down the straight, a long one for earlier acceleration"
+      />
+      <div className={styles.scale}>
+        <span>SHORT (more top speed)</span>
+        <span>LONG (earlier shifts)</span>
+      </div>
+      <div className={styles.sliderRow}>
+        <span className={styles.label}>TYRE PRESSURE</span>
+        <span className={styles.setupValue} aria-live="polite">
+          {carSetupPressureLabel(carSetup)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={TYRE_PRESSURE_MIN}
+        max={TYRE_PRESSURE_MAX}
+        step={0.05}
+        value={carSetup.tyrePressure ?? TYRE_PRESSURE_NOMINAL}
+        onChange={(e) => {
+          const next = normalizeCarSetup({ ...carSetup, tyrePressure: Number(e.target.value) });
+          setCarSetup(next);
+          persist(raceLaps, trackId, timeOfDay, weather, rivals, difficulty, next);
+        }}
+        className={styles.slider}
+        aria-label="Tyre pressure: low gives more grip once the tyre is warm, high warms up sooner"
+      />
+      <div className={styles.scale}>
+        <span>LOW (grip when warm)</span>
+        <span>HIGH (quick warm-up)</span>
+      </div>
       <div className={styles.presets} role="radiogroup" aria-label="Car setup presets">
         {SETUP_PRESETS.map((preset) => {
           const active = normalizeCarSetup(preset.setup);
-          const selected = Math.abs(active.rideHeight - carSetup.rideHeight) < 0.001 && Math.abs(active.aeroTrim - carSetup.aeroTrim) < 0.001;
+          // Compared across all four sliders, so a preset is only "selected"
+          // when the car genuinely matches it - otherwise a preset that left
+          // the new sliders alone would light up while the car did not.
+          const selected = isDefaultCarSetup(carSetup) === isDefaultCarSetup(active) &&
+            Math.abs(active.rideHeight - carSetup.rideHeight) < 0.001 &&
+            Math.abs(active.aeroTrim - carSetup.aeroTrim) < 0.001 &&
+            Math.abs((active.finalDrive ?? FINAL_DRIVE_NOMINAL) - (carSetup.finalDrive ?? FINAL_DRIVE_NOMINAL)) < 0.001 &&
+            Math.abs((active.tyrePressure ?? TYRE_PRESSURE_NOMINAL) - (carSetup.tyrePressure ?? TYRE_PRESSURE_NOMINAL)) < 0.001;
           return (
             <button
               key={preset.label}

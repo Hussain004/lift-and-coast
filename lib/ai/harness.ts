@@ -25,7 +25,13 @@ import {
   wheelGroundPositions,
 } from "../physics/vehicle";
 import { computeDownforceN, type AeroMode } from "../physics/aero";
-import { createGearboxState, gearboxSpeedMs, rpmForGear } from "../physics/gearbox";
+import {
+  createGearboxState,
+  gearboxSpeedMs,
+  normalizeFinalDriveScale,
+  rpmForGear,
+} from "../physics/gearbox";
+import { tyrePressureGripScale } from "../physics/tireModel";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildBarrierWallMesh } from "../tracks/structures";
 import { buildTerrainGeometry } from "../tracks/terrain";
@@ -109,6 +115,18 @@ export interface StabilityOptions {
    * gates stay measurements of the AI's own fixed neutral setup.
    */
   downforceScale?: number;
+  /**
+   * The player's final-drive choice as a gearbox ratio multiplier (see
+   * lib/physics/gearbox.ts's FINAL_DRIVE_MIN). Defaults to 1, so the AI
+   * gates stay measurements of the neutral, as-validated gearing.
+   */
+  finalDriveScale?: number;
+  /**
+   * The player's starting tyre pressure, 0-1 (see lib/physics/tireModel.ts).
+   * Defaults to 0.5, which resolves to a grip multiplier of exactly 1, so the
+   * AI gates stay measurements of the neutral pressure.
+   */
+  tyrePressure?: number;
   /** Defaults to "high-downforce" - the identity aero mode (see aero.ts). */
   aeroMode?: AeroMode;
   /**
@@ -403,11 +421,17 @@ export async function simulateDrive(
   const startPos = chassis.translation();
   const startRotation = chassis.rotation();
   const startYaw = yawFromRotation(startRotation);
+  // The player's final drive (see lib/physics/gearbox.ts), resolved once and
+  // NOT per step for the same reason downforceScale below is: a scenario must
+  // not be able to change the car's build mid-lap by mutating its options,
+  // and the default (1) is the exact gearing every AI gate was measured with.
+  const finalDriveScale = normalizeFinalDriveScale(options.finalDriveScale);
   // Auto gearbox for the whole run (plan section 5 depth feature 4): the
   // harness obeys the same gear-modulated physics as the player/AI. Always
   // auto so scripted-input scenarios (which never send shift requests) get
-  // the optimal-gear behavior rather than being stuck in 1st.
-  const gearbox = createGearboxState(true);
+  // the optimal-gear behavior rather than being stuck in 1st. The final drive
+  // is resolved here (before this line) because the gearbox is seeded with it.
+  const gearbox = createGearboxState(true, finalDriveScale);
 
   let maxTilt = 0;
   let maxOffTrackMeters = 0;
@@ -422,10 +446,14 @@ export async function simulateDrive(
   // the neutral setup by design, and this exists so a setup can be MEASURED
   // rather than only asserted about.
   const downforceScale = options.downforceScale ?? 1;
+  // The player's tyre pressure as a plain grip multiplier, resolved the same
+  // way and for the same reason (see lib/physics/tireModel.ts's
+  // TYRE_PRESSURE_GRIP_RANGE). Neutral pressure resolves to exactly 1.
+  const pressureGripScale = tyrePressureGripScale(options.tyrePressure ?? 0.5);
   // Resolved once, not per step, so a scenario cannot change the surface
   // mid-lap by mutating its options object - and so the identity case (1) is a
   // value the physics sees exactly as before this option existed.
-  const gripMultiplier = options.gripMultiplier ?? 1;
+  const gripMultiplier = (options.gripMultiplier ?? 1) * pressureGripScale;
   for (let i = 0; i < steps; i++) {
     // Matches Car.tsx: past this distance off-track, snap back to the start
     // line rather than let the car keep going - a long enough straight-line

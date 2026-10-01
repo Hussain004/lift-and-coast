@@ -156,8 +156,13 @@ function RaceContent() {
   // through the same total validator as every other param here, so a
   // hand-edited or truncated link yields a valid setup rather than a NaN
   // reaching the downforce term. The AI is unaffected - see the scope note
-  // in lib/physics/carSetup.ts.
-  const carSetup = parseCarSetup(searchParams.get("rh"), searchParams.get("at"));
+  // in lib/physics/carSetup.ts. ?fd= is the final-drive ratio multiplier and
+  // ?tp= the starting tyre pressure, both optional and both omitted at the
+  // neutral default so every pre-setup link still opens on the same car.
+  const carSetup = parseCarSetup(searchParams.get("rh"), searchParams.get("at"), {
+    finalDrive: searchParams.get("fd"),
+    tyrePressure: searchParams.get("tp"),
+  });
   // Plan section 16 (online multiplayer): a live room turns this visit
   // into a net session (?room= + ?role= + ?slot=, all set by the lobby's
   // START navigation). The room lives in a module singleton that survives

@@ -668,7 +668,19 @@ export function applyCarControls(
     // transient (especially Suzuka's bridge/deck transitions) arrive late and
     // could walk the AI past its tilt budget; the filter remains valuable for
     // shift/audio stability without delaying the actual force response.
-    const rpm = rpmForGear(currentSpeedMs, gearbox.state.gear);
+    // The final drive is read HERE as well as inside the shift policy, and
+    // that is what makes the setup slider a real gearing change rather than
+    // a relabelling: the same ratio that moves the upshift point also decides
+    // where on the torque curve this speed sits, so a taller top gear means
+    // more torque multiplication and a higher terminal speed. Without this
+    // the slider would only ever move shift points, which measurement showed
+    // is a one-way penalty (see lib/physics/gearbox.ts's effectiveGearRatio).
+    //
+    // It still cannot add thrust: the result is clamped to the same
+    // BOOSTED_ENGINE_FORCE_CAP as every other path, and the AI's state
+    // carries a neutral final drive, so the capped ceiling it was measured
+    // against is unchanged.
+    const rpm = rpmForGear(currentSpeedMs, gearbox.state.gear, gearbox.state.finalDriveScale);
     engineForce = Math.min(
       baseEngineForce * boostMultiplier * engineTorqueMultiplier(rpm) * gearThrustFactor(gearbox.state.gear),
       BOOSTED_ENGINE_FORCE_CAP

@@ -177,3 +177,108 @@ export const MIN_COMPOUND_GRIP_FRACTION = 0.85;
 export function computeCompoundGripMultiplier(compound: TireCompound, wornMeters: number): number {
   return Math.max(MIN_COMPOUND_GRIP_FRACTION, 1 - wornMeters * compound.degradationPerMeter);
 }
+
+/*
+ * TYRE PRESSURE (the player's setup slider, road map 11.11). Display-level,
+ * +/-3% of grip, exactly as that section specifies.
+ *
+ * WHY SO SMALL. The peak-grip term in this model is a coefficient on a force
+ * that a suspension raycast then has to satisfy, and every other term feeding
+ * it (aero grip, load sensitivity, compound wear, weather) only ever
+ * multiplies below 1x precisely so no term can push past the measured
+ * envelope. A +/-3% band is comfortably inside that convention while still
+ * being worth a lap time over a stint; anything larger would be a tyre model
+ * change dressed as a setup slider, and would invalidate the AI gates that
+ * measure this same grip product at a fixed neutral pressure.
+ *
+ * THE TRADE, and it is the real one: a lower-pressure tyre has a bigger
+ * contact patch, so more peak grip, and a larger carcass to heat, so it takes
+ * longer to reach its working temperature. A higher-pressure tyre warms up
+ * sooner and gives up a little of that peak. In F1 the low end is the
+ * one-lap/qualifying choice and the high end the long-stint choice, and the
+ * warm-up half is what makes it a decision rather than a free lunch: the
+ * multiplier below is a blend of both, so a cold tyre at the low-pressure end
+ * starts up slightly BELOW neutral grip and only passes it once warm.
+ */
+
+/** Peak grip as a fraction of the nominal pressure's, +/- TYRE_PRESSURE_GRIP_RANGE. */
+export const TYRE_PRESSURE_GRIP_RANGE = 0.03;
+
+/**
+ * How far a completely cold low-pressure tyre sits BELOW neutral grip, as a
+ * fraction of the warm gain it is owed. Half means a cold tyre at the low end
+ * starts 1.5% under neutral, crosses neutral about halfway through the
+ * warm-up, and reaches the full +3% once hot. Without a cold penalty the low
+ * end would be a free upgrade at every temperature, and the warm-up half of
+ * the trade would not exist.
+ */
+const TYRE_PRESSURE_COLD_PENALTY_FRACTION = 0.5;
+
+/**
+ * Grip multiplier for a starting pressure, optionally scaled by how warm the
+ * tyre already is. `warmth` is 0 cold and 1 in the working window.
+ *
+ * Peak (warm) grip runs from 1 + RANGE at the low-pressure end to 1 - RANGE
+ * at the high-pressure end, monotonically in the slider. Cold, the whole
+ * curve is compressed toward - and below - neutral and its peak moves to the
+ * NOMINAL pressure, because a cold low-pressure carcass is floppy with no
+ * contact patch while a cold high-pressure one has a small one. The pressure
+ * that is best on a cold tyre is therefore not the pressure that is best on a
+ * hot one, which is exactly the qualifying-versus-stint decision this slider
+ * exists to express.
+ */
+export function tyrePressureGripScale(pressure: number, warmth = 1): number {
+  const clamped = Number.isFinite(pressure) ? Math.min(1, Math.max(0, pressure)) : 0.5;
+  const warmthFactor = Number.isFinite(warmth) ? Math.min(1, Math.max(0, warmth)) : 1;
+  // Signed grip offset from nominal. LOW pressure is the grippy end (a bigger
+  // contact patch), so the sign is deliberately inverted against the slider
+  // value: +RANGE at pressure 0, -RANGE at pressure 1. This also keeps the
+  // curve monotonic in the slider, which the measurement test asserts.
+  const gain = (0.5 - clamped) * 2 * TYRE_PRESSURE_GRIP_RANGE;
+  if (gain <= 0) return 1 + gain;
+  // The grippy (low-pressure) half has to be EARNED by warming up. A cold
+  // low-pressure tyre is a big floppy carcass that has not made any contact
+  // patch yet, so it is modelled as starting BELOW neutral - by
+  // TYRE_PRESSURE_COLD_PENALTY_FRACTION of the gain it will eventually have
+  // - and rising linearly through neutral to the full warm gain. That is what
+  // makes the low end a qualifying-style choice rather than a free upgrade:
+  // out of the pit lane you are slower, and you have to drive the tyre in to
+  // collect the grip it was set up for.
+  //
+  // The high-pressure half only ever gives grip up, at every warmth, so it
+  // needs no such treatment and stays unconditionally at or below neutral.
+  const warmCredit = -TYRE_PRESSURE_COLD_PENALTY_FRACTION + (1 + TYRE_PRESSURE_COLD_PENALTY_FRACTION) * warmthFactor;
+  return 1 + gain * warmCredit;
+}
+
+/**
+ * Tyre carcass temperature as a 0-1 "warmth", for tyrePressureGripScale.
+ *
+ * Maps the strategy system's own tyreTemperatureC (see
+ * lib/race/strategy.ts, whose thermal grip term peaks at 100 C) onto the
+ * 0-1 range, with a window rather than a single point: a tyre is working
+ * somewhere around 60-100 C, so warmth is 0 at ambient and 1 once the carcass
+ * is properly in, reaching 1 at 100 C. Below the window it ramps linearly.
+ *
+ * Reusing the strategy temperature rather than inventing a second one is the
+ * point: the HUD tyre-temperature readout, the thermal grip term and this
+ * slider then all agree about how warm the tyre is, so the player can watch
+ * the grip arrive on the same number they are already looking at.
+ */
+export const TIRE_AMBIENT_C = 24;
+/** Temperature at which the carcass is fully in its working window. */
+export const TIRE_FULL_WARMTH_C = 100;
+export const TIRE_WARMTH_WINDOW_C = 60;
+
+export function computeTireWarmth(tireTemperatureC: number): number {
+  if (!Number.isFinite(tireTemperatureC)) return 0;
+  if (tireTemperatureC <= TIRE_AMBIENT_C) return 0;
+  if (tireTemperatureC >= TIRE_FULL_WARMTH_C) return 1;
+  const span = TIRE_FULL_WARMTH_C - TIRE_AMBIENT_C;
+  const raw = (tireTemperatureC - TIRE_AMBIENT_C) / span;
+  // Remap so warmth is 0 at the bottom of the window and 1 at the top: the
+  // working range is the top half, which is where a real tyre lives.
+  const windowStart = (TIRE_WARMTH_WINDOW_C - TIRE_AMBIENT_C) / span;
+  if (raw <= windowStart) return 0;
+  return Math.min(1, (raw - windowStart) / (1 - windowStart));
+}

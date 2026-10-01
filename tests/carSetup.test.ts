@@ -13,20 +13,44 @@ import {
   rideHeightDownforceScale,
   setupDownforceScale,
   setupDragScale,
+  setupFinalDriveScale,
+  setupTyreGripScale,
+  TYRE_PRESSURE_NOMINAL,
   type CarSetup,
 } from "../lib/physics/carSetup";
+import { pressureWarmupTimeConstantSeconds } from "../lib/race/strategy";
 import { computeDownforceN, computeDragN } from "../lib/physics/aero";
+import { FINAL_DRIVE_MAX, FINAL_DRIVE_MIN } from "../lib/physics/gearbox";
 import { parseCarSetup, buildRaceUrl } from "../lib/race/sessionSetup";
 
 describe("car setup model", () => {
   it("defaults to the neutral build the AI runs", () => {
     expect(isDefaultCarSetup(DEFAULT_CAR_SETUP)).toBe(true);
     // Neutral must be an exact no-op: at nominal ride height and full aero
-    // trim both scales are 1, so a player who never opens the setup screen
+    // trim both scales are 1, and the final drive and tyre pressure resolve
+    // to their identities, so a player who never opens the setup screen
     // drives a bit-for-bit identical car.
     expect(rideHeightDownforceScale(DEFAULT_CAR_SETUP.rideHeight)).toBe(1);
     expect(aeroDownforceScale(DEFAULT_CAR_SETUP)).toBe(1);
     expect(setupDownforceScale(DEFAULT_CAR_SETUP)).toBe(1);
+    expect(setupFinalDriveScale(DEFAULT_CAR_SETUP)).toBe(1);
+    expect(setupTyreGripScale(DEFAULT_CAR_SETUP)).toBe(1);
+    expect(pressureWarmupTimeConstantSeconds(DEFAULT_CAR_SETUP.tyrePressure)).toBe(
+      pressureWarmupTimeConstantSeconds(undefined)
+    );
+  });
+
+  it("treats a setup blob written before the new sliders existed as neutral", () => {
+    // A prefs entry saved by an earlier build has no finalDrive or
+    // tyrePressure key at all. It must come back as the neutral build, not
+    // as undefined reaching the gearbox.
+    const old = normalizeCarSetup({ rideHeight: 0.3, aeroTrim: 0.8 });
+    expect(old.finalDrive).toBe(1);
+    expect(old.tyrePressure).toBe(TYRE_PRESSURE_NOMINAL);
+    // ...and the STANDARD button's selected state has to agree, or the
+    // setup screen would show a customised build as standard.
+    expect(isDefaultCarSetup({ rideHeight: 0.3, aeroTrim: 0.8 })).toBe(false);
+    expect(isDefaultCarSetup({ ...old, finalDrive: 0.97 })).toBe(false);
   });
 
   it("totalises anything untrusted rather than throwing or emitting NaN", () => {
@@ -127,10 +151,46 @@ describe("setup travels on the race URL", () => {
   });
 
   it("round-trips a custom setup through the URL", () => {
-    const setup: CarSetup = { rideHeight: 0.2, aeroTrim: 0.75 };
+    const setup: CarSetup = {
+      rideHeight: 0.2,
+      aeroTrim: 0.75,
+      finalDrive: 0.97,
+      tyrePressure: 0.3,
+    };
     const url = buildRaceUrl({ mode: "race", track: "spa", ...setup });
     const params = new URLSearchParams(url.split("?")[1]);
-    expect(parseCarSetup(params.get("rh"), params.get("at"))).toEqual(setup);
+    expect(
+      parseCarSetup(params.get("rh"), params.get("at"), {
+        finalDrive: params.get("fd"),
+        tyrePressure: params.get("tp"),
+      })
+    ).toEqual(setup);
+  });
+
+  it("omits the new sliders at their defaults, so existing links are unchanged", () => {
+    // A default setup adds nothing to the URL: the same rule the first two
+    // sliders follow, and the reason every pre-existing shared link still
+    // opens on exactly the car it did before.
+    const url = buildRaceUrl({
+      mode: "race",
+      track: "monza",
+      ...DEFAULT_CAR_SETUP,
+    });
+    expect(url).not.toContain("fd=");
+    expect(url).not.toContain("tp=");
+  });
+
+  it("reads the two new URL params and totalises junk in them", () => {
+    const parsed = parseCarSetup(null, null, { finalDrive: "1.02", tyrePressure: "0.2" });
+    expect(parsed.finalDrive).toBe(1.02);
+    expect(parsed.tyrePressure).toBe(0.2);
+    // Blank, junk and out-of-range all fall back or clamp rather than
+    // producing a half-applied setup.
+    expect(parseCarSetup(null, null, { finalDrive: "", tyrePressure: "banana" })).toEqual(
+      DEFAULT_CAR_SETUP
+    );
+    expect(parseCarSetup(null, null, { finalDrive: "9" }).finalDrive).toBe(FINAL_DRIVE_MAX);
+    expect(parseCarSetup(null, null, { finalDrive: "-9" }).finalDrive).toBe(FINAL_DRIVE_MIN);
   });
 
   it("falls back to the neutral setup for a missing or junk value", () => {

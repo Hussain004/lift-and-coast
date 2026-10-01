@@ -140,7 +140,15 @@ import { loadPitReleaseEnabled, subscribePitReleaseEnabled } from "@/lib/setting
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
-import { DEFAULT_CAR_SETUP, setupDownforceScale, setupDragScale, type CarSetup } from "@/lib/physics/carSetup";
+import {
+  DEFAULT_CAR_SETUP,
+  setupDownforceScale,
+  setupDragScale,
+  setupFinalDriveScale,
+  TYRE_PRESSURE_NOMINAL,
+  type CarSetup,
+} from "@/lib/physics/carSetup";
+import { computeTireWarmth, tyrePressureGripScale } from "@/lib/physics/tireModel";
 import { F1CarBody } from "./F1CarBody";
 import type { FxBus } from "./TrackFx";
 import { HelmetCockpit, SteeringWheel } from "./CarBodyMesh";
@@ -435,6 +443,16 @@ export function Car({
   // setup so every stability gate stays a measurement of what it measured.
   const setupDown = setupDownforceScale(carSetup);
   const setupDrag = setupDragScale(carSetup);
+  // The final drive (a gearbox ratio multiplier) and the tyre-pressure grip
+  // scale, both pure functions of the setup and both resolved once per
+  // render. Player's car only - the AI runs DEFAULT_CAR_SETUP, so this
+  // resolves to 1 / neutral there and every AI gate is unaffected.
+  const setupFinalDrive = setupFinalDriveScale(carSetup);
+  // Pressure is re-resolved each physics step against the live tyre
+  // temperature (below), so it is the pressure VALUE that is fixed here and
+  // the grip scale that is read per step - the warm-up half of the slider has
+  // to vary over a stint, so it cannot be a render-time constant.
+  const setupPressure = carSetup.tyrePressure ?? TYRE_PRESSURE_NOMINAL;
   // Rear-wing flap pivot (see app/race/F1CarBody.tsx) - rotated open in
   // low-drag mode, like the real active-aero flap.
   const flapRef = useRef<THREE.Group | null>(null);
@@ -444,7 +462,11 @@ export function Car({
   // Plan section 5 depth feature 4 (manual gears): one persistent gearbox
   // per car. `auto` follows the autoGear toggle (synced each physics tick
   // below) so the HUD and drive model always agree with the assist state.
-  const gearboxRef = useRef(createGearboxState(true));
+  // Seeded with the player's final drive, so the ratio that moves the shift
+  // point is the same one the torque curve reads (see
+  // lib/physics/gearbox.ts's FINAL_DRIVE_MIN). AI cars leave the default, so
+  // the AI keeps the exact gearing every stability gate was measured with.
+  const gearboxRef = useRef(createGearboxState(true, setupFinalDrive));
   const shiftSerialRef = useRef(0);
   const lapTimerRef = useRef(
     createLapTimer({
@@ -704,7 +726,12 @@ export function Car({
   const effectiveWeatherRef = weatherRef ?? localWeatherRef;
   const localRaceControlRef = useRef<RaceControlHandle>(createRaceControlSystem());
   const effectiveRaceControlRef = raceControlRef ?? localRaceControlRef;
-  const strategyRef = useRef(createStrategySystem());
+  // The player's tyre pressure reaches the strategy system as its WARM-UP
+  // half: it changes the carcass thermal time constant, which is what makes
+  // the low-pressure end slow to arrive and the high-pressure end quick
+  // (see lib/physics/tireModel.ts). The grip half is applied per physics step
+  // above. Undefined for the AI, so every AI car keeps the neutral constant.
+  const strategyRef = useRef(createStrategySystem({ tyrePressure: carSetup.tyrePressure }));
   const overtakeSystem = useMemo(
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
@@ -1303,6 +1330,16 @@ export function Car({
     const compoundGripMultiplier = strategyState.compoundGripMultiplier;
     // Wet-track grip for the fitted compound (slicks: the weather's own curve).
     const weatherGrip = weatherGripForCompound(strategyState.compound, weatherState);
+    // Tyre pressure (the player's setup slider), resolved against the LIVE
+    // carcass temperature so the grip it buys is paid out over the stint
+    // rather than granted at the start line. At the neutral pressure this is
+    // exactly 1 at every temperature, so a player who never touches the slider
+    // drives the validated car. Reuses the strategy system's own temperature
+    // so it agrees with the HUD tyre-temperature readout.
+    const pressureGrip = tyrePressureGripScale(
+      setupPressure,
+      computeTireWarmth(strategyState.tireTemperatureC)
+    );
     // Per-wheel surfaces (plan section 4 point 7 / section 5 depth feature 6),
     // replacing the old single chassis-center distanceFromEdgeMeters
     // approximation: each wheel is classified separately, so clipping an apex
@@ -1316,7 +1353,7 @@ export function Car({
     applyLoadSensitiveFriction(
       controller,
       aeroMode.current,
-      compoundGripMultiplier * weatherGrip,
+      compoundGripMultiplier * weatherGrip * pressureGrip,
       wheelSurfaces.grips,
       damageGripsRef.current
     );
@@ -1339,7 +1376,7 @@ export function Car({
       const angvelNow = body.angvel();
       const speedNow = controller.currentVehicleSpeed();
       const effectiveGrip =
-        compoundGripMultiplier * weatherGrip * damageGripMultiplierRef.current;
+        compoundGripMultiplier * weatherGrip * pressureGrip * damageGripMultiplierRef.current;
 
       // CAR_WHEELS order is front-left, front-right, rear-left, rear-right,
       // which is exactly WHEEL_ORDER's order.
@@ -1381,7 +1418,8 @@ export function Car({
       telemetryTarget.slipAngleDeg = slipAngleDeg(yawNow, linvelNow.x, linvelNow.z);
       telemetryTarget.rpm = rpmForGear(
         gearboxSpeedMs(gearboxRef.current, speedNow),
-        gearboxRef.current.gear
+        gearboxRef.current.gear,
+        gearboxRef.current.finalDriveScale
       );
       telemetryTarget.redlineRpm = REDLINE_RPM;
     }
@@ -1434,7 +1472,11 @@ export function Car({
         brake: gatedDriveInput.brake,
         steer: gatedDriveInput.steer,
         gear: gearboxRef.current.gear,
-        rpm: rpmForGear(gearboxSpeedMs(gearboxRef.current, speedForOps), gearboxRef.current.gear),
+        rpm: rpmForGear(
+          gearboxSpeedMs(gearboxRef.current, speedForOps),
+          gearboxRef.current.gear,
+          gearboxRef.current.finalDriveScale
+        ),
         batteryFraction: energyStatus.batteryFraction,
         tireGrip: strategyState.compoundGripMultiplier * weatherGrip,
         overtakeActive: overtakeState.active,
@@ -1646,7 +1688,15 @@ export function Car({
     if (hud) {
       const strategy = strategyStateRef.current;
       const energy = energyStatusRef.current;
-      const rpm = rpmForGear(gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()), gearboxRef.current.gear);
+      // The final drive is passed here for the same reason it is passed to
+      // applyCarControls: the rev counter has to read the gearing the engine
+      // is actually turning, or the slider would be invisible on the HUD and
+      // in the telemetry overlay while still changing the car.
+      const rpm = rpmForGear(
+        gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
+        gearboxRef.current.gear,
+        gearboxRef.current.finalDriveScale
+      );
       hud.speedKmh = Math.abs(controller.currentVehicleSpeed()) * 3.6;
       hud.gear = isReverse(gearboxRef.current.gear) ? "R" : `${gearboxRef.current.gear}`;
       hud.rpm01 = Math.min(1, Math.max(0, (rpm - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)));
@@ -1662,7 +1712,15 @@ export function Car({
       hud.lowDrag = aeroMode.current === "low-drag";
       hud.overtakeActive = overtakeStateRef.current.active;
       hud.compound = strategy.compound;
-      hud.tyreGrip = strategy.compoundGripMultiplier * weatherGripForCompound(strategy.compound, weatherStateRef.current);
+      // Includes the pressure term so the MFD tyre page shows the grip the
+      // player is ACTUALLY getting, not the compound-and-weather part of it.
+      // The tyre-temperature readout beside it is the same number the
+      // pressure's warm-up half is driven from, so the two are consistent:
+      // watch the temperature climb and the grip follow it up.
+      hud.tyreGrip =
+        strategy.compoundGripMultiplier *
+        weatherGripForCompound(strategy.compound, weatherStateRef.current) *
+        tyrePressureGripScale(setupPressure, computeTireWarmth(strategy.tireTemperatureC));
       hud.tyreTempC = strategy.tireTemperatureC;
       stepWheelTemps(wheelTempsRef.current, strategy.tireTemperatureC, {
         latG: (Math.abs(controller.currentVehicleSpeed()) * body.angvel().y) / 9.81,
@@ -1729,7 +1787,8 @@ export function Car({
       const lateralMs = lv.x * Math.cos(yaw) - lv.z * Math.sin(yaw);
       const audioRpm = rpmForGear(
         gearboxSpeedMs(gearboxRef.current, controller.currentVehicleSpeed()),
-        gearboxRef.current.gear
+        gearboxRef.current.gear,
+        gearboxRef.current.finalDriveScale
       );
       const skid01 = skidAmount01(lateralMs, forwardMs);
       audioRef.current.player = {

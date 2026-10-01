@@ -30,15 +30,39 @@
  * testable without a physics world and safe to call per frame.
  */
 
+import { FINAL_DRIVE_NOMINAL, finalDriveLabel, normalizeFinalDriveScale } from "./gearbox";
+import { tyrePressureGripScale } from "./tireModel";
+
 /** Ride height trim, 0 (lowest, most downforce) to 1 (highest, least). */
 export type RideHeight = number;
 
 /** Aero trim, 0 (lowest drag) to 1 (most downforce). */
 export type AeroTrim = number;
 
+/**
+ * Final-drive trim, expressed as the gearbox ratio multiplier itself rather
+ * than as a 0-1 slider, because its neutral value is 1 and NOT 0.5 like the
+ * other two. It is carried in this object so the setup screen, the URL and
+ * localStorage all treat it like any other setup choice, and the gearbox
+ * module owns the range (see lib/physics/gearbox.ts's FINAL_DRIVE_MIN, which
+ * documents the measured terminal-speed trade).
+ */
+export type FinalDriveScale = number;
+
+/**
+ * Starting tyre pressure, 0 (low) to 1 (high). Low pressure is the grippy end
+ * and the slow-to-warm end; high pressure warms up sooner and gives up a
+ * little peak grip. See tyrePressureGripScale in lib/physics/tireModel.ts.
+ */
+export type TyrePressure = number;
+
 export interface CarSetup {
   rideHeight: RideHeight;
   aeroTrim: AeroTrim;
+  /** Optional in the type so a pre-existing stored setup still type-checks;
+   *  read it through normalizeCarSetup, which always fills it in. */
+  finalDrive?: FinalDriveScale;
+  tyrePressure?: TyrePressure;
 }
 
 export const RIDE_HEIGHT_MIN = 0;
@@ -51,12 +75,20 @@ export const RIDE_HEIGHT_NOMINAL = 0.5;
 export const AERO_TRIM_MIN = 0;
 export const AERO_TRIM_MAX = 1;
 
+export const TYRE_PRESSURE_MIN = 0;
+export const TYRE_PRESSURE_MAX = 1;
+/** Neutral pressure. The thermal curve is written around this, so a player
+ *  who never touches the slider gets exactly the validated warm-up. */
+export const TYRE_PRESSURE_NOMINAL = 0.5;
+
 export const DEFAULT_CAR_SETUP: CarSetup = {
   // The neutral build: nominal ride height, and the aero mode the whole
   // physics model is written around (AeroMode's "identity" state, per
   // aero.ts). The AI runs exactly this.
   rideHeight: RIDE_HEIGHT_NOMINAL,
   aeroTrim: 1,
+  finalDrive: FINAL_DRIVE_NOMINAL,
+  tyrePressure: TYRE_PRESSURE_NOMINAL,
 };
 
 const clamp = (value: number, min: number, max: number): number => {
@@ -93,6 +125,17 @@ export function normalizeCarSetup(input: Partial<CarSetup> | null | undefined): 
       DEFAULT_CAR_SETUP.aeroTrim,
       AERO_TRIM_MIN,
       AERO_TRIM_MAX
+    ),
+    // Both new fields go through their own normalizing helpers rather than
+    // usableSlider: the final drive's range is not 0-1 (its neutral is 1) and
+    // it is owned and measured in gearbox.ts, so there is exactly one place
+    // that knows its bounds.
+    finalDrive: normalizeFinalDriveScale(input.finalDrive),
+    tyrePressure: usableSlider(
+      input.tyrePressure,
+      DEFAULT_CAR_SETUP.tyrePressure ?? TYRE_PRESSURE_NOMINAL,
+      TYRE_PRESSURE_MIN,
+      TYRE_PRESSURE_MAX
     ),
   };
 }
@@ -149,8 +192,26 @@ export function setupDragScale(setup: CarSetup): number {
 export function isDefaultCarSetup(setup: CarSetup): boolean {
   return (
     setup.rideHeight === DEFAULT_CAR_SETUP.rideHeight &&
-    setup.aeroTrim === DEFAULT_CAR_SETUP.aeroTrim
+    setup.aeroTrim === DEFAULT_CAR_SETUP.aeroTrim &&
+    (setup.finalDrive ?? FINAL_DRIVE_NOMINAL) === FINAL_DRIVE_NOMINAL &&
+    (setup.tyrePressure ?? TYRE_PRESSURE_NOMINAL) === TYRE_PRESSURE_NOMINAL
   );
+}
+
+/** The final drive this setup asks for, always in the gearbox's own units. */
+export function setupFinalDriveScale(setup: CarSetup): number {
+  return normalizeFinalDriveScale(setup.finalDrive);
+}
+
+/**
+ * The setup's total grip contribution from tyre pressure, as a plain
+ * multiplier to hand to the same grip product every other term already
+ * multiplies into (see applyLoadSensitiveFriction's sharedGripScale in
+ * vehicle.ts). At the neutral pressure this is exactly 1, so a player who
+ * never opens the slider drives the validated car.
+ */
+export function setupTyreGripScale(setup: CarSetup): number {
+  return tyrePressureGripScale(setup.tyrePressure ?? TYRE_PRESSURE_NOMINAL);
 }
 
 /**
@@ -170,6 +231,14 @@ export function carSetupAeroLabel(setup: CarSetup): string {
   return setup.aeroTrim < 0.45 ? "LOW DRAG" : setup.aeroTrim > 0.55 ? "MAX DOWNFORCE" : "BALANCED";
 }
 
+/** Tyre pressure, as the two things it actually trades. */
+export function carSetupPressureLabel(setup: CarSetup): string {
+  const pressure = setup.tyrePressure ?? TYRE_PRESSURE_NOMINAL;
+  if (pressure < TYRE_PRESSURE_NOMINAL - 0.05) return "LOW (grip)";
+  if (pressure > TYRE_PRESSURE_NOMINAL + 0.05) return "HIGH (warm-up)";
+  return "STANDARD";
+}
+
 /** Both halves in one phrase, for anywhere a single string is wanted. */
 export function carSetupLabel(setup: CarSetup): string {
   const low = setup.rideHeight < RIDE_HEIGHT_NOMINAL - 0.05;
@@ -178,5 +247,15 @@ export function carSetupLabel(setup: CarSetup): string {
   const down = setup.aeroTrim > 0.55;
   const ride = low ? "LOW" : high ? "HIGH" : "STANDARD";
   const aero = drag ? "LOW DRAG" : down ? "MAX DOWNFORCE" : "BALANCED";
-  return `${ride} · ${aero}`;
+  // Only the parts the player has actually moved: this string is the setup
+  // chip, and a four-part label for an untouched car would be noise.
+  const extras: string[] = [];
+  if (setupFinalDriveScale(setup) !== FINAL_DRIVE_NOMINAL) {
+    extras.push(finalDriveLabel(setupFinalDriveScale(setup)));
+  }
+  const pressure = setup.tyrePressure ?? TYRE_PRESSURE_NOMINAL;
+  if (pressure < TYRE_PRESSURE_NOMINAL - 0.05 || pressure > TYRE_PRESSURE_NOMINAL + 0.05) {
+    extras.push(carSetupPressureLabel(setup));
+  }
+  return [`${ride} · ${aero}`, ...extras].join(" · ");
 }

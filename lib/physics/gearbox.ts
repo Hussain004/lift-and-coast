@@ -32,6 +32,19 @@ export interface GearboxState {
    * difficulty tier exists); the player toggles it off for manual gears.
    */
   auto: boolean;
+  /**
+   * The player's final-drive choice as a multiplier on every gear ratio
+   * (see FINAL_DRIVE_TRIM below). 1 is the neutral, as-validated gearing.
+   *
+   * PLAYER ONLY, like every other setup slider in this project: it lives in
+   * the gearbox STATE rather than as a module global precisely so the AI's
+   * createGearboxState() call keeps its default and every stability gate
+   * stays a measurement of the car those gates were written against. It is
+   * deliberately a field and not an argument threaded through every rpm
+   * call, because the alternative is a global - and a global would silently
+   * move the AI the first time a player touched the slider.
+   */
+  finalDriveScale: number;
   /** Fixed-step filtered wheel speed used for auto shifts and engine rpm. */
   filteredSpeedMs: number;
   /** False until the first update seeds the filter from the real speed. */
@@ -105,6 +118,90 @@ export const GEAR_RATIOS = [20.3, 16.96, 14.17, 11.83, 9.88, 8.25, 5.6];
 // preserved exactly, and each shift up gives up a small, felt fraction.
 export const GEAR_THRUST_FACTORS = [1.0, 0.985, 0.97, 0.955, 0.94, 0.925, 0.91];
 
+/*
+ * FINAL DRIVE (setup slider, player only - see CarSetup's header for why
+ * every setup control here is player-only).
+ *
+ * A final drive is a single extra ratio after the gearbox, so scaling it
+ * scales the ratio set: the effect lands on rpm-per-metre, and therefore on
+ * both WHERE the automatic box shifts and where on the torque curve any
+ * given road speed sits. Scale > 1 (a longer overall ratio) turns the engine
+ * faster per metre, so the top gear reaches its shift point and its rev
+ * ceiling at a LOWER road speed: less top speed. Scale < 1 is the opposite.
+ *
+ * WHY IT TOUCHES THE TOP GEAR ONLY, which is a measured result rather than a
+ * preference. Scaling the whole set was tried first and is a ONE-WAY PENALTY
+ * in this physics: GEAR_THRUST_FACTORS tapers monotonically with gear number,
+ * so any scale that brings the early upshifts forward just spends more of the
+ * launch sitting in a taller, weaker gear. Measured on a standing start, a
+ * whole-set scale of 0.95 cost 0.43 s to 200 km/h (6.43 s vs 6.00 s) and
+ * gained no terminal speed, because the ceiling here is drag-limited rather
+ * than gear-limited. Worse, at 0.93-0.94 it produced a genuine defect: the
+ * 6-7 upshift point (52.8 m/s) landed just ABOVE 6th's own drag equilibrium
+ * (52.58 m/s), so the car asymptoted to 52.6 m/s in 6th and never reached
+ * 200 km/h at all. Restricting the trim to the top gear leaves 0-200 exactly
+ * at neutral (6.00 s at every point on the range), keeps the launch gears
+ * bit-identical, and still moves the terminal speed across a felt 5.4 m/s.
+ *
+ * WHY THIS IS SAFE, in the terms this codebase cares about:
+ *
+ *  - It cannot raise the force CEILING. The delivered thrust is still
+ *    baseEngineForce * engineTorqueMultiplier(rpm) * gearThrustFactor(gear)
+ *    clamped by the same BOOSTED_ENGINE_FORCE_CAP as always, gearThrustFactor
+ *    is untouched, and a scale of 1 is an exact identity on every number the
+ *    validated car was measured with. The trim moves the car along the
+ *    existing torque CURVE, never above its cap.
+ *  - The AI never sees it (see GearboxState.finalDriveScale).
+ *  - The range is deliberately narrow, and the per-slider measurement lives in
+ *    tests/carSetupFinalDrive.test.ts. Measured terminal speeds are 77.90 /
+ *    76.66 / 72.52 m/s at 0.94 / 1.00 / 1.06, with 0-200 unchanged at 6.00 s
+ *    and maxTilt 0.084 rad throughout. Past about 1.06 the top gear sits at
+ *    the edge of the torque band and the setting stops changing anything
+ *    measurable (1.06 and 1.20 both give 72.52 m/s), which is why the top of
+ *    the range stops there.
+ */
+export const FINAL_DRIVE_MIN = 0.94;
+export const FINAL_DRIVE_MAX = 1.06;
+/** Neutral: bit-identical to the validated as-shipped gearing. */
+export const FINAL_DRIVE_NOMINAL = 1;
+
+/**
+ * Clamps an arbitrary value (a URL param, a stale prefs blob) into the
+ * slider's usable band. Non-finite falls back to the NEUTRAL default rather
+ * than to a bound, for the same reason carSetup's usableSlider does: a junk
+ * ?fd=banana must not hand the player an end of the range.
+ */
+export function normalizeFinalDriveScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return FINAL_DRIVE_NOMINAL;
+  return Math.min(FINAL_DRIVE_MAX, Math.max(FINAL_DRIVE_MIN, value));
+}
+
+/** The gear ratio actually in use, final drive included. */
+export function effectiveGearRatio(gear: number, finalDriveScale = 1): number {
+  if (gear < 1 || gear > GEAR_COUNT) return 1;
+  // MEASURED (tests/carSetupFinalDrive.test.ts): scaling the WHOLE set is a
+  // one-way penalty in this physics, because GEAR_THRUST_FACTORS tapers
+  // monotonically with gear number - so any scale that shifts upshifts
+  // earlier spends more of the run in a taller, weaker gear, and the only
+  // possible upside (top speed) is drag-limited, not gear-limited. A
+  // top-gear-only trim is therefore the only shape of this control that can
+  // pay the player anything, and it is the shape measured here.
+  const scale = gear === GEAR_COUNT ? normalizeFinalDriveScale(finalDriveScale) : 1;
+  return GEAR_RATIOS[gear - 1] * scale;
+}
+
+/**
+ * Human phrasing for the setup screen, as what the car does rather than as
+ * a number (see carSetupLabel's note on why a bare "0.94" helps nobody).
+ * Direction matches the measured trade: a longer ratio (scale > 1) revs the
+ * engine out sooner and costs top speed, a shorter one buys top speed.
+ */
+export function finalDriveLabel(scale: number): string {
+  if (scale > FINAL_DRIVE_NOMINAL + 0.005) return "LONG (less top speed)";
+  if (scale < FINAL_DRIVE_NOMINAL - 0.005) return "SHORT (more top speed)";
+  return "STANDARD";
+}
+
 export const IDLE_RPM = 3000;
 export const REDLINE_RPM = 12000;
 // Past this the torque curve collapses - drives forever in a too-short
@@ -139,16 +236,25 @@ const TORQUE_CURVE: ReadonlyArray<readonly [number, number]> = [
   [15000, 0.35],
 ];
 
-export function rpmForGear(speedMs: number, gear: number): number {
+/**
+ * Engine speed for a wheel speed in a given gear. `finalDriveScale` defaults
+ * to 1 so every existing call site (the player, the AI, the harness, the
+ * tests) is unchanged and the neutral setup stays an exact no-op - see
+ * FINAL_DRIVE_MIN's block for why the final drive only moves rpm.
+ */
+export function rpmForGear(speedMs: number, gear: number, finalDriveScale = 1): number {
   if (gear === REVERSE_GEAR) {
     // Reverse reads the same way as any other gear: engine speed from wheel
-    // speed through the reverse ratio, floored at idle.
+    // speed through the reverse ratio, floored at idle. The final drive is
+    // NOT applied to reverse: it is a single fixed recovery ratio, and a
+    // player who winds the final drive to its tall end must not be able to
+    // select a reverse that cannot move the car out of a gravel trap.
     const wheelRpm = (Math.abs(speedMs) / DRIVEN_WHEEL_CIRCUMFERENCE_M) * 60;
     return Math.max(IDLE_RPM, wheelRpm * REVERSE_RATIO);
   }
   if (gear < 1 || gear > GEAR_COUNT) return IDLE_RPM;
   const wheelRpm = (Math.abs(speedMs) / DRIVEN_WHEEL_CIRCUMFERENCE_M) * 60;
-  return Math.max(IDLE_RPM, wheelRpm * GEAR_RATIOS[gear - 1]);
+  return Math.max(IDLE_RPM, wheelRpm * effectiveGearRatio(gear, finalDriveScale));
 }
 
 /** Thrust multiplier for the gear's own mechanical advantage (1..GEAR_COUNT). */
@@ -164,10 +270,16 @@ export function isReverse(gear: number): boolean {
   return gear === REVERSE_GEAR;
 }
 
-export function createGearboxState(auto = true): GearboxState {
+/**
+ * `finalDriveScale` defaults to neutral (1), so every existing caller -
+ * AICar.tsx, the AI harness, all the gearbox tests - gets the exact gearing
+ * they were validated with. The player passes their setup's value.
+ */
+export function createGearboxState(auto = true, finalDriveScale = FINAL_DRIVE_NOMINAL): GearboxState {
   return {
     gear: 1,
     auto,
+    finalDriveScale: normalizeFinalDriveScale(finalDriveScale),
     filteredSpeedMs: 0,
     speedInitialized: false,
     shiftCooldownTicks: 0,
@@ -238,7 +350,10 @@ export function updateGearbox(state: GearboxState, input: GearboxDriverInput): G
     return state;
   }
 
-  const rpm = rpmForGear(state.filteredSpeedMs, state.gear);
+  // The shift policy reads rpm through the state's final drive, so moving the
+  // slider moves the whole shift schedule - that is the whole mechanism, and
+  // it is why the delivered force is untouched (see FINAL_DRIVE_MIN's block).
+  const rpm = rpmForGear(state.filteredSpeedMs, state.gear, state.finalDriveScale);
   if (rpm >= SHIFT_UP_RPM && state.gear < GEAR_COUNT) {
     state.gear += 1;
     state.shiftCooldownTicks = SHIFT_COOLDOWN_TICKS;

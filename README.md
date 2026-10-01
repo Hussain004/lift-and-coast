@@ -27,6 +27,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Marshal posts along every circuit whose flags wave yellow on the stretch before a stopped car and everywhere under the safety car or VSC (two draw calls, off on Low)
 - A full F1-style HUD: timing tower, MFD pages, minimap, radio engineer, results and pause screens, chase-camera feel, sparks, spray, skid marks and braking boards
 - Traction control, ABS, manual gears, and a toggleable racing line
+- A car setup screen for your car only: ride height and aero trim for the Monza-versus-Monaco trade, a final drive that trades top speed against earlier shifts, and tyre pressure that trades peak grip against warm-up speed. Each has its own measured test, and the AI always runs the standard build
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
 - Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors, plus a garage camera that cuts in automatically while you are in the box
 - Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends. Championship practice has three programmes (drive through 10 racing-line gates, two consistent clean laps, beat a mid-grid reference lap), each worth team reputation, plus per-round team objectives. Season setup picks the weekend format (full, quali + race, race only) and optional sprint weekends (every 4th round: a 2-lap sprint from your qualifying grid, 8-1 points); the fastest lap in the top ten scores a point

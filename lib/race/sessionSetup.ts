@@ -54,29 +54,50 @@ export function parseTimeAttack(raw: string | null): boolean {
 }
 
 /**
- * Car setup from ?rh= (ride height) and ?at= (aero trim), both 0-1.
+ * Car setup from the URL: ?rh= (ride height), ?at= (aero trim), ?fd= (final
+ * drive) and ?tp= (tyre pressure).
  *
- * Two params rather than one packed string, so each is independently
- * validatable and a hand-edited link can change just one. Both are OPTIONAL
+ * Separate params rather than one packed string, so each is independently
+ * validatable and a hand-edited link can change just one. All are OPTIONAL
  * and omitted at the neutral default, so every link that predates car setup
  * keeps working and produces exactly today's car. Parsing is deliberately
  * total: anything unparseable falls back to the default rather than
  * producing a half-applied setup, because these arrive from a URL and the
  * alternative is a NaN reaching the downforce term (see lib/physics/carSetup.ts).
+ *
+ * The four are read from one object so adding a slider is a change in one
+ * place; `parseCarSetup` is called with positional strings throughout, so it
+ * takes the params as an object with all-optional keys and every existing
+ * two-argument call still works.
  */
-export function parseCarSetup(rawRideHeight: string | null, rawAeroTrim: string | null): CarSetup {
+export interface CarSetupUrlParams {
+  rideHeight?: string | null;
+  aeroTrim?: string | null;
+  /** ?fd= the final-drive ratio multiplier (see lib/physics/gearbox.ts). */
+  finalDrive?: string | null;
+  /** ?tp= starting tyre pressure, 0-1. */
+  tyrePressure?: string | null;
+}
+
+export function parseCarSetup(
+  rawRideHeight: string | null | undefined,
+  rawAeroTrim: string | null | undefined,
+  extras: Pick<CarSetupUrlParams, "finalDrive" | "tyrePressure"> = {}
+): CarSetup {
   // An EMPTY param is a truncated or hand-mangled link, not a value: Number("")
   // is 0, which is finite and would otherwise clamp to the slider minimum and
   // silently hand the player the most downforce the setup can give. Blank
   // means absent, so it falls back to the neutral default like any other
   // missing param.
-  const read = (raw: string | null): number | undefined => {
-    if (raw === null || raw.trim().length === 0) return undefined;
+  const read = (raw: string | null | undefined): number | undefined => {
+    if (raw === null || raw === undefined || raw.trim().length === 0) return undefined;
     return Number(raw);
   };
   return normalizeCarSetup({
     rideHeight: read(rawRideHeight),
     aeroTrim: read(rawAeroTrim),
+    finalDrive: read(extras.finalDrive),
+    tyrePressure: read(extras.tyrePressure),
   });
 }
 
@@ -139,6 +160,10 @@ export interface RaceUrlParams {
    *  default so existing links are unchanged. */
   rideHeight?: number;
   aeroTrim?: number;
+  /** Final-drive ratio multiplier, neutral 1 (see lib/physics/gearbox.ts). */
+  finalDrive?: number;
+  /** Starting tyre pressure, 0-1 (see lib/physics/tireModel.ts). */
+  tyrePressure?: number;
   rivals?: number;
   difficulty?: AIDifficulty;
   /**
@@ -222,6 +247,13 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   }
   if (params.aeroTrim !== undefined && params.aeroTrim !== DEFAULT_CAR_SETUP.aeroTrim) {
     query.set("at", params.aeroTrim.toFixed(2));
+  }
+  // Same rule for the two newer sliders: absent unless the player moved them.
+  if (params.finalDrive !== undefined && params.finalDrive !== DEFAULT_CAR_SETUP.finalDrive) {
+    query.set("fd", params.finalDrive.toFixed(3));
+  }
+  if (params.tyrePressure !== undefined && params.tyrePressure !== DEFAULT_CAR_SETUP.tyrePressure) {
+    query.set("tp", params.tyrePressure.toFixed(2));
   }
   if (params.order !== undefined && params.order.length > 0) {
     query.set("order", params.order.join(","));
