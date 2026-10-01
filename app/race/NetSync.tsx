@@ -531,6 +531,50 @@ export function NetClient({
         } else if (msg.type === "bye") {
           if (hudRef?.current) pushHudEvent(hudRef.current, "warn", "HOST LEFT THE ROOM", undefined, 5);
           netRoom.leave();
+        } else if (msg.type === "host-left") {
+          /*
+           * Graceful host-left (roadmap 11.14): the race is CLASSIFIED at the
+           * point the host vanished, not abandoned.
+           *
+           * The distinction is the whole feature. A guest whose host closes
+           * the tab mid-race used to be dumped straight back to the menu as if
+           * nothing had happened, losing the race they were in with no
+           * result and no explanation. Instead the player's own result is
+           * filled in from the finishing board the host last broadcast, so
+           * the results screen still appears and still says where they
+           * finished. The gap is stated plainly rather than papered over: the
+           * remaining cars are simply not classified past this moment, and the
+           * notice says the race ended early.
+           */
+          if (hudRef?.current) {
+            pushHudEvent(
+              hudRef.current,
+              "warn",
+              "RACE CLASSIFIED",
+              "THE HOST DISCONNECTED",
+              6
+            );
+          }
+          netResultRef.current = {
+            positions: { ...(netResultRef.current?.positions ?? {}) },
+            winnerCode: netResultRef.current?.winnerCode ?? "",
+          };
+          netRoom.shutdown(msg.reason);
+        } else if (msg.type === "rematch") {
+          // A guest asking for another race. The host decides whether one
+          // happens (it owns the grid and the settings), so a guest receiving
+          // this only records that somebody wants one.
+          if (hudRef?.current) pushHudEvent(hudRef.current, "info", "REMATCH REQUESTED", "WAITING FOR HOST", 3);
+        } else if (msg.type === "safety-car") {
+          // Display only for guests: the host is the only peer simulating the
+          // safety car, and a guest that ran its own would disagree with what
+          // the field is actually doing.
+          if (hudRef?.current) {
+            hudRef.current.safetyCarText =
+              msg.phase === "none"
+                ? ""
+                : `${msg.kind === "sc" ? "SAFETY CAR" : "VIRTUAL SAFETY CAR"} · HOST CONTROL`;
+          }
         }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

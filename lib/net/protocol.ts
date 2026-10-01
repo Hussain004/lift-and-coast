@@ -16,7 +16,16 @@ import type { TrackLimitStage } from "../race/trackLimitSequence";
 // copy of a guest's car toward the guest's own reported pose, which ends
 // the guest-side correction jitter). Cross-version rooms are rejected at
 // hello, so v1 peers can never half-understand a v2 room.
-export const PROTOCOL_VERSION = 2;
+//
+// v3: adds the multiplayer polish set - a lobby READY check (roadmap 11.14),
+// per-member ping, a rematch request, safety-car state broadcast, and an
+// explicit host-left message so a guest can classify the race instead of
+// just being dumped back to the menu. Every one of them is a NEW message type
+// with a guard in parseNetMessage below, and the bump matters: an old v2 guest
+// would silently ignore a `ready` it does not understand and then sit at the
+// start line forever, because it has no way to know it is out of date. Bumping
+// means it is rejected at hello with a clear reason instead.
+export const PROTOCOL_VERSION = 3;
 
 /** Room codes are short, URL-safe, and human-readable over voice. */
 export const ROOM_CODE_LENGTH = 6;
@@ -107,7 +116,58 @@ export type NetMessage =
   | { type: "settings"; settings: NetSettings }
   | { type: "start"; settings: NetSettings; slots: Record<string, number>; atMs: number }
   /** Guest -> host: my scene is live, I can take a lights-out time. */
-  | { type: "ready" }
+  /**
+   * Guest -> host: my scene is live AND I have chosen my driver, so count me
+   * in the start. This is the lobby READY CHECK (roadmap 11.14), and it is
+   * deliberately the SAME message the v2 start handshake already used rather
+   * than a new one.
+   *
+   * Reusing it is the point: the host already waited on `ready` before
+   * sending `go`, so a lobby readiness check is that same wait moved earlier
+   * and given a visible state instead of being invisible. A second message
+   * would have meant two independent notions of "ready" in one protocol,
+   * which is exactly how a start goes out with half the room still loading.
+   * `driver` is what lets the host show a per-member car preview before the
+   * race exists; it is optional so a client that has not picked yet can still
+   * report ready.
+   */
+  | { type: "ready"; driver?: NetDriverInfo }
+  /**
+   * Host -> guest: the roster with each member's readiness and last measured
+   * latency, so every peer can render the same lobby table without each
+   * guessing. Sent on every join/leave/ready change, which at lobby scale (a
+   * handful of humans) is a handful of small messages, not a stream.
+   */
+  | { type: "lobby-state"; members: NetLobbyRow[] }
+  /** Either direction: a ping probe carrying the sender's clock. */
+  | { type: "ping"; atMs: number; token: number }
+  /** Either direction: the reply. RTT is (now - atMs), so no clock sync. */
+  | { type: "pong"; atMs: number; token: number }
+  /**
+   * Guest -> host: I would like to run it again. The host owns the grid and
+   * the settings, so a guest can only ask - which is why this is a distinct
+   * type and not a `start` the guest is trusted to send.
+   */
+  | { type: "rematch" }
+  /**
+   * Host -> all: a new race is being set up on the same room, with the same
+   * shape as `start` so the existing start path is reused verbatim.
+   */
+  | { type: "restart"; settings: NetSettings; slots: Record<string, number>; atMs: number }
+  /**
+   * Host -> all: the safety car / VSC state, so guests see the same neutral-
+   * isation the host is running. The host is the only peer that simulates the
+   * state machine, which keeps the star topology: guests never negotiate it
+   * with each other.
+   */
+  | { type: "safety-car"; phase: string; kind: string }
+  /**
+   * Host -> all: I am gone. Distinct from `bye` (a voluntary leave) because
+   * the response is different: a guest that loses the host mid-race has to
+   * CLASSIFY the race at that point and show a result, not return to the
+   * menu as if nothing had happened.
+   */
+  | { type: "host-left"; reason: string }
   /** Host -> all: lights-out alignment time (see RaceStartCountdown). */
   | { type: "go"; atMs: number }
   /** Guest -> host: authoritative pose for the guest's own car. */
@@ -145,6 +205,26 @@ export interface NetCarSnapshot {
   bestLapSeconds?: number | null;
   trackLimitStage?: TrackLimitStage;
   trackLimitWarningNumber?: number | null;
+}
+
+/** One row of the lobby table, as broadcast by the host. */
+export interface NetLobbyRow {
+  peerId: string;
+  driver: NetDriverInfo;
+  /** True once that member's scene is live and it is willing to start. */
+  ready: boolean;
+  /** Last measured round-trip to the host in ms, null if never measured. */
+  pingMs: number | null;
+}
+
+function isNetLobbyRow(value: unknown): value is NetLobbyRow {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.peerId === "string" &&
+    isNetDriverInfo(value.driver) &&
+    typeof value.ready === "boolean" &&
+    (value.pingMs === null || (typeof value.pingMs === "number" && Number.isFinite(value.pingMs)))
+  );
 }
 
 export interface NetTowerRow {
@@ -237,7 +317,49 @@ export function parseNetMessage(value: unknown): NetMessage | null {
       return { type: "start", settings: value.settings, slots, atMs: value.atMs };
     }
     case "ready":
-      return { type: "ready" };
+      // `driver` is optional (see the message note): a client that has joined
+      // but not yet picked reports ready without one, and a present one must
+      // still be a well-formed driver or the message is dropped whole rather
+      // than half-applied.
+      if (value.driver === undefined) return { type: "ready" };
+      if (!isNetDriverInfo(value.driver)) return null;
+      return { type: "ready", driver: value.driver };
+    case "lobby-state":
+      if (!Array.isArray(value.members) || !value.members.every(isNetLobbyRow)) return null;
+      return { type: "lobby-state", members: value.members };
+    case "ping":
+    case "pong":
+      // Both carry the same shape, and both are validated identically: a pong
+      // is only ever used to compute a round trip, so there is no reason for
+      // one to accept a field the other would reject.
+      if (!numberField(value.atMs) || !numberField(value.token)) return null;
+      return { type: value.type, atMs: value.atMs, token: value.token };
+    case "rematch":
+      return { type: "rematch" };
+    case "restart": {
+      // Same shape and same validation as `start`, deliberately: a rematch is
+      // a start on the same room, and having one code path means the grid
+      // assignment and the go-at time cannot drift between the two.
+      if (!isNetSettings(value.settings)) return null;
+      if (!isRecord(value.slots)) return null;
+      const slots: Record<string, number> = {};
+      for (const [k, v] of Object.entries(value.slots)) {
+        if (typeof v !== "number" || !Number.isInteger(v)) return null;
+        slots[k] = v;
+      }
+      if (!numberField(value.atMs)) return null;
+      return { type: "restart", settings: value.settings, slots, atMs: value.atMs };
+    }
+    case "safety-car":
+      // Narrow on purpose: this is display state, so a value outside the
+      // known set is dropped rather than shown as an unknown neutralisation
+      // the player would race against.
+      if (value.phase !== "none" && value.phase !== "active" && value.phase !== "ending") return null;
+      if (value.kind !== "sc" && value.kind !== "vsc") return null;
+      return { type: "safety-car", phase: value.phase, kind: value.kind };
+    case "host-left":
+      if (typeof value.reason !== "string") return null;
+      return { type: "host-left", reason: value.reason };
     case "go":
       if (!numberField(value.atMs)) return null;
       return { type: "go", atMs: value.atMs };

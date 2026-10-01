@@ -689,6 +689,44 @@
   transform: translateY(-1px);
 }
 
+/*
+ * The lobby table's extra cells (roadmap 11.14). A per-member car swatch, a
+ * measured round trip and a readiness state, all in the same row as the
+ * driver so the whole picture is one glance.
+ */
+.lobbyCar {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  flex: 0 0 auto;
+}
+
+.lobbyPing {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 52px;
+  text-align: right;
+}
+
+.lobbyReady {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.55);
+  min-width: 62px;
+  text-align: center;
+}
+
+.lobbyReady[data-ready="1"] {
+  border-color: rgba(80, 220, 140, 0.7);
+  color: #50dc8c;
+}
+
 .championshipStandings {
   border-top: 1px solid var(--line);
   margin-top: 16px;
