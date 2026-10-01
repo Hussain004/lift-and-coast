@@ -888,7 +888,6 @@ export function Scene({
    * scope note for why the setup is the player's alone.
    */
   carSetup = DEFAULT_CAR_SETUP,
-  onFlashbackTimelineOpenChange,
   netRole = null,
   netHumanSlots = [],
   countdownGoAtMs = 0,
@@ -989,8 +988,6 @@ export function Scene({
   difficulty?: AIDifficulty;
   /** The player's car build. See lib/physics/carSetup.ts. */
   carSetup?: CarSetup;
-  /** Pauses the simulation while the flashback timeline is open. See Car.tsx. */
-  onFlashbackTimelineOpenChange?: (open: boolean) => void;
   /**
    * Plan section 16: net-room role. Null is a solo session (every car
    * simulated locally). Host simulates the player, all AI and every
@@ -1231,7 +1228,6 @@ export function Scene({
           hudRef={hudRef}
           fxRef={fxRef}
           flashbackLimit={flashbackLimit(difficulty, sessionMode)}
-          onFlashbackTimelineOpenChange={onFlashbackTimelineOpenChange}
           raceRef={raceRef}
           raceLaps={raceLaps}
           champRound={champRound}
