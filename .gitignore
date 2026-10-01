@@ -45,6 +45,7 @@ implementation_plan.md
 REVAMP.md
 CLAUDE.md
 AGENTS.md
+HANDOFF_PROMPT.md
 
 # scratch/ad-hoc test scripts (not the real test suite in /tests)
 /scratch/
