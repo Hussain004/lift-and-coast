@@ -146,6 +146,28 @@ describe("delta to a ghost", () => {
     expect(deltaToGhost(trace, at, reference - 1.5)!).toBeLessThan(0);
   });
 
+  it("returns null in the start/finish seam band rather than a wild number", () => {
+    // The bug live testing found: a car on the grid reads progress ~984m
+    // instead of 0, because the nearest centerline index there is n-1 and not
+    // 0. Querying the ghost with 984m asks for its end-of-lap time, so an
+    // unmoved car reported itself ~70s AHEAD. Both edges of the line are
+    // affected.
+    expect(deltaToGhost(trace, 0, 4)).toBeNull();
+    expect(deltaToGhost(trace, 5, 4)).toBeNull();
+    expect(deltaToGhost(trace, 995, 4)).toBeNull();
+    expect(deltaToGhost(trace, 1000, 4)).toBeNull();
+    // Just outside the band it works normally, which is the point of the band
+    // being narrow rather than "the whole first lap".
+    expect(deltaToGhost(trace, 40, 4)).not.toBeNull();
+    expect(deltaToGhost(trace, 960, 40)).not.toBeNull();
+  });
+
+  it("returns null for a non-finite or out-of-range position", () => {
+    expect(deltaToGhost(trace, NaN, 4)).toBeNull();
+    expect(deltaToGhost(trace, -100, 4)).toBeNull();
+    expect(deltaToGhost(trace, 99_999, 4)).toBeNull();
+  });
+
   it("clamps outside the ghost's span rather than extrapolating", () => {
     // Before the ghost's first sample and after its last, hold the endpoint.
     // Extrapolating would report a growing fake gap for a car that is simply

@@ -9,6 +9,7 @@ import { leaderboardIsConfigured, loadLeaderboardForTrack } from "@/lib/race/lea
 import { useTimeAttackLaunch } from "./useTimeAttackLaunch";
 import { TimeAttackAccount } from "./TimeAttackAccount";
 import { loadPersonalBest } from "@/lib/persistence/personalBests";
+import { TimeAttackGhostPicker } from "./TimeAttackGhostPicker";
 
 /**
  * The landing page's time attack: a way in, not a driving surface.
@@ -126,6 +127,14 @@ export function TimeAttack() {
         >
           Set a Lap
         </a>
+
+        {/*
+          The ghost picker sits with the target times rather than on the race
+          page, because the choice has to be made before you are in the car:
+          loading a ghost is a track-sized read, and doing it behind a pause
+          menu mid-session would stall the first corner.
+        */}
+        <TimeAttackGhostPicker trackId={trackId} personalBestSeconds={myBest} />
 
         <p className={styles.recordsNote}>
           Qualifying, with no clock - drive until you leave. Every lap that beats

@@ -138,15 +138,39 @@ export function ghostTimeAt(trace: GhostProgressTrace, progressMeters: number): 
 }
 
 /**
+ * The fraction of the lap either side of the start/finish line where a
+ * progress reading is AMBIGUOUS.
+ *
+ * At the line, the nearest centerline index is genuinely either 0 or n-1, and
+ * a car parked on the grid reads as ~trackLength rather than 0 until the
+ * continuity tracker settles. Querying a ghost with 984m asks it for its
+ * end-of-lap time, so a car that has not moved yet reports itself ~70 seconds
+ * AHEAD of a reference doing 80 m/s. This is not hypothetical: it is what live
+ * two-tab-free browser testing showed, as a delta of -69.300 on lap 1.
+ *
+ * So the seam band is excluded rather than guessed at. Falling back to the
+ * session-local tracker there is strictly better than a wrong number - and for
+ * the first couple of percent of a lap the delta is not something a driver can
+ * act on anyway.
+ */
+export const GHOST_SEAM_BAND = 0.02;
+
+/**
  * Live delta in seconds: positive means the player is BEHIND the ghost, which
- * is the sign the HUD's green/red colouring expects. Returns null until the
- * player and the ghost are both on the same part of the track.
+ * is the sign the HUD's green/red colouring expects.
+ *
+ * Returns null when the player is inside the seam band, or outside the ghost's
+ * span, rather than clamping to an endpoint - see GHOST_SEAM_BAND.
  */
 export function deltaToGhost(
   trace: GhostProgressTrace,
   playerProgressMeters: number,
   playerElapsedSeconds: number
 ): number | null {
+  const length = trace.trackLengthMeters;
+  if (!Number.isFinite(playerProgressMeters) || length <= 0) return null;
+  if (playerProgressMeters < length * GHOST_SEAM_BAND) return null;
+  if (playerProgressMeters > length * (1 - GHOST_SEAM_BAND)) return null;
   const referenceTime = ghostTimeAt(trace, playerProgressMeters);
   if (referenceTime === null) return null;
   return playerElapsedSeconds - referenceTime;

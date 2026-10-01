@@ -1479,6 +1479,78 @@
   color: var(--text);
 }
 
+/*
+ * The ghost picker (roadmap 11.9). Styled as a segmented control beside the
+ * target times, because it is the same kind of decision: what am I racing
+ * against. The unavailable options are dimmed rather than hidden - they are
+ * the ones that tell the player the feature is coming.
+ */
+.ghostPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.ghostPickerLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2.4px;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.ghostPickerOptions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ghostPickerOption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ghostPickerOption[data-available="0"] {
+  /* Dimmed but present. Hiding these would remove the only signal that rival
+     ghosts exist as a plan; a dead-looking button is honest, a missing one is
+     just a gap. */
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.ghostPickerOption[data-selected="1"] {
+  border-color: var(--accent, #ff2d55);
+  color: var(--text);
+}
+
+.ghostPickerName {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.ghostPickerTime {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.ghostPickerNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .timeAttackLaunchButton {
   display: inline-block;
   padding: 14px 30px;

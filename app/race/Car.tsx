@@ -83,6 +83,7 @@ import { createDeltaTracker } from "@/lib/race/deltaTimer";
 import { pushHudEvent, queueEngineerLine, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
 import { classifyRace, createFinishTracker, updateFinishTracker } from "@/lib/race/classification";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
+import { deltaToGhost, projectGhostToProgress, type GhostProgressTrace } from "@/lib/race/ghostProgress";
 import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
 import {
   createTrackLimitSequence,
@@ -661,6 +662,13 @@ export function Car({
     [playerCode, playerTeamId]
   );
   const deltaTrackerRef = useRef(createDeltaTracker());
+  /**
+   * The selected ghost projected onto the progress axis, so the delta can be
+   * read against it (see projectGhostToProgress). Null until a ghost loads, or
+   * when none was selected - and the delta then falls back to the session-local
+   * tracker rather than going blank.
+   */
+  const ghostTraceRef = useRef<GhostProgressTrace | null>(null);
   // Set whenever this lap's progress jumped discontinuously (a rewind, or
   // the off-track teleport below) instead of driving forward continuously -
   // such a lap's recorded (progress, time) samples aren't monotonic, so it
@@ -734,7 +742,31 @@ export function Car({
       .then((record) => {
         if (cancelled || !record) return;
         bestLapRef.current = record.bestLapSeconds;
-        if (record.ghost.length > 0) ghostRecorderRef.current.setReference(record.ghost);
+        if (record.ghost.length > 0) {
+          ghostRecorderRef.current.setReference(record.ghost);
+          /*
+           * Project the stored best onto the progress axis so the delta can be
+           * taken against it (roadmap 11.9).
+           *
+           * This is what makes the delta bar useful in a fresh session. The
+           * built-in delta tracker (see deltaTimer.ts) is deliberately
+           * session-local: it has no reference until the player completes a lap
+           * in THIS session, so on lap 1 the bar is simply empty. A stored PB
+           * has a full ghost trace, and projecting it gives a real reference
+           * from the first corner of the first lap - which is the entire point
+           * of a time-trial delta.
+           *
+           * The projection can legitimately fail (a ghost too short, or one
+           * recorded on a different circuit); then the tracker below remains
+           * the fallback, so the delta degrades to its old behaviour rather
+           * than disappearing.
+           */
+          ghostTraceRef.current = projectGhostToProgress(
+            track,
+            record.ghost,
+            record.bestLapSeconds
+          );
+        }
       })
       .catch(() => {});
     // Shows "S1 --.---  S2 --.---  S3 --.---" from the very start of the
@@ -2498,8 +2530,21 @@ export function Car({
       }
     }
 
+    /*
+     * The delta bar (roadmap 11.9: "delta to the chosen ghost"). A projected
+     * ghost takes priority over the session-local tracker, because a ghost
+     * exists from the first corner of the session while the tracker does not.
+     * The tracker still records either way - it is what promotes a new
+     * reference if the player beats the stored one - so this only changes which
+     * number is displayed, not what gets learned.
+     */
     const delta = deltaTrackerRef.current.recordSample(tracked.progressMeters, lap.currentLapSeconds);
-    if (hudRef?.current) hudRef.current.delta = delta;
+    if (hudRef?.current) {
+      const againstGhost = ghostTraceRef.current
+        ? deltaToGhost(ghostTraceRef.current, tracked.progressMeters, lap.currentLapSeconds)
+        : null;
+      hudRef.current.delta = againstGhost ?? delta;
+    }
 
     ghostRecorderRef.current.recordSample(lap.currentLapSeconds, {
       position: { x: t.x, y: t.y, z: t.z },
