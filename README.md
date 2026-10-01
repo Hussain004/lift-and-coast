@@ -16,6 +16,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
 - Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
+- A pit-stop release you take part in: the garage camera cuts in for the stop, and a clean release on the green light is worth up to 0.4 s off your race time
 - Knockout qualifying in the real F1 format: Q1/Q2/Q3 with eliminations between phases
 - Track-derived 2026 overtake zones with race proximity and practice/qualifying access
 - Race Ops telemetry, steward decisions, FIA-style penalties (5s/10s/drive-through/stop-go), license points, the 12-point race ban, invalid laps, and disqualification status
@@ -27,7 +28,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - A full F1-style HUD: timing tower, MFD pages, minimap, radio engineer, results and pause screens, chase-camera feel, sparks, spray, skid marks and braking boards
 - Traction control, ABS, manual gears, and a toggleable racing line
 - Keyboard, gamepad, wheel, and adaptive phone touch controls with shaped steering and braking
-- Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors
+- Chase, cockpit, helmet, T-cam, TV broadcast, orbit, replay, and rewind cameras, with live side mirrors, plus a garage camera that cuts in automatically while you are in the box
 - Practice, qualifying (one-shot, open, or knockout Q1-Q3), quick races, and full championship weekends. Championship practice has three programmes (drive through 10 racing-line gates, two consistent clean laps, beat a mid-grid reference lap), each worth team reputation, plus per-round team objectives. Season setup picks the weekend format (full, quali + race, race only) and optional sprint weekends (every 4th round: a 2-lap sprint from your qualifying grid, 8-1 points); the fastest lap in the top ten scores a point
 - Multiplayer rooms with synchronized timing and race-control telemetry at 30Hz snapshots for smooth wheel-to-wheel racing
 - Ghost laps, personal bests, sector timing, a delta timer, and a compact F1-style tower
@@ -69,6 +70,8 @@ Track limits follow the FIA ladder: three warnings, then a black-and-white flag,
 ## Pit stops, tyres and weather
 
 Circuits with room for one get a drivable pit lane. Press `O` to request a stop, peel off into the lane before the start line (the limiter holds 80 km/h), and stop in the green box: the crew changes tyres, refuels and repairs any damage (a broken front wing adds time). Street circuits with no room keep the old marked service window. Tyres are `1` soft, `2` medium, `3` hard, `4` intermediate, `6` wet; inters peak on a damp track and wets on a soaked one, and both overheat on a dry track. Choose **Changeable** weather in session setup for a seeded rain window announced on the MFD weather page and by the engineer.
+
+The camera cuts to the garage while you are in the box, so you watch the crew work rather than a wall. When they finish, the lollipop goes green and you have just over a second to hit `7`: a quick reaction takes up to 0.4 s off your race time, a slow one tapers to nothing, and pressing before the light burns costs 0.4 s and the credit with it. It is a timing game only — it can hand time back or take it away, and never changes how the car drives. Turn it off under **Settings > Pit stops**.
 
 Flashbacks are unlimited (hold `R`, up to 15 seconds back, with a scrub bar). Damage can be Off, Reduced or Simulation in Settings.
 

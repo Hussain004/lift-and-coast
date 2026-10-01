@@ -73,6 +73,22 @@ describe("the defaults are the shipped controls", () => {
     expect(DEFAULT_BINDINGS.shiftDown).toEqual(["KeyZ"]);
     expect(DEFAULT_BINDINGS.reverse).toEqual(["Digit5"]);
     expect(DEFAULT_BINDINGS.deploy).toEqual(["ShiftLeft", "ShiftRight"]);
+    // The pit-stop release took 7, the last free digit it could have had.
+    expect(DEFAULT_BINDINGS.pitRelease).toEqual(["Digit7"]);
+  });
+
+  it("leaves no action without a key and no key with two owners", () => {
+    // The whole table has to stay one-to-one. A collision here is the exact
+    // failure the validator exists to stop, so it is asserted against the
+    // shipped defaults and not only against a hand-built bad table.
+    const owners = new Map<string, string>();
+    for (const action of CONTROL_ACTIONS) {
+      for (const key of DEFAULT_BINDINGS[action]) {
+        const owner = owners.get(key.toLowerCase());
+        expect(owner, `${action} and ${owner} both claim ${key}`).toBeUndefined();
+        owners.set(key.toLowerCase(), action);
+      }
+    }
   });
 
   it("sensitivity defaults are neutral", () => {
@@ -217,22 +233,28 @@ describe("applySteerSettings", () => {
   });
 });
 
+// These tests rebind the throttle to a key no action owns, as a stand-in for
+// "some free key". Digit8 is that key: every letter is bound, 0-6 are taken
+// (telemetry, the five compounds, reverse) and 7 is the pit-stop release, so
+// 8 and 9 are the only unclaimed digits left.
+const FREE_KEY = "Digit8";
+
 describe("the runtime control store", () => {
   it("starts on the defaults and installs a valid rebind", () => {
     resetControls();
     expect(getBindings()).toEqual(DEFAULT_BINDINGS);
-    const next = { ...DEFAULT_BINDINGS, throttle: ["Digit7"] } as ControlBindings;
+    const next = { ...DEFAULT_BINDINGS, throttle: [FREE_KEY] } as ControlBindings;
     expect(setBindings(next)).toBe(true);
-    expect(getBindings().throttle).toEqual(["Digit7"]);
+    expect(getBindings().throttle).toEqual([FREE_KEY]);
   });
 
   it("REFUSES an invalid table and keeps the current one", () => {
     // A half-applied rebind - one action emptied, or a key stolen - would
     // silently change the controls mid-corner, so the whole table is rejected.
     resetControls();
-    const good = { ...DEFAULT_BINDINGS, throttle: ["Digit7"] } as ControlBindings;
+    const good = { ...DEFAULT_BINDINGS, throttle: [FREE_KEY] } as ControlBindings;
     setBindings(good);
-    const broken = { ...good, brake: ["Digit7"] } as ControlBindings;
+    const broken = { ...good, brake: [FREE_KEY] } as ControlBindings;
     expect(setBindings(broken)).toBe(false);
     expect(getBindings()).toEqual(good);
     resetControls();
@@ -299,10 +321,10 @@ describe("local persistence", () => {
   it("applies a stored set to the live tables", () => {
     resetControls();
     applyControls({
-      bindings: { ...DEFAULT_BINDINGS, throttle: ["Digit7"] },
+      bindings: { ...DEFAULT_BINDINGS, throttle: [FREE_KEY] },
       settings: { ...DEFAULT_SETTINGS, steerSensitivity: 1.4 },
     });
-    expect(getBindings().throttle).toEqual(["Digit7"]);
+    expect(getBindings().throttle).toEqual([FREE_KEY]);
     expect(getControlSettings().steerSensitivity).toBe(1.4);
     resetControls();
   });
@@ -331,10 +353,10 @@ describe("the account row", () => {
 
   it("maps a fetched row back, normalizing on the way in", () => {
     const parsed = controlSettingsFromRow({
-      bindings: { throttle: ["Digit7"] },
+      bindings: { throttle: [FREE_KEY] },
       settings: { steerDeadzone: 99 },
     })!;
-    expect(parsed.bindings.throttle).toEqual(["Digit7"]);
+    expect(parsed.bindings.throttle).toEqual([FREE_KEY]);
     expect(parsed.settings.steerDeadzone).toBe(0.3);
   });
 
@@ -379,14 +401,14 @@ describe("syncing with an account", () => {
 
   it("pulls scoped to the session's own id", async () => {
     const stub = stubFetch(200, [
-      { bindings: { throttle: ["Digit7"] }, settings: { steerDeadzone: 0.1 } },
+      { bindings: { throttle: [FREE_KEY] }, settings: { steerDeadzone: 0.1 } },
     ]);
     const pulled = await pullControlSettings({
       session: SESSION,
       config,
       transport: { fetchImpl: stub.fetchImpl },
     });
-    expect(pulled!.bindings.throttle).toEqual(["Digit7"]);
+    expect(pulled!.bindings.throttle).toEqual([FREE_KEY]);
     expect(stub.calls[0].url).toContain(`user_id=eq.${SESSION.userId}`);
   });
 

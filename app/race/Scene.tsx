@@ -41,6 +41,7 @@ import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
+import { createPitCamState, pitCamActive, pitCamPose, stepPitCam } from "@/lib/race/pitCam";
 import {
   anchorOrbit,
   clampOrbit,
@@ -360,6 +361,12 @@ const COCKPIT_FOV = 85;
 const HELMET_FOV = HELMET_FOV_DEG;
 const TCAM_FOV = 70;
 const TV_FOV = 55;
+/**
+ * Pit camera FOV (see lib/race/pitCam.ts). Tighter than TV: the garage shot
+ * has one subject at a fixed distance, so a narrow lens frames it without
+ * the wide-angle stretch the broadcast stands need to cover a whole corner.
+ */
+const PIT_CAM_FOV = 42;
 const ORBIT_FOV = 60;
 
 // Plan section 8 (Session Setup): time-of-day lighting presets. One table,
@@ -485,6 +492,13 @@ function ChaseCamera({
   audioRef?: React.RefObject<AudioSnapshot>;
 }) {
   const { camera } = useThree();
+  // Dev builds only: the camera ChaseCamera actually drives, on window. This
+  // component is what mutates it, so the Canvas-level default camera is not
+  // the object a headless check needs to read.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __liftCam?: THREE.Camera }).__liftCam = camera;
+  }, [camera]);
   // Chase-camera heading (see lib/race/chaseCam.ts): an ANGULAR lag only -
   // the offset from the car stays exact, so no speed-dependent gap can open.
   const camYaw = useRef<number | null>(null);
@@ -532,6 +546,16 @@ function ChaseCamera({
   // Fixed trackside stands (see lib/race/broadcastCams.ts) - geometry per
   // track, computed once; the per-frame work is one nearest-ahead lookup.
   const cams = useMemo(() => buildBroadcastCams(track), [track]);
+  // Pit camera (see lib/race/pitCam.ts): one fixed garage-side pose per
+  // circuit, computed once, with a rate-limited filter carried across frames
+  // so the cut into and out of the box is a deliberate move rather than a
+  // snap. Null on circuits with no pit lane, which disables the whole path.
+  const pitCam = useMemo(() => pitCamPose(track), [track]);
+  const pitCamState = useRef(createPitCamState());
+  // Where the view was before the stop, restored when it ends. Held here
+  // rather than in a ref the release machine owns, because "restore the
+  // previous mode" is a camera concern.
+  const pitCamPrevMode = useRef<CameraMode | null>(null);
   // Drag-rotate + wheel-zoom for orbit mode, straight onto the stored
   // angles - the frame loop below only ever reads them, so input here can
   // never inject smoothing or lag into any camera.
@@ -644,6 +668,47 @@ function ChaseCamera({
     // look-at aim point below, for the same reason (see its comment). Any
     // future camera mode must keep this unsmoothed - it's the fix for a
     // real, previously-shipped bug, not a style choice.
+    // Pit camera (see lib/race/pitCam.ts). While the player is being
+    // serviced the view belongs to the garage: they are watching the crew,
+    // the lollipop and their own release, and a chase camera in a stationary
+    // box is just a view of a wall.
+    //
+    // This is an OVERRIDE, not a mode in the C-key cycle - the player never
+    // selects it and it is not in CAMERA_LABELS. The mode they were in is
+    // remembered and restored the moment the stop ends, so the override
+    // cannot leave the camera somewhere the player did not choose.
+    //
+    // Photo mode wins over it (the player has explicitly asked for a
+    // free camera while paused in a box), which is why this is skipped when
+    // photo.active is set.
+    const hud = hudRef?.current;
+    const pitCamWanted =
+      pitCam !== null &&
+      !photo?.active &&
+      hud !== undefined &&
+      pitCamActive({ pitPhase: hud.pitPhase, releasePhase: hud.pitReleasePhase });
+    if (pitCamWanted && pitCam) {
+      if (pitCamPrevMode.current === null) pitCamPrevMode.current = cameraModeRef.current;
+      // Eye and aim come out of the ONE filter in stepPitCam, so they are
+      // never on different clocks (the failure mode the chase camera's
+      // lagged lookAt had).
+      const pose = stepPitCam(pitCamState.current, pitCam, dt);
+      camera.position.set(pose.ex, pose.ey, pose.ez);
+      camera.lookAt(pose.ax, pose.ay, pose.az);
+      setPerspectiveFov(camera, PIT_CAM_FOV);
+      // No shake in the garage: the car is stationary and the shot is
+      // broadcast framing, so the kerb buzz has nothing to buzz against.
+      prevMode.current = mode;
+      return;
+    }
+    // Leaving the box: hand the camera back to whatever it was, and let the
+    // filter reset so the next stop cuts in from the real incoming view
+    // rather than from wherever this one finished.
+    if (pitCamPrevMode.current !== null) {
+      cameraModeRef.current = pitCamPrevMode.current;
+      pitCamPrevMode.current = null;
+      pitCamState.current.started = false;
+    }
     if (lookBackHeld.current && mode !== "tv" && mode !== "orbit") {
       setCamEuler(yawEuler.current, yaw);
       offset.current.copy(LOOK_BACK_OFFSET).applyEuler(yawEuler.current);
@@ -1104,6 +1169,7 @@ export function Scene({
       <QualityContext.Provider value={settings}>
       <FarPlane far={settings.fogFar + 40} />
       <FrameRateGovernor pref={graphicsPref} quality={quality} onQuality={setQuality} perfRef={perfRef} />
+      <RenderStatsProbe />
       <color attach="background" args={[lighting.sky]} />
       <fog attach="fog" args={[lighting.sky, 40, settings.fogFar]} />
       <hemisphereLight args={[lighting.ambientColor, lighting.groundColor, lighting.ambientIntensity]} />
@@ -1351,6 +1417,28 @@ function FarPlane({ far }: { far: number }) {
   useEffect(() => {
     setCameraFar(camera, far);
   }, [camera, far]);
+  return null;
+}
+
+/**
+ * Dev builds only: the renderer and the live camera on window, so a headless
+ * check can read draw calls, triangles, and where the camera actually is.
+ * The camera matters as much as the counts: the pit camera is an override
+ * that has to cut in and hand the view back, and neither is visible in a
+ * unit test. Same guarded pattern as the other __ hooks in this file.
+ */
+function RenderStatsProbe() {
+  const gl = useThree((state) => state.gl);
+  const camera = useThree((state) => state.camera);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const w = window as unknown as {
+      __liftRenderer?: THREE.WebGLRenderer;
+      __liftCam?: THREE.PerspectiveCamera;
+    };
+    w.__liftRenderer = gl;
+    w.__liftCam = camera as THREE.PerspectiveCamera;
+  }, [gl, camera]);
   return null;
 }
 

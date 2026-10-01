@@ -47,6 +47,7 @@ export const CONTROL_ACTIONS = [
   "lookBack",
   "lookLeft",
   "lookRight",
+  "pitRelease",
 ] as const;
 
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
@@ -87,6 +88,12 @@ export const DEFAULT_BINDINGS: ControlBindings = {
   lookBack: ["Backquote"],
   lookLeft: ["BracketLeft"],
   lookRight: ["BracketRight"],
+  // 7, not a letter: all 26 letters are already bound (see the fixed keys in
+  // the pause menu), 0 is telemetry and 1-4/6 are the compounds, with 5
+  // reverse. Space is the only other free key, and it activates buttons in
+  // the pause menu and MFD, so it would fire a stop-release while the player
+  // was trying to click something.
+  pitRelease: ["Digit7"],
 };
 
 /** Human labels for the settings UI. */
@@ -116,6 +123,7 @@ export const CONTROL_LABELS: Record<ControlAction, string> = {
   lookBack: "Look back (hold)",
   lookLeft: "Look left (hold)",
   lookRight: "Look right (hold)",
+  pitRelease: "Pit release",
 };
 
 /** Driving sensitivity and assist defaults the player can set. */

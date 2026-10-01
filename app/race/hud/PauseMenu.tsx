@@ -15,6 +15,7 @@ import { DamageSetting } from "../../DamageSetting";
 import { EngineerSetting } from "../../EngineerSetting";
 import { CameraSetting } from "../../CameraSetting";
 import { RacingLineSetting } from "../../RacingLineSetting";
+import { PitReleaseSetting } from "../../PitReleaseSetting";
 import styles from "./hud.module.css";
 
 /** Keys that are not rebindable, so they are not in the bindings table. */
@@ -23,6 +24,7 @@ const FIXED_KEYS: [string, string][] = [
   ["Tab", "Full timing tower"],
   [", / .", "Wheel display page"],
   ["1-4, 6", "Tyre: soft, medium, hard, inter, wet"],
+  ["7", "Pit release (on the green light)"],
   ["H", "Race Ops / telemetry panel"],
   ["0", "Telemetry"],
   ["N", "Mirrors (cockpit cams)"],
@@ -165,6 +167,8 @@ export function PauseMenu({
                 <RacingLineSetting />
                 <div className={styles.pauseSubhead}>CAMERA</div>
                 <CameraSetting />
+                <div className={styles.pauseSubhead}>PIT STOPS</div>
+                <PitReleaseSetting />
                 <div className={styles.pauseSubhead}>CONTROLS</div>
                 <ControlSettingsPanel inline />
               </>

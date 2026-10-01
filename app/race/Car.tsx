@@ -130,6 +130,13 @@ import { getRacingLine } from "@/lib/tracks/racingLineCache";
 import { createWheelTemps, stepWheelTemps } from "@/lib/race/wheelTemps";
 import { catchUpBonusMs, gapAheadMeters as roadGapAheadMeters, safetyCarCapMs, type SafetyCarState } from "@/lib/race/safetyCar";
 import { createServeState, queuePenalty, servePrompt, stepServe } from "@/lib/race/penaltyServing";
+import {
+  createPitReleaseState,
+  pitReleaseHint,
+  stepPitRelease,
+} from "@/lib/race/pitRelease";
+import { formatKeyCode, getBindings } from "@/lib/input/keyBindings";
+import { loadPitReleaseEnabled, subscribePitReleaseEnabled } from "@/lib/settings/pitReleasePref";
 import { getPitLane, PIT_BOX_HALF_LENGTH, PIT_SPEED_LIMIT_MS, pitGateHalfWidth, pitLaneStatus } from "@/lib/tracks/pitLane";
 import type { TrackData } from "@/lib/tracks/types";
 import type { TowerDriver } from "@/lib/race/racePosition";
@@ -464,6 +471,21 @@ export function Car({
   const pitBoxMetersRef = useRef<number | null>(null);
   // Drive-through / stop-go waiting to be served in the pit lane.
   const serveRef = useRef(createServeState());
+  // The driver's half of a stop: the lollipop going green and the release
+  // window that follows it (see lib/race/pitRelease.ts). Player-only and
+  // cosmetic - the outcome moves the race clock by a few tenths and nothing
+  // else, so no AI behaviour is anywhere near this code.
+  const pitReleaseRef = useRef(createPitReleaseState());
+  // Read once per session and re-read when the pause-menu setting changes,
+  // so turning it off mid-session takes effect at the next stop rather than
+  // needing a reload.
+  const pitReleaseEnabledRef = useRef(loadPitReleaseEnabled());
+  useEffect(() => {
+    pitReleaseEnabledRef.current = loadPitReleaseEnabled();
+    return subscribePitReleaseEnabled(() => {
+      pitReleaseEnabledRef.current = loadPitReleaseEnabled();
+    });
+  }, []);
   // Championship practice programmes (see lib/race/practiceProgrammes.ts):
   // gates on the racing line, lap consistency, and a qualifying-pace target.
   const programmesActive = sessionMode === "practice" && champRound !== null;
@@ -1200,6 +1222,46 @@ export function Car({
     );
     batteryFractionRef.current = energyStatus.batteryFraction;
     energyStatusRef.current = energyStatus;
+    // The release mini-game runs off the strategy's service phase, which is
+    // the same signal that drives the lollipop in PitCrew.tsx - so the light
+    // the player sees and the window they are timed against cannot disagree.
+    //
+    // The outcome is a REDUCTION or an ADDITION to race time, nothing else:
+    // no force, no pace multiplier, no contact. A clean release cannot make
+    // the car faster, so the engine ceiling this codebase is built around is
+    // untouched by it.
+    const releaseOutcome = stepPitRelease(pitReleaseRef.current, {
+      dt: world.timestep,
+      inService: strategyState.pitPhase === "service",
+      pressed: driveInput.pitReleasePressed,
+      enabled: pitReleaseEnabledRef.current,
+    });
+    if (releaseOutcome && !raceFinishedRef.current) {
+      if (releaseOutcome.kind === "credit") {
+        raceElapsedSecondsRef.current -= releaseOutcome.seconds;
+        if (hudRef) {
+          pushHudEvent(
+            hudRef.current,
+            "good",
+            "CLEAN RELEASE",
+            `-${releaseOutcome.seconds.toFixed(2)}s`,
+            2.6
+          );
+        }
+      } else {
+        raceElapsedSecondsRef.current += releaseOutcome.seconds;
+        if (hudRef) {
+          pushHudEvent(
+            hudRef.current,
+            "penalty",
+            "EARLY RELEASE",
+            `+${releaseOutcome.seconds.toFixed(2)}s`,
+            2.8
+          );
+        }
+      }
+    }
+
     // Damage persists until a pit crew fixes it - a completed service (the
     // stop counter ticking over) is the repair, not crossing the line.
     if (strategyState.pitStops > strategyStateRef.current.pitStops) {
@@ -1618,6 +1680,19 @@ export function Car({
       hud.inPitLane = inPitLaneRef.current;
       hud.hasPitLane = getPitLane(track) !== null;
       hud.pitProgress = strategy.pitProgress;
+      // The release hint is computed once per frame here, not in the widget:
+      // the widget only reads a string, so this stays on the same pattern as
+      // every other HUD value (plain values, written by gameplay code).
+      hud.pitReleasePhase = pitReleaseRef.current.phase;
+      hud.pitReleaseText = pitReleaseEnabledRef.current
+        ? pitReleaseHint(
+            pitReleaseRef.current,
+            // Resolved per frame rather than cached at mount, so a rebind of
+            // the release key is reflected on the very next frame.
+            formatKeyCode(getBindings().pitRelease[0]),
+            strategy.pitProgress
+          )
+        : "";
       hud.pitBoxMeters = pitBoxMetersRef.current;
       hud.servePrompt = servePrompt(serveRef.current, {
         inLane: inPitLaneRef.current,

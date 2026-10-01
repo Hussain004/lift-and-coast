@@ -4,6 +4,7 @@ import {
   createHudSnapshot,
   formatGap,
   formatRaceTime,
+  pitPrompt,
   pushHudEvent,
   towerGapLabel,
   tyreWear01,
@@ -70,5 +71,45 @@ describe("full track map", () => {
     const top = project(0, 100)[1];
     const bottom = project(0, 900)[1];
     expect(top + bottom).toBeCloseTo(200, 1);
+  });
+});
+
+describe("the pit chip", () => {
+  it("gives the release mini-game the chip while a stop is running", () => {
+    // The release text is the only part of the stop the player can still act
+    // on, so it must win over the generic percentage line.
+    const hud = createHudSnapshot();
+    hud.pitPhase = "service";
+    hud.pitProgress = 0.42;
+    expect(pitPrompt(hud)).toBe("PIT STOP \u00b7 42%");
+    hud.pitReleaseText = "GREEN \u00b7 HIT 7";
+    expect(pitPrompt(hud)).toBe("GREEN \u00b7 HIT 7");
+  });
+
+  it("falls back to the generic lines once the release has nothing to say", () => {
+    const hud = createHudSnapshot();
+    hud.hasPitLane = true;
+    hud.pitPhase = "requested";
+    expect(pitPrompt(hud)).toBe("BOX THIS LAP \u00b7 ENTER THE PIT LANE");
+    hud.inPitLane = true;
+    hud.pitBoxMeters = 120;
+    expect(pitPrompt(hud)).toContain("BOX 120 M");
+    hud.pitBoxMeters = -40;
+    expect(pitPrompt(hud)).toBe("BOX MISSED \u00b7 CONTINUE TO THE EXIT");
+    hud.pitBoxMeters = 0;
+    expect(pitPrompt(hud)).toBe("STOP IN THE BOX");
+    hud.pitPhase = "none";
+    expect(pitPrompt(hud)).toBe("PIT LANE \u00b7 80 KM/H");
+    // And nothing at all between stops.
+    hud.inPitLane = false;
+    hud.pitPhase = "none";
+    expect(pitPrompt(hud)).toBe("");
+  });
+
+  it("starts with the release machine idle and silent", () => {
+    const hud = createHudSnapshot();
+    expect(hud.pitReleasePhase).toBe("idle");
+    expect(hud.pitReleaseText).toBe("");
+    expect(pitPrompt(hud)).toBe("");
   });
 });

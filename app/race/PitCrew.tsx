@@ -17,10 +17,16 @@ const STATIONS: [number, number][] = [
 
 /**
  * The pit crew: four wheel-gun operators, a front and a rear jack, and the
- * lollipop man ahead of the car - red while the stop is under way, green the
- * moment it is done. Drawn only while the player's stop is being serviced;
- * everything is a handful of cheap meshes parked in the box, no per-frame
- * allocation. Renders nothing on circuits without a drivable pit lane.
+ * lollipop man ahead of the car. The lollipop is RED while the crew works
+ * and GREEN once they have finished, which is the same signal the release
+ * mini-game times against (lib/race/pitRelease.ts) - both read the one
+ * snapshot field, so the light and the window can never disagree.
+ *
+ * The crew stays in shot for a moment after the stop so the player sees the
+ * result of their own release, then leaves. Drawn only while the player's
+ * stop is being serviced; everything is a handful of cheap meshes parked in
+ * the box, no per-frame allocation. Renders nothing on circuits without a
+ * drivable pit lane.
  */
 export function PitCrew({ track, hudRef }: { track: TrackData; hudRef: React.RefObject<HudSnapshot> }) {
   const lane = useMemo(() => getPitLane(track), [track]);
@@ -56,12 +62,20 @@ export function PitCrew({ track, hudRef }: { track: TrackData; hudRef: React.Ref
     const root = rootRef.current;
     if (!root) return;
     const hud = hudRef.current;
+    // One signal for the whole crew: in the box from the moment the service
+    // starts until the release has resolved. Reading pitPhase directly for
+    // the light and a second timer for the visibility (as this did before)
+    // meant the two could disagree about when the stop ended.
+    const phase = hud.pitReleasePhase;
     const service = hud.pitPhase === "service";
+    const inShot = service || phase === "green" || phase === "resolved" || phase === "missed";
     const now = state.clock.elapsedTime;
     if (wasServiceRef.current && !service) doneAtRef.current = now;
     wasServiceRef.current = service;
+    // Held a beat past the release so the driver sees what their press did
+    // before the crew clears off.
     const recentlyDone = now - doneAtRef.current < 1.6;
-    root.visible = service || recentlyDone;
+    root.visible = inShot || recentlyDone;
     if (!root.visible) return;
     if (signRef.current) signRef.current.material = service ? materials.red : materials.green;
     // The gun operators lean in and out while the tyres come off and go on.

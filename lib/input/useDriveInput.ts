@@ -92,6 +92,12 @@ export interface DriveInput {
   overtake: boolean;
   /** Edge-triggered pit request. */
   pitRequested: boolean;
+  /**
+   * Edge-triggered pit-stop release (see lib/race/pitRelease.ts). Only means
+   * anything inside the green window after a service; consumed and discarded
+   * every other frame, exactly like the other one-shot requests.
+   */
+  pitReleasePressed: boolean;
   /** Edge-triggered instant replay toggle. */
   replayToggle: boolean;
   /** Edge-triggered ERS mode cycle. */
@@ -157,6 +163,7 @@ const EDGE_FLAGS = [
   "shiftDown",
   "selectReverse",
   "pitRequested",
+  "pitReleasePressed",
   "replayToggle",
   "ersModeCycle",
   "strategyModeCycle",
@@ -178,6 +185,7 @@ export function useDriveInput(
     deploy: false,
     overtake: false,
     pitRequested: false,
+    pitReleasePressed: false,
     replayToggle: false,
     ersModeCycle: false,
     strategyModeCycle: false,
@@ -196,6 +204,7 @@ export function useDriveInput(
     shiftDown: false,
     selectReverse: false,
     pitRequested: false,
+    pitReleasePressed: false,
     replayToggle: false,
     ersModeCycle: false,
     strategyModeCycle: false,
@@ -261,6 +270,9 @@ export function useDriveInput(
       }
       if (boundKeys("pitRequest")[0] === e.code && !keys.current.has(e.code)) {
         pendingEdges.current.pitRequested = true;
+      }
+      if (boundKeys("pitRelease")[0] === e.code && !keys.current.has(e.code)) {
+        pendingEdges.current.pitReleasePressed = true;
       }
       if (boundKeys("instantReplay")[0] === e.code && !keys.current.has(e.code)) {
         pendingEdges.current.replayToggle = true;

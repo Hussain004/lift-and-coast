@@ -8,6 +8,7 @@ import type { TireCompoundId } from "../physics/tireModel";
 import { TIRE_COMPOUNDS } from "../physics/tireModel";
 import type { WeatherPreset } from "../physics/weather";
 import type { PitPhase, StrategyMode } from "./strategy";
+import type { PitReleasePhase } from "./pitRelease";
 import type { SectorColor } from "./sectorTimer";
 import type { TowerEntry } from "./racePosition";
 import type { SessionMode } from "./sessionSetup";
@@ -118,6 +119,14 @@ export interface HudSnapshot {
   pitBoxMeters: number | null;
   /** Chip text while a drive-through/stop-go waits to be served, else "". */
   servePrompt: string;
+  /**
+   * The release mini-game's state (see lib/race/pitRelease.ts) and the chip
+   * text for it, "" whenever there is nothing to say. Written every frame by
+   * Car.tsx alongside pitProgress, so the HUD widget only ever reads plain
+   * values - the machine itself never touches the snapshot.
+   */
+  pitReleasePhase: PitReleasePhase;
+  pitReleaseText: string;
   /** Practice-programme progress line (championship practice only), else "". */
   programmeText: string;
   /** Safety car / VSC banner text (see lib/race/safetyCar.ts), "" when racing. */
@@ -212,6 +221,8 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     pitProgress: 0,
     pitBoxMeters: null,
     servePrompt: "",
+    pitReleasePhase: "idle",
+    pitReleaseText: "",
     programmeText: "",
     safetyCarText: "",
     gates: [],
@@ -322,6 +333,11 @@ export function compactTowerRows(count: number, playerIndex: number, rows = 5): 
 
 /** The pit prompt chip's text, or "" when there is nothing to say. */
 export function pitPrompt(hud: HudSnapshot): string {
+  // The release mini-game owns the chip while a stop is in progress: its
+  // text already carries the service percentage, and it is the only part of
+  // the stop the player can still act on, so it must not be crowded out by
+  // the generic "PIT STOP · nn%" line.
+  if (hud.pitReleaseText) return hud.pitReleaseText;
   if (hud.pitPhase === "service") return `PIT STOP · ${Math.round(hud.pitProgress * 100)}%`;
   if (hud.servePrompt) return hud.servePrompt;
   if (hud.inPitLane) {
