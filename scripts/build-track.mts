@@ -444,6 +444,128 @@ export function locateTumftmStart(rawPath: string, widthPath: string): number {
   return arc;
 }
 
+/** Heading change tolerated over the straightness window before a point counts
+ *  as "straight". Measured across the shipped circuits: real straights sit at
+ *  0.0-1.0 deg over 50m, while the worst mis-placed start lines measured 32
+ *  and 90 deg. 1.5 deg is comfortably inside the gap. */
+const STRAIGHT_DEG_PER_50M = 1.5;
+/** A start line also needs room for the grid BEHIND it (20 cars is 10 rows of
+ *  8m, so 80m) plus the run to turn one. A straight shorter than this cannot
+ *  host a grid, so it is not a candidate at all. */
+const MIN_STRAIGHT_METERS = 300;
+
+/**
+ * Finds the start/finish line on the longest genuinely straight section of a
+ * raw loop, and returns it in RAW arc meters (the unit startAtMeters takes).
+ *
+ * WHY THIS EXISTS. `locateTumftmStart` assumes the TUMFTM centerline's s=0 is
+ * the start/finish line, which is their convention and is right for most
+ * circuits - but not all. Four circuits came out of it with the start line
+ * planted mid-corner, because for those the TUMFTM s=0 did not correspond to
+ * the start straight on the raw loop used here:
+ *
+ *   sepang      90.5 deg of heading change over 50m at the start line
+ *   sochi       91.1
+ *   budapest    52.1
+ *   yasmarina   32.1
+ *   (every other circuit: under 3 deg)
+ *
+ * A start line on a corner is not cosmetic: the whole grid is placed BACKWARD
+ * from it along the centerline (see lib/race/grid.ts), so P20 ends up strung
+ * out through the corner ahead, and the pit lane - which is anchored relative
+ * to the line - is dragged onto the tarmac with it.
+ *
+ * The rule is deliberately structural rather than a per-circuit hand-picked
+ * number: take the midpoint of the longest straight. Midpoint, not its start,
+ * because the grid extends backward from the line and needs straight behind it
+ * as well as ahead. Returns undefined when no long enough straight exists, so
+ * the caller falls back to the TUMFTM locator rather than guessing.
+ */
+export function locateStraightestStart(rawPath: string): number | undefined {
+  const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
+  const rawCoords: [number, number][] = raw.features[0].geometry.coordinates;
+  const lons = rawCoords.map((c) => c[0]);
+  const lats = rawCoords.map((c) => c[1]);
+  const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+  const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const projected = lonLatToMeters(rawCoords, centerLon, centerLat);
+  const controlPoints = dedupeClose(projected, MIN_POINT_SEPARATION_METERS);
+  const fine = catmullRomClosed(controlPoints, 20);
+  const resampled = resampleByArcLength(fine, RESAMPLE_SPACING_METERS);
+  const n = resampled.length;
+  if (n < 32) return undefined;
+
+  // Heading at each point, then the change across a 50m window centred on it.
+  const heading: number[] = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const a = resampled[(i - 1 + n) % n];
+    const b = resampled[(i + 1) % n];
+    heading[i] = Math.atan2(b.x - a.x, b.z - a.z);
+  }
+  const half = Math.max(1, Math.round(25 / RESAMPLE_SPACING_METERS));
+  const straight: boolean[] = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    let d = heading[(i + half) % n] - heading[(i - half + n) % n];
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    straight[i] = Math.abs(d) * (180 / Math.PI) < STRAIGHT_DEG_PER_50M;
+  }
+
+  // Longest circular run of straight points, in metres.
+  // Start the scan from a non-straight point so a run that wraps index 0 is
+  // still found whole rather than being split into two halves.
+  const anchor = straight.findIndex((s) => !s);
+  if (anchor < 0) return undefined; // every point straight: not a circuit
+  let bestFrom = -1;
+  let runFrom = -1;
+  let runLen = 0;
+  let bestLen = 0;
+  for (let k = 1; k <= n; k += 1) {
+    const i = (anchor + k) % n;
+    if (straight[i]) {
+      if (runLen === 0) runFrom = i;
+      runLen += 1;
+      if (runLen > bestLen) {
+        bestLen = runLen;
+        bestFrom = runFrom;
+      }
+    } else {
+      runLen = 0;
+    }
+  }
+  const runMeters = bestLen * RESAMPLE_SPACING_METERS;
+  if (runMeters < MIN_STRAIGHT_METERS) return undefined;
+
+  // Midpoint of the run, in resampled index space.
+  const midIdx = (bestFrom + Math.floor((bestLen - 1) / 2)) % n;
+
+  // Back to the nearest raw vertex, then to arc distance in the SAME metric the
+  // rotation uses (see buildTrack's startAtMeters branch).
+  let bestRaw = 0;
+  let bestRawD = Infinity;
+  for (let i = 0; i < projected.length; i += 1) {
+    const d =
+      (projected[i].x - resampled[midIdx].x) ** 2 +
+      (projected[i].z - resampled[midIdx].z) ** 2;
+    if (d < bestRawD) {
+      bestRawD = d;
+      bestRaw = i;
+    }
+  }
+  const meanLat = rawCoords.reduce((s, c) => s + c[1], 0) / rawCoords.length;
+  const mLon = 111320 * Math.cos((meanLat * Math.PI) / 180);
+  const segLen = (a: [number, number], b: [number, number]) =>
+    Math.hypot((b[0] - a[0]) * mLon, (b[1] - a[1]) * 111320);
+  let arc = 0;
+  for (let i = 0; i < bestRaw; i += 1) {
+    arc += segLen(rawCoords[i], rawCoords[(i + 1) % rawCoords.length]);
+  }
+  console.log(
+    `  longest straight is ${runMeters.toFixed(0)}m; start line at its midpoint (~${arc.toFixed(0)}m along the raw loop)`
+  );
+  return arc;
+}
+
 function buildTrack(
   rawPath: string,
   id: string,
@@ -719,6 +841,12 @@ const TRACKS: {
   // keep their explicit values (or natural zero), so their built bytes
   // never move for a pipeline change.
   autoStart?: boolean;
+  // Take the start line from the longest straight on the raw loop instead of
+  // from TUMFTM's s=0 (see locateStraightestStart for why, and for the four
+  // circuits that needed it). Wins over autoStart, and is only set where the
+  // TUMFTM s=0 demonstrably lands mid-corner - so the 26 circuits that are
+  // already correct are untouched by this option existing.
+  startOnStraight?: boolean;
 }[] = [
   {
     rawPath: `${scriptDir}/../data/tracks/raw/gb-1948.geojson`,
@@ -792,6 +920,7 @@ const TRACKS: {
     widthFile: "Budapest.csv",
     elevationFile: "budapest.json",
     autoStart: true,
+    startOnStraight: true,   // TUMFTM s=0 lands mid-corner here
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/au-1953.geojson`,
@@ -845,6 +974,7 @@ const TRACKS: {
     widthFile: "YasMarina.csv",
     elevationFile: "yasmarina.json",
     autoStart: true,
+    startOnStraight: true,   // TUMFTM s=0 lands mid-corner here
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/de-1932.geojson`,
@@ -861,6 +991,7 @@ const TRACKS: {
     widthFile: "Sepang.csv",
     elevationFile: "sepang.json",
     autoStart: true,
+    startOnStraight: true,   // TUMFTM s=0 lands mid-corner here
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/ru-2014.geojson`,
@@ -869,6 +1000,7 @@ const TRACKS: {
     widthFile: "Sochi.csv",
     elevationFile: "sochi.json",
     autoStart: true,
+    startOnStraight: true,   // TUMFTM s=0 lands mid-corner here
   },
   {
     rawPath: `${scriptDir}/../data/tracks/raw/de-1927.geojson`,
@@ -1049,7 +1181,7 @@ const outlines: {
   direction: "clockwise" | "counterclockwise";
   points: [number, number][];
 }[] = [];
-for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters, autoStart, overpasses } of TRACKS) {
+for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualElevation, manualElevationBlendRadiusMeters, startAtMeters, autoStart, startOnStraight, overpasses } of TRACKS) {
   const raw = JSON.parse(readFileSync(rawPath, "utf-8"));
   const referenceLength = raw.features[0].properties.length;
   const widthPath = widthFile
@@ -1059,7 +1191,12 @@ for (const { rawPath, id, name, widthFile, elevationFile, manualWidths, manualEl
     ? `${scriptDir}/../data/tracks/raw/elevation/${elevationFile}`
     : undefined;
   const resolvedStart =
-    startAtMeters ?? (autoStart && widthPath ? locateTumftmStart(rawPath, widthPath) : undefined);
+    startAtMeters ??
+    (startOnStraight
+      ? locateStraightestStart(rawPath)
+      : autoStart && widthPath
+        ? locateTumftmStart(rawPath, widthPath)
+        : undefined);
   const track = buildTrack(rawPath, id, name, widthPath, elevationPath, manualWidths, manualElevation, manualElevationBlendRadiusMeters, resolvedStart, overpasses);
   writeFileSync(
     `${scriptDir}/../data/tracks/${id}.json`,

@@ -3,6 +3,7 @@ import type { TrackData } from "./types";
 import { buildTerrainGeometry, sampleTerrainHeight } from "./terrain";
 import { GRAVEL_COLOR, hexToLinearRgb } from "./mesh";
 import { getStructures, getStructuresCenter, projectToLocal } from "./structures";
+import { getPitLane, PIT_LANE_HALF_WIDTH } from "./pitLane";
 
 /**
  * Trackside flora (plan section 4, circuit detail): low-poly trees placed
@@ -964,6 +965,43 @@ export function buildFlora(track: TrackData): FloraBuild[] {
   const perSpecies: FloraInstance[][] = config.species.map(() => []);
   const perColors: string[][] = config.species.map(() => []);
 
+  /*
+   * The pit lane is its own keep-out, separate from the mapped buildings.
+   *
+   * It was missing entirely, which is why trees stood on the tarmac. Measured
+   * across the shipped circuits, trees inside the lane before this fix:
+   * Sochi 3, Sepang 2, Budapest 2, Monza 2, Spa 2, Suzuka 2, Yas Marina 1.
+   * It was never one bad circuit - the lane is a paved strip beside the main
+   * straight, which is exactly where planting wants to be, so without an
+   * explicit exclusion every circuit got a handful.
+   *
+   * The margin is generous on purpose. The lane's painted edge is not where a
+   * tree stops looking wrong: a canopy is metres across, so anything within
+   * canopy range of the tarmac overhangs it. A tree just outside the pit wall,
+   * shading the boxes, is the same visual bug at a smaller scale.
+   *
+   * Sampled with a stride because this runs inside the placement loop, and the
+   * lane polyline is a couple of hundred points at 2m spacing - checking every
+   * 3rd point still gives a ~6m bound, comfortably inside the margin.
+   */
+  const pitLane = getPitLane(track);
+  const pitKeepOutSq =
+    pitLane === null ? -1 : (PIT_LANE_HALF_WIDTH + 6) ** 2;
+  const nearPitLane = (px: number, pz: number): boolean => {
+    if (pitLane === null) return false;
+    for (let k = 0; k < pitLane.points.length; k += 3) {
+      const [lx, , lz] = pitLane.points[k];
+      const dx = lx - px;
+      const dz = lz - pz;
+      if (dx * dx + dz * dz < pitKeepOutSq) return true;
+    }
+    // Last point, which the stride above can skip.
+    const [lx, , lz] = pitLane.points[pitLane.points.length - 1];
+    const dx = lx - px;
+    const dz = lz - pz;
+    return dx * dx + dz * dz < pitKeepOutSq;
+  };
+
   const maxAttempts = targetCount * 12;
   let placed = 0;
   for (let attempt = 0; attempt < maxAttempts && placed < targetCount; attempt++) {
@@ -980,6 +1018,10 @@ export function buildFlora(track: TrackData): FloraBuild[] {
       side * (track.width[idx] / 2 + config.lateralMinM + rng() * (config.lateralMaxM - config.lateralMinM));
     const x = cx + (-tz / len) * lateral;
     const z = cz + (tx / len) * lateral;
+
+    // On the pit lane, or overhanging it. Checked first because it is the
+    // cheapest rejection available and it used to be the only one missing.
+    if (nearPitLane(x, z)) continue;
 
     // The lap folds back on itself (hairpins, crossovers), so the sampled
     // station's own arm is not the whole story: verify against the NEAREST

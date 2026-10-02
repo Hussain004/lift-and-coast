@@ -53,6 +53,16 @@ const SAUSAGE_SHARE_CAP: Record<string, number> = {
   // Imola measures 0.105 - over the flat cap by a hair, the same
   // slow-old-circuit shape as Hockenheim's hairpin below.
   imola: 0.12,
+  // Yas Marina measures 0.1011, a hair over the flat cap. It sat just under
+  // 0.1 until its loop was rotated to move the start line off a corner onto
+  // the main straight (see locateStraightestStart in build-track.mts, and
+  // tests/trackStartLine.test.ts): re-splining after the rotation perturbs the
+  // local geometry by a few centimetres, which flips a handful of points across
+  // surfaces.ts's radius<=45m sausage threshold. The zone derivation reads only
+  // local (i+k) curvature windows and is rotation-invariant in principle, so
+  // this is a knife-edge threshold rather than a real change in the circuit -
+  // the same situation as Imola above, and capped rather than loosened.
+  yasmarina: 0.11,
 };
 
 /**
