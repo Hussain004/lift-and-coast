@@ -23,6 +23,13 @@
   pointer-events: none;
 }
 
+/* Touch-only devices have no keys to press: show prompts only with a pad. */
+@media (hover: none) and (pointer: coarse) {
+  .prompts:not([data-pad]) {
+    display: none;
+  }
+}
+
 .prompts span {
   display: inline-flex;
   align-items: center;
@@ -331,7 +338,8 @@
 .content {
   width: min(1240px, 100%);
   margin: 0 auto;
-  padding: 24px 24px 0;
+  /* the fixed prompt bar is ~44px tall; leave room so the last block clears it */
+  padding: 24px 24px calc(56px + env(safe-area-inset-bottom));
 }
 
 .lede {
@@ -397,7 +405,7 @@
   }
 
   .content {
-    padding: 16px 12px 0;
+    padding: 16px 12px calc(56px + env(safe-area-inset-bottom));
   }
 
   .title {

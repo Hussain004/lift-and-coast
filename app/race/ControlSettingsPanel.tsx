@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import styles from "./race.module.css";
+import chipStyles from "../sessionSetup.module.css";
 import {
   CONTROL_ACTIONS,
   CONTROL_LABELS,
@@ -95,6 +96,16 @@ export function ControlSettingsPanel({ inline = false }: { inline?: boolean } = 
     setPendingBindings(getBindings());
     setPendingSettings(getControlSettings());
   }), []);
+
+  // Traction control / ABS defaults are owned by the Driving Aids preset card,
+  // which writes the stored copy directly. Re-read them at save time so this
+  // panel's older in-memory copy can never overwrite a preset change.
+  const withLiveAssists = (next: ControlSettings): ControlSettings => {
+    const stored = loadLocalControls(defaultStorage())?.settings;
+    return stored
+      ? { ...next, tractionControlDefault: stored.tractionControlDefault, absDefault: stored.absDefault }
+      : next;
+  };
 
   const problems = validateBindings(bindings);
   const problemActions = new Set(problems.map((p) => p.action));
@@ -234,45 +245,31 @@ export function ControlSettingsPanel({ inline = false }: { inline?: boolean } = 
 
       <div className={styles.settingsGroup}>
         <span className={styles.settingsLabel}>SESSION DEFAULTS</span>
-        <label className={styles.settingsField}>
+        <div className={styles.settingsTyreRow}>
           <span>Tyre</span>
-          <select
-            value={settings.defaultCompound}
-            onChange={(e) =>
-              onSensitivity(
-                "defaultCompound",
-                e.target.value as ControlSettings["defaultCompound"]
-              )
-            }
-          >
-            <option value="soft">Soft</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>
-        <label className={styles.settingsCheck}>
-          <input
-            type="checkbox"
-            checked={settings.tractionControlDefault}
-            onChange={(e) => onSensitivity("tractionControlDefault", e.target.checked)}
-          />
-          <span>Traction control on</span>
-        </label>
-        <label className={styles.settingsCheck}>
-          <input
-            type="checkbox"
-            checked={settings.absDefault}
-            onChange={(e) => onSensitivity("absDefault", e.target.checked)}
-          />
-          <span>ABS on</span>
-        </label>
+          <div className={chipStyles.presets} role="radiogroup" aria-label="Default tyre">
+            {(["soft", "medium", "hard"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={settings.defaultCompound === c}
+                onClick={() => onSensitivity("defaultCompound", c)}
+                className={settings.defaultCompound === c ? chipStyles.presetActive : chipStyles.preset}
+              >
+                {c[0].toUpperCase() + c.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className={styles.settingsNote}>Traction control and ABS defaults live in Driving Aids.</p>
       </div>
 
       <div className={styles.settingsActions}>
         <button
           type="button"
           className={styles.settingsAction}
-          onClick={() => commit(bindings, settings, "Controls saved.")}
+          onClick={() => commit(bindings, withLiveAssists(settings), "Controls saved.")}
           disabled={problems.length > 0}
         >
           SAVE
@@ -281,7 +278,7 @@ export function ControlSettingsPanel({ inline = false }: { inline?: boolean } = 
           type="button"
           className={styles.settingsAction}
           onClick={() => {
-            const fresh = { ...DEFAULT_SETTINGS };
+            const fresh = withLiveAssists({ ...DEFAULT_SETTINGS });
             setPendingSettings(fresh);
             commit(getBindings(), fresh, "Steering reset to default.");
           }}

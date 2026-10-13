@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { padDirection, pickNavTarget, shouldRepeat, type NavRect } from "../lib/input/menuNav";
+import { padDirection, pickNavTarget, stepTabIndex, shouldRepeat, type NavRect } from "../lib/input/menuNav";
 
 const r = (x: number, y: number, width = 100, height = 40): NavRect => ({ x, y, width, height });
 
@@ -40,5 +40,18 @@ describe("gamepad direction", () => {
     expect(shouldRepeat(200, 0, 200)).toBe(false);
     expect(shouldRepeat(400, 300, 400)).toBe(false);
     expect(shouldRepeat(500, 300, 430)).toBe(true);
+  });
+});
+
+describe("stepTabIndex", () => {
+  it("wraps in both directions", () => {
+    expect(stepTabIndex(2, 0, 1)).toBe(1);
+    expect(stepTabIndex(2, 1, 1)).toBe(0);
+    expect(stepTabIndex(2, 0, -1)).toBe(1);
+  });
+  it("starts from an end when nothing is selected, and ignores empty lists", () => {
+    expect(stepTabIndex(3, -1, 1)).toBe(0);
+    expect(stepTabIndex(3, -1, -1)).toBe(2);
+    expect(stepTabIndex(0, 0, 1)).toBe(-1);
   });
 });

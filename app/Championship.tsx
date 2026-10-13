@@ -12,6 +12,7 @@ import {
   isSeasonComplete,
   nextRoundIndex,
   seasonChampion,
+  seasonRaceLaps,
   seasonTrackIds,
   SEASON_LENGTHS,
   SPRINT_LAPS,
@@ -23,7 +24,17 @@ import {
   type SeasonLength,
 } from "@/lib/race/championship";
 import { clearSeason, loadSeason, saveSeason } from "@/lib/persistence/championship";
-import { DEFAULT_RACE_LAPS, MAX_RIVALS, buildRaceUrl, type RaceUrlParams } from "@/lib/race/sessionSetup";
+import {
+  DEFAULT_RACE_LAPS,
+  MAX_RACE_LAPS,
+  MAX_RIVALS,
+  MIN_RACE_LAPS,
+  buildRaceUrl,
+  loadSessionSetupPrefs,
+  saveSessionSetupPrefs,
+  type RaceUrlParams,
+} from "@/lib/race/sessionSetup";
+import { DIFFICULTY_OPTIONS } from "@/lib/ai/personalities";
 import { parseDriverCode, parseTeamId, TEAMS, useRosterSelection } from "@/lib/race/roster";
 import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
@@ -56,6 +67,7 @@ export function Championship() {
   const [length, setLength] = useState<SeasonLength>("calendar");
   const [format, setFormat] = useState<WeekendFormat>("full");
   const [sprints, setSprints] = useState(false);
+  const [raceLaps, setRaceLaps] = useState(DEFAULT_RACE_LAPS);
   const [tab, setTab] = useState<Tab>("drivers");
   const [confirmReset, setConfirmReset] = useState(false);
   const { teamId, driverCode } = useRosterSelection();
@@ -75,7 +87,7 @@ export function Championship() {
 
   function startSeason() {
     const ids = seasonTrackIds(length, TRACKS.map((track) => track.id));
-    const fresh = createSeason(ids, new Date().toISOString(), { format, sprints });
+    const fresh = createSeason(ids, new Date().toISOString(), { format, sprints, raceLaps });
     setSeason(fresh);
     setTab("drivers");
     void saveSeason(fresh);
@@ -96,6 +108,50 @@ export function Championship() {
       <div className={styles.card}>
         <div className={styles.kicker}>NEW SEASON</div>
         <h2 className={styles.heading}>Choose your calendar</h2>
+        <div className={styles.summaryRow}>
+          <div className={styles.summaryCell}>
+            <span>TEAM</span>
+            <b>
+              <i style={{ background: teamColor(parseTeamId(teamId)) }} />
+              {teamName(parseTeamId(teamId))}
+            </b>
+          </div>
+          <div className={styles.summaryCell}>
+            <span>DRIVER</span>
+            <b>{driverCode ?? "—"}</b>
+          </div>
+          <Link href="/garage" className={styles.ghost}>CHANGE IN GARAGE</Link>
+        </div>
+        <div className={styles.summaryRow}>
+          <div className={styles.summaryCell}>
+            <span>AI LEVEL</span>
+            <div className={styles.chips} role="radiogroup" aria-label="AI difficulty">
+              {DIFFICULTY_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={difficulty === option.id}
+                  data-active={difficulty === option.id ? "1" : undefined}
+                  onClick={() => saveSessionSetupPrefs({ ...loadSessionSetupPrefs(), difficulty: option.id })}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={styles.summaryCell}>
+            <span>RACE LENGTH · {raceLaps} {raceLaps === 1 ? "LAP" : "LAPS"}</span>
+            <input
+              type="range"
+              min={MIN_RACE_LAPS}
+              max={MAX_RACE_LAPS}
+              value={raceLaps}
+              onChange={(e) => setRaceLaps(Number(e.target.value))}
+              aria-label="Race laps"
+            />
+          </div>
+        </div>
         <div className={styles.lengths} role="radiogroup" aria-label="Season length">
           {SEASON_LENGTHS.map((option) => {
             const rounds = seasonTrackIds(option.id, TRACKS.map((t) => t.id)).length;
@@ -152,8 +208,7 @@ export function Championship() {
         </div>
         <p className={styles.note}>
           Full grid, real points (25-18-15-12-10-8-6-4-2-1, plus one for the fastest lap inside the top ten).
-          Each weekend runs the format above, then a {DEFAULT_RACE_LAPS}-lap race. Your team and AI level come
-          from the Garage and Grand Prix setup.
+          Each weekend runs the format above, then a {raceLaps}-lap race.
         </p>
         <button type="button" className={styles.primary} onClick={startSeason} data-nav-default>
           START SEASON
@@ -218,7 +273,7 @@ export function Championship() {
         </dl>
       </div>
 
-      {!complete && <Weekend season={season} next={next} base={{
+      {!complete && <Weekend season={season} next={next} laps={seasonRaceLaps(season)} base={{
         team: parseTeamId(teamId),
         driver: parseDriverCode(driverCode),
         tod: timeOfDay,
@@ -226,7 +281,7 @@ export function Championship() {
         difficulty,
       }} />}
 
-      <div className={styles.tabs} role="tablist" aria-label="Standings">
+      <div className={styles.tabs} role="tablist" data-nav-tabs aria-label="Standings">
         {(
           [
             ["drivers", "DRIVERS"],
@@ -365,10 +420,12 @@ export function Championship() {
 function Weekend({
   season,
   next,
+  laps,
   base,
 }: {
   season: ChampionshipSeason;
   next: number;
+  laps: number;
   base: Pick<RaceUrlParams, "team" | "driver" | "tod" | "weather" | "difficulty">;
 }) {
   const round = season.rounds[next];
@@ -387,7 +444,7 @@ function Weekend({
     <div className={styles.weekend}>
       <div className={styles.weekendSteps}>
         {format === "full" && (
-          <Link className={styles.step} href={buildRaceUrl({ ...url, mode: "practice", laps: DEFAULT_RACE_LAPS })}>
+          <Link className={styles.step} href={buildRaceUrl({ ...url, mode: "practice", laps })}>
             <small>{number()}</small> PRACTICE
             <small className={styles.programmes}>
               {PROGRAMME_IDS.map((id) => (round.practice?.[id] ? "✓ " : "· ") + PROGRAMME_LABELS[id].toUpperCase()).join("   ")}
@@ -424,7 +481,7 @@ function Weekend({
             className={styles.step}
             data-primary="1"
             data-nav-default
-            href={buildRaceUrl({ ...url, mode: "race", laps: DEFAULT_RACE_LAPS, grid: gridParam })}
+            href={buildRaceUrl({ ...url, mode: "race", laps, grid: gridParam })}
           >
             <small>{number()}</small> {gridParam ? `RACE FROM P${gridParam}` : "RACE"}
           </Link>

@@ -7,6 +7,7 @@ import {
   seasonTrackIds,
   CALENDAR_2026,
   createSeason,
+  seasonRaceLaps,
   isChampionshipSeason,
   isSeasonComplete,
   nextRoundIndex,
@@ -236,4 +237,21 @@ describe("full-field qualifying", () => {
   });
 
 
+});
+
+describe("season race length", () => {
+  const ids = TRACK_IDS;
+  it("defaults to the standard distance, and old saves without it load", () => {
+    const season = createSeason(ids, "2026-01-01T00:00:00.000Z");
+    expect(season.raceLaps).toBeUndefined();
+    expect(seasonRaceLaps(season)).toBe(3);
+    expect(isChampionshipSeason(season)).toBe(true);
+  });
+  it("stores a custom length and rejects nonsense", () => {
+    const season = createSeason(ids, "2026-01-01T00:00:00.000Z", { raceLaps: 5 });
+    expect(seasonRaceLaps(season)).toBe(5);
+    expect(isChampionshipSeason(season)).toBe(true);
+    expect(isChampionshipSeason({ ...season, raceLaps: 99 })).toBe(false);
+    expect(isChampionshipSeason({ ...season, raceLaps: "5" })).toBe(false);
+  });
 });

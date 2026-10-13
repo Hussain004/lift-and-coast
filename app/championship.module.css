@@ -347,3 +347,73 @@
   letter-spacing: 1px;
   opacity: 0.75;
 }
+
+/* New-season summary: who is racing and how long, editable without leaving. */
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 24px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.summaryCell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.summaryCell > span {
+  color: #d3ab63;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+
+.summaryCell > b {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+}
+
+.summaryCell > b i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.summaryCell input[type="range"] {
+  width: 220px;
+  accent-color: #e10600;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips button {
+  padding: 6px 12px;
+  border: 1px solid rgba(244, 241, 232, 0.14);
+  border-radius: 4px;
+  background: none;
+  color: #9aa0ac;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.chips button[data-active="1"] {
+  border-color: #e10600;
+  background: #e10600;
+  color: #fff;
+}

@@ -12,7 +12,7 @@
 // single-opponent math computed, generalized: best rival is P2 when the
 // player wins, P1 otherwise.
 import { isKnownTrackId } from "../tracks/registry";
-import { MAX_FIELD_SIZE } from "./sessionSetup";
+import { DEFAULT_RACE_LAPS, MAX_FIELD_SIZE, MAX_RACE_LAPS, MIN_RACE_LAPS } from "./sessionSetup";
 
 /** Plan section 7: F1-style points (25-18-15-...). */
 export const CHAMPIONSHIP_POINTS: readonly number[] = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
@@ -88,12 +88,22 @@ export interface ChampionshipSeason {
   /** Absent on older saves: a full weekend, no sprints. */
   format?: WeekendFormat;
   sprints?: boolean;
+  /** Race distance in laps. Absent on older saves: DEFAULT_RACE_LAPS. */
+  raceLaps?: number;
+}
+
+/** The race distance a season's weekends run. */
+export function seasonRaceLaps(season: ChampionshipSeason): number {
+  const laps = season.raceLaps;
+  return typeof laps === "number" && Number.isInteger(laps) && laps >= MIN_RACE_LAPS && laps <= MAX_RACE_LAPS
+    ? laps
+    : DEFAULT_RACE_LAPS;
 }
 
 export function createSeason(
   trackIds: readonly string[],
   createdAt: string,
-  options: { format?: WeekendFormat; sprints?: boolean } = {}
+  options: { format?: WeekendFormat; sprints?: boolean; raceLaps?: number } = {}
 ): ChampionshipSeason {
   return {
     schemaVersion: 1,
@@ -101,6 +111,7 @@ export function createSeason(
     rounds: trackIds.map((trackId) => ({ trackId, playerPosition: null, qualiSpot: null })),
     ...(options.format && options.format !== "full" ? { format: options.format } : {}),
     ...(options.sprints ? { sprints: true } : {}),
+    ...(options.raceLaps !== undefined && options.raceLaps !== DEFAULT_RACE_LAPS ? { raceLaps: options.raceLaps } : {}),
   };
 }
 
@@ -372,6 +383,13 @@ export function isChampionshipSeason(value: unknown): value is ChampionshipSeaso
   if (season.schemaVersion !== 1) return false;
   if (typeof season.createdAt !== "string") return false;
   if (!Array.isArray(season.rounds)) return false;
+  const raceLaps = (value as { raceLaps?: unknown }).raceLaps;
+  if (
+    raceLaps !== undefined &&
+    !(typeof raceLaps === "number" && Number.isInteger(raceLaps) && raceLaps >= MIN_RACE_LAPS && raceLaps <= MAX_RACE_LAPS)
+  ) {
+    return false;
+  }
   return season.rounds.every((round) => {
     if (typeof round !== "object" || round === null) return false;
     const { trackId, playerPosition, qualiSpot, result } = round as {

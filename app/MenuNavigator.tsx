@@ -7,6 +7,7 @@ import {
   padDirection,
   pickNavTarget,
   shouldRepeat,
+  stepTabIndex,
   type NavDirection,
 } from "@/lib/input/menuNav";
 import { uiConfirm, uiTick } from "@/lib/audio/uiTones";
@@ -37,6 +38,18 @@ function stepRange(input: HTMLInputElement, dir: 1 | -1) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, String(next));
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Q/E (LB/RB): switch to the previous/next tab of the first visible tab list. */
+function stepTab(delta: 1 | -1) {
+  const list = [...document.querySelectorAll<HTMLElement>("[role='tablist'][data-nav-tabs]")].find((l) => l.getBoundingClientRect().width > 0);
+  if (!list) return;
+  const tabs = [...list.querySelectorAll<HTMLElement>("[role='tab']")];
+  const next = stepTabIndex(tabs.length, tabs.findIndex((t) => t.getAttribute("aria-selected") === "true"), delta);
+  if (next >= 0) {
+    uiTick();
+    tabs[next].click();
+  }
 }
 
 function move(dir: NavDirection) {
@@ -87,6 +100,10 @@ export function MenuNavigator({
         uiConfirm();
         return;
       }
+      if ((e.key === "q" || e.key === "e") && !isTextField(active)) {
+        stepTab(e.key === "e" ? 1 : -1);
+        return;
+      }
       const dir: NavDirection | null =
         e.key === "ArrowUp" ? "up" : e.key === "ArrowDown" ? "down" : e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right" : null;
       if (!dir || isTextField(active)) return;
@@ -106,6 +123,8 @@ export function MenuNavigator({
     let lastFire = 0;
     let prevA = false;
     let prevB = false;
+    let prevLb = false;
+    let prevRb = false;
     let connected = false;
     const tick = (now: number) => {
       id = requestAnimationFrame(tick);
@@ -136,6 +155,12 @@ export function MenuNavigator({
         else move("down");
       }
       if (b && !prevB && backHref) router.push(backHref);
+      const lb = !!pad.buttons[PAD.lb]?.pressed;
+      const rb = !!pad.buttons[PAD.rb]?.pressed;
+      if (lb && !prevLb) stepTab(-1);
+      if (rb && !prevRb) stepTab(1);
+      prevLb = lb;
+      prevRb = rb;
       prevA = a;
       prevB = b;
     };

@@ -48,7 +48,6 @@ import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/ros
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
 import type { WeatherSetting } from "@/lib/physics/weatherForecast";
-import { GraphicsSetting } from "./GraphicsSetting";
 import styles from "./sessionSetup.module.css";
 
 const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
@@ -111,6 +110,7 @@ export function SessionSetup() {
   const [raceLaps, setRaceLaps] = useState(initial.raceLaps);
   const [rivals, setRivals] = useState(initial.rivals);
   const [difficulty, setDifficulty] = useState<AIDifficulty>(initial.difficulty);
+  const [tab, setTab] = useState<"event" | "car">("event");
   const [sessionMode, setSessionMode] = useState<SessionMode>("race");
   const [qualiFormat, setQualiFormat] = useState<QualifyingFormat>("timed");
   const [weather, setWeather] = useState<WeatherSetting>(initial.weather);
@@ -182,6 +182,22 @@ export function SessionSetup() {
           </dl>
         </div>
       </div>
+      <div className={styles.tabs} role="tablist" data-nav-tabs aria-label="Setup sections">
+        {(["event", "car"] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={tab === id ? styles.tabActive : styles.tab}
+          >
+            {id === "event" ? "Event" : "Car"}
+          </button>
+        ))}
+      </div>
+      {tab === "event" && (
+        <>
       <div className={styles.label}>LIGHT</div>
       <div className={styles.presets} role="radiogroup" aria-label="Time of day">
         {TIME_OF_DAY_OPTIONS.map((option) => (
@@ -329,6 +345,10 @@ export function SessionSetup() {
           </div>
         </>
       )}
+        </>
+      )}
+      {tab === "car" && (
+        <>
       <div className={styles.sliderRow}>
         <span className={styles.label}>CAR SETUP</span>
       </div>
@@ -461,10 +481,8 @@ export function SessionSetup() {
           );
         })}
       </div>
-      <div className={styles.sliderRow}>
-        <span className={styles.label}>GRAPHICS</span>
-      </div>
-      <GraphicsSetting />
+        </>
+      )}
       <Link
         href={driveUrl(undefined)}
         onClick={(e) => {

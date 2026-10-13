@@ -46,7 +46,7 @@ export function MenuShell({ children }: { children: React.ReactNode }) {
 /** Button prompts for whichever input is in use, like a console game. */
 export function PromptBar({ pad, back }: { pad: boolean; back: boolean }) {
   return (
-    <footer className={styles.prompts} aria-hidden="true">
+    <footer className={styles.prompts} data-pad={pad ? "1" : undefined} aria-hidden="true">
       {pad ? (
         <>
           <span><kbd>✚</kbd> NAVIGATE</span>

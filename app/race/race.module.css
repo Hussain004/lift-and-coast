@@ -1745,3 +1745,126 @@
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The settings panel embedded in the Settings screen / pause menu: same
+   language as the other cards (display type, white-on-dark, red accent)
+   rather than the old in-race HUD-slot look.
+--------------------------------------------------------------------------- */
+.settingsPanel.settingsInline {
+  background: transparent;
+  border: 0;
+  color: #f4f1e8;
+  font-size: 13px;
+}
+
+.settingsInline .settingsHeader {
+  padding: 0 0 8px;
+  border-bottom: 1px solid rgba(244, 241, 232, 0.1);
+}
+
+.settingsInline .settingsTitle {
+  display: none; /* the card already has a heading */
+}
+
+.settingsInline .settingsHint {
+  color: #9aa0ac;
+  font-size: 11px;
+}
+
+.settingsInline .settingsStatus {
+  padding: 8px 10px;
+  color: #f4f1e8;
+  background: rgba(225, 6, 0, 0.12);
+  border: 1px solid rgba(225, 6, 0, 0.35);
+}
+
+.settingsInline .settingsGroup {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.settingsInline .settingsLabel {
+  margin-bottom: 8px;
+  color: #d3ab63;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+
+.settingsInline .settingsKey,
+.settingsInline .settingsKeyBad {
+  padding: 6px 10px;
+  border-color: rgba(244, 241, 232, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.settingsInline .settingsKey:hover {
+  border-color: rgba(244, 241, 232, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settingsInline .settingsKey[data-capturing="yes"] {
+  border-color: #e10600;
+  background: rgba(225, 6, 0, 0.14);
+}
+
+.settingsInline .settingsKeyName {
+  color: #f4f1e8;
+  font-size: 12px;
+}
+
+.settingsInline .settingsKeyCode,
+.settingsInline .settingsField b {
+  color: #d3ab63;
+  font-size: 12px;
+}
+
+.settingsInline .settingsField {
+  grid-template-columns: 90px 1fr 44px;
+  font-size: 13px;
+  color: #f4f1e8;
+}
+
+.settingsInline .settingsField input[type="range"],
+.settingsInline .settingsCheck input {
+  accent-color: #e10600;
+}
+
+.settingsInline .settingsCheck {
+  font-size: 13px;
+  color: #f4f1e8;
+}
+
+.settingsInline .settingsActions {
+  padding: 14px 0 0;
+}
+
+.settingsInline .settingsAction {
+  padding: 10px 12px;
+  border-color: rgba(244, 241, 232, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4f1e8;
+  font-family: var(--font-geist-mono);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+
+.settingsInline .settingsAction:hover:not(:disabled) {
+  border-color: #e10600;
+  background: rgba(225, 6, 0, 0.14);
+}
+
+.settingsTyreRow {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.settingsNote {
+  margin: 8px 0 0;
+  color: #9aa0ac;
+  font-size: 12px;
+}

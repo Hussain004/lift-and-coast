@@ -208,7 +208,10 @@
   gap: 8px;
   max-height: 318px;
   overflow-y: auto;
-  padding: 2px;
+  /* Fade the bottom edge so a clipped row reads as "scrolls", with enough
+     end padding that the last row is fully clear at the end of the scroll. */
+  padding: 2px 2px 22px;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
   scrollbar-width: thin;
 }
 

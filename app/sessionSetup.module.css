@@ -160,7 +160,10 @@
 }
 
 .drive {
-  position: relative;
+  /* Sticks above the prompt bar so Drive is always reachable on a long panel. */
+  position: sticky;
+  bottom: 56px;
+  z-index: 5;
   align-self: stretch;
   display: inline-flex;
   align-items: center;
@@ -237,4 +240,37 @@
   color: #555b66;
   font-size: 11px;
   line-height: 1.4;
+}
+
+/* Event / Car tabs (Q / E or the tab buttons). */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid rgba(246, 243, 236, 0.12);
+}
+
+.tab,
+.tabActive {
+  flex: 1;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: #9aa0ab;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #f6f3ec;
+}
+
+.tabActive {
+  border-bottom-color: #e10600;
+  color: #f6f3ec;
 }

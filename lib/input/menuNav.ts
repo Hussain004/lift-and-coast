@@ -64,7 +64,7 @@ export function pickNavTarget(from: NavRect, candidates: readonly NavRect[], dir
 }
 
 /** Standard-mapping gamepad buttons the menus use. */
-export const PAD = { a: 0, b: 1, up: 12, down: 13, left: 14, right: 15 } as const;
+export const PAD = { a: 0, b: 1, lb: 4, rb: 5, up: 12, down: 13, left: 14, right: 15 } as const;
 
 const STICK_THRESHOLD = 0.6;
 
@@ -87,4 +87,11 @@ export const REPEAT_RATE_MS = 120;
 export function shouldRepeat(heldForMs: number, lastFireMs: number, nowMs: number): boolean {
   if (heldForMs < REPEAT_DELAY_MS) return false;
   return nowMs - lastFireMs >= REPEAT_RATE_MS;
+}
+
+/** The tab a Q/E (LB/RB) press lands on: wraps around either end, `-1` when there are no tabs. */
+export function stepTabIndex(count: number, current: number, delta: 1 | -1): number {
+  if (count <= 0) return -1;
+  const from = current < 0 ? (delta > 0 ? -1 : 0) : current;
+  return (((from + delta) % count) + count) % count;
 }
