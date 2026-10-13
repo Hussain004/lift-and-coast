@@ -72,9 +72,10 @@ describe("importSaveData validation", () => {
 describe("exportSaveData", () => {
   it("returns an empty bundle with the right shape when indexedDB is unavailable", async () => {
     const bundle = await exportSaveData();
-    expect(bundle.schemaVersion).toBe(2);
+    expect(bundle.schemaVersion).toBe(3);
     expect(bundle.personalBests).toEqual({});
     expect(bundle.championship).toBeNull();
+    expect(bundle.raceHistory).toEqual([]);
     expect(() => new Date(bundle.exportedAt).toISOString()).not.toThrow();
   });
 });

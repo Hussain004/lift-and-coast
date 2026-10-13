@@ -1376,3 +1376,91 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- results debrief tabs ---------- */
+
+.debriefTabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(244, 241, 232, 0.1);
+}
+
+.debriefTab {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: #9aa0ac;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.debriefTab[aria-selected="true"] {
+  border-bottom-color: #e10600;
+  color: #f4f1e8;
+}
+
+.debriefChart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.debriefAxis {
+  fill: #5d6370;
+  font-size: 10px;
+}
+
+.debriefLabel {
+  fill: #9aa0ac;
+  font-size: 10px;
+}
+
+.debriefLabelYou {
+  fill: #f4f1e8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.debriefEmpty {
+  margin: 10px 0;
+  color: #9aa0ac;
+  font-size: 12px;
+}
+
+.stintWrap {
+  padding: 8px 0;
+}
+
+.stintBar {
+  display: flex;
+  gap: 3px;
+  height: 46px;
+}
+
+.stint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  color: #101218;
+  font-size: 11px;
+}
+
+.stint b {
+  font-size: 15px;
+}
+
+.resultTable td[data-best="1"] {
+  color: #1fd65f;
+}
+
+.debriefBody {
+  min-height: 300px;
+}

@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { formatLapTime } from "@/lib/race/lapTimer";
 import { formatGap, formatRaceTime, type ClassifiedRow, type SessionResult } from "@/lib/race/hud";
 import { safeHex } from "./useHudFrame";
+import { DebriefTabs } from "./Debrief";
 import styles from "./hud.module.css";
 
 function raceGap(row: ClassifiedRow, winner: ClassifiedRow): string {
@@ -62,7 +63,7 @@ export function Results({
       : `${ordinal(result.position)} PLACE · ${result.points} PTS` +
         (result.penaltySeconds > 0 ? ` · +${result.penaltySeconds}s PENALTIES` : "") +
         (you?.fastestLap ? " · FASTEST LAP" : "");
-    body = (
+    const classification = (
       <table className={styles.resultTable}>
         <thead>
           <tr>
@@ -96,6 +97,11 @@ export function Results({
           ))}
         </tbody>
       </table>
+    );
+    body = result.debrief ? (
+      <DebriefTabs debrief={result.debrief} rows={result.rows} classification={classification} />
+    ) : (
+      classification
     );
     actions =
       result.champRound !== null ? (

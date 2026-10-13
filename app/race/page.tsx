@@ -40,6 +40,7 @@ import { Results } from "./hud/Results";
 import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
 import hudStyles from "./hud/hud.module.css";
+import { appendRaceRecord } from "@/lib/persistence/raceHistory";
 import { loadHudPrefs, subscribeHudPrefs, DEFAULT_HUD_PREFS } from "@/lib/settings/hudPrefs";
 
 const LOADING_TIPS = [
@@ -393,6 +394,30 @@ function RaceContent() {
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const [result, setResult] = useState<SessionResult | null>(null);
   const [restartCount, setRestartCount] = useState(0);
+  // Keeps a local record of every finished race (Garage stats, milestones).
+  // Online races are skipped: nobody scores or earns anything from them.
+  const handleResult = (finished: SessionResult) => {
+    setResult(finished);
+    if (finished.kind !== "race" || netActive) return;
+    const you = finished.rows.find((row) => row.isPlayer);
+    void appendRaceRecord({
+      schemaVersion: 1,
+      at: new Date().toISOString(),
+      trackId: track.id,
+      laps: finished.laps,
+      rivals: rivals.length,
+      aiLevel: difficulty,
+      teamId: team.id,
+      driverCode: driver.code,
+      finish: finished.position,
+      points: finished.points,
+      fastestLap: you?.fastestLap ?? false,
+      penaltySeconds: finished.penaltySeconds,
+      disqualified: finished.disqualified,
+      champRound: finished.champRound,
+      sprint: finished.sprint === true,
+    }).catch(() => {});
+  };
   // Photo mode (lib/race/photo.ts): the pause menu's free camera. Toggling the
   // menu (Esc, P) always ends it, so closing the menu can never leave the
   // camera detached.
@@ -549,7 +574,7 @@ function RaceContent() {
             </Link>
           )}
         </div>
-        <ResultWatcher hudRef={hudRef} onResult={setResult} />
+        <ResultWatcher hudRef={hudRef} onResult={handleResult} />
         <div className={styles.perf} ref={perfRef} aria-live="off" />
         <RaceAudioRig audioRef={audioRef} muteRef={muteRef} />
         <Haptics audioRef={audioRef} />

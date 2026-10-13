@@ -12,6 +12,7 @@ import type { PitReleasePhase } from "./pitRelease";
 import type { SectorColor } from "./sectorTimer";
 import type { TowerEntry } from "./racePosition";
 import type { SessionMode } from "./sessionSetup";
+import type { Debrief } from "./raceLog";
 
 export type HudEventKind = "info" | "good" | "purple" | "warn" | "penalty" | "flag" | "radio";
 
@@ -70,6 +71,8 @@ export type SessionResult =
       points: number;
       /** A championship sprint rather than the grand prix. */
       sprint?: boolean;
+      /** Lap chart, lap times and stints, when the race was logged. */
+      debrief?: Debrief;
     }
   | { kind: "practice"; laps: number; bestLapSeconds: number | null }
   | {

@@ -5,12 +5,14 @@
 // consistently.
 export const PERSONAL_BESTS_STORE = "personalBests";
 export const CHAMPIONSHIP_STORE = "championship";
+export const RACE_HISTORY_STORE = "raceHistory";
 
 const DB_NAME = "lift-and-coast";
-// v1 = personalBests only. v2 adds the championship store; the upgrade
-// handler below creates only the stores that are missing, so an existing
-// v1 player's personal bests/ghosts survive the bump untouched.
-const DB_VERSION = 2;
+// v1 = personalBests only. v2 adds the championship store, v3 the race
+// history; the upgrade handler below creates only the stores that are
+// missing, so an existing player's personal bests/ghosts/season survive the
+// bump untouched.
+const DB_VERSION = 3;
 
 // Cached rather than re-opened per call - an IDBDatabase connection left
 // open across many small get/put calls is the normal pattern, and
@@ -30,6 +32,9 @@ export function openDB(): Promise<IDBDatabase> {
         }
         if (!db.objectStoreNames.contains(CHAMPIONSHIP_STORE)) {
           db.createObjectStore(CHAMPIONSHIP_STORE);
+        }
+        if (!db.objectStoreNames.contains(RACE_HISTORY_STORE)) {
+          db.createObjectStore(RACE_HISTORY_STORE);
         }
       };
       request.onsuccess = () => resolve(request.result);

@@ -11,18 +11,21 @@ import {
   type ChampionshipSeason,
 } from "../race/championship";
 import type { PersonalBestRecord } from "./personalBests";
+import { isRaceHistoryRecord, type RaceHistoryRecord } from "../race/raceHistory";
+import { importRaceRecords, loadRaceHistory } from "./raceHistory";
 
-// v1 = personalBests only. v2 adds the optional championship season; import
-// still accepts v1 bundles (championship simply absent) so an older export
-// keeps restoring cleanly.
-const CURRENT_SCHEMA_VERSION = 2;
+// v1 = personalBests only. v2 adds the optional championship season, v3 the
+// race history; import still accepts v1/v2 bundles (the newer fields simply
+// absent) so an older export keeps restoring cleanly.
+const CURRENT_SCHEMA_VERSION = 3;
 const CHAMPIONSHIP_KEY = "current";
 
 export interface SaveBundle {
-  schemaVersion: 2;
+  schemaVersion: 3;
   exportedAt: string;
   personalBests: Record<string, PersonalBestRecord>;
   championship: ChampionshipSeason | null;
+  raceHistory: RaceHistoryRecord[];
 }
 
 /**
@@ -40,6 +43,7 @@ export async function exportSaveData(): Promise<SaveBundle> {
       exportedAt: new Date().toISOString(),
       personalBests: {},
       championship: null,
+      raceHistory: [],
     };
   }
   const db = await openDB();
@@ -50,6 +54,7 @@ export async function exportSaveData(): Promise<SaveBundle> {
     exportedAt: new Date().toISOString(),
     personalBests,
     championship: isChampionshipSeason(stored) ? stored : null,
+    raceHistory: await loadRaceHistory(),
   };
 }
 
@@ -82,6 +87,11 @@ export async function importSaveData(bundle: unknown): Promise<void> {
   if (championship !== undefined && championship !== null && !isChampionshipSeason(championship)) {
     throw new Error("Not a valid Lift & Coast save file: bad championship season.");
   }
+  // Optional: only v3+ bundles carry race history.
+  const history = (bundle as { raceHistory?: unknown }).raceHistory;
+  if (history !== undefined && !(Array.isArray(history) && history.every(isRaceHistoryRecord))) {
+    throw new Error("Not a valid Lift & Coast save file: bad race history.");
+  }
   if (typeof indexedDB === "undefined") return;
   const db = await openDB();
   for (const [trackId, record] of Object.entries(personalBests as Record<string, PersonalBestRecord>)) {
@@ -90,6 +100,7 @@ export async function importSaveData(bundle: unknown): Promise<void> {
   if (isChampionshipSeason(championship)) {
     await idbPut(db, CHAMPIONSHIP_STORE, CHAMPIONSHIP_KEY, championship);
   }
+  if (Array.isArray(history)) await importRaceRecords(history as RaceHistoryRecord[]);
 }
 
 function isPersonalBestRecord(value: unknown): value is PersonalBestRecord {

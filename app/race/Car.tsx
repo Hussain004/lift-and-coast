@@ -82,6 +82,7 @@ import { gridSlot } from "@/lib/race/grid";
 import { createDeltaTracker } from "@/lib/race/deltaTimer";
 import { pushHudEvent, queueEngineerLine, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
 import { classifyRace, createFinishTracker, updateFinishTracker } from "@/lib/race/classification";
+import { buildDebrief, createRaceLog, recordLaps } from "@/lib/race/raceLog";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { deltaToGhost, projectGhostToProgress, type GhostProgressTrace } from "@/lib/race/ghostProgress";
 import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
@@ -568,6 +569,7 @@ export function Car({
   // penalties, the per-car flag state, and when the results go up.
   const raceClockRef = useRef(0);
   const finishTrackerRef = useRef(createFinishTracker(rivals.length + 1));
+  const raceLogRef = useRef(createRaceLog(rivals.length + 1));
   const resultsAtClockRef = useRef<number | null>(null);
   // Race clock timestamp (not lap-relative currentLapSeconds, which resets
   // every lap and could strand the toast if a penalty lands late in a lap)
@@ -701,6 +703,7 @@ export function Car({
     if (process.env.NODE_ENV === "production") return;
     (window as unknown as { __liftDamage?: React.RefObject<DamageState> }).__liftDamage = damageRef;
     (window as unknown as { __liftServe?: React.RefObject<ReturnType<typeof createServeState>> }).__liftServe = serveRef;
+    (window as unknown as { __liftRaceLog?: React.RefObject<ReturnType<typeof createRaceLog>> }).__liftRaceLog = raceLogRef;
   }, []);
   const damageGripsRef = useRef<number[]>([1, 1, 1, 1]);
   const damageDownforceRef = useRef(1);
@@ -1660,6 +1663,10 @@ export function Car({
     const opponentLaps = rivals.map((_, k) => Math.max(0, race.opponents[k]?.lapCount ?? 0));
     const tracker = finishTrackerRef.current;
     const update = updateFinishTracker(tracker, [playerLaps, ...opponentLaps], raceLaps, raceClockRef.current);
+    // The debrief's lap log: lap 1 runs from the lights going out.
+    const raceLog = raceLogRef.current;
+    if (raceLog.startClock === null && (raceStartRef?.current ?? true)) raceLog.startClock = raceClockRef.current;
+    recordLaps(raceLog, [playerLaps, ...opponentLaps], raceClockRef.current, raceLaps, strategyRef.current.snapshot().compound);
     if (update.finalLapNow) pushHudEvent(hud, "flag", "FINAL LAP", undefined, 2.4);
     if (update.chequeredNow) {
       hud.chequered = true;
@@ -1741,6 +1748,14 @@ export function Car({
       champRound: scoredRound,
       points: rows.find((row) => row.isPlayer)?.points ?? pointsForPosition(classified),
       sprint,
+      debrief: buildDebrief(
+        raceLogRef.current,
+        [
+          { code: playerCode, color: bodyColor, isPlayer: true },
+          ...rivals.map((rival) => ({ code: rival.code, color: rival.color, isPlayer: false })),
+        ],
+        raceLaps
+      ),
     };
   }
 
