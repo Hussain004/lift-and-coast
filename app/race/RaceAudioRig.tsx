@@ -8,6 +8,7 @@ import {
   type AudioSnapshot,
   type RaceAudioEngine,
 } from "@/lib/audio/raceAudio";
+import { loadMixer, subscribeMixer } from "@/lib/settings/mixerPrefs";
 
 // Plan section 12 (Audio Design): owns the synthesized race audio engine's
 // whole lifecycle. The engine is constructed on mount but the context starts
@@ -31,6 +32,8 @@ export function RaceAudioRig({
     engineRef.current = engine;
     if (!engine) return;
     engine.setMuted(loadMuted());
+    engine.setMix(loadMixer());
+    const unsubscribeMixer = subscribeMixer(() => engine.setMix(loadMixer()));
     const showMuted = () => {
       if (muteRef?.current) muteRef.current.textContent = engine.muted() ? "MUTED" : "";
     };
@@ -55,6 +58,7 @@ export function RaceAudioRig({
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
+      unsubscribeMixer();
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", onKeyDown);
       engine.dispose();

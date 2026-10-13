@@ -1336,3 +1336,43 @@
 .safetyChip[data-on="0"] {
   display: none;
 }
+
+/* ---------- player options (lib/settings/hudPrefs.ts) ---------- */
+
+.hud[data-hud-scale="small"] {
+  --scale: 0.8;
+}
+
+.hud[data-hud-scale="large"] {
+  --scale: 1.2;
+}
+
+/* Colour-blind palette (Okabe-Ito): meaning that used to ride on red/green/
+   purple alone also gets a glyph, so it never depends on hue. */
+.hud[data-colour-blind="1"] {
+  --purple: #cc79a7;
+  --green: #56b4e9;
+  --yellow: #e69f00;
+  --red: #d55e00;
+}
+
+.hud[data-colour-blind="1"] .sector[data-color="purple"]::before {
+  content: "● ";
+}
+
+.hud[data-colour-blind="1"] .sector[data-color="green"]::before {
+  content: "▲ ";
+}
+
+.hud[data-colour-blind="1"] .sector[data-color="yellow"]::before {
+  content: "▼ ";
+}
+
+/* Motion: the HUD slides and fades; honour the system setting. */
+@media (prefers-reduced-motion: reduce) {
+  .hud * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

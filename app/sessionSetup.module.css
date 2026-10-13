@@ -274,3 +274,62 @@
   border-bottom-color: #e10600;
   color: #f6f3ec;
 }
+
+/* Audio mixer rows. */
+.mixer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.mixerRow {
+  display: grid;
+  grid-template-columns: minmax(130px, 200px) 1fr 40px;
+  align-items: center;
+  gap: 14px;
+}
+
+.mixerName {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.mixerName b {
+  font-size: 14px;
+}
+
+.mixerName small {
+  color: #9aa0ab;
+  font-size: 11px;
+}
+
+.mixerRow .readout {
+  font-size: 15px;
+  text-align: right;
+}
+
+/* Checkbox rows in settings. */
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f6f3ec;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #e10600;
+}

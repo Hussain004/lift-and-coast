@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIsClient } from "../useIsClient";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -40,6 +40,7 @@ import { Results } from "./hud/Results";
 import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
 import hudStyles from "./hud/hud.module.css";
+import { loadHudPrefs, subscribeHudPrefs, DEFAULT_HUD_PREFS } from "@/lib/settings/hudPrefs";
 
 const LOADING_TIPS = [
   "Lift & coast: it's not slow, it's strategic.",
@@ -133,6 +134,7 @@ export default function RacePage() {
 
 function RaceContent() {
   const searchParams = useSearchParams();
+  const hudPrefs = useSyncExternalStore(subscribeHudPrefs, loadHudPrefs, () => DEFAULT_HUD_PREFS);
   const raceLaps = parseRaceLaps(searchParams.get("laps"));
   const qualiFormat = parseQualifyingFormat(searchParams.get("qformat"));
   const rivalCount = parseRivals(searchParams.get("rivals"));
@@ -515,13 +517,18 @@ function RaceContent() {
           sideMirrorsEnabled={sideMirrorsEnabled}
         />
         {!sceneReady && <TrackLoadingFallback track={track} />}
-        <div className={photoOpen ? hudStyles.hudHidden : hudStyles.hud}>
-          {!qualifyingSession && (
+        <div
+          className={photoOpen ? hudStyles.hudHidden : hudStyles.hud}
+          data-hud-scale={hudPrefs.scale}
+          data-colour-blind={hudPrefs.colourBlind ? "1" : undefined}
+        >
+          {!qualifyingSession && hudPrefs.panels.tower && (
             <Tower hudRef={hudRef} trackName={trackName} initialRows={initialTowerRows} />
           )}
           <Timing hudRef={hudRef} />
           <Notifications hudRef={hudRef} />
           <Engineer hudRef={hudRef} />
+          {hudPrefs.panels.map && (
           <TrackMap
             hudRef={hudRef}
             track={track}
@@ -530,7 +537,8 @@ function RaceContent() {
             playerColor={team.primaryColor}
             showRivals={!qualifyingSession}
           />
-          <Mfd hudRef={hudRef} />
+          )}
+          {hudPrefs.panels.mfd && <Mfd hudRef={hudRef} />}
           <div className={hudStyles.muteChip} ref={muteRef} />
           {/* The only mode with no natural end, so it keeps a visible way
               back to the board (a race or qualifying ends on the results

@@ -2,6 +2,7 @@
 // radio click. One lazily-created AudioContext for all of them, no assets,
 // and silent when the player has muted the game (M).
 import { loadMuted } from "./raceAudio";
+import { levelToGain, loadMixer } from "../settings/mixerPrefs";
 
 let ctx: AudioContext | null = null;
 
@@ -19,6 +20,9 @@ function context(): AudioContext | null {
 /** One short enveloped tone. `at` delays it, in seconds. */
 export function tone(freq: number, seconds: number, gain = 0.05, type: OscillatorType = "sine", at = 0): void {
   if (loadMuted()) return;
+  const mix = loadMixer();
+  const scaled = gain * levelToGain(mix.master) * levelToGain(mix.ui);
+  if (scaled <= 0.0002) return;
   const c = context();
   if (!c) return;
   const start = c.currentTime + at;
@@ -27,7 +31,7 @@ export function tone(freq: number, seconds: number, gain = 0.05, type: Oscillato
   osc.type = type;
   osc.frequency.value = freq;
   env.gain.setValueAtTime(0.0001, start);
-  env.gain.exponentialRampToValueAtTime(gain, start + 0.008);
+  env.gain.exponentialRampToValueAtTime(scaled, start + 0.008);
   env.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
   osc.connect(env).connect(c.destination);
   osc.start(start);

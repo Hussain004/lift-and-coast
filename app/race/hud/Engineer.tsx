@@ -6,6 +6,8 @@ import { drainEngineerLines, pushHudEvent, type HudSnapshot } from "@/lib/race/h
 import { loadMuted } from "@/lib/audio/raceAudio";
 import { radioClick } from "@/lib/audio/uiTones";
 import { loadEngineerMode } from "@/lib/settings/engineerVoice";
+import { levelToGain, loadMixer } from "@/lib/settings/mixerPrefs";
+import { loadHudPrefs } from "@/lib/settings/hudPrefs";
 import { useHudFrame } from "./useHudFrame";
 
 const HZ = 4;
@@ -18,7 +20,9 @@ function speak(text: string) {
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 1.08;
   u.pitch = 0.9;
-  u.volume = 0.9;
+  const mix = loadMixer();
+  u.volume = 0.9 * levelToGain(mix.master) * levelToGain(mix.engineer);
+  if (u.volume <= 0.01) return;
   synth.speak(u);
 }
 
@@ -45,8 +49,9 @@ export function Engineer({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
     const lines = [...queued, ...engineerStep(stateRef.current, hud, dt)];
     if (lines.length === 0) return;
     const voice = mode === "voice" && !loadMuted();
+    const showText = loadHudPrefs().panels.engineerText;
     for (const line of lines) {
-      pushHudEvent(hud, "radio", line, undefined, 4.5);
+      if (showText) pushHudEvent(hud, "radio", line, undefined, 4.5);
     }
     if (voice) {
       radioClick();

@@ -17,6 +17,7 @@
 // - Rivals: the three nearest cars each get an engine voice with distance
 //   fade, stereo pan and Doppler.
 import { IDLE_RPM, REDLINE_RPM, REV_LIMITER_RPM } from "../physics/gearbox";
+import { levelToGain, type Mixer } from "../settings/mixerPrefs";
 
 export interface AudioCarSnapshot {
   /** 0-1 across the idle..redline band. */
@@ -219,6 +220,8 @@ export function pickVoicedOpponents(
 export interface RaceAudioEngine {
   update(snapshot: AudioSnapshot): void;
   impact(strength01: number): void;
+  /** Applies the player's mixer levels (engine and effects buses, under master). */
+  setMix(mix: Mixer): void;
   setMuted(muted: boolean): void;
   muted(): boolean;
   resume(): void;
@@ -412,6 +415,12 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
   tame.type = "lowpass";
   tame.frequency.value = 6500;
   tame.Q.value = 0.5;
+  // Mixer buses: the engines and everything else are scaled separately (see
+  // lib/settings/mixerPrefs.ts), both under the master gain that mute drives.
+  const engineBus = context.createGain();
+  const fxBus = context.createGain();
+  engineBus.connect(master);
+  fxBus.connect(master);
   master.connect(tame);
   tame.connect(compressor);
   compressor.connect(context.destination);
@@ -419,14 +428,14 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
   const noise = makeNoiseBuffer(context);
   const imag = new Float32Array(engineHarmonics());
   const wave = context.createPeriodicWave(new Float32Array(imag.length), imag);
-  const playerVoice = makeEngineVoice(context, master, wave, noise, true);
+  const playerVoice = makeEngineVoice(context, engineBus, wave, noise, true);
 
   // Rival voices: each its own pan, and a shared per-voice gain for the
   // distance fade (the engine voice's own gain carries the throttle).
   const FULL_ENGINE_GAIN = engineGain01(1);
   const rivals = Array.from({ length: OPPONENT_VOICES }, () => {
     const pan = context.createStereoPanner();
-    pan.connect(master);
+    pan.connect(engineBus);
     return { pan, voice: makeEngineVoice(context, pan, wave, noise, false), car: -1 };
   });
   let voiced: number[] = [];
@@ -444,7 +453,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
     gain.gain.value = 0;
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(master);
+    gain.connect(fxBus);
     src.start();
     return { gain, filter };
   };
@@ -461,7 +470,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
   rumbleGain.gain.value = 0;
   rumble.connect(rumbleFilter);
   rumbleFilter.connect(rumbleGain);
-  rumbleGain.connect(master);
+  rumbleGain.connect(fxBus);
   rumble.start();
 
   let muted = false;
@@ -487,7 +496,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
     gain.gain.setValueAtTime(peak, when);
     gain.gain.exponentialRampToValueAtTime(0.0005, when + seconds);
     whistle.connect(gain);
-    gain.connect(master);
+    gain.connect(fxBus);
     whistle.start(when);
     whistle.stop(when + seconds + 0.05);
   };
@@ -512,7 +521,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
     gain.gain.exponentialRampToValueAtTime(0.0005, when + seconds);
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(master);
+    gain.connect(fxBus);
     source.start(when, Math.random() * 1.5);
     source.stop(when + seconds + 0.05);
   };
@@ -582,7 +591,7 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
         beepGain.gain.setValueAtTime(0.05, when + 0.09);
         beepGain.gain.linearRampToValueAtTime(0, when + 0.11);
         beep.connect(beepGain);
-        beepGain.connect(master);
+        beepGain.connect(fxBus);
         beep.start(when);
         beep.stop(when + 0.12);
       }
@@ -652,6 +661,11 @@ export function createRaceAudio(offline?: OfflineAudioContext): RaceAudioEngine 
       const s = clamp01(strength01);
       if (s <= 0) return;
       burst(0.55 * s, 400 + 2200 * s, 0.06 + 0.22 * s, 0.6);
+    },
+    setMix(mix) {
+      const level = levelToGain(mix.master);
+      engineBus.gain.setTargetAtTime(level * levelToGain(mix.engine), context.currentTime, 0.03);
+      fxBus.gain.setTargetAtTime(level * levelToGain(mix.effects), context.currentTime, 0.03);
     },
     setMuted(next) {
       muted = next;
