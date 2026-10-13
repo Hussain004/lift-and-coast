@@ -43,6 +43,7 @@ next-env.d.ts
 # planning docs (local reference only, not part of the shipped repo)
 implementation_plan.md
 REVAMP.md
+REVAMP_2.md
 CLAUDE.md
 AGENTS.md
 HANDOFF_PROMPT.md
