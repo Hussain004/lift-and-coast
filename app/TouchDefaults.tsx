@@ -19,7 +19,13 @@ export function TouchDefaults() {
       } catch {
         return;
       }
-      if (!shouldApplyTouchDefaults(e.pointerType, storage)) return;
+      const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+      if (!shouldApplyTouchDefaults(e.pointerType, storage, coarse)) {
+        // Already set up (or not a phone): never ask again, so a later wipe of
+        // one setting cannot re-trigger defaults over the player's choices.
+        if (e.pointerType === "touch" && coarse) markTouchDefaultsApplied(storage);
+        return;
+      }
       markTouchDefaultsApplied(storage);
       saveGraphicsPref("low");
       const prefs = loadSessionSetupPrefs();

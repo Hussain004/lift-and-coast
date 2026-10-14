@@ -72,7 +72,7 @@ import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCoun
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
 import { DEFAULT_RACE_LAPS, retargetSessionUrl, type QualifyingFormat, type SessionMode } from "@/lib/race/sessionSetup";
 import { isSaveableTimeAttackLap, submitTimeAttackLap } from "@/lib/race/timeAttackBoard";
-import { resolveClientId } from "@/lib/race/leaderboard";
+import { generateUuid, resolveClientId } from "@/lib/race/leaderboard";
 import { loadAccountSession, refreshSession, saveAccountSession } from "@/lib/race/authClient";
 import { sessionNeedsRefresh, type AccountSession } from "@/lib/race/accounts";
 import { DEFAULT_TEAM_ID } from "@/lib/race/rosterData";
@@ -623,7 +623,7 @@ export function Car({
       }
       const stored: AccountSession | null = timeAttackSessionRef.current ?? null;
       // The lap's row id is chosen here so its ghost can be attached afterwards.
-      const lapId = crypto.randomUUID();
+      const lapId = generateUuid();
       let resolveIdentity: (v: { clientId: string; accessToken?: string; playerName?: string; posted: Promise<boolean> } | null) => void = () => {};
       pendingGhostRef.current = {
         lapId,
