@@ -97,6 +97,8 @@ import {
   snapshotOf,
 } from "@/lib/race/rewindBuffer";
 import { createPoseRing } from "@/lib/race/poseRing";
+import { applyReplayPose, type RaceReplay } from "@/lib/race/raceReplay";
+import { createPose } from "@/lib/race/raceRecorder";
 import { REPLAY_CAPACITY_SECONDS, type SharedReplay } from "@/lib/race/replay";
 import { gridSlot } from "@/lib/race/grid";
 import { catchUpBonusMs, safetyCarCapMs, type SafetyCarState } from "@/lib/race/safetyCar";
@@ -175,6 +177,7 @@ export function AICar({
   qualifyingRef,
   sharedRewindActiveRef,
   sharedReplayRef,
+  raceReplayRef,
   gridSlotIndex = 1,
   aiIndex = 0,
   /** This rival's FIA code - selects its deterministic personality (pace,
@@ -227,6 +230,8 @@ export function AICar({
    * put back on its live pose.
    */
   sharedReplayRef?: React.RefObject<SharedReplay>;
+  /** Whole-race recording + post-race replay (see lib/race/raceReplay.ts). */
+  raceReplayRef?: React.RefObject<RaceReplay>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with Car.tsx. */
   qualifyingRef?: React.RefObject<QualifyingTimes>;
   /**
@@ -339,6 +344,7 @@ export function AICar({
   // Instant replay recording (see sharedReplayRef) - packed floats, since 19
   // cars x 45s of object snapshots would be ~16MB of garbage.
   const aiReplayRef = useRef(createPoseRing(REPLAY_CAPACITY_SECONDS, 1 / 60));
+  const raceReplayPoseRef = useRef(createPose());
   const aiWasReplayingRef = useRef(false);
   // Progress continuity (see progressTracker.ts): rank and racecraft
   // read tracked progress, never the flicker-prone scan, at the seam.
@@ -423,6 +429,21 @@ export function AICar({
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
+
+    // Post-race replay: posed from the whole-race recording (slot aiIndex + 1;
+    // the player is slot 0), otherwise this car records itself into it.
+    const raceReplay = raceReplayRef?.current;
+    if (raceReplay?.active) {
+      if (raceReplay.recorder.poseAt(aiIndex + 1, raceReplay.t, raceReplayPoseRef.current)) {
+        applyReplayPose(body, raceReplayPoseRef.current);
+      }
+      return;
+    }
+    if (raceReplay && sessionMode === "race") {
+      const at = body.translation();
+      const rot = body.rotation();
+      raceReplay.recorder.write(aiIndex + 1, at.x, at.y, at.z, rot.x, rot.y, rot.z, rot.w);
+    }
 
     const replay = sharedReplayRef?.current;
     if (replay?.active) {

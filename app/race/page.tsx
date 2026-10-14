@@ -40,6 +40,8 @@ import { Results } from "./hud/Results";
 import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
 import hudStyles from "./hud/hud.module.css";
+import { ReplayBar } from "./hud/ReplayBar";
+import { closeReplay, createRaceReplay, openReplay } from "@/lib/race/raceReplay";
 import { appendRaceRecord } from "@/lib/persistence/raceHistory";
 import { loadHudPrefs, subscribeHudPrefs, DEFAULT_HUD_PREFS } from "@/lib/settings/hudPrefs";
 
@@ -372,7 +374,10 @@ function RaceContent() {
   const [menuOpen, setMenuOpen] = useState(false);
   // Mirrors only ever draw in the cockpit and helmet cameras (see
   // SideMirrors), so "on" is the right default: the chase views stay clean.
-  const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(true);
+  // Phones skip the mirrors: two extra scene renders is not worth it on a touch GPU.
+  const [sideMirrorsEnabled, setSideMirrorsEnabled] = useState(
+    () => !window.matchMedia?.("(pointer: coarse)").matches
+  );
   // The optional right-hand panel: Race Ops, live telemetry or control
   // settings, mutually exclusive, closed by default. H cycles, 4 jumps to
   // telemetry.
@@ -394,6 +399,18 @@ function RaceContent() {
   const [readySceneKey, setReadySceneKey] = useState<string | null>(null);
   const [result, setResult] = useState<SessionResult | null>(null);
   const [restartCount, setRestartCount] = useState(0);
+  // Whole-race recording and post-race replay (lib/race/raceReplay.ts). A
+  // fresh one per scene: restart replaces it so nothing carries over.
+  const raceReplayRef = useRef(createRaceReplay(rivals.length + 1));
+  const [replayOpen, setReplayOpen] = useState(false);
+  const watchReplay = () => {
+    openReplay(raceReplayRef.current);
+    setReplayOpen(true);
+  };
+  const exitReplay = useCallback(() => {
+    closeReplay(raceReplayRef.current);
+    setReplayOpen(false);
+  }, []);
   // Keeps a local record of every finished race (Garage stats, milestones).
   // Online races are skipped: nobody scores or earns anything from them.
   const handleResult = (finished: SessionResult) => {
@@ -448,6 +465,8 @@ function RaceContent() {
     // the same clean slate a reload gives, without re-downloading anything.
     hudRef.current = createHudSnapshot(sessionMode, raceLaps);
     setResult(null);
+    raceReplayRef.current = createRaceReplay(rivals.length + 1);
+    setReplayOpen(false);
     setMenuOpen(false);
     setRestartCount((n) => n + 1);
   };
@@ -528,13 +547,15 @@ function RaceContent() {
           audioRef={audioRef}
           touchInputRef={touchInputRef}
           timeOfDay={timeOfDay}
-          paused={singlePlayer ? menuOpen || result !== null : false}
+          // The replay needs the step loop running: it poses every car from the recording there.
+          paused={singlePlayer ? menuOpen || (result !== null && !replayOpen) : false}
           onPauseToggle={singlePlayer ? toggleMenu : undefined}
           onReady={handleSceneReady}
           weatherPreset={weatherPreset}
           weatherPlan={weatherPlan}
           aiPitLap={aiPitLap}
           raceCommandsRef={raceCommandsRef}
+          raceReplayRef={raceReplayRef}
           raceOpsSnapshotRef={raceOpsSnapshotRef}
           telemetryRef={telemetryOpen ? telemetryRef : undefined}
           perfRef={perfRef}
@@ -543,7 +564,7 @@ function RaceContent() {
         />
         {!sceneReady && <TrackLoadingFallback track={track} />}
         <div
-          className={photoOpen ? hudStyles.hudHidden : hudStyles.hud}
+          className={photoOpen || replayOpen ? hudStyles.hudHidden : hudStyles.hud}
           data-hud-scale={hudPrefs.scale}
           data-colour-blind={hudPrefs.colourBlind ? "1" : undefined}
         >
@@ -637,7 +658,21 @@ function RaceContent() {
           onPhoto={singlePlayer ? enterPhoto : undefined}
         />
       )}
-      {result && <Results result={result} trackName={track.name.toUpperCase()} onRestart={restart} />}
+      {result && !replayOpen && (
+        <Results
+          result={result}
+          trackName={track.name.toUpperCase()}
+          onRestart={restart}
+          onReplay={result.kind === "race" && !netActive ? watchReplay : undefined}
+        />
+      )}
+      {replayOpen && (
+        <ReplayBar
+          replayRef={raceReplayRef}
+          drivers={[driver.code, ...rivals.map((r) => r.code)]}
+          onExit={exitReplay}
+        />
+      )}
       {/* Diagnostic output for the debug-drive-request hook in Car.tsx -
           see the comment there. */}
       <div id="__debug-output" style={{ display: "none" }} />

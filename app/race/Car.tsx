@@ -83,6 +83,8 @@ import { createDeltaTracker } from "@/lib/race/deltaTimer";
 import { pushHudEvent, queueEngineerLine, tyreWear01, type HudSnapshot, type QualifyingRow } from "@/lib/race/hud";
 import { classifyRace, createFinishTracker, updateFinishTracker } from "@/lib/race/classification";
 import { buildDebrief, createRaceLog, recordLaps } from "@/lib/race/raceLog";
+import { applyReplayPose, stepRaceReplay, type RaceReplay } from "@/lib/race/raceReplay";
+import { createPassTracker, createPose, updatePassTracker } from "@/lib/race/raceRecorder";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
 import { deltaToGhost, projectGhostToProgress, type GhostProgressTrace } from "@/lib/race/ghostProgress";
 import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
@@ -268,6 +270,7 @@ export function Car({
   raceStartRef,
   sharedRewindActiveRef,
   sharedReplayRef,
+  raceReplayRef,
   touchInputRef,
   qualifyingRef,
   track,
@@ -406,6 +409,8 @@ export function Car({
    * live instead of simulating, and snaps back to live when it ends.
    */
   sharedReplayRef?: React.RefObject<SharedReplay>;
+  /** Whole-race recording + post-race replay (see lib/race/raceReplay.ts). */
+  raceReplayRef?: React.RefObject<RaceReplay>;
   /** Shared mutable analog controls from the on-screen touch deck. */
   touchInputRef?: React.RefObject<TouchDriveInput | null>;
   /** Playable Qualifying (see lib/race/qualifying.ts) - shared with AICar.tsx. */
@@ -570,6 +575,10 @@ export function Car({
   const raceClockRef = useRef(0);
   const finishTrackerRef = useRef(createFinishTracker(rivals.length + 1));
   const raceLogRef = useRef(createRaceLog(rivals.length + 1));
+  const passTrackerRef = useRef(createPassTracker());
+  const replayPoseRef = useRef(createPose());
+  const lastContactEventRef = useRef(-Infinity);
+  const startEventRef = useRef(false);
   const resultsAtClockRef = useRef<number | null>(null);
   // Race clock timestamp (not lap-relative currentLapSeconds, which resets
   // every lap and could strand the toast if a penalty lands late in a lap)
@@ -1017,6 +1026,21 @@ export function Car({
     const controller = controllerRef.current;
     const body = chassisRef.current;
     if (!controller || !body) return;
+    // Post-race replay: the whole field is posed from the recording and the
+    // simulation (race clock, lap timer, AI) holds, like the instant replay.
+    const raceReplay = raceReplayRef?.current;
+    if (raceReplay?.active) {
+      stepRaceReplay(raceReplay, world.timestep);
+      if (raceReplay.recorder.poseAt(0, raceReplay.t, replayPoseRef.current)) {
+        applyReplayPose(body, replayPoseRef.current);
+      }
+      return;
+    }
+    if (raceReplay && sessionMode === "race" && hudRef?.current.result === null) {
+      const at = body.translation();
+      const rot = body.rotation();
+      raceReplay.recorder.write(0, at.x, at.y, at.z, rot.x, rot.y, rot.z, rot.w);
+    }
     const driveInput = update(world.timestep);
     consumeRaceOpsCommands(driveInput);
     if (replayActiveRef.current) {
@@ -1663,6 +1687,19 @@ export function Car({
     const opponentLaps = rivals.map((_, k) => Math.max(0, race.opponents[k]?.lapCount ?? 0));
     const tracker = finishTrackerRef.current;
     const update = updateFinishTracker(tracker, [playerLaps, ...opponentLaps], raceLaps, raceClockRef.current);
+    // Whole-race recording: advance the 10 Hz cursor, and note the moments
+    // worth a highlight (the start, the player's overtakes).
+    const raceReplay = raceReplayRef?.current;
+    if (raceReplay && (raceStartRef?.current ?? true)) {
+      const recorder = raceReplay.recorder;
+      recorder.advance(raceClockRef.current);
+      if (!startEventRef.current) {
+        startEventRef.current = true;
+        recorder.addEvent({ t: 0, kind: "start", car: 0, label: "LIGHTS OUT" });
+      }
+      const pass = updatePassTracker(passTrackerRef.current, hud.position, raceClockRef.current);
+      if (pass) recorder.addEvent(pass);
+    }
     // The debrief's lap log: lap 1 runs from the lights going out.
     const raceLog = raceLogRef.current;
     if (raceLog.startClock === null && (raceStartRef?.current ?? true)) raceLog.startClock = raceClockRef.current;
@@ -1670,6 +1707,7 @@ export function Car({
     if (update.finalLapNow) pushHudEvent(hud, "flag", "FINAL LAP", undefined, 2.4);
     if (update.chequeredNow) {
       hud.chequered = true;
+      raceReplay?.recorder.addEvent({ t: raceClockRef.current, kind: "finish", car: update.finishedNow[0] ?? 0, label: "CHEQUERED FLAG" });
       const winner = update.finishedNow[0];
       pushHudEvent(
         hud,
@@ -1738,6 +1776,25 @@ export function Car({
         : recordChampionshipResult(scoredRound, classified, resultRows)
       ).catch(() => {});
     }
+    const debrief = buildDebrief(
+      raceLogRef.current,
+      [
+        { code: playerCode, color: bodyColor, isPlayer: true },
+        ...rivals.map((rival) => ({ code: rival.code, color: rival.color, isPlayer: false })),
+      ],
+      raceLaps
+    );
+    if (raceReplay && debrief.fastest) {
+      const doneAt = raceLogRef.current.completedAt[debrief.fastest.car]?.[debrief.fastest.lap - 1];
+      if (doneAt !== undefined) {
+        raceReplay.recorder.addEvent({
+          t: Math.max(0, doneAt - debrief.fastest.seconds / 2),
+          kind: "fastest",
+          car: debrief.fastest.car,
+          label: `FASTEST LAP · ${debrief.cars[debrief.fastest.car].code}`,
+        });
+      }
+    }
     hud.result = {
       kind: "race",
       position: shown,
@@ -1748,14 +1805,7 @@ export function Car({
       champRound: scoredRound,
       points: rows.find((row) => row.isPlayer)?.points ?? pointsForPosition(classified),
       sprint,
-      debrief: buildDebrief(
-        raceLogRef.current,
-        [
-          { code: playerCode, color: bodyColor, isPlayer: true },
-          ...rivals.map((rival) => ({ code: rival.code, color: rival.color, isPlayer: false })),
-        ],
-        raceLaps
-      ),
+      debrief,
     };
   }
 
@@ -2418,6 +2468,11 @@ export function Car({
           // speak.
           if (audioRef) {
             const strength = impactGain01(payload.totalForceMagnitude);
+            const replayRec = raceReplayRef?.current;
+            if (replayRec && strength > 0.35 && raceClockRef.current - lastContactEventRef.current > 4) {
+              lastContactEventRef.current = raceClockRef.current;
+              replayRec.recorder.addEvent({ t: raceClockRef.current, kind: "contact", car: 0, label: "CONTACT" });
+            }
             if (strength > 0) {
               audioRef.current.impact = { strength01: strength, atMs: performance.now() };
             }

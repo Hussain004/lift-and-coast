@@ -32,10 +32,13 @@ export function Results({
   result,
   trackName,
   onRestart,
+  onReplay,
 }: {
   result: SessionResult;
   trackName: string;
   onRestart: () => void;
+  /** Opens the whole-race replay (solo races only). */
+  onReplay?: () => void;
 }) {
   const primaryRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -112,12 +115,22 @@ export function Results({
           <button type="button" className={styles.ghostButton} onClick={onRestart}>
             RESTART RACE
           </button>
+          {onReplay && (
+            <button type="button" className={styles.ghostButton} onClick={onReplay}>
+              WATCH REPLAY
+            </button>
+          )}
         </>
       ) : (
         <>
           <button ref={setPrimary} type="button" className={styles.primaryButton} onClick={onRestart}>
             RACE AGAIN
           </button>
+          {onReplay && (
+            <button type="button" className={styles.ghostButton} onClick={onReplay}>
+              WATCH REPLAY
+            </button>
+          )}
           <Link className={styles.ghostButton} href="/">
             MAIN MENU
           </Link>

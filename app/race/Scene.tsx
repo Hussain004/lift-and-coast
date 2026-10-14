@@ -41,6 +41,8 @@ import { DEFAULT_RACE_LAPS } from "@/lib/race/sessionSetup";
 import type { TimeOfDay } from "@/lib/race/sessionSetup";
 import { yawFromQuaternion } from "@/lib/physics/vehicle";
 import { buildBroadcastCams, selectBroadcastCam } from "@/lib/race/broadcastCams";
+import { pickReplayStand, type RaceReplay } from "@/lib/race/raceReplay";
+import { createPose } from "@/lib/race/raceRecorder";
 import { createPitCamState, pitCamActive, pitCamPose, stepPitCam } from "@/lib/race/pitCam";
 import {
   anchorOrbit,
@@ -478,8 +480,11 @@ function ChaseCamera({
   hudRef,
   audioRef,
   photoRef,
+  raceReplayRef,
 }: {
   target: React.RefObject<THREE.Object3D | null>;
+  /** Post-race replay: while active the camera watches the followed car from the recording. */
+  raceReplayRef?: React.RefObject<RaceReplay>;
   cameraModeRef: React.RefObject<CameraMode>;
   /** Photo mode (lib/race/photo.ts): forces the orbit camera and applies its fov and roll. */
   photoRef?: React.RefObject<PhotoState>;
@@ -546,6 +551,10 @@ function ChaseCamera({
   // Fixed trackside stands (see lib/race/broadcastCams.ts) - geometry per
   // track, computed once; the per-frame work is one nearest-ahead lookup.
   const cams = useMemo(() => buildBroadcastCams(track), [track]);
+  // Post-race replay camera state: the recorded pose being watched, and the
+  // trackside stand currently cut to (re-picked when the car passes it).
+  const replayPose = useRef(createPose());
+  const replayStand = useRef({ index: -1, follow: -1 });
   // Pit camera (see lib/race/pitCam.ts): one fixed garage-side pose per
   // circuit, computed once, with a rate-limited filter carried across frames
   // so the cut into and out of the box is a deliberate move rather than a
@@ -646,6 +655,36 @@ function ChaseCamera({
     // since the offset arm is several meters long. A ~2 degree chassis
     // pitch under throttle was reading as a dramatic lurch in the view.
     const yaw = yawFromQuaternion(r.x, r.y, r.z, r.w);
+
+    // Post-race replay: watch the followed car from the recording, either
+    // from the trackside stands (TV, a hard cut each time the car passes one)
+    // or from behind it. Same rule as every mode here: nothing is smoothed.
+    const replay = raceReplayRef?.current;
+    if (replay?.active && replay.recorder.poseAt(replay.follow, replay.t, replayPose.current)) {
+      const p = replayPose.current;
+      const fy = yawFromQuaternion(p.qx, p.qy, p.qz, p.qw);
+      const hx = -Math.sin(fy);
+      const hz = -Math.cos(fy);
+      if (replay.view === "chase") {
+        offset.current.copy(CHASE_OFFSET).applyEuler(setCamEuler(yawEuler.current, fy));
+        camera.position.set(p.x + offset.current.x, p.y + offset.current.y, p.z + offset.current.z);
+        camera.lookAt(p.x + hx * 12, p.y + 0.9, p.z + hz * 12);
+        setPerspectiveFov(camera, 70);
+      } else {
+        const st = replayStand.current;
+        const stand = st.index >= 0 && st.follow === replay.follow ? cams[st.index] : null;
+        const passed = stand ? (stand.x - p.x) * hx + (stand.z - p.z) * hz < 5 : true;
+        if (!stand || passed || Math.hypot(stand.x - p.x, stand.z - p.z) > 150) {
+          st.index = pickReplayStand(cams, p.x, p.z, hx, hz);
+          st.follow = replay.follow;
+        }
+        const cam = cams[st.index];
+        camera.position.set(cam.x, cam.y, cam.z);
+        camera.lookAt(p.x, p.y + 0.8, p.z);
+        setPerspectiveFov(camera, TV_FOV);
+      }
+      return;
+    }
 
     // Same offset-then-rotate-then-add-to-t construction for both modes -
     // only the offset vector and lookAt target differ. Position is NOT
@@ -905,6 +944,7 @@ export function Scene({
   weatherPlan = null,
   aiPitLap = null,
   raceCommandsRef,
+  raceReplayRef,
   raceOpsSnapshotRef,
   telemetryRef,
   perfRef,
@@ -949,6 +989,8 @@ export function Scene({
   /** Verification aid (?aipit=): every AI pits at the end of this lap. */
   aiPitLap?: number | null;
   raceCommandsRef?: React.RefObject<RaceOpsCommand[]>;
+  /** Whole-race recording and post-race replay state, owned by the page. */
+  raceReplayRef?: React.RefObject<RaceReplay>;
   raceOpsSnapshotRef?: React.RefObject<RaceOpsSnapshot | null>;
   /** Live telemetry target for the player car (see lib/race/telemetry.ts).
    *  Passed only while the overlay is open. */
@@ -1253,6 +1295,7 @@ export function Scene({
           raceStartRef={raceStartRef}
           sharedRewindActiveRef={sharedRewindActiveRef}
           sharedReplayRef={sharedReplayRef}
+          raceReplayRef={raceReplayRef}
           qualifyingRef={qualifyingRef}
           track={track}
           bodyColor={playerBodyColor}
@@ -1280,6 +1323,7 @@ export function Scene({
                 raceStartRef={raceStartRef}
                 sharedRewindActiveRef={sharedRewindActiveRef}
                 sharedReplayRef={sharedReplayRef}
+                raceReplayRef={raceReplayRef}
                 qualifyingRef={qualifyingRef}
                 gridSlotIndex={gridSlotIndex}
                 aiIndex={k}
@@ -1366,6 +1410,7 @@ export function Scene({
         hudRef={hudRef}
         audioRef={audioRef}
         photoRef={photoRef}
+        raceReplayRef={raceReplayRef}
       />
       <SideMirrors target={visualRef} enabled={sideMirrorsEnabled} cameraModeRef={cameraModeRef} />
       {settings.effects && audioRef && (
