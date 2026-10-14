@@ -417,3 +417,52 @@
   background: #e10600;
   color: #fff;
 }
+
+/* Season-end contract offers. */
+.offers {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: rgba(211, 171, 99, 0.08);
+  border: 1px solid rgba(211, 171, 99, 0.35);
+}
+
+.offerRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.offer {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(244, 241, 232, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4f1e8;
+  text-align: left;
+  cursor: pointer;
+}
+
+.offer i {
+  grid-row: span 2;
+  width: 10px;
+  height: 36px;
+}
+
+.offer strong {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-style: italic;
+}
+
+.offer span {
+  color: #9aa0ac;
+  font-size: 12px;
+}
+
+.offer[data-signed="1"] {
+  border-color: #1fd65f;
+}

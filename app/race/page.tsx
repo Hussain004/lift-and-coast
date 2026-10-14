@@ -40,9 +40,13 @@ import { Results } from "./hud/Results";
 import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
 import hudStyles from "./hud/hud.module.css";
+import type { RaceHistoryRecord } from "@/lib/race/raceHistory";
+import { DAILY_KEY, medalFor } from "@/lib/race/daily";
+import { SchoolCoach } from "./hud/SchoolCoach";
 import { ReplayBar } from "./hud/ReplayBar";
 import { closeReplay, createRaceReplay, openReplay } from "@/lib/race/raceReplay";
-import { appendRaceRecord } from "@/lib/persistence/raceHistory";
+import { appendRaceRecord, loadRaceHistory } from "@/lib/persistence/raceHistory";
+import { newlyEarned } from "@/lib/race/driverStats";
 import { loadHudPrefs, subscribeHudPrefs, DEFAULT_HUD_PREFS } from "@/lib/settings/hudPrefs";
 
 const LOADING_TIPS = [
@@ -174,6 +178,9 @@ function RaceContent() {
   // client-side navigation - but NOT a hard refresh, which lands back in
   // solo exactly (same track, same garage, local AI): a refresh must never
   // strand a driver in a half-joined ghost room.
+  const dailyRaw = searchParams.get("daily");
+  const dailyKey = dailyRaw !== null && DAILY_KEY.test(dailyRaw) ? dailyRaw : null;
+  const school = searchParams.get("school") === "1";
   const roomCode = searchParams.get("room");
   const roleParam = searchParams.get("role");
   const roomState = typeof window === "undefined" ? null : netRoom.getState();
@@ -403,6 +410,7 @@ function RaceContent() {
   // fresh one per scene: restart replaces it so nothing carries over.
   const raceReplayRef = useRef(createRaceReplay(rivals.length + 1));
   const [replayOpen, setReplayOpen] = useState(false);
+  const [milestones, setMilestones] = useState<string[]>([]);
   const watchReplay = () => {
     openReplay(raceReplayRef.current);
     setReplayOpen(true);
@@ -417,7 +425,7 @@ function RaceContent() {
     setResult(finished);
     if (finished.kind !== "race" || netActive) return;
     const you = finished.rows.find((row) => row.isPlayer);
-    void appendRaceRecord({
+    const record: RaceHistoryRecord = {
       schemaVersion: 1,
       at: new Date().toISOString(),
       trackId: track.id,
@@ -433,7 +441,18 @@ function RaceContent() {
       disqualified: finished.disqualified,
       champRound: finished.champRound,
       sprint: finished.sprint === true,
-    }).catch(() => {});
+      ...(dailyKey !== null ? { daily: dailyKey } : {}),
+    };
+    // Milestones are judged against the history as it was before this race.
+    void loadRaceHistory()
+      .then((before) => {
+        const unlocked = newlyEarned(before, record).map((m) => m.label);
+        const medal = dailyKey !== null ? medalFor(finished.position, finished.disqualified) : null;
+        if (medal) unlocked.unshift(`DAILY ${medal.toUpperCase()}`);
+        if (unlocked.length > 0) setMilestones(unlocked);
+        return appendRaceRecord(record);
+      })
+      .catch(() => {});
   };
   // Photo mode (lib/race/photo.ts): the pause menu's free camera. Toggling the
   // menu (Esc, P) always ends it, so closing the menu can never leave the
@@ -465,6 +484,7 @@ function RaceContent() {
     // the same clean slate a reload gives, without re-downloading anything.
     hudRef.current = createHudSnapshot(sessionMode, raceLaps);
     setResult(null);
+    setMilestones([]);
     raceReplayRef.current = createRaceReplay(rivals.length + 1);
     setReplayOpen(false);
     setMenuOpen(false);
@@ -574,6 +594,7 @@ function RaceContent() {
           <Timing hudRef={hudRef} />
           <Notifications hudRef={hudRef} />
           <Engineer hudRef={hudRef} />
+          {school && <SchoolCoach hudRef={hudRef} />}
           {hudPrefs.panels.map && (
           <TrackMap
             hudRef={hudRef}
@@ -663,6 +684,7 @@ function RaceContent() {
           result={result}
           trackName={track.name.toUpperCase()}
           onRestart={restart}
+          milestones={milestones}
           onReplay={result.kind === "race" && !netActive ? watchReplay : undefined}
         />
       )}

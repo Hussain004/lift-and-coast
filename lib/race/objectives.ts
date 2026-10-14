@@ -79,3 +79,28 @@ export function reputationTitle(reputation: number): string {
   if (reputation >= 30) return "Solid pro";
   return "Under review";
 }
+
+export type TeamTier = 1 | 2 | 3;
+
+/** Front-runners, midfield, back of the grid: the same split that sets a team's objectives. */
+export function teamTier(teamId: string): TeamTier {
+  return TIER_ONE.has(teamId) ? 1 : TIER_TWO.has(teamId) ? 2 : 3;
+}
+
+/** The best tier a driver with this reputation can be offered a seat in. */
+export function bestOfferedTier(reputation: number): TeamTier {
+  return reputation >= 70 ? 1 : reputation >= 40 ? 2 : 3;
+}
+
+/**
+ * Season-end contract offers: up to three other teams, best tier first, no
+ * better than the reputation earns. Changing team only changes livery and
+ * teammate (see lib/race/roster.ts), never the car's performance.
+ */
+export function contractOffers(reputation: number, currentTeamId: string, teamIds: readonly string[]): string[] {
+  const best = bestOfferedTier(reputation);
+  return teamIds
+    .filter((id) => id !== currentTeamId && teamTier(id) >= best)
+    .sort((a, b) => teamTier(a) - teamTier(b) || a.localeCompare(b))
+    .slice(0, 3);
+}

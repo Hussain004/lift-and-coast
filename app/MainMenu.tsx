@@ -4,9 +4,13 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { loadSeason } from "@/lib/persistence/championship";
+import { loadRaceHistory } from "@/lib/persistence/raceHistory";
+import { loadSchoolDone } from "@/lib/race/drivingSchool";
+import { dailyChallenge, dailyKey, dailyStatus, dailyStreak } from "@/lib/race/daily";
+import type { RaceHistoryRecord } from "@/lib/race/raceHistory";
 import { completedRounds, isSeasonComplete, nextRoundIndex, totalRounds } from "@/lib/race/championship";
 import { resolveRosterSelection, parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/roster";
-import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
+import { buildRaceUrl, useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
 import { MenuNavigator } from "./MenuNavigator";
 import { PromptBar } from "./MenuShell";
@@ -29,8 +33,10 @@ interface Item {
 
 const ITEMS: Item[] = [
   { id: "quick", label: "QUICK RACE", href: "/race", blurb: "Straight onto the grid with your last setup. A fresh field every time." },
+  { id: "daily", label: "DAILY CHALLENGE", href: "/race", blurb: "One race a day, the same for everyone. Win it for gold, keep the streak." },
   { id: "gp", label: "GRAND PRIX", href: "/grand-prix", blurb: `Any of ${TRACKS.length} real circuits. Practice, qualifying and race, your rules.` },
   { id: "champ", label: "CHAMPIONSHIP", href: "/championship", blurb: "A full season. Every point counts, every weekend builds the table." },
+  { id: "school", label: "DRIVING SCHOOL", href: "/race?mode=practice&track=silverstone&laps=5&rivals=1&tod=day&weather=clear&school=1", blurb: "Four short drills: launch, brake, overtake mode, a clean lap. New here? Start here." },
   { id: "tt", label: "TIME TRIAL", href: "/time-trial", blurb: "One driver, one clock. Chase your ghost and the leaderboard." },
   { id: "mp", label: "MULTIPLAYER", href: "/online", blurb: "Race friends in real time. Open a room, share the code." },
   { id: "garage", label: "GARAGE", href: "/garage", blurb: "Choose your team and driver. It carries into every mode." },
@@ -46,6 +52,7 @@ export function MainMenu() {
   const [focused, setFocused] = useState(0);
   const [pad, setPad] = useState(false);
   const [season, setSeason] = useState<string | null>(null);
+  const [history, setHistory] = useState<RaceHistoryRecord[]>([]);
   const client = useIsClient();
   const prefs = useSessionSetupPrefs();
   const roster = useRosterSelection();
@@ -64,16 +71,49 @@ export function MainMenu() {
         }
       })
       .catch(() => {});
+    loadRaceHistory()
+      .then((h) => !cancelled && setHistory(h))
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Today's challenge, from the UTC date: identical for every player.
+  const today = client ? dailyKey(new Date()) : "";
+  const challenge = client ? dailyChallenge(today, TRACKS.map((t) => t.id)) : null;
+  const dailyHref =
+    challenge === null
+      ? "/race"
+      : buildRaceUrl({
+          mode: "race",
+          track: challenge.trackId,
+          laps: challenge.laps,
+          rivals: challenge.rivals,
+          tod: challenge.timeOfDay,
+          weather: challenge.weather,
+          difficulty: "pro",
+          team: roster.teamId,
+          driver: roster.driverCode,
+          // Everyone gets the same shuffled grid, not just the same circuit.
+          seed: Number(today.replace(/-/g, "")),
+          daily: today,
+        });
+  const schoolDone = client && loadSchoolDone();
+  const dailyDone = dailyStatus(history, today);
+  const streak = dailyStreak(history, today);
 
   const selection = resolveRosterSelection(parseTeamId(roster.teamId), parseDriverCode(roster.driverCode));
   // Live detail lines, only once mounted: they come from this browser's
   // saved prefs, which the server cannot know.
   const detail: Record<string, string | null> = client
     ? {
+        daily: challenge
+          ? `${getTrackName(challenge.trackId)} · ${challenge.timeOfDay} · ${challenge.weather} · ${
+              dailyDone.best ? `${dailyDone.best} medal` : "not won yet: top 10 bronze, top 5 silver, win gold"
+            }${streak > 0 ? ` · ${streak} day streak` : ""}`
+          : null,
+        school: schoolDone ? "Completed - run it again any time" : null,
         quick: `${getTrackName(prefs.trackId)} · ${prefs.raceLaps} laps · ${prefs.rivals + 1} cars`,
         champ: season,
         garage: `${selection.team.name} · ${selection.driver.name}`,
@@ -110,6 +150,10 @@ export function MainMenu() {
           );
           return entry.id === "quick" ? (
             <Link key={entry.id} href={client ? driveHref : entry.href} onClick={go} data-nav-default autoFocus {...common}>
+              {inner}
+            </Link>
+          ) : entry.id === "daily" ? (
+            <Link key={entry.id} href={dailyHref} {...common}>
               {inner}
             </Link>
           ) : (

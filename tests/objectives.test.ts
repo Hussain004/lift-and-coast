@@ -46,3 +46,22 @@ describe("team objectives", () => {
     expect(reputationTitle(10)).toBe("Under review");
   });
 });
+
+import { bestOfferedTier, contractOffers, teamTier } from "../lib/race/objectives";
+
+describe("contract offers", () => {
+  const teams = ["mercedes", "ferrari", "alpine", "williams", "haas", "audi", "cadillac"];
+  it("a high reputation is offered front-runners, never the current team", () => {
+    expect(bestOfferedTier(90)).toBe(1);
+    expect(contractOffers(90, "ferrari", teams)).toEqual(["mercedes", "alpine", "williams"]);
+  });
+  it("a low reputation is only offered the back of the grid", () => {
+    expect(bestOfferedTier(20)).toBe(3);
+    const offers = contractOffers(20, "mercedes", teams);
+    expect(offers.every((id) => teamTier(id) === 3)).toBe(true);
+    expect(offers).toEqual(["audi", "cadillac", "haas"]);
+  });
+  it("mid reputation reaches the midfield but not the front", () => {
+    expect(contractOffers(50, "haas", teams).every((id) => teamTier(id) >= 2)).toBe(true);
+  });
+});

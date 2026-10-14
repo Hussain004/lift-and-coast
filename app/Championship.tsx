@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { objectiveFor, reputationTitle, seasonObjectives } from "@/lib/race/objectives";
+import { contractOffers, objectiveFor, reputationTitle, seasonObjectives } from "@/lib/race/objectives";
 import { useEffect, useState } from "react";
 import {
   completedRounds,
@@ -35,7 +35,7 @@ import {
   type RaceUrlParams,
 } from "@/lib/race/sessionSetup";
 import { DIFFICULTY_OPTIONS } from "@/lib/ai/personalities";
-import { parseDriverCode, parseTeamId, TEAMS, useRosterSelection } from "@/lib/race/roster";
+import { parseDriverCode, parseTeamId, saveRosterPrefs, TEAMS, useRosterSelection } from "@/lib/race/roster";
 import { useSessionSetupPrefs } from "@/lib/race/sessionSetup";
 import { TRACKS, getTrackName } from "@/lib/tracks/registry";
 import { PROGRAMME_IDS, PROGRAMME_LABELS } from "@/lib/race/practiceProgrammes";
@@ -273,6 +273,17 @@ export function Championship() {
         </dl>
       </div>
 
+      {complete && (
+        <ContractOffers
+          reputation={objectives.reputation}
+          currentTeamId={playerTeam}
+          onSign={(id) => {
+            const team = TEAMS.find((t) => t.id === id);
+            if (team) saveRosterPrefs({ teamId: team.id, driverCode: team.drivers[0].code });
+          }}
+        />
+      )}
+
       {!complete && <Weekend season={season} next={next} laps={seasonRaceLaps(season)} base={{
         team: parseTeamId(teamId),
         driver: parseDriverCode(driverCode),
@@ -486,6 +497,44 @@ function Weekend({
             <small>{number()}</small> {gridParam ? `RACE FROM P${gridParam}` : "RACE"}
           </Link>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Season-end seat offers from the teams your reputation earns. Signing changes livery and teammate only. */
+function ContractOffers({
+  reputation,
+  currentTeamId,
+  onSign,
+}: {
+  reputation: number;
+  currentTeamId: string | null;
+  onSign: (teamId: string) => void;
+}) {
+  const [signed, setSigned] = useState<string | null>(null);
+  const offers = contractOffers(reputation, currentTeamId ?? "", TEAMS.map((t) => t.id));
+  if (offers.length === 0) return null;
+  return (
+    <div className={styles.offers}>
+      <div className={styles.kicker}>CONTRACT OFFERS · {reputationTitle(reputation).toUpperCase()}</div>
+      <div className={styles.offerRow}>
+        {offers.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className={styles.offer}
+            data-signed={signed === id ? "1" : undefined}
+            onClick={() => {
+              onSign(id);
+              setSigned(id);
+            }}
+          >
+            <i style={{ background: teamColor(id) }} />
+            <strong>{teamName(id)}</strong>
+            <span>{signed === id ? "SIGNED — drive for them next season" : "SIGN FOR NEXT SEASON"}</span>
+          </button>
+        ))}
       </div>
     </div>
   );

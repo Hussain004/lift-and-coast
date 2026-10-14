@@ -33,12 +33,15 @@ export function Results({
   trackName,
   onRestart,
   onReplay,
+  milestones = [],
 }: {
   result: SessionResult;
   trackName: string;
   onRestart: () => void;
   /** Opens the whole-race replay (solo races only). */
   onReplay?: () => void;
+  /** Career milestones this race unlocked. */
+  milestones?: string[];
 }) {
   const primaryRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -209,6 +212,9 @@ export function Results({
             </div>
             <div className={styles.resultsHeadline}>{headline}</div>
             <div className={styles.resultsSub}>{sub}</div>
+            {milestones.length > 0 && (
+              <div className={styles.resultsMilestone}>★ {milestones.join(" · ")}</div>
+            )}
           </div>
           <div className={styles.chequer} aria-hidden="true" />
         </div>

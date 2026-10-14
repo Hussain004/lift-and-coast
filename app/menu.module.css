@@ -422,3 +422,100 @@
     transition: none;
   }
 }
+
+/* ---------- garage: driver profile ---------- */
+
+.profile {
+  margin-top: 22px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(244, 241, 232, 0.08);
+  border-top: 3px solid #e10600;
+  text-align: left;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.statGrid div {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.statGrid dt {
+  color: #d3ab63;
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+}
+
+.statGrid dd {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 900;
+}
+
+.milestones {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.milestones li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid rgba(244, 241, 232, 0.08);
+  opacity: 0.45;
+}
+
+.milestones li[data-earned="1"] {
+  border-color: #d3ab63;
+  background: rgba(211, 171, 99, 0.1);
+  opacity: 1;
+}
+
+.milestones b {
+  font-size: 14px;
+}
+
+.milestones span {
+  color: #9aa0ac;
+  font-size: 12px;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.recent li {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.recent b {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-style: italic;
+}
+
+.recent small {
+  color: #9aa0ac;
+  font-size: 12px;
+}

@@ -193,6 +193,8 @@ export interface RaceUrlParams {
    * you can read in one place instead of a diff spread over the file.
    */
   timeAttack?: boolean;
+  /** The daily challenge's date key (?daily=YYYY-MM-DD), so the finish is logged against it. */
+  daily?: string;
 }
 
 /**
@@ -261,6 +263,7 @@ export function buildRaceUrl(params: RaceUrlParams): string {
   // 1/0 rather than a bare ?ta, so the value is always something to parse and
   // the flag survives being copied and re-saved by a user or a tool.
   if (params.timeAttack) query.set("ta", "1");
+  if (params.daily !== undefined) query.set("daily", params.daily);
   const suffix = query.toString();
   return `/race${suffix ? `?${suffix}` : ""}`;
 }

@@ -21,6 +21,8 @@ export interface RaceHistoryRecord {
   /** Championship round index when the race scored one; null for an exhibition. */
   champRound: number | null;
   sprint: boolean;
+  /** The daily challenge's date key (YYYY-MM-DD) when this race was one. */
+  daily?: string;
 }
 
 /** Oldest records are dropped past this, so the store never grows without bound. */
@@ -45,7 +47,8 @@ export function isRaceHistoryRecord(value: unknown): value is RaceHistoryRecord 
     typeof r.penaltySeconds === "number" &&
     typeof r.disqualified === "boolean" &&
     (r.champRound === null || int(r.champRound, 0)) &&
-    typeof r.sprint === "boolean"
+    typeof r.sprint === "boolean" &&
+    (r.daily === undefined || (typeof r.daily === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.daily)))
   );
 }
 

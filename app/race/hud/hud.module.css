@@ -1541,3 +1541,55 @@
   border-color: #e10600;
   background: rgba(225, 6, 0, 0.3);
 }
+
+.resultsMilestone {
+  margin-top: 6px;
+  color: #d3ab63;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+/* ---------- driving school coach card ---------- */
+
+.school {
+  position: absolute;
+  top: calc(var(--edge) + 64px);
+  left: 50%;
+  width: min(460px, calc(100% - 2 * var(--edge)));
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel-strong);
+  transform: translateX(-50%);
+}
+
+.schoolTitle {
+  color: var(--yellow);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.schoolText {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.schoolSteps {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schoolSteps li {
+  flex: 1;
+  height: 4px;
+  background: rgba(244, 241, 232, 0.2);
+}
+
+.schoolSteps li[data-done="1"] {
+  background: var(--green);
+}

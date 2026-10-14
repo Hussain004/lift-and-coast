@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ShowroomLoader } from "../../ShowroomLoader";
+import { DriverProfile } from "../../DriverProfile";
 import { TeamSetup } from "../../TeamSetup";
 import pageStyles from "../../page.module.css";
 import styles from "../../menu.module.css";
@@ -14,6 +15,7 @@ export default function GaragePage() {
         <ShowroomLoader />
         <TeamSetup />
       </div>
+      <DriverProfile />
     </>
   );
 }
