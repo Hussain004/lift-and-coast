@@ -77,6 +77,8 @@ export interface TimeAttackIdentity {
 
 export interface SubmitTimeAttackOptions extends TimeAttackIdentity {
   lapMs: number;
+  /** Row id chosen by the caller, so the lap's ghost can be attached to it afterwards. */
+  lapId?: string;
   knownTrackIds: ReadonlySet<string>;
   /**
    * The per-device id an ANONYMOUS lap is filed under, from
@@ -127,6 +129,7 @@ export function timeAttackSubmission(
     driverCode: options.driverCode,
     teamId: options.teamId,
     compound: TIME_ATTACK_COMPOUND,
+    ...(options.lapId !== undefined ? { id: options.lapId } : {}),
     ...(session !== null ? { userId: session.userId } : {}),
     // Omitted rather than sent as an empty string, so the board falls back to
     // the driver code instead of rendering a blank name.

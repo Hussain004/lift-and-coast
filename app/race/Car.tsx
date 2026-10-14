@@ -86,6 +86,9 @@ import { buildDebrief, createRaceLog, recordLaps } from "@/lib/race/raceLog";
 import { applyReplayPose, stepRaceReplay, type RaceReplay } from "@/lib/race/raceReplay";
 import { createPassTracker, createPose, updatePassTracker } from "@/lib/race/raceRecorder";
 import { createGhostRecorder } from "@/lib/race/ghostRecorder";
+import { loadSharedGhost, shareGhost } from "@/lib/race/ghostShare";
+import { loadGhostChoice } from "@/lib/race/ghostPrefs";
+import { leaderboardConfigFromEnv } from "@/lib/race/leaderboardClient";
 import { deltaToGhost, projectGhostToProgress, type GhostProgressTrace } from "@/lib/race/ghostProgress";
 import { createSectorTimer, type SectorCrossing } from "@/lib/race/sectorTimer";
 import {
@@ -591,6 +594,14 @@ export function Car({
   // account never touches storage at all.
   const timeAttackSessionRef = useRef<AccountSession | null | undefined>(undefined);
   const timeAttackClientIdRef = useRef<string | null | undefined>(undefined);
+  // The lap just posted to the board, waiting for its ghost: the ghost is only
+  // known once the recorder has promoted this lap (see endLap below), and can
+  // only be stored once the lap row exists.
+  const pendingGhostRef = useRef<{
+    lapId: string;
+    lapMs: number;
+    identity: Promise<{ clientId: string; accessToken?: string; playerName?: string; posted: Promise<boolean> } | null>;
+  } | null>(null);
 
   /**
    * Saves one time-attack lap to the board. Never throws and never blocks.
@@ -611,6 +622,16 @@ export function Car({
         timeAttackSessionRef.current = loadAccountSession();
       }
       const stored: AccountSession | null = timeAttackSessionRef.current ?? null;
+      // The lap's row id is chosen here so its ghost can be attached afterwards.
+      const lapId = crypto.randomUUID();
+      let resolveIdentity: (v: { clientId: string; accessToken?: string; playerName?: string; posted: Promise<boolean> } | null) => void = () => {};
+      pendingGhostRef.current = {
+        lapId,
+        lapMs,
+        identity: new Promise((resolve) => {
+          resolveIdentity = resolve;
+        }),
+      };
       const send = (session: AccountSession | null) => {
         if (timeAttackClientIdRef.current === undefined) {
           try {
@@ -619,15 +640,29 @@ export function Car({
             timeAttackClientIdRef.current = null;
           }
         }
-        return submitTimeAttackLap({
+        const posted = submitTimeAttackLap({
           trackId,
           lapMs,
+          lapId,
           driverCode: playerCode,
           teamId: playerTeamId ?? DEFAULT_TEAM_ID,
           session,
           clientId: timeAttackClientIdRef.current,
           knownTrackIds: TIME_ATTACK_TRACK_IDS,
         });
+        // The same identity the lap row carries (see submitTimeAttackLap).
+        const owner = session !== null ? session.userId : timeAttackClientIdRef.current;
+        resolveIdentity(
+          owner === null
+            ? null
+            : {
+                clientId: owner,
+                accessToken: session?.accessToken,
+                playerName: session !== null && session.username.length > 0 ? session.username : undefined,
+                posted,
+              }
+        );
+        return posted;
       };
       if (stored === null || !sessionNeedsRefresh(stored, Date.now())) {
         void send(stored);
@@ -765,6 +800,48 @@ export function Car({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.id]);
+
+  // Time attack: race a shared ghost (the next-faster rival, or the world
+  // record) instead of your own best, if that is what the picker chose.
+  useEffect(() => {
+    if (!timeAttack) return;
+    const choice = loadGhostChoice();
+    if (choice !== "rival" && choice !== "world-record") return;
+    let cancelled = false;
+    loadPersonalBest(track.id)
+      .catch(() => null)
+      .then((record) =>
+        loadSharedGhost(
+          leaderboardConfigFromEnv({
+            NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          }),
+          track,
+          choice,
+          record ? record.bestLapSeconds * 1000 : null
+        )
+      )
+      .then((ghost) => {
+        if (cancelled || !ghost) return;
+        ghostRecorderRef.current.setReference(ghost.samples);
+        ghostTraceRef.current = projectGhostToProgress(track, ghost.samples, ghost.lapSeconds);
+        if (hudRef?.current) {
+          pushHudEvent(
+            hudRef.current,
+            "info",
+            choice === "rival" ? "RACING A RIVAL" : "RACING THE WORLD RECORD",
+            `${ghost.info.playerName ?? ghost.info.driverCode} · ${formatLapTime(ghost.lapSeconds)}`,
+            3.5
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // The session is fixed for this mount (the scene remounts on any change).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.id]);
 
@@ -2239,6 +2316,10 @@ export function Car({
       // endLap comment) - the ghost should be the same lap the delta is
       // measured against, not a separately-chosen one.
       ghostRecorderRef.current.endLap(wasNewBest);
+      // A lap posted this frame is waiting for its ghost; whatever happens,
+      // it is never carried over to a later lap.
+      const pending = pendingGhostRef.current;
+      pendingGhostRef.current = null;
       if (wasNewBest) {
         // After endLap above, so getReference() reflects this lap's just-
         // promoted ghost samples rather than the previous best's.
@@ -2247,6 +2328,28 @@ export function Car({
           bestLapSeconds: lap.lastLapSeconds,
           ghost: ghostRecorderRef.current.getReference() ?? [],
         }).catch(() => {});
+        // Time attack: share this lap's ghost once its row is on the board.
+        const ghostSamples = ghostRecorderRef.current.getReference();
+        if (timeAttack && pending && ghostSamples) {
+          void pending.identity.then((identity) => {
+            if (!identity) return;
+            return shareGhost({
+              config: leaderboardConfigFromEnv({
+                NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+                NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+              }),
+              track,
+              samples: ghostSamples,
+              lapMs: pending.lapMs,
+              lapId: pending.lapId,
+              driverCode: playerCode,
+              clientId: identity.clientId,
+              playerName: identity.playerName,
+              accessToken: identity.accessToken,
+              lapPosted: identity.posted,
+            });
+          });
+        }
       }
       // Completes the final sector for the lap that just ended (see
       // sectorTimer.ts's own comment for why this is driven by the lap

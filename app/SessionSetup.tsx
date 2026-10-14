@@ -48,6 +48,7 @@ import { parseDriverCode, parseTeamId, useRosterSelection } from "@/lib/race/ros
 import { TRACKS, parseTrackId } from "@/lib/tracks/registry";
 import { getOutline, outlinePath, previewStats } from "@/lib/tracks/preview";
 import type { WeatherSetting } from "@/lib/physics/weatherForecast";
+import { MIN_ADVICE_LAPS, PIT_LANE_LOSS_SECONDS, PIT_SERVICE_ESTIMATE_SECONDS, adviceFor } from "@/lib/race/strategyAdvice";
 import styles from "./sessionSetup.module.css";
 
 const TIME_OF_DAY_OPTIONS: { id: TimeOfDay; label: string }[] = [
@@ -126,6 +127,9 @@ export function SessionSetup() {
   const router = useRouter();
   const meta = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
   const stats = previewStats(meta);
+  // Rough race pace for scaling the strategy estimate: ~55 m/s average.
+  const lapMeters = getOutline(meta.id).lengthMeters;
+  const advice = adviceFor(lapMeters, raceLaps, lapMeters / 55);
   const hero = outlinePath(getOutline(meta.id).points, 150, 10);
 
   function driveUrl(seed: number | undefined) {
@@ -344,6 +348,20 @@ export function SessionSetup() {
             ))}
           </div>
         </>
+      )}
+      {sessionMode === "race" && raceLaps >= MIN_ADVICE_LAPS && (
+        <div className={styles.advice}>
+          <div className={styles.label}>TYRE STRATEGY · ESTIMATE</div>
+          <ol>
+            {advice.map((a, i) => (
+              <li key={a.text}>
+                <span>{a.text}</span>
+                <b>{i === 0 ? "BEST" : `+${a.gapSeconds.toFixed(1)}s`}</b>
+              </li>
+            ))}
+          </ol>
+          <small>From the tyre model. A stop costs about {Math.round(PIT_LANE_LOSS_SECONDS + PIT_SERVICE_ESTIMATE_SECONDS)}s.</small>
+        </div>
       )}
         </>
       )}

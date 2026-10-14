@@ -5,9 +5,11 @@ import {
   PHOTO_DEFAULT_FOV,
   PHOTO_FOV_MAX,
   PHOTO_FOV_MIN,
+  PHOTO_FILTERS,
   PHOTO_ROLL_MAX,
   clampPhoto,
   photoFilename,
+  type PhotoFilterId,
   type PhotoState,
 } from "@/lib/race/photo";
 import hud from "./hud/hud.module.css";
@@ -29,6 +31,7 @@ export function PhotoPanel({
   // The page resets the shared state on entry, so a fresh panel starts at the defaults.
   const [fov, setFov] = useState(PHOTO_DEFAULT_FOV);
   const [roll, setRoll] = useState(0);
+  const [filter, setFilter] = useState<PhotoFilterId>("natural");
   const edit = (patch: Partial<Pick<PhotoState, "fovDeg" | "rollDeg">>) => {
     Object.assign(photoRef.current, patch);
     clampPhoto(photoRef.current);
@@ -46,6 +49,23 @@ export function PhotoPanel({
         <span>ROLL · {Math.round(roll)}°</span>
         <input type="range" min={-PHOTO_ROLL_MAX} max={PHOTO_ROLL_MAX} value={roll} onChange={(e) => edit({ rollDeg: Number(e.target.value) })} />
       </label>
+      <div role="radiogroup" aria-label="Colour grade" className={hud.photoFilters}>
+        {PHOTO_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            role="radio"
+            aria-checked={filter === f.id}
+            data-on={filter === f.id ? "1" : undefined}
+            onClick={() => {
+              photoRef.current.filter = f.id;
+              setFilter(f.id);
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       <p>Drag to orbit, scroll to zoom.</p>
       <button
         type="button"

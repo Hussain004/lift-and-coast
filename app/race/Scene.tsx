@@ -84,7 +84,7 @@ import { SideMirrors } from "./SideMirrors";
 import { flashbackLimit } from "@/lib/race/flashbacks";
 import { MarshalPosts } from "./MarshalPosts";
 import { PitCrew } from "./PitCrew";
-import type { PhotoState } from "@/lib/race/photo";
+import { photoFilterCss, type PhotoState } from "@/lib/race/photo";
 import { createFxBus, RainLightDriver, SkidMarks, Sparks, Spray, type FxBus } from "./TrackFx";
 
 // Grid start (plan section 7): counts down on screen, then flips
@@ -877,6 +877,12 @@ function ChaseCamera({
       setPerspectiveFov(camera, fovForSpeed(CHASE_FOV, speedMs));
     }
     prevMode.current = mode;
+    // The photo grade is a CSS filter on the canvas, so it costs nothing in
+    // the GL budget; it is cleared the moment photo mode ends.
+    const gradeCss = photo?.active ? photoFilterCss(photo.filter) : "none";
+    if (state.gl.domElement.style.filter !== (gradeCss === "none" ? "" : gradeCss)) {
+      state.gl.domElement.style.filter = gradeCss === "none" ? "" : gradeCss;
+    }
     if (photo?.active) {
       setPerspectiveFov(camera, photo.fovDeg);
       camera.rotateZ((photo.rollDeg * Math.PI) / 180);
@@ -886,7 +892,17 @@ function ChaseCamera({
         // only guaranteed to hold the frame until the browser presents it.
         state.gl.render(state.scene, camera);
         const filename = photo.filename;
-        state.gl.domElement.toBlob((blob) => {
+        // Copy through a 2D canvas so the grade is baked into the file.
+        const source = state.gl.domElement;
+        const copy = document.createElement("canvas");
+        copy.width = source.width;
+        copy.height = source.height;
+        const ctx = copy.getContext("2d");
+        if (ctx) {
+          ctx.filter = gradeCss;
+          ctx.drawImage(source, 0, 0);
+        }
+        (ctx ? copy : source).toBlob((blob) => {
           if (!blob) return;
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");

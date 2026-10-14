@@ -64,7 +64,7 @@ const REQUEST_TIMEOUT_MS = 4000;
  * the caller. The apikey header stays the publishable key either way: that is
  * the project identifier, not the identity.
  */
-function headersFor(config: LeaderboardConfig, accessToken?: string): Record<string, string> {
+export function headersFor(config: LeaderboardConfig, accessToken?: string): Record<string, string> {
   return {
     apikey: config.publishableKey,
     Authorization: `Bearer ${accessToken ?? config.publishableKey}`,
@@ -336,6 +336,7 @@ export async function submitLap(
       headers: headersFor(config, accessToken),
       signal: controller.signal,
       body: JSON.stringify({
+        ...(submission.id !== undefined ? { id: submission.id } : {}),
         track_id: submission.trackId,
         lap_ms: submission.lapMs,
         driver_code: submission.driverCode,

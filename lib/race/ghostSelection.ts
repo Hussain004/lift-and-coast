@@ -45,7 +45,7 @@ export interface GhostAvailability {
  * from "we are still building this".
  */
 const NO_SHARED_GHOSTS =
-  "Shared ghosts need a place to store them - not available yet.";
+  "No shared ghost to race here yet - set a lap online to start one.";
 
 export function ghostChoices(availability: GhostAvailability): GhostCandidate[] {
   const pb = availability.personalBestSeconds;

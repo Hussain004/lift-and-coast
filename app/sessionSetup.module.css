@@ -333,3 +333,37 @@
   height: 18px;
   accent-color: #e10600;
 }
+
+/* Tyre strategy advice (Event tab, races of 5+ laps). */
+.advice {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(246, 243, 236, 0.1);
+}
+
+.advice ol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.advice li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.advice li b {
+  color: #d3ab63;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+}
+
+.advice small {
+  color: #9aa0ab;
+  font-size: 11px;
+}

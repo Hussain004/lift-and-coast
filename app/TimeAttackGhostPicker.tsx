@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./page.module.css";
+import { fetchGhostInfo, type SharedGhostInfo } from "@/lib/race/sharedGhosts";
+import { leaderboardConfigFromEnv } from "@/lib/race/leaderboardClient";
 import { formatLapTime } from "@/lib/race/leaderboard";
 import {
   ghostChoices,
@@ -50,11 +52,45 @@ export function TimeAttackGhostPicker({
     };
   }, []);
 
-  // No shared ghosts can be fetched yet, so those two inputs are absent rather
-  // than faked. When a ghosts table exists, this is the only line that changes.
+  // The two shared ghosts come from the board; until they arrive (or if the
+  // board is unreachable) they stay visibly unavailable rather than faked.
+  const [shared, setShared] = useState<{
+    trackId: string;
+    rival: SharedGhostInfo | null;
+    record: SharedGhostInfo | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const config = leaderboardConfigFromEnv({
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    });
+    const pbMs = personalBestSeconds === null ? null : personalBestSeconds * 1000;
+    void Promise.all([
+      fetchGhostInfo(config, trackId, "rival", pbMs),
+      fetchGhostInfo(config, trackId, "world-record", null),
+    ]).then(([rival, record]) => {
+      if (!cancelled) setShared({ trackId, rival, record });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackId, personalBestSeconds]);
+  // A result for another circuit is stale, not an answer for this one.
+  const current = shared !== null && shared.trackId === trackId ? shared : null;
+  const label = (info: SharedGhostInfo) => (info.playerName ?? info.driverCode) + " · shared ghost";
   const choices = useMemo(
-    () => ghostChoices({ personalBestSeconds, rivalGhost: null, worldRecordGhost: null }),
-    [personalBestSeconds]
+    () =>
+      ghostChoices({
+        personalBestSeconds,
+        rivalGhost: current?.rival
+          ? { lapSeconds: current.rival.lapMs / 1000, attribution: label(current.rival) }
+          : null,
+        worldRecordGhost: current?.record
+          ? { lapSeconds: current.record.lapMs / 1000, attribution: label(current.record) }
+          : null,
+      }),
+    [personalBestSeconds, current]
   );
   const active = resolveGhostChoice(choices, stored);
 

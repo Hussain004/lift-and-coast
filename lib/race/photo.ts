@@ -9,6 +9,27 @@ export interface PhotoState {
   capture: boolean;
   /** File name for the next capture. */
   filename: string;
+  /** Colour grade (see PHOTO_FILTERS). */
+  filter: PhotoFilterId;
+}
+
+export type PhotoFilterId = "natural" | "warm" | "cool" | "mono" | "film";
+
+/**
+ * Colour grades as CSS filter strings: applied to the canvas for the live
+ * preview and to a 2D canvas copy when saving, so the file matches what you
+ * see and nothing extra renders while racing.
+ */
+export const PHOTO_FILTERS: { id: PhotoFilterId; label: string; css: string }[] = [
+  { id: "natural", label: "Natural", css: "none" },
+  { id: "warm", label: "Warm", css: "sepia(0.25) saturate(1.2) contrast(1.05) brightness(1.03)" },
+  { id: "cool", label: "Cool", css: "hue-rotate(-12deg) saturate(1.1) contrast(1.06) brightness(0.98)" },
+  { id: "mono", label: "Mono", css: "grayscale(1) contrast(1.2)" },
+  { id: "film", label: "Film", css: "sepia(0.18) contrast(1.15) saturate(0.85) brightness(0.97)" },
+];
+
+export function photoFilterCss(id: PhotoFilterId): string {
+  return PHOTO_FILTERS.find((f) => f.id === id)?.css ?? "none";
 }
 
 export const PHOTO_FOV_MIN = 20;
@@ -17,7 +38,7 @@ export const PHOTO_ROLL_MAX = 25;
 export const PHOTO_DEFAULT_FOV = 55;
 
 export function createPhotoState(): PhotoState {
-  return { active: false, fovDeg: PHOTO_DEFAULT_FOV, rollDeg: 0, capture: false, filename: "lift-and-coast.png" };
+  return { active: false, fovDeg: PHOTO_DEFAULT_FOV, rollDeg: 0, capture: false, filename: "lift-and-coast.png", filter: "natural" };
 }
 
 export function clampPhoto(state: PhotoState): PhotoState {

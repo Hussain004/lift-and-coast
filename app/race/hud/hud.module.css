@@ -1593,3 +1593,23 @@
 .schoolSteps li[data-done="1"] {
   background: var(--green);
 }
+
+.photoFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.photoFilters button {
+  padding: 6px 10px;
+  border: 1px solid rgba(244, 241, 232, 0.25);
+  background: none;
+  color: #f4f1e8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.photoFilters button[data-on="1"] {
+  border-color: #e10600;
+  background: #e10600;
+}

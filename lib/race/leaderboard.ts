@@ -55,6 +55,11 @@ export interface LapSubmission {
    */
   userId?: string;
   playerName?: string;
+  /**
+   * Row id chosen by the client, so a ghost can be attached to this lap
+   * afterwards (lib/race/sharedGhosts.ts). Omitted, the database picks one.
+   */
+  id?: string;
 }
 
 /** Tyre compounds the board accepts; mirrors the table's CHECK constraint. */

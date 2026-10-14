@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPhoto, createPhotoState, photoFilename, PHOTO_FOV_MAX, PHOTO_FOV_MIN, PHOTO_ROLL_MAX } from "../lib/race/photo";
+import { clampPhoto, createPhotoState, photoFilename, photoFilterCss, PHOTO_FILTERS, PHOTO_FOV_MAX, PHOTO_FOV_MIN, PHOTO_ROLL_MAX } from "../lib/race/photo";
 
 describe("photo mode", () => {
   it("keeps the fov and roll in range", () => {
@@ -18,5 +18,17 @@ describe("photo mode", () => {
       "lift-and-coast-autodromo-nazionale-monza-20260929-143005.png"
     );
     expect(photoFilename("###", new Date(2026, 0, 2, 3, 4, 5))).toBe("lift-and-coast-race-20260102-030405.png");
+  });
+});
+
+describe("photo filters", () => {
+  it("starts natural, which is no filter at all", () => {
+    expect(createPhotoState().filter).toBe("natural");
+    expect(photoFilterCss("natural")).toBe("none");
+  });
+  it("has a distinct CSS grade for every other filter", () => {
+    const css = PHOTO_FILTERS.filter((f) => f.id !== "natural").map((f) => f.css);
+    expect(new Set(css).size).toBe(css.length);
+    expect(photoFilterCss("mono")).toContain("grayscale(1)");
   });
 });

@@ -279,10 +279,11 @@ describe("choosing which ghost to race", () => {
   });
 
   it("states why a shared ghost is unavailable instead of a bare 'coming soon'", () => {
-    // The reason is specific - there is nowhere to store one - and a player
-    // deserves that rather than a vague promise.
+    // The reason is specific - nobody has shared one on this circuit yet, and
+    // how to start one - and a player deserves that rather than a vague promise.
     const rival = ghostChoices(withPb).find((c) => c.id === "rival");
-    expect(rival?.unavailableReason).toMatch(/store/i);
+    expect(rival?.unavailableReason).toMatch(/no shared ghost/i);
+    expect(rival?.unavailableReason).not.toMatch(/coming soon/i);
   });
 
   it("marks the personal best unavailable when there is no lap yet", () => {
