@@ -1,4 +1,5 @@
 import type { DamageState } from "../physics/damage";
+import type { StrategyWearSample } from "./strategy";
 import type { RapierRigidBody } from "@react-three/rapier";
 
 export interface RewindSample {
@@ -11,6 +12,9 @@ export interface RewindSample {
   damage?: number;
   /** The per-part damage at this instant (player only). */
   damageParts?: DamageState;
+  /** Tyre age/temperature and fuel at this instant (player only), so a
+   * flashback also gives the tyre life back. */
+  wear?: StrategyWearSample;
 }
 
 /** Length of the rewindable past, shared by the player and the AI so both

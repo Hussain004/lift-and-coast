@@ -142,15 +142,30 @@ describe("createSectorTimer", () => {
     expect(sector0?.color).toBe("purple");
   });
 
-  it("rewinds the in-progress sector baseline without stale split data", () => {
+  it("rewinding across a gate forgets it, and it registers again when re-driven", () => {
     const timer = createSectorTimer(gateConfigs);
     timer.update(0, 0, 0, true);
-    timer.update(100, 0, 10, true);
-    timer.rewindTo(4);
+    timer.update(100, 0, 10, true); // gate 0 at 10 s
+    timer.rewindTo(4); // back before the gate
 
     timer.update(99, 0, 13, true);
     const sector = timer.update(100, 0, 14, true);
-    expect(sector).toMatchObject({ sectorIndex: 0, sectorSeconds: 10 });
+    // Sector 1 runs from the lap start, so re-driven to the gate at 14 s it reads 14 s.
+    expect(sector).toMatchObject({ sectorIndex: 0, sectorSeconds: 14 });
+  });
+
+  it("a rewind that stays within a sector keeps the splits already earned", () => {
+    const timer = createSectorTimer(gateConfigs);
+    timer.update(0, 0, 0, true);
+    timer.update(100, 0, 10, true); // gate 0 at 10 s
+    timer.update(150, 0, 15, true);
+    timer.rewindTo(13); // 2 s back, still after gate 0
+
+    // Gate 1 must still be the next gate, measured from gate 0 at 10 s - not
+    // from the rewind point, and without needing gate 0 again.
+    timer.update(199, 0, 20, true);
+    const sector = timer.update(200, 0, 24, true);
+    expect(sector).toMatchObject({ sectorIndex: 1, sectorSeconds: 14 });
   });
 
   it("reset clears in-progress gate state without recording anything", () => {

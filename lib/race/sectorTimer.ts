@@ -49,6 +49,9 @@ export function createSectorTimer(gateConfigs: { x: number; z: number; headingRa
   let prevSignedForward: number | null = null;
   let sectorStartSeconds = 0;
   let currentLapSectors: number[] = [];
+  // Lap-clock time of each gate crossed this lap, so a rewind can keep the
+  // splits that are still in the past instead of discarding the whole lap.
+  let gateTimes: number[] = [];
   const sessionBestSectors: (number | null)[] = new Array(sectorCount).fill(null);
   let bestLapSectors: (number | null)[] = new Array(sectorCount).fill(null);
 
@@ -91,6 +94,7 @@ export function createSectorTimer(gateConfigs: { x: number; z: number; headingRa
       // clamp is a cosmetic safety net for that corrected lap.
       const sectorSeconds = Math.max(0, currentLapSeconds - sectorStartSeconds);
       currentLapSectors.push(sectorSeconds);
+      gateTimes.push(currentLapSeconds);
       const color = classify(nextGateIndex, sectorSeconds, eligible);
       const result: SectorCrossing = { sectorIndex: nextGateIndex, sectorSeconds, color };
       sectorStartSeconds = currentLapSeconds;
@@ -141,22 +145,25 @@ export function createSectorTimer(gateConfigs: { x: number; z: number; headingRa
    */
   function reset() {
     currentLapSectors = [];
+    gateTimes = [];
     sectorStartSeconds = 0;
     nextGateIndex = 0;
     prevSignedForward = null;
   }
 
   /**
-   * Rewinds the in-progress sector baseline after the lap clock is rolled
-   * back. Gate crossings already recorded from the discarded future cannot be
-   * trusted, so start a fresh split sequence at the restored lap time. The
-   * final sector still completes at the next finish-line crossing; this keeps
-   * a corrected qualifying rewind from displaying stale or negative splits.
+   * Rewinds the in-progress sector state after the lap clock is rolled back to
+   * `currentLapSeconds`. Gates crossed at or before that moment are still true
+   * and are kept (so a short rewind in sector 3 does not wipe sectors 1-2 or
+   * leave the timer waiting for a gate it already passed); gates crossed in
+   * the discarded future are forgotten and will register again when re-driven.
    */
   function rewindTo(currentLapSeconds: number) {
-    currentLapSectors = [];
-    sectorStartSeconds = Math.max(0, currentLapSeconds);
-    nextGateIndex = 0;
+    const keep = gateTimes.filter((t) => t <= currentLapSeconds).length;
+    gateTimes = gateTimes.slice(0, keep);
+    currentLapSectors = currentLapSectors.slice(0, keep);
+    nextGateIndex = keep;
+    sectorStartSeconds = keep > 0 ? gateTimes[keep - 1] : 0;
     prevSignedForward = null;
   }
 

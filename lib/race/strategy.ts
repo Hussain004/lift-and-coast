@@ -32,6 +32,15 @@ export interface StrategyState {
   tyrePressure?: number;
 }
 
+/** The part of the strategy state a flashback rolls back. */
+export interface StrategyWearSample {
+  compound: TireCompoundId;
+  pitStops: number;
+  tireAgeMeters: number;
+  tireTemperatureC: number;
+  fuelKg: number;
+}
+
 export interface StrategyOptions {
   mode?: StrategyMode;
   compound?: TireCompoundId;
@@ -288,8 +297,22 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     return { ...state };
   }
 
+  /**
+   * Puts tyre and fuel wear back to an earlier moment (a flashback). Ignored
+   * if a pit stop or compound change happened since, because the sample then
+   * describes a different set of tyres.
+   */
+  function restoreWear(saved: StrategyWearSample): boolean {
+    if (saved.compound !== state.compound || saved.pitStops !== state.pitStops) return false;
+    state.tireAgeMeters = saved.tireAgeMeters;
+    state.tireTemperatureC = saved.tireTemperatureC;
+    state.fuelKg = saved.fuelKg;
+    recalculate();
+    return true;
+  }
+
   recalculate();
-  return { state, setMode, setCompound, requestPit, cancelPit, update, peek, snapshot };
+  return { state, setMode, setCompound, requestPit, cancelPit, update, peek, snapshot, restoreWear };
 }
 
 /** Human-readable pit/strategy line used by the race-ops panel. */

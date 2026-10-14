@@ -1231,6 +1231,7 @@ export function Car({
       if (sample) applySnapshot(body, sample, false);
       if (sample?.damageParts) setDamage(copyDamageState(sample.damageParts, createDamageState()));
       else if (sample?.damage !== undefined) damageGripMultiplierRef.current = sample.damage;
+      if (sample?.wear) strategyRef.current.restoreWear(sample.wear);
       // The rewind can move the car across the finish-line projection. Prime
       // the detector from the restored pose so its old sample cannot cause a
       // duplicate or missed crossing on the next physics/render tick.
@@ -1611,6 +1612,13 @@ export function Car({
       ...replaySample,
       damage: damageGripMultiplierRef.current,
       damageParts: copyDamageState(damageRef.current, createDamageState()),
+      wear: {
+        compound: strategyRef.current.state.compound,
+        pitStops: strategyRef.current.state.pitStops,
+        tireAgeMeters: strategyRef.current.state.tireAgeMeters,
+        tireTemperatureC: strategyRef.current.state.tireTemperatureC,
+        fuelKg: strategyRef.current.state.fuelKg,
+      },
     });
     replayRef.current.record({
       ...replaySample,
