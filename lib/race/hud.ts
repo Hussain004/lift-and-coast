@@ -376,6 +376,13 @@ export function compactTowerRows(count: number, playerIndex: number, rows = 5): 
   return out;
 }
 
+/** The three-row phone tower: the car ahead, you, the car behind (indices into a position-ordered list). */
+export function miniTowerRows(count: number, playerIndex: number): number[] {
+  if (count <= 3) return Array.from({ length: count }, (_, i) => i);
+  const start = Math.min(count - 3, Math.max(0, playerIndex - 1));
+  return [start, start + 1, start + 2];
+}
+
 /** The pit prompt chip's text, or "" when there is nothing to say. */
 export function pitPrompt(hud: HudSnapshot): string {
   // The release mini-game owns the chip while a stop is in progress: its

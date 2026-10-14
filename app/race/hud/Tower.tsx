@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { compactTowerRows, towerGapLabel, type HudSnapshot } from "@/lib/race/hud";
+import { compactTowerRows, miniTowerRows, towerGapLabel, type HudSnapshot } from "@/lib/race/hud";
 import { escapeHtml, safeHex, useHudFrame } from "./useHudFrame";
 import styles from "./hud.module.css";
 
@@ -73,9 +73,13 @@ export function Tower({
       }
     }
     const playerIndex = Math.max(0, ordered.findIndex((e) => e.isPlayer));
+    // Phones get a three-row tower (ahead / you / behind) unless expanded.
+    const mini = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
     const show = expandedRef.current
       ? ordered.map((_, i) => i)
-      : compactTowerRows(ordered.length, playerIndex);
+      : mini
+        ? miniTowerRows(ordered.length, playerIndex)
+        : compactTowerRows(ordered.length, playerIndex);
     let html = "";
     show.forEach((index, n) => {
       const entry = ordered[index];

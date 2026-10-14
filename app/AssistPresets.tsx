@@ -19,7 +19,7 @@ import {
 } from "@/lib/settings/racingLinePref";
 import styles from "./sessionSetup.module.css";
 
-interface Preset {
+export interface Preset {
   id: string;
   label: string;
   blurb: string;
@@ -29,11 +29,25 @@ interface Preset {
   damage: DamageMode;
 }
 
-const PRESETS: Preset[] = [
+export const PRESETS: Preset[] = [
   { id: "casual", label: "Casual", blurb: "Traction control and ABS on, full racing line, no damage.", tc: true, abs: true, line: "full", damage: "off" },
   { id: "standard", label: "Standard", blurb: "Assists on, full racing line, reduced damage.", tc: true, abs: true, line: "full", damage: "reduced" },
   { id: "expert", label: "Expert", blurb: "No assists, corners-only line, full damage and punctures.", tc: false, abs: false, line: "corners", damage: "simulation" },
 ];
+
+/** Writes a preset's traction control, ABS, racing line and damage level. */
+export function applyAssistPreset(preset: Preset): void {
+  const stored = loadLocalControls(defaultStorage()) ?? defaultControls();
+  const next = {
+    bindings: stored.bindings,
+    settings: { ...stored.settings, tractionControlDefault: preset.tc, absDefault: preset.abs },
+  };
+  // Persist first so the subscribers applyControls wakes read the new values.
+  saveLocalControls(defaultStorage(), next);
+  applyControls(next);
+  saveRacingLineStyle(preset.line);
+  saveDamageMode(preset.damage);
+}
 
 function assistsKey(): string {
   const settings = (loadLocalControls(defaultStorage()) ?? defaultControls()).settings;
@@ -51,18 +65,7 @@ export function AssistPresets() {
   const line = useSyncExternalStore<RacingLineStyle>(subscribeRacingLineStyle, loadRacingLineStyle, () => "full");
   const damage = useSyncExternalStore<DamageMode>(subscribeDamageMode, loadDamageMode, () => DEFAULT_DAMAGE_MODE);
 
-  const apply = (preset: Preset) => {
-    const stored = loadLocalControls(defaultStorage()) ?? defaultControls();
-    const next = {
-      bindings: stored.bindings,
-      settings: { ...stored.settings, tractionControlDefault: preset.tc, absDefault: preset.abs },
-    };
-    // Persist first so the subscribers applyControls wakes read the new values.
-    saveLocalControls(defaultStorage(), next);
-    applyControls(next);
-    saveRacingLineStyle(preset.line);
-    saveDamageMode(preset.damage);
-  };
+  const apply = applyAssistPreset;
 
   const active = PRESETS.find(
     (p) => assists === `${p.tc ? 1 : 0}${p.abs ? 1 : 0}` && line === p.line && damage === p.damage

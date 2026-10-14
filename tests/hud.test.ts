@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  miniTowerRows,
   compactTowerRows,
   createHudSnapshot,
   formatGap,
@@ -111,5 +112,14 @@ describe("the pit chip", () => {
     expect(hud.pitReleasePhase).toBe("idle");
     expect(hud.pitReleaseText).toBe("");
     expect(pitPrompt(hud)).toBe("");
+  });
+});
+
+describe("miniTowerRows", () => {
+  it("shows the car ahead, you and the car behind, clamped at the ends", () => {
+    expect(miniTowerRows(20, 7)).toEqual([6, 7, 8]);
+    expect(miniTowerRows(20, 0)).toEqual([0, 1, 2]);
+    expect(miniTowerRows(20, 19)).toEqual([17, 18, 19]);
+    expect(miniTowerRows(2, 1)).toEqual([0, 1]);
   });
 });
