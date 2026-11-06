@@ -1394,6 +1394,7 @@ export function Car({
         overrideActive: overtakeActive,
         lap: race?.player.lapCount ?? 0,
         raceStarted,
+        liftCoast: { throttle01: gatedDriveInput.throttle, speedMs: speedForOps },
       },
       world.timestep
     );

@@ -14,6 +14,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - AI difficulty tiers from Rookie to Ace, with personality, mistakes, tire curves, traffic, overtakes, and active racing
 - Seven-speed sequential manual gears with an auto-gear assist
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
+- Lift-and-coast: coasting toward a corner with both pedals free trickles battery charge (a fraction of the braking rate), so backing off early is a real ERS-fuel strategy choice
 - Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
 - A pit-stop release you take part in: the garage camera cuts in for the stop, and a clean release on the green light is worth up to 0.4 s off your race time

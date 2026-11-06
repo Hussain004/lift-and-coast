@@ -11,6 +11,15 @@ export interface EnergyInput {
   lap?: number;
   /** Prevents deployment during the grid/countdown when explicitly supplied. */
   raceStarted?: boolean;
+  /**
+   * Optional lift-and-coast inputs. When supplied - the player's Car.tsx only -
+   * holding neither pedal above LIFT_COAST_MIN_SPEED_MS earns a slower trickle
+   * of harvest than braking, so lifting into a corner is a real strategy choice
+   * rather than something only the audio pretends to do. Omitted by every
+   * other caller (the AI, the headless field), which keeps their battery
+   * behaviour exactly as validated.
+   */
+  liftCoast?: { throttle01: number; speedMs: number };
 }
 
 export interface EnergyStatus {
@@ -43,6 +52,17 @@ const ENERGY_MODE_TUNING: Record<
   balanced: { harvest: 0.15, drain: 0.25, boost: DEPLOY_BOOST_MULTIPLIER, thermalPerSecond: 0.08 },
   attack: { harvest: 0.1, drain: 0.4, boost: 1.95, thermalPerSecond: 0.13 },
 };
+
+/**
+ * Lift-and-coast harvest tuning. Below LIFT_COAST_MIN_SPEED_MS there is not
+ * enough momentum for a meaningful MGU-K charge, and LIFT_COAST_HARVEST_FRACTION
+ * makes coasting strictly worse than braking at harvesting (real F1 harvesting
+ * is brake-biased) while still paying the player for the fuel-saving, engine-
+ * braking style of entry the game's name describes.
+ */
+export const LIFT_COAST_MIN_SPEED_MS = 12;
+export const LIFT_COAST_HARVEST_FRACTION = 0.3;
+export const LIFT_COAST_MAX_THROTTLE = 0.01;
 
 /**
  * 2026 overtake mode: a car within one second of the car ahead gets a lower
@@ -113,6 +133,17 @@ export function createEnergySystem(
       if (raceAllowed && input.brakeAmount > 0) {
         harvestRate = tuning.harvest * input.brakeAmount;
         battery = Math.min(1, battery + harvestRate * safeDt);
+      } else if (raceAllowed && input.liftCoast) {
+        // Lift-and-coast: both pedals free above walking pace earns a trickle
+        // of harvest (a fraction of the braking rate). Braking at any amount
+        // still wins for the tick, and coasting below the minimum speed or
+        // with any real throttle does nothing. Thermal decay above is shared
+        // with braking, so this is strictly the slower-charging option.
+        const { throttle01, speedMs } = input.liftCoast;
+        if (throttle01 < LIFT_COAST_MAX_THROTTLE && input.brakeAmount < LIFT_COAST_MAX_THROTTLE && speedMs >= LIFT_COAST_MIN_SPEED_MS) {
+          harvestRate = tuning.harvest * LIFT_COAST_HARVEST_FRACTION;
+          battery = Math.min(1, battery + harvestRate * safeDt);
+        }
       }
     }
     const heatTaper = thermal > 0.75 ? Math.max(0.25, 1 - (thermal - 0.75) * 2.5) : 1;
