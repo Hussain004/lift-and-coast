@@ -8,7 +8,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 
 ## What is in the garage
 
-- 27 real circuit layouts, including the 2026 calendar additions
+- 30 real circuit layouts, including the 2026 calendar additions
 - A generated racing line with throttle, lift, trail-brake, and hard-brake zones
 - A readable racing-line overlay with a thicker broadcast-style ribbon
 - AI difficulty tiers from Rookie to Ace, with personality, mistakes, tire curves, traffic, overtakes, and active racing
