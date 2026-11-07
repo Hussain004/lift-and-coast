@@ -262,8 +262,10 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
         shiftDown: false,
         selectReverse: input.selectReverse,
       },
-      // Engine braking (IMPROVEMENTS.md F5), as Car.tsx runs it - the landing
-      // page's time attack has to time laps on the same car.
+      // Engine braking (IMPROVEMENTS.md F5) and the open-diff ceiling (A4),
+      // as Car.tsx runs them - the landing page's time attack has to time
+      // laps on the same car.
+      true,
       true
     );
 

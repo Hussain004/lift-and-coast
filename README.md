@@ -16,6 +16,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
 - Lift-and-coast: coasting toward a corner with both pedals free trickles battery charge (a fraction of the braking rate), so backing off early is a real ERS-fuel strategy choice
 - Engine braking: a closed throttle now decelerates the car the way a real formula car does on overrun, stronger in lower gears (player's car; coasting, not under braking)
+- Corner-exit drive: an open differential shares the driven axle's torque, and the cap is tied to what each rear tyre can actually use — a spinning inside wheel stops the outside from hauling either (F1-style power-on understeer at the exit, load-dependent)
 - Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
 - Fuel is real mass now, not a percent: a brimmed tank carries ~33 kg of extra body mass (the same 15% ratio a real F1 car runs), shedding across the stint so the car gets lighter, turns in more and brakes shorter as the race goes on

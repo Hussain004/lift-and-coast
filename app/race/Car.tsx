@@ -1485,8 +1485,10 @@ export function Car({
         shiftDown: gatedDriveInput.shiftDown,
         selectReverse: gatedDriveInput.selectReverse,
       },
-      // Engine braking (IMPROVEMENTS.md F5): the real car's trailing-throttle
-      // retarder. The diagnostic thrust probe above deliberately leaves it off.
+      // IMPROVEMENTS.md A4: open-diff ceiling on the driven axle, and the
+      // engine braking A7. The diagnostic thrust probe above deliberately
+      // leaves both off.
+      true,
       true
     );
     // Every shift, up or down, so the audio can voice the blip as well as the cut.

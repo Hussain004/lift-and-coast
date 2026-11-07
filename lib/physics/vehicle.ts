@@ -1,7 +1,7 @@
 import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
-import { loadSensitivityScale } from "./tireModel";
+import { loadSensitivityScale, peakLongitudinalForceN } from "./tireModel";
 import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
@@ -224,6 +224,38 @@ export const ENGINE_BRAKE_BASE_N = 190;
 export const ENGINE_BRAKE_IDLE_RAMP_START_MS = 2;
 export const ENGINE_BRAKE_FULL_RAMP_SPEED_MS = 10;
 export const ENGINE_BRAKE_MAX_THROTTLE = 0.04;
+
+/**
+ * Open-diff torque split (IMPROVEMENTS.md finding A4): an open differential
+ * shares torque between the driven wheels, and the pair's usable torque is
+ * capped by the weaker-loaded wheel - the corner-exit skill on every real
+ * RWD car, and what "inside wheel spins up" means physically. The cap is
+ * derived from each driven wheel's live suspension force through the tire
+ * model's own peak longitudinal curve, so both wheels share the axle's
+ * real remaining grip; it can only ever REDUCE commanded wheel force, at
+ * any throttle and in any axle state.
+ *
+ * Returns null when the controller's per-wheel load data is unusable this
+ * tick (the documented transient zero-force glitch on suspension force):
+ * callers then command the unsplit force for ONE tick, so a measurement
+ * hiccup cannot stutter the driveline. The measured suspension force lags
+ * the actual this-step contact by one step, which is the same class of lag
+ * every other controller-derived value in the control path already lives
+ * with.
+ */
+export function openDiffPairCeilingN(
+  controller: Rapier.DynamicRayCastVehicleController
+): number | null {
+  const ceilings: number[] = [];
+  for (let i = 0; i < CAR_WHEELS.length; i++) {
+    if (!CAR_WHEELS[i].isDriven) continue;
+    const raw = controller.wheelSuspensionForce(i);
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return null;
+    ceilings.push(peakLongitudinalForceN(raw));
+  }
+  if (ceilings.length === 0) return null;
+  return Math.min(...ceilings);
+}
 
 /**
  * Pure engine-braking model: the wheel-level retarding force when the driver
@@ -708,7 +740,12 @@ export function applyCarControls(
   // to the driven wheels (see engineBrakeForceN). Omitted or false leaves the
   // call's behaviour exactly as before - this is how every headless caller
   // and diagnostic probe opts in deliberately rather than by accident.
-  engineBrake?: boolean
+  engineBrake?: boolean,
+  // IMPROVEMENTS.md phase A4: when true, the driven axle shares its force
+  // with the open-diff ceiling (see openDiffPairCeilingN) - the corner-exit
+  // torque-split cap. Can only reduce commanded force; omitted or false
+  // keeps the call bit-identical.
+  openDiffSplit?: boolean
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
   let engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
@@ -765,13 +802,20 @@ export function applyCarControls(
           gearbox ? gearbox.state.finalDriveScale : 1
         )
       : 0;
+  const diffCeiling = openDiffSplit ? openDiffPairCeilingN(controller) : null;
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   const brakeScale = combinedBrakeScale(currentSpeedMs, steer);
   CAR_WHEELS.forEach((wheel, i) => {
-    controller.setWheelEngineForce(
-      i,
-      wheel.isDriven ? throttle * throttleScale * engineForce + engineBrakeN : 0
-    );
+    const driveCommand = wheel.isDriven ? throttle * throttleScale * engineForce + engineBrakeN : 0;
+    // The open-diff ceiling caps force MAGNITUDE only, so reverses and the
+    // engine braking feel exactly what the weakest wheel allows - the
+    // helper's whole point is that the axle can never put more through a
+    // wheel than that wheel could use.
+    const capped =
+      wheel.isDriven && diffCeiling !== null
+        ? Math.sign(driveCommand) * Math.min(Math.abs(driveCommand), diffCeiling)
+        : driveCommand;
+    controller.setWheelEngineForce(i, capped);
     controller.setWheelBrake(i, brake * maxBrakeForce * brakeScale);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });

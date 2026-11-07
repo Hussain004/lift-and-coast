@@ -48,6 +48,17 @@ export function peakFrictionMu(normalLoadN: number): number {
 }
 
 /**
+ * Peak longitudinal friction force at a given normal load, with unit
+ * compound grip - the A4 open-diff ceiling for a driven wheel. Exposed for
+ * the torque-split model so the pair shares force against the same
+ * load-sensitive ceiling the rest of the tyre model uses, instead of a
+ * second opinion about how much grip a wheel has.
+ */
+export function peakLongitudinalForceN(normalLoadN: number): number {
+  return peakForceN(normalLoadN, 1);
+}
+
+/**
  * The same sub-linear load sensitivity as the tire force curve above,
  * expressed as a dimensionless multiplier around 1.0 at `referenceLoadN`
  * instead of a Newton force - for modulating a friction *parameter*
