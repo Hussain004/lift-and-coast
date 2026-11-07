@@ -963,6 +963,12 @@ export function AICar({
       speedMs,
       !launchTractionControlDisabled,
       { state: gearboxRef.current, shiftUp: false, shiftDown: false }
+      // No engine braking for the AI (IMPROVEMENTS.md F5 A7): the retarder's
+      // extra rear retarding torque shifted the headless field's coast-phase
+      // trajectories enough to lose Suzuka's crossover-deck attitude margin
+      // (VER/HAM field run went from clean to maxTilt 1.71). The AI control
+      // law and its validated pace/line are deliberately left untouched; the
+      // player feels the retarder in Car.tsx instead.
     );
 
     // Per-wheel surfaces, identical to Car.tsx and the headless harness (see

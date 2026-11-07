@@ -15,6 +15,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Seven-speed sequential manual gears with an auto-gear assist
 - Energy harvesting, thermal-limited ERS modes, and Push-to-Pass deployment
 - Lift-and-coast: coasting toward a corner with both pedals free trickles battery charge (a fraction of the braking rate), so backing off early is a real ERS-fuel strategy choice
+- Engine braking: a closed throttle now decelerates the car the way a real formula car does on overrun, stronger in lower gears (player's car; coasting, not under braking)
 - Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
 - A pit-stop release you take part in: the garage camera cuts in for the stop, and a clean release on the green light is worth up to 0.4 s off your race time

@@ -5,6 +5,8 @@ import { loadSensitivityScale } from "./tireModel";
 import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
+  effectiveGearRatio,
+  GEAR_RATIOS,
   gearThrustFactor,
   isReverse,
   rpmForGear,
@@ -200,6 +202,54 @@ export const BOOSTED_ENGINE_FORCE_CAP = 1750;
 // force - loading the axle that already carries the transferred weight
 // overloads it. Even split stays.
 export const DEFAULT_BRAKE_FORCE = 25;
+
+// Engine braking (IMPROVEMENTS.md finding F5, phase A7 part 2) - a closed
+// throttle used to impose nothing but aero drag and linear damping, so the
+// game's namesake lift-and-coast line decelerated identically in every gear.
+// This retarder is calibrated in the same force units as the engine itself:
+// ENGINE_BRAKE_BASE_N is the strength in 1st gear, scaled down by the gear's
+// effective ratio (GEAR_RATIOS[0] reference) because engine braking is
+// engine-retard-torque multiplied by the gearing - strongest in low gears,
+// fading through the box, exactly as ratio-driven retarding should. The ramp
+// makes it zero at a standstill, so a held car on the grid is not nudged, and
+// it spools up over the first few m/s of rolling speed the way overrun does
+// in a real car.
+//
+// Deliberately NOT gated on the boost multiplier: at a trailing throttle
+// (< ENGINE_BRAKE_MAX_THROTTLE) the thrust term throttle x engineForce is
+// already ~0, so there is no "deploy vs retarder" fight to arbitrate, and
+// the multiplier callers pass also folds in pace/strategy scales that have
+// nothing to do with deployment - gating on it would flap the retarder.
+export const ENGINE_BRAKE_BASE_N = 190;
+export const ENGINE_BRAKE_IDLE_RAMP_START_MS = 2;
+export const ENGINE_BRAKE_FULL_RAMP_SPEED_MS = 10;
+export const ENGINE_BRAKE_MAX_THROTTLE = 0.04;
+
+/**
+ * Pure engine-braking model: the wheel-level retarding force when the driver
+ * is off the throttle in a forward gear (IMPROVEMENTS.md F5). The result is a
+ * signed wheel force, opposing the direction of rolling motion, that callers
+ * add to the driven wheels' engine force. Zero below the ramp, zero in
+ * reverse (gear 0) and out-of-range gears; magnitude grows with speed over
+ * the ramp window, then is ratio-scaled down the gearbox. Requires a gearbox
+ * to have any effect - legacy flat-force callers (no gearbox) keep their
+ * previous behaviour exactly.
+ */
+export function engineBrakeForceN(speedMs: number, gear: number, finalDriveScale = 1): number {
+  if (gear < 1 || gear > GEAR_RATIOS.length) return 0;
+  const speed = Math.abs(speedMs);
+  if (speed <= ENGINE_BRAKE_IDLE_RAMP_START_MS) return 0;
+  const rampSpan = ENGINE_BRAKE_FULL_RAMP_SPEED_MS - ENGINE_BRAKE_IDLE_RAMP_START_MS;
+  if (rampSpan <= 0) return 0;
+  const ramp = Math.min(1, (speed - ENGINE_BRAKE_IDLE_RAMP_START_MS) / rampSpan);
+  // Reference ratio is 1st gear: full-strength retardation there, monotonically
+  // weaker up the box. Top gear's final-drive trim (see effectiveGearRatio)
+  // participates, so a longer top gear also brakes harder on overrun, the way
+  // a longer ratio brakes a real car.
+  const ratioScale = effectiveGearRatio(gear, finalDriveScale) / GEAR_RATIOS[0];
+  const magnitude = ENGINE_BRAKE_BASE_N * ratioScale * ramp;
+  return speedMs < 0 ? magnitude : -magnitude;
+}
 // 32 is a small measured bump over the old 30: it keeps the AI's vertical
 // load response settled over Suzuka's steep crossover without changing the
 // normal steering or braking authority.
@@ -652,7 +702,13 @@ export function applyCarControls(
   // BOOSTED_ENGINE_FORCE_CAP ceiling (peak thrust in 1st at peak torque is
   // exactly baseEngineForce). When omitted, behaves exactly as before the
   // gearbox existed - the legacy flat-force model.
-  gearbox?: GearboxControl
+  gearbox?: GearboxControl,
+  // IMPROVEMENTS.md F5 / phase A7 part 2: when true and a gearbox is supplied,
+  // closing the throttle in a forward gear adds a gear-scaled retarding force
+  // to the driven wheels (see engineBrakeForceN). Omitted or false leaves the
+  // call's behaviour exactly as before - this is how every headless caller
+  // and diagnostic probe opts in deliberately rather than by accident.
+  engineBrake?: boolean
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
   let engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
@@ -690,10 +746,32 @@ export function applyCarControls(
     // assist, limiter and traction-control behaviour forward driving has.
     if (isReverse(gearbox.state.gear)) engineForce = -engineForce;
   }
+  // Trailing-throttle overrun: per IMPROVEMENTS.md F5, retarding fires on a
+  // real closed throttle, in a forward gear, via the caller's opt-in flag -
+  // and only on a FULL coast. With the brake pedal already pressed the
+  // closed-throttle retarder would land on top of the validated braking
+  // envelope (which is what it does - full-throttle-to-full-brake tests from
+  // top speed gained rear-airborne steps with the retarder active under
+  // braking, which is the flip regime the existing budget was measured in).
+  // Brake travel here deploys the same rear retarding torque through the
+  // axle the flip sweep was tuned on. With no gearbox the helper stays
+  // unused: legacy flat-force callers are bit-identical.
+  const retarderActive = throttle < ENGINE_BRAKE_MAX_THROTTLE && brake <= 0;
+  const engineBrakeN =
+    engineBrake && retarderActive
+      ? engineBrakeForceN(
+          currentSpeedMs,
+          gearbox ? gearbox.state.gear : 0,
+          gearbox ? gearbox.state.finalDriveScale : 1
+        )
+      : 0;
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   const brakeScale = combinedBrakeScale(currentSpeedMs, steer);
   CAR_WHEELS.forEach((wheel, i) => {
-    controller.setWheelEngineForce(i, wheel.isDriven ? throttle * throttleScale * engineForce : 0);
+    controller.setWheelEngineForce(
+      i,
+      wheel.isDriven ? throttle * throttleScale * engineForce + engineBrakeN : 0
+    );
     controller.setWheelBrake(i, brake * maxBrakeForce * brakeScale);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });

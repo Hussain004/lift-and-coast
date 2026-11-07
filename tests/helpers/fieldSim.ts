@@ -477,6 +477,10 @@ export async function simulateField(order: string[], options: FieldSimOptions): 
         car.speedMs,
         !launchTractionControlDisabled,
         { state: car.gearbox, shiftUp: false, shiftDown: false }
+        // No engine braking in the field sim (see AICar.tsx): the retarder
+        // pushed the validated two-car Suzuka coast pattern over the flip
+        // margin (maxTilt 1.71 vs clean 0.29). The live player (Car.tsx)
+        // keeps it.
       );
     }
     if (trace && i % 120 === 0) {

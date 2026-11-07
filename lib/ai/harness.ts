@@ -511,6 +511,9 @@ export async function simulateDrive(
       options.autoGear === false
         ? undefined
         : { state: gearbox, shiftUp: false, shiftDown: false }
+      // No engine braking in the headless simulation either (see AICar.tsx):
+      // the AI's validated behavior was tuned without the retarder, and the
+      // field gates measured a flip at Suzuka's crossover decks with it on.
     );
     // Surface zones (plan section 4 point 7 / section 5 depth feature 6), the
     // same per-wheel classification the live game runs (Car.tsx/AICar.tsx).

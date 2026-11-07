@@ -146,6 +146,16 @@ both speed-friendly and neither gear-dependent. There is no brake-by-wire/regen
 blend, no lift harvest, and no fuel or tyre benefit from lifting early, so the
 strategy tool and the driving have no mechanical relation.
 
+**Outcome (2026-11-07):** closed. Lift-and-coast now harvests battery charge
+for the player (30% of the braking rate above 12 m/s, HUD-visible via
+`harvestRate`), and the player's car runs a closed-throttle engine-braking
+retarder (`engineBrakeForceN`, 1st-gear-referenced, speed-ramped, rear wheels,
+full-coast only). The AI was deliberately **excluded** from both: the retarder
+shifted the headless field's coast-phase trajectories and the VER/HAM
+crossover-deck run at Suzuka lost margin (maxTilt 0.29 -> 1.71). The player
+keeps the feature; the AI's validated pace/line is untouched. The lift-and-
+coast harvest was already player-only by construction.
+
 ### F6 — Fuel is a percent, not a mass
 
 `strategy.ts` reduces pace by up to 3.5% from a full tank

@@ -261,7 +261,10 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
         shiftUp: false,
         shiftDown: false,
         selectReverse: input.selectReverse,
-      }
+      },
+      // Engine braking (IMPROVEMENTS.md F5), as Car.tsx runs it - the landing
+      // page's time attack has to time laps on the same car.
+      true
     );
 
     // Per-wheel surfaces, resampled from the LIVE position every tick - the one
