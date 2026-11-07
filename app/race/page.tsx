@@ -36,6 +36,7 @@ import { Notifications, Timing } from "./hud/Timing";
 import { Engineer } from "./hud/Engineer";
 import { TrackMap } from "./hud/TrackMap";
 import { Mfd } from "./hud/Mfd";
+import { SteeringIndicator } from "./hud/SteeringIndicator";
 import { Results } from "./hud/Results";
 import { PauseMenu } from "./hud/PauseMenu";
 import { useHudFrame } from "./hud/useHudFrame";
@@ -606,6 +607,7 @@ function RaceContent() {
           />
           )}
           {hudPrefs.panels.mfd && <Mfd hudRef={hudRef} />}
+          <SteeringIndicator hudRef={hudRef} />
           <div className={hudStyles.muteChip} ref={muteRef} />
           {/* The only mode with no natural end, so it keeps a visible way
               back to the board (a race or qualifying ends on the results

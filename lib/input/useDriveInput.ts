@@ -374,13 +374,20 @@ export function useDriveInput(
       // input source instead of only the keyboard. Doing it here rather than
       // inside each branch is what makes the setting mean "my steering" and
       // not "my steering on the keyboard".
+      const controlSettings = getControlSettings();
       const rawSteer =
         touchSteering !== null
           ? touchSteering
           : padSteer !== null
             ? padSteer
-            : stepSteering(input.current.steer, steerTarget, dt, STEER_RATE, STEER_CENTER_RATE);
-      input.current.steer = applySteerSettings(rawSteer, getControlSettings());
+            : stepSteering(
+                input.current.steer,
+                steerTarget,
+                dt,
+                STEER_RATE,
+                STEER_CENTER_RATE * controlSettings.steerReturnRate
+              );
+      input.current.steer = applySteerSettings(rawSteer, controlSettings);
 
       const keyboardThrottle = anyPressed(pressed, boundKeys("throttle")) ? 1 : 0;
       input.current.throttle = Math.max(keyboardThrottle, padThrottle ?? 0, touchThrottle);

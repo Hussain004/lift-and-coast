@@ -70,6 +70,7 @@ import {
   type TelemetrySample,
 } from "@/lib/race/telemetry";
 import { useDriveInput, type CameraMode, type DriveInput } from "@/lib/input/useDriveInput";
+import { getControlSettings } from "@/lib/input/keyBindings";
 import type { TouchDriveInput } from "@/lib/input/touch";
 import { createLapTimer, formatLapTime, LINE_HALF_WIDTH_METERS, standingsLapCount, type LapTimerState } from "@/lib/race/lapTimer";
 import { createProgressTracker, trackProgress } from "@/lib/race/progressTracker";
@@ -1513,7 +1514,9 @@ export function Car({
         absEnabled: absEnabled.current,
         tractionEnabled: tractionControlEnabled.current,
         brakeEffectiveness: brakeModelRef.current.snapshot().effectiveness,
-      }
+      },
+      // B4: wheel-driver option for fixed full lock at any speed.
+      getControlSettings().speedSensitiveSteer
     );
     // Every shift, up or down, so the audio can voice the blip as well as the cut.
     if (gearboxRef.current.gear !== gearBeforeControls) shiftSerialRef.current += 1;

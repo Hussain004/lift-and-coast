@@ -140,6 +140,12 @@ export interface ControlSettings {
    * worn keyboard from wandering.
    */
   steerDeadzone: number;
+  /**
+   * Multiplier on the steering return rate (how fast the car re-centres),
+   * 0.5-2. 1 is as shipped. Keyboard drivers who find the re-centring lazy can
+   * raise it; lower it for a calmer, slower return.
+   */
+  steerReturnRate: number;
   /** Default tyre compound for a new session: "soft" | "medium" | "hard". */
   defaultCompound: "soft" | "medium" | "hard";
   /** Assist defaults for a new session. */
@@ -147,15 +153,31 @@ export interface ControlSettings {
   absDefault: boolean;
   /** Invert the steering axis, for a wheel or a left-handed setup. */
   invertSteering: boolean;
+  /**
+   * Speed-sensitive lock: the faster the car goes, the less steering it
+   * takes, so keyboard and gamepad players don't spear the wall at top
+   * speed. Wheel drivers may want fixed full lock at any speed; turning this
+   * off hands the same authority back in a wheelbuild.
+   */
+  speedSensitiveSteer: boolean;
+  /**
+   * On-screen steering indicator bar (learn-the-input aid for keyboard
+   * players): shows how much of the input range is being used. Off by
+   * default - visible only for players who asked for the training aid.
+   */
+  steeringIndicator: boolean;
 }
 
 export const DEFAULT_SETTINGS: ControlSettings = {
   steerSensitivity: 1,
   steerDeadzone: 0,
+  steerReturnRate: 1,
   defaultCompound: "medium",
   tractionControlDefault: true,
   absDefault: true,
   invertSteering: false,
+  speedSensitiveSteer: true,
+  steeringIndicator: false,
 };
 
 /** Bounds, so a hand-edited or corrupted value cannot produce an undrivable
@@ -164,6 +186,8 @@ export const DEFAULT_SETTINGS: ControlSettings = {
 export const STEER_SENSITIVITY_MIN = 0.5;
 export const STEER_SENSITIVITY_MAX = 2;
 export const STEER_DEADZONE_MAX = 0.3;
+export const STEER_RETURN_RATE_MIN = 0.5;
+export const STEER_RETURN_RATE_MAX = 2;
 
 /** What a rejected change looks like, so the UI can explain itself. */
 export type ControlProblem =
@@ -257,6 +281,12 @@ export function normalizeSettings(input: unknown): ControlSettings {
       DEFAULT_SETTINGS.steerSensitivity
     ),
     steerDeadzone: clamp(raw.steerDeadzone, 0, STEER_DEADZONE_MAX, DEFAULT_SETTINGS.steerDeadzone),
+    steerReturnRate: clamp(
+      raw.steerReturnRate,
+      STEER_RETURN_RATE_MIN,
+      STEER_RETURN_RATE_MAX,
+      DEFAULT_SETTINGS.steerReturnRate
+    ),
     defaultCompound:
       raw.defaultCompound === "soft" || raw.defaultCompound === "hard"
         ? raw.defaultCompound
@@ -269,6 +299,14 @@ export function normalizeSettings(input: unknown): ControlSettings {
       typeof raw.absDefault === "boolean" ? raw.absDefault : DEFAULT_SETTINGS.absDefault,
     invertSteering:
       typeof raw.invertSteering === "boolean" ? raw.invertSteering : DEFAULT_SETTINGS.invertSteering,
+    speedSensitiveSteer:
+      typeof raw.speedSensitiveSteer === "boolean"
+        ? raw.speedSensitiveSteer
+        : DEFAULT_SETTINGS.speedSensitiveSteer,
+    steeringIndicator:
+      typeof raw.steeringIndicator === "boolean"
+        ? raw.steeringIndicator
+        : DEFAULT_SETTINGS.steeringIndicator,
   };
 }
 

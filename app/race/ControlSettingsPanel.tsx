@@ -233,6 +233,34 @@ export function ControlSettingsPanel({ inline = false }: { inline?: boolean } = 
           />
           <b>{settings.steerDeadzone.toFixed(2)}</b>
         </label>
+        <label className={styles.settingsField}>
+          <span>Return rate</span>
+          <input
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.05}
+            value={settings.steerReturnRate}
+            onChange={(e) => onSensitivity("steerReturnRate", Number(e.target.value))}
+          />
+          <b>{settings.steerReturnRate.toFixed(2)}×</b>
+        </label>
+        <label className={styles.settingsCheck}>
+          <input
+            type="checkbox"
+            checked={settings.speedSensitiveSteer}
+            onChange={(e) => onSensitivity("speedSensitiveSteer", e.target.checked)}
+          />
+          <span>Speed-sensitive lock</span>
+        </label>
+        <label className={styles.settingsCheck}>
+          <input
+            type="checkbox"
+            checked={settings.steeringIndicator}
+            onChange={(e) => onSensitivity("steeringIndicator", e.target.checked)}
+          />
+          <span>On-screen steering indicator</span>
+        </label>
         <label className={styles.settingsCheck}>
           <input
             type="checkbox"

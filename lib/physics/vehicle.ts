@@ -486,7 +486,8 @@ export interface CarControls {
   steerAngle: number;
 }
 
-const MAX_STEER_ANGLE = 0.45;
+/** Maximum steer angle of the front wheels, radians. */
+export const MAX_STEER_ANGLE = 0.45;
 
 // Combined-slip brake limiting: a car can keep the same brake pedal force in
 // a straight line, but locking all four raycast wheels while yawing at speed
@@ -752,9 +753,14 @@ export function applyCarControls(
   // multiplies the brake command on TOP of the 0.5 s anti-flip ramp; per-
   // wheel TC cuts engine force on wheelspin. Omitted means the AI/headless
   // paths stay bit-identical.
-  slipAssist?: SlipAssist
+  slipAssist?: SlipAssist,
+  // B4: player-facing repair for wheel drivers who want full lock at any
+  // speed. Default keeps speed-sensitive narrowing for every existing
+  // caller (the AI keeps its validated behaviour untouched).
+  speedSensitiveSteer?: boolean
 ) {
-  const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
+  const steerScale = speedSensitiveSteer === false ? 1 : speedSensitiveSteerScale(currentSpeedMs);
+  const steerAngle = steer * MAX_STEER_ANGLE * steerScale;
   let engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
   if (gearbox) {
     updateGearbox(gearbox.state, {

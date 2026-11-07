@@ -62,6 +62,7 @@ import {
 import { computeDownforceN } from "../physics/aero";
 import { createSlipTracker } from "../physics/slipAssist";
 import { createBrakeTempModel } from "../physics/brakeTemp";
+import { getControlSettings } from "../input/keyBindings";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildBarrierWallMesh } from "../tracks/structures";
@@ -289,7 +290,10 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
         absEnabled,
         tractionEnabled: tractionControl,
         brakeEffectiveness: brakeModel.snapshot().effectiveness,
-      }
+      },
+      // B4: fixed full lock option (the speed-sensitive narrowing is the
+      // shipped default; the player can opt out in the controls settings).
+      getControlSettings().speedSensitiveSteer
     );
 
     // Per-wheel surfaces, resampled from the LIVE position every tick - the one
