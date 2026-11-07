@@ -268,12 +268,18 @@ by their current grip ceiling (open-diff behaviour: a spinning inside wheel
 stops pulling). This is the corner-exit skill F1 sims live on, it cannot add
 thrust, and it gives A3's TC something physical to limit.
 
-**A5. Wire the load-transfer model (or delete it honestly).** Feed
-`computeWheelLoads` geometry with the chassis' real longitudinal/lateral
-acceleration each step and use the output in the grip-scale product — or, if
-measurement says Rapier's suspension force term already tells the story well
-enough, **delete the dead module and its test**. Decision point by
-measurement; either outcome is an improvement.
+**A5. Load-transfer decision: DELETE.** `lib/physics/weightTransfer.ts`
+(computeWheelLoads) was a parked module whose only reader was its own test —
+the exact thing §5 warned about. Measured resolution: the raycast controller's
+own `wheelSuspensionForce` is the measured per-wheel contact load (roll-
+stiffness, aero downforce, brake-dive, accel-squat, kerb kicks all real), and
+it is the load every consumer in this codebase already reads (the load-
+sensitive friction, the brake-temp model, the per-wheel telemetry and the
+open-diff ceiling). A geometry-based quasi-static approximation cannot add
+anything over that, so the module and its test were deleted. The real
+weight-transfer effect was never missing, either: `applyLoadSensitiveFriction`
+scales wheel friction against what the suspension reads each step. Nothing
+else was stranded.
 
 **A6. Make downforce aerodynamic (grip that grows with speed).** Give
 `applyLoadSensitiveFriction` an explicit aero term: `gripScale ∝ sqrt((W +
@@ -431,7 +437,8 @@ stop-from-40 m/s must stay inside the measured band or be justified).
   (the revamp doc itself flagged this: "delete it if nothing imports it").
 - **C-b. README says 27 circuits, registry ships 30** — update the copy (or
   un-register dev tracks deliberately).
-- **C-c. `weightTransfer.ts` decision** — used or deleted, not parked (A5).
+- **C-c. `weightTransfer.ts` decision** — deleted out of hand as A5 (the
+  contact truth is `wheelSuspensionForce`; the module was dead code).
 - **C-d. Balance the `START` fuel default** against race length once refruel
   rules settle (R1), so 5-lap quick races don't start drag-heavy.
 - **C-e. `app/Multiplayer.tsx` + `NetSync` drift note:** keep the 30 Hz
