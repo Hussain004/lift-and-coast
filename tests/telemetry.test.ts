@@ -7,6 +7,7 @@ import {
   balanceLabel,
   formatG,
   formatLoad,
+  formatSlip,
   formatTemp,
   frontLoadPercent,
   ggPlotPoint,
@@ -14,6 +15,7 @@ import {
   loadBarFill,
   normalizeBar,
   rpmBarFill,
+  wheelSlipStateFor,
   slipAngleDeg,
   emptyTelemetrySample,
   type TelemetrySample,
@@ -28,6 +30,7 @@ const wheel = (over: Partial<WheelTelemetry> = {}): WheelTelemetry => ({
   grip: 1,
   inContact: true,
   temperatureC: 90,
+  slipRatio: 0,
   ...over,
 });
 
@@ -287,5 +290,27 @@ describe("rpmBarFill", () => {
     expect(rpmBarFill(6000, 12000)).toBe(0.5);
     // Past the redline must stay full, not overflow the bar.
     expect(rpmBarFill(15000, 12000)).toBe(1);
+  });
+});
+
+describe("formatSlip", () => {
+  it("reads positive slips as spinning and negatives as locking, sign-aware", () => {
+    expect(formatSlip(0.25)).toBe("+0.25");
+    expect(formatSlip(-0.1)).toBe("-0.10");
+    expect(formatSlip(0)).toBe("+0.00");
+    expect(formatSlip(-Number.NaN)).toBe("+0.00");
+  });
+});
+
+describe("wheelSlipStateFor", () => {
+  it("classifies the same thresholds the TC and ABS intervene on", () => {
+    expect(wheelSlipStateFor(0)).toBe("rolling");
+    expect(wheelSlipStateFor(0.13)).toBe("spin");
+    expect(wheelSlipStateFor(0.25)).toBe("spin");
+    expect(wheelSlipStateFor(0.4)).toBe("spinning");
+    expect(wheelSlipStateFor(0.9)).toBe("spinning");
+    expect(wheelSlipStateFor(-0.1)).toBe("lock");
+    expect(wheelSlipStateFor(-1)).toBe("lock");
+    expect(wheelSlipStateFor(Number.NaN)).toBe("rolling");
   });
 });

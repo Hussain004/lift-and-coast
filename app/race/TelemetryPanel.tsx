@@ -4,18 +4,19 @@ import { useEffect, useRef } from "react";
 import styles from "./race.module.css";
 import { STATIC_WHEEL_LOAD_N } from "@/lib/physics/vehicle";
 import {
-
   WHEEL_GRID_POSITION,
   WHEEL_ORDER,
   balanceBias,
   balanceLabel,
   formatG,
   formatLoad,
+  formatSlip,
   formatTemp,
   frontLoadPercent,
   ggPlotPoint,
   gripBarFill,
   loadBarFill,
+  wheelSlipStateFor,
   type TelemetrySample,
   type WheelCorner,
 } from "@/lib/race/telemetry";
@@ -67,6 +68,7 @@ interface WheelCells {
   loadBar: HTMLDivElement | null;
   gripBar: HTMLDivElement | null;
   box: HTMLDivElement | null;
+  slip: HTMLSpanElement | null;
 }
 
 interface TelemetryCells {
@@ -83,7 +85,7 @@ interface TelemetryCells {
 function emptyCells(): TelemetryCells {
   const wheel = {} as Record<WheelCorner, WheelCells>;
   for (const corner of WHEEL_ORDER) {
-    wheel[corner] = { load: null, grip: null, temp: null, loadBar: null, gripBar: null, box: null };
+    wheel[corner] = { load: null, grip: null, temp: null, loadBar: null, gripBar: null, box: null, slip: null };
   }
   return {
     gLat: null,
@@ -129,6 +131,8 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
           cell.loadBar!.style.width = `${(loadBarFill(w.loadN, STATIC_WHEEL_LOAD_N) * 100).toFixed(1)}%`;
           cell.gripBar!.style.width = `${(gripBarFill(w.grip) * 100).toFixed(1)}%`;
           cell.box!.dataset.contact = w.inContact ? "on" : "off";
+          cell.box!.dataset.slip = wheelSlipStateFor(w.slipRatio);
+          cell.slip!.textContent = formatSlip(w.slipRatio);
         }
 
         const canvas = ggRef.current;
@@ -215,6 +219,14 @@ export function TelemetryPanel({ sampleRef }: { sampleRef: React.RefObject<Telem
                     className={styles.telemetryWheelGrip}
                   >
                     0.00
+                  </span>
+                  <span
+                    ref={(node) => {
+                      cell.slip = node;
+                    }}
+                    className={styles.telemetryWheelSlip}
+                  >
+                    +0.00
                   </span>
                 </div>
               </div>

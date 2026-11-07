@@ -18,6 +18,17 @@
  * and the combined-g trace that makes a balance problem visible.
  */
 
+import { ABS_TARGET_SLIP, TC_CUT_SLIP_START, TC_CUT_SLIP_ZERO } from "../physics/slipAssist";
+
+/** Sign-aware slip readout for the per-wheel cells ("+0.25" spin / "-0.10" lock). */
+export function formatSlip(slipRatio: number): string {
+  if (!Number.isFinite(slipRatio)) return "+0.00";
+  const abs = Math.abs(slipRatio);
+  if (abs < 0.005) return "+0.00";
+  return slipRatio >= 0 ? `+${slipRatio.toFixed(2)}` : slipRatio.toFixed(2);
+}
+
+
 /** One corner's live state. */
 export interface WheelTelemetry {
   /** Vertical load through the corner, newtons. */
@@ -29,6 +40,8 @@ export interface WheelTelemetry {
   inContact: boolean;
   /** Corner surface temperature, celsius. */
   temperatureC: number;
+  /** Signed slip ratio along the rolling direction this physics step. */
+  slipRatio: number;
 }
 
 /** Which corner a wheel is, in the order the UI lays them out. */
@@ -62,7 +75,7 @@ export interface TelemetrySample {
  * frame, and the writer needs a truthy object to mutate.
  */
 export function emptyTelemetrySample(): TelemetrySample {
-  const wheel = (): WheelTelemetry => ({ loadN: 0, grip: 0, inContact: true, temperatureC: 20 });
+  const wheel = (): WheelTelemetry => ({ loadN: 0, grip: 0, inContact: true, temperatureC: 20, slipRatio: 0 });
   return {
     wheels: {
       frontLeft: wheel(),
@@ -211,6 +224,21 @@ export function ggPlotPoint(lateralG: number, longitudinalG: number): {
 /** Tacho fill against the redline, for the panel's own compact bar. */
 export function rpmBarFill(rpm: number, redlineRpm: number): number {
   return normalizeBar(rpm, 0, redlineRpm);
+}
+
+/**
+ * Corner-load classifications for the per-wheel slip readout. The mapping is
+ * the one the assists already use (TC/ABS thresholds in slipAssist.ts), so the
+ * panel colours the very thresholds the traction control and ABS intervene on
+ * rather than introducing a third opinion.
+ */
+export type WheelSlipState = "rolling" | "spin" | "spinning" | "lock";
+export function wheelSlipStateFor(slipRatio: number): WheelSlipState {
+  if (!Number.isFinite(slipRatio)) return "rolling";
+  if (slipRatio <= ABS_TARGET_SLIP) return "lock";
+  if (slipRatio >= TC_CUT_SLIP_ZERO) return "spinning";
+  if (slipRatio >= TC_CUT_SLIP_START) return "spin";
+  return "rolling";
 }
 
 /** The corners in the order a plan view of the car reads them. */

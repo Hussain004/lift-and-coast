@@ -1580,6 +1580,7 @@ export function Car({
 
       // CAR_WHEELS order is front-left, front-right, rear-left, rear-right,
       // which is exactly WHEEL_ORDER's order.
+      const slipRatios = slipTrackerRef.current.snapshot().perWheel;
       const corners = WHEEL_ORDER.map((corner, index) => {
         const loadN = controller.wheelSuspensionForce(index);
         const load = Number.isFinite(loadN) ? (loadN as number) : 0;
@@ -1595,6 +1596,7 @@ export function Car({
             // carries at rest, so this cannot flicker.
             inContact: load > STATIC_WHEEL_LOAD_N * 0.25,
             temperatureC: strategyStateRef.current.tireTemperatureC,
+            slipRatio: slipRatios[index],
           },
         ] as const;
       });
