@@ -465,3 +465,91 @@ rail with weather, wear and strategy on top. Phase A makes the car itself a
 thing you drive — grip you can spend, wheels you can lock, brakes that breathe
 with the track — which is exactly what "more like the real F1 game and the
 real formula car" means at the physics level.
+
+## 8. Implementation outcomes (2026-11-07)
+
+Everything below landed in `main`, commit-per-feature, all with `tsc`, `eslint`
+and the full suite green *at each commit*. Reality deviated from the order
+in §7 for risk-management reasons (independent cheap items shipped first; the
+§7 headline A1 was deliberately deferred as it is the riskiest single change).
+Where an owner decision is requested, it is flagged.
+
+**Shipped**
+
+- C-a/C-b from §6: dead `lib/physics/drs.ts` shim deleted; README circuit count
+  corrected.
+- §5 F5 split (A7): lift-and-coast battery harvest (player, opt-in), and a
+  gear-scaled closed-throttle engine-braking retarder with a full-coast gate
+  (the brake-pedal gate preserves the validated rear-lift envelope bit
+  identically). Both are **player-path only**: AI paths measured a crossover-
+  deck flip at Suzuka with the retarder (VER/HAM field run, maxTilt 0.29 →
+  1.71), so AICar.tsx/harness/fieldSim intentionally run without it.
+- A8 fuel mass: live player car carries its fuel as real added body mass
+  (`setAdditionalMass`, 0.33 kg per kg fuel — ratio-true to a real F1 car);
+  the strategy's full-tank pace shim is carved out for the player via
+  `fuelMassModel`, untouched for the AI.
+- A4 open-diff ceiling: driven axle capped at the weakest wheel's load-
+  sensitive peak, per sign in reverse, with a one-tick fallback on telemetry
+  glitches; player-path only (AI bit-identical).
+- A2/A3-lite: real per-wheel ABS (stateful feedback law easing pressure
+  toward the slip target on a locked wheel) and per-wheel TC (cut past peak
+  longitudinal slip, ramped by forward speed through the launch window);
+  player-path only, plus the landing-page session; AI untouched.
+  `tests/driveSession.test.ts`'s "applies a grip multiplier" test only became
+  measurable after it was re-founded on a launch-vs-brake premise
+  (braking in this physics is not tyre-limited).
+- A9 brake temperature and fade: per-wheel energy integration (post-solve
+  impulses), cold-bite below ~230 °C, fade ramp starting at 700 °C with a
+  0.5 floor at 1,000 °C; MFD CAR page shows F/R axle temps with colour
+  coding; engineer radio calls "hot" at 700 (50 s cooldown) and "cooked" at
+  1,000 (120 s cooldown).
+- A5: parked `weightTransfer.ts` deleted (measured decision — Rapier's live
+  `wheelSuspensionForce` is the load truth already read by the friction
+  model, the brake-temp model, the open-diff ceiling and the telemetry).
+- B1: engineer's telemetry panel now shows each wheel's slip ratio, tinted
+  at the TC_CUT_SLIP_START / TC_CUT_SLIP_ZERO / ABS-target thresholds
+  (shared constants, so the panel colours can't drift from the physics).
+- B4: steering options (Controls → Steering) — return-rate slider (×0.5–2),
+  speed-sensitive lock toggle (default ON; wheel drivers may fix full lock),
+  and an optional on-screen steering indicator for keyboard learners.
+- B3-part: locked wheel counts 1.6× toward brake heating.
+
+**Deliberately kept opt-in / player-only**
+
+Every physics-touching item above is inert unless a caller opts in; the AI
+build remains bit-identical to the one the benchmarks validated. The
+time-attack landing page (TimeAttack via driveSession) gets the full system
+on the same footing as the live player car, so leaderboard laps are honest
+sprints, not arcade laps.
+
+**Open items still requiring an owner call or an experiment**
+
+- A6 (aero grip from downforce): riskiest experiment left (touch, HOW the
+  side-friction scaling works at 60+ m/s); untouched for want of a dedicated
+  session originally scoped for it.
+- A1 (full friction-circle raycast pass — setWheelSideFrictionStiffness
+  allocation driven by slip angle): the one headline item not pursued. The
+  slip *ratio* problem is solved (A2/A3-lite consumes it) but slip *angle*
+  is not wired, and A1's adoption needs its own measurement campaign;
+  recommend time-boxing it as its own feature with browser/physics-test
+  budget before any less fragile work.
+- R1 (refuelling exists in-game; F1 hasn't had it since 2010): needs an
+  owner decision, plus C-d fuel-balance tuning follow-on.
+- R2 (rubbering), R3 (dirty air), R5 (parc fermé), R6/R7/R8 (allocation /
+  formation lap / out-lap), R9 (AI blue-flag yield), and all §5 features and
+  §4 items beyond what shipped.
+- C1/C2/C3/C4 (setup depth entry), S1–S7.
+- The garage of what was NOT proven this session: live browser
+  playthroughs (only headless/headless-style QA was performed for every
+  Physics or assist change); `diagnose:ace` was re-run at the end of the
+  session (see below); `diagnose:ace-field` was not re-run this session
+  (change set owns no racecraft moves either — everything landed inside
+  `applyCarControls` + the telemetry)
+
+**Discipline note**
+
+Twice the naive form of a shared-physics change broke an existing gate before
+it shipped bit-identically: the closed-throttle retarder pitching the front
+axle under braking, and the VER/HAM Suzuka flip with engine braking live.
+Both were rolled back to the player path with measurement, not with guesswork.
+Any A1/A6 work should budget for the same.
