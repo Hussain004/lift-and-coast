@@ -314,15 +314,19 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
       1
     );
     controller.updateVehicle(world.timestep);
+
     // Brake energy after the solve, per wheel, same discipline as Car.tsx.
+    // Signs are preserved so the model can tell brake work (opposing motion)
+    // from drive work (propulsion) on the driven axle.
     brakeModel.update({
       brakeImpulsePerWheel: [
-        Math.abs(controller.wheelForwardImpulse(0) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(1) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(2) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(3) ?? 0),
+        controller.wheelForwardImpulse(0) ?? 0,
+        controller.wheelForwardImpulse(1) ?? 0,
+        controller.wheelForwardImpulse(2) ?? 0,
+        controller.wheelForwardImpulse(3) ?? 0,
       ],
       slipRatioPerWheel: slipTracker.snapshot().perWheel,
+      brake01: input.brake,
       forwardSpeedMs: controller.currentVehicleSpeed(),
       ambientC: 20,
       dt: TICK_SECONDS,

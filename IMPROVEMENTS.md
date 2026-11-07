@@ -514,6 +514,15 @@ Where an owner decision is requested, it is flagged.
   and an optional on-screen steering indicator for keyboard learners.
 - B3-part: locked wheel counts 1.6× toward brake heating.
 
+**Bugfixes after landing (2026-11-08):** the brake-temperature model as first
+shipped integrated `|impulse|` on every wheel as disc heat, which charged the
+*driven* rear axle under full throttle (and coasting under engine-braking) as
+if the driver were braking — in the extreme, the engineer calls "rear brakes
+getting hot" without touching the brake pedal at all. Fixed: heat now flows
+only when the pedal is applied, and only from impulses opposing the direction
+of motion; propulsion and engine-braking work produce none. Regression trio in
+tests/brakeTemp.test.ts locks the semantics.
+
 **Deliberately kept opt-in / player-only**
 
 Every physics-touching item above is inert unless a caller opts in; the AI

@@ -1634,14 +1634,15 @@ export function Car({
     // tick ahead of time by the applyCarControls bundle above.
     {
       const impulses: [number, number, number, number] = [
-        Math.abs(controller.wheelForwardImpulse(0) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(1) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(2) ?? 0),
-        Math.abs(controller.wheelForwardImpulse(3) ?? 0),
+        controller.wheelForwardImpulse(0) ?? 0,
+        controller.wheelForwardImpulse(1) ?? 0,
+        controller.wheelForwardImpulse(2) ?? 0,
+        controller.wheelForwardImpulse(3) ?? 0,
       ];
       brakeModelRef.current.update({
         brakeImpulsePerWheel: impulses,
         slipRatioPerWheel: slipTrackerRef.current.snapshot().perWheel,
+        brake01: gatedDriveInput.brake,
         forwardSpeedMs: controller.currentVehicleSpeed(),
         ambientC: weatherState.airTemperatureC,
         dt: world.timestep,

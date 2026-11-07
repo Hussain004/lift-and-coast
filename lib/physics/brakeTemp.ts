@@ -80,10 +80,16 @@ export function brakeFadeForTemp(tempC: number): number {
 export interface BrakeTempInput {
   /** Per-wheel |impulse| measured this tick; heat is integrated per impulse. */
   readonly brakeImpulsePerWheel: readonly [number, number, number, number];
-  /** Per-wheel |slip velocity| the brake worked against this tick (speed-drop at the patch). */
-  readonly slipVelocityPerWheel?: readonly [number, number, number, number];
   /** Per-wheel slip ratio, if known, to boost heat on locked wheels. */
   readonly slipRatioPerWheel?: readonly [number, number, number, number];
+  /**
+   * The driver's applied brake command, 0..1. Heat flows ONLY when this is
+   * non-zero, and only from impulses working against the car's motion:
+   * engine-thrust impulses on the driven wheels are not brake work, and
+   * engine braking is not the brakes either (in this simulation it is the
+   * power unit's drag, not friction at discs).
+   */
+  readonly brake01: number;
   /** Car forward speed m/s, for the airflow envelope. */
   readonly forwardSpeedMs: number;
   readonly ambientC: number;
@@ -131,13 +137,24 @@ export function createBrakeTempModel(
     if (!Number.isFinite(dt) || dt <= 0) return;
     const v = Math.abs(input.forwardSpeedMs);
     const airflow = BRAKE_AIRFLOW_BASE + BRAKE_AIRFLOW_SPEED_GAIN * v;
+    const rollingForward = input.forwardSpeedMs >= 0;
+    const pedalling = input.brake01 > 0;
     for (let i = 0; i < 4; i++) {
-      const impulse = Math.abs(input.brakeImpulsePerWheel[i]);
+      const impulse = input.brakeImpulsePerWheel[i];
+      // Brake work: only when the pedal is applied, and only from impulses
+      // opposing the direction of travel. Positive (propulsion) impulses on
+      // the driven wheels - or engine braking - generate no disc heat.
+      const brakeHeatSource =
+        pedalling && Number.isFinite(impulse)
+          ? rollingForward
+            ? Math.max(0, -impulse)
+            : Math.max(0, impulse)
+          : 0;
       const slipBoost =
         input.slipRatioPerWheel !== undefined && Math.abs(input.slipRatioPerWheel[i]) > 0.3
           ? BRAKE_LOCKUP_HEAT_FACTOR
           : 1;
-      const heating = BRAKE_HEAT_PER_IMPULSE * impulse * slipBoost * dt;
+      const heating = BRAKE_HEAT_PER_IMPULSE * brakeHeatSource * slipBoost * dt;
       const cooling = (perWheel[i] - input.ambientC) * airflow * dt;
       const next = perWheel[i] + heating - cooling;
       perWheel[i] = Number.isFinite(next) ? Math.max(-273, next) : perWheel[i];

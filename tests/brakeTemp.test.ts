@@ -76,7 +76,8 @@ describe("createBrakeTempModel", () => {
     // Two seconds of one firm stop on all four wheels.
     for (let i = 0; i < 120; i++) {
       model.update({
-        brakeImpulsePerWheel: [25, 25, 14, 14],
+        brakeImpulsePerWheel: [-25, -25, -14, -14],
+        brake01: 1,
         forwardSpeedMs: 30,
         ambientC: AMBIENT_REFERENCE_C,
         dt,
@@ -89,7 +90,7 @@ describe("createBrakeTempModel", () => {
 
     const rearBefore = model.tempRearC;
     for (let i = 0; i < 60 * 60; i++) {
-      model.update({ ...idleStop, forwardSpeedMs: 60, ambientC: AMBIENT_REFERENCE_C, dt });
+      model.update({ ...idleStop, brake01: 0, forwardSpeedMs: 60, ambientC: AMBIENT_REFERENCE_C, dt });
     }
     // At 60 m/s the airflow envelope cools fastest; still time to come down.
     expect(model.tempRearC).toBeLessThan(rearBefore);
@@ -101,8 +102,8 @@ describe("createBrakeTempModel", () => {
     const dt = 1 / 60;
     const base = { forwardSpeedMs: 0, ambientC: AMBIENT_REFERENCE_C, dt };
     for (let i = 0; i < 60; i++) {
-      rolling.update({ ...base, brakeImpulsePerWheel: [25, 25, 25, 25], slipRatioPerWheel: [-0.1, -0.1, -0.1, -0.1] });
-      locked.update({ ...base, brakeImpulsePerWheel: [25, 25, 25, 25], slipRatioPerWheel: [-0.9, -0.9, -0.9, -0.9] });
+      rolling.update({ ...base, brake01: 1, brakeImpulsePerWheel: [-25, -25, -25, -25], slipRatioPerWheel: [-0.1, -0.1, -0.1, -0.1] });
+      locked.update({ ...base, brake01: 1, brakeImpulsePerWheel: [-25, -25, -25, -25], slipRatioPerWheel: [-0.9, -0.9, -0.9, -0.9] });
     }
     // Heating boosts lockup-rate wheel heating, though part of the boost is
     // spent competing with the stronger convective cooling a hotter tyre sees;
@@ -117,7 +118,8 @@ describe("createBrakeTempModel", () => {
     const dt = 1 / 60;
     for (let i = 0; i < 60 * 30; i++) {
       model.update({
-        brakeImpulsePerWheel: [25, 25, 25, 25],
+        brakeImpulsePerWheel: [-25, -25, -25, -25],
+        brake01: 1,
         forwardSpeedMs: 12,
         ambientC: 25,
         dt,
@@ -132,11 +134,72 @@ describe("createBrakeTempModel", () => {
   it("stays put on a NaN dt rather than poisoning the world", () => {
     const model = createBrakeTempModel(300);
     model.update({
-      brakeImpulsePerWheel: [25, 25, 25, 25],
+      brakeImpulsePerWheel: [-25, -25, -25, -25],
+      brake01: 1,
       forwardSpeedMs: 30,
       ambientC: 25,
       dt: Number.NaN,
     });
     expect(model.tempFrontC).toBe(300);
+  });
+});
+
+describe("drive work is not brake work (regression)", () => {
+  it("propulsion impulses on the driven wheels at full throttle do not heat the brakes", () => {
+    const model = createBrakeTempModel(BRAKE_TEMP_COLD_START_C);
+    const dt = 1 / 60;
+    for (let i = 0; i < 300; i++) {
+      // What a driven axle reads under power: positive impulses. No brake
+      // pedal, no brake heat - under any circumstances.
+      model.update({
+        brakeImpulsePerWheel: [0, 0, 25, 25],
+        brake01: 0,
+        forwardSpeedMs: 45,
+        ambientC: AMBIENT_REFERENCE_C,
+        dt,
+      });
+    }
+    expect(model.tempRearC).toBeLessThanOrEqual(BRAKE_TEMP_COLD_START_C);
+    expect(model.tempFrontC).toBeLessThanOrEqual(BRAKE_TEMP_COLD_START_C);
+  });
+
+  it("engine braking (retarding impulse, no pedal) is not counted as brake work", () => {
+    const model = createBrakeTempModel(BRAKE_TEMP_COLD_START_C);
+    const dt = 1 / 60;
+    for (let i = 0; i < 120; i++) {
+      // Coasting under engine braking: negative impulses, brake pedal off.
+      model.update({
+        brakeImpulsePerWheel: [0, 0, -12, -12],
+        brake01: 0,
+        forwardSpeedMs: 40,
+        ambientC: AMBIENT_REFERENCE_C,
+        dt,
+      });
+    }
+    expect(model.tempRearC).toBeLessThanOrEqual(BRAKE_TEMP_COLD_START_C);
+  });
+
+  it("applies brake heat only to impulses opposing motion, not to drive impulses", () => {
+    const model = createBrakeTempModel(BRAKE_TEMP_COLD_START_C);
+    const dt = 1 / 60;
+    for (let i = 0; i < 120; i++) {
+      // Pedal applied, mixed work: fronts push the car forward (propulsion
+      // impulse sign), rears hold it back (brake work sign). The brakes
+      // only ever claim the rears; fronts stay exactly where they started.
+      // Ambient pinned to the cold start so the convective idle cannot
+      // mask "no heat" by cooling the fronts past it.
+      model.update({
+        brakeImpulsePerWheel: [10, 10, -12, -12],
+        brake01: 1,
+        forwardSpeedMs: 40,
+        ambientC: BRAKE_TEMP_COLD_START_C,
+        dt,
+      });
+    }
+    const front = model.tempFrontC;
+    const rear = model.tempRearC;
+    expect(rear).toBeGreaterThan(front);
+    expect(front).toBe(BRAKE_TEMP_COLD_START_C);
+    expect(rear).toBeGreaterThan(BRAKE_TEMP_COLD_START_C);
   });
 });
