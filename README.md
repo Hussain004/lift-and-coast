@@ -18,6 +18,7 @@ Real circuit layouts, a living racing line, skill-based driving physics, energy 
 - Engine braking: a closed throttle now decelerates the car the way a real formula car does on overrun, stronger in lower gears (player's car; coasting, not under braking)
 - Clear, cloudy, rain and Changeable weather (a seeded rain window with a forecast on the MFD and radio), with changing grip, drag, visibility, and track temperature
 - Race strategy with fuel burn, fuel mass, tire age, tire temperature, blankets, five compounds (soft, medium, hard, intermediate, wet), and a drivable pit lane with a limiter, box, crew and repairs
+- Fuel is real mass now, not a percent: a brimmed tank carries ~33 kg of extra body mass (the same 15% ratio a real F1 car runs), shedding across the stint so the car gets lighter, turns in more and brakes shorter as the race goes on
 - A pit-stop release you take part in: the garage camera cuts in for the stop, and a clean release on the green light is worth up to 0.4 s off your race time
 - Knockout qualifying in the real F1 format: Q1/Q2/Q3 with eliminations between phases
 - Track-derived 2026 overtake zones with race proximity and practice/qualifying access

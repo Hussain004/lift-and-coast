@@ -56,6 +56,15 @@ export interface StrategyOptions {
    * tyrePressureGripScale turns that into the grip the player actually feels.
    */
   tyrePressure?: number;
+  /**
+   * The fuel-as-real-mass model (IMPROVEMENTS.md F6, phase A8): when set,
+   * fuel is treated as real body mass by the physics layer instead of as a
+   * pace-multiplicative shim, so the full-tank pace penalty of
+   * FUEL_MASS_PACE_LOSS_AT_FULL_TANK is deliberately not applied here.
+   * Optional and defaulting to false, so every AI caller and every headless
+   * sim keeps the validated 3.5 % pace loss untouched.
+   */
+  fuelMassModel?: boolean;
 }
 
 export interface StrategyUpdate {
@@ -160,6 +169,13 @@ export function createStrategySystem(options: StrategyOptions = {}) {
 
   let serviceSeconds = PIT_SERVICE_SECONDS;
   /**
+   * Whether fuel lives in the physics layer as real body mass (the live
+   * player car, phase A8) or in the pace shim. Closure-local like the
+   * tyre-pressure setting's constructor-time role: the saved strategy
+   * snapshot never sees it.
+   */
+  const fuelMassModelEnabled = options.fuelMassModel === true;
+  /**
    * The player's starting pressure, carried on the state so the warm-up
    * constant can be read per update. Undefined means neutral, which is what
    * every AI car and every existing caller gets.
@@ -176,8 +192,11 @@ export function createStrategySystem(options: StrategyOptions = {}) {
     state.engineMultiplier = fuelFraction <= 0 ? 0.18 : fuelFraction < 0.06 ? 0.45 : 1;
     const modePace = state.mode === "save" ? 0.985 : state.mode === "push" ? 1.015 : 1;
     // Fuel mass: a full tank costs real pace (see FUEL_MASS_PACE_LOSS_AT_FULL_TANK),
-    // fading linearly as it burns off.
-    state.paceMultiplier = modePace * (1 - FUEL_MASS_PACE_LOSS_AT_FULL_TANK * fuelFraction);
+    // fading linearly as it burns off. The fuel-as-real-mass model (F6, phase A8)
+    // carries the fuel in the physics layer instead, so taking the shim's hit
+    // as well would double-count it; AI callers keep the shim untouched.
+    const fuelMassPenalty = fuelMassModelEnabled ? 0 : FUEL_MASS_PACE_LOSS_AT_FULL_TANK * fuelFraction;
+    state.paceMultiplier = modePace * (1 - fuelMassPenalty);
     state.fuelWarning = fuelFraction <= LOW_FUEL_WARNING_FRACTION;
   }
 

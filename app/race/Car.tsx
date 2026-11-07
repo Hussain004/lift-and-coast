@@ -36,6 +36,7 @@ import {
 } from "@/lib/physics/vehicle";
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
 import { createEnergySystem, overtakeModeActive, type EnergyMode } from "@/lib/physics/energy";
+import { fuelAdditionalMassKg, FUEL_MASS_UPDATE_THRESHOLD_KG } from "@/lib/physics/fuelMass";
 import { createWeatherSystem } from "@/lib/physics/weather";
 import { unwrapGap } from "@/lib/ai/racecraft";
 import {
@@ -865,7 +866,11 @@ export function Car({
   // the low-pressure end slow to arrive and the high-pressure end quick
   // (see lib/physics/tireModel.ts). The grip half is applied per physics step
   // above. Undefined for the AI, so every AI car keeps the neutral constant.
-  const strategyRef = useRef(createStrategySystem({ tyrePressure: carSetup.tyrePressure }));
+  const strategyRef = useRef(createStrategySystem({ tyrePressure: carSetup.tyrePressure, fuelMassModel: true }));
+  // Fuel as real mass (IMPROVEMENTS.md F6): sentinel starts at -1 so the
+  // first physics step always applies the session's initial fuel load as
+  // body mass, instead of waiting for a 0.25 kg change.
+  const appliedFuelMassRef = useRef(-1);
   const overtakeSystem = useMemo(
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
@@ -1386,6 +1391,18 @@ export function Car({
       airTemperatureC: weatherStateRef.current.airTemperatureC,
       trackTemperatureC: weatherStateRef.current.trackTemperatureC,
     });
+    // Fuel as real mass (IMPROVEMENTS.md F6/A8): the chassis carries the
+    // fuel as added body mass (0.33 kg per kg, so ~33 kg at a full 100 kg
+    // tank - the 15% ratio a real F1 car runs), replacing the strategy
+    // system's flat full-tank pace shim for the player via fuelMassModel.
+    // Thresholded so the load changes stepwise, not every frame; rewinds
+    // restore fuel through the strategy snapshot, so jumps re-apply here
+    // automatically.
+    const desiredFuelMass = fuelAdditionalMassKg(strategyState.fuelKg);
+    if (Math.abs(desiredFuelMass - appliedFuelMassRef.current) >= FUEL_MASS_UPDATE_THRESHOLD_KG) {
+      body.setAdditionalMass(desiredFuelMass, true);
+      appliedFuelMassRef.current = desiredFuelMass;
+    }
     const weatherState = effectiveWeatherRef.current.snapshot();
     const energyStatus = energySystemRef.current.update(
       {
