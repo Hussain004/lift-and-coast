@@ -61,6 +61,7 @@ import {
 } from "../physics/gearbox";
 import { computeDownforceN } from "../physics/aero";
 import { createSlipTracker } from "../physics/slipAssist";
+import { createBrakeTempModel } from "../physics/brakeTemp";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildBarrierWallMesh } from "../tracks/structures";
@@ -208,8 +209,10 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const gearbox: GearboxState = createGearboxState(true);
   // IMPROVEMENTS.md A2/A3-lite: per-wheel slip for the time attack's
-  // ABS/TC, same implementation as the live player car.
+  // ABS/TC, same implementation as the live player car. A9: brake model,
+  // same too.
   const slipTracker = createSlipTracker();
+  const brakeModel = createBrakeTempModel();
   const startPos = chassis.translation();
   const startRotation = chassis.rotation();
 
@@ -278,10 +281,15 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
       },
       // Engine braking (IMPROVEMENTS.md F5), the open-diff ceiling (A4), and
       // the slip-based ABS/TC (A2/A3-lite) - the landing page's time attack
-      // times laps on the same car the race does.
+      // times laps on the same car the race does. A9 fade comes with it.
       true,
       true,
-      { tracker: slipTracker, absEnabled, tractionEnabled: tractionControl }
+      {
+        tracker: slipTracker,
+        absEnabled,
+        tractionEnabled: tractionControl,
+        brakeEffectiveness: brakeModel.snapshot().effectiveness,
+      }
     );
 
     // Per-wheel surfaces, resampled from the LIVE position every tick - the one
@@ -302,6 +310,19 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
       1
     );
     controller.updateVehicle(world.timestep);
+    // Brake energy after the solve, per wheel, same discipline as Car.tsx.
+    brakeModel.update({
+      brakeImpulsePerWheel: [
+        Math.abs(controller.wheelForwardImpulse(0) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(1) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(2) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(3) ?? 0),
+      ],
+      slipRatioPerWheel: slipTracker.snapshot().perWheel,
+      forwardSpeedMs: controller.currentVehicleSpeed(),
+      ambientC: 20,
+      dt: TICK_SECONDS,
+    });
 
     applyVehicleStabilityTorques(chassis, DEFAULT_STABILIZE_STRENGTH, world.timestep);
     const downforceN = computeDownforceN(controller.currentVehicleSpeed(), aeroMode);

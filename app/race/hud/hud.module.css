@@ -710,6 +710,16 @@
   color: var(--yellow);
 }
 
+.mfdPage[data-brakes-hot="1"] [data-k="brakesF"],
+.mfdPage[data-brakes-hot="1"] [data-k="brakesR"] {
+  color: var(--yellow);
+}
+
+.mfdPage[data-brakes-hot="2"] [data-k="brakesF"],
+.mfdPage[data-brakes-hot="2"] [data-k="brakesR"] {
+  color: var(--red);
+}
+
 /* ---------- map (bottom-left) ---------- */
 
 .map {

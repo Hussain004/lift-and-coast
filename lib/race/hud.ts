@@ -150,6 +150,11 @@ export interface HudSnapshot {
   flashbacksLeft: number | null;
   tc: boolean;
   abs: boolean;
+  /** Estimated per-axle brake temperatures (see lib/physics/brakeTemp.ts). */
+  brakeTempFrontC: number;
+  brakeTempRearC: number;
+  /** 0 = healthy, 1 = fully faded (worst axle) from the same model. */
+  brakeFade01: number;
   autoGear: boolean;
   pad: boolean;
   racingLine: boolean;
@@ -251,6 +256,9 @@ export function createHudSnapshot(sessionMode: SessionMode = "race", totalLaps =
     flashbacksLeft: null,
     tc: true,
     abs: true,
+    brakeTempFrontC: 55,
+    brakeTempRearC: 55,
+    brakeFade01: 0,
     autoGear: true,
     pad: false,
     racingLine: true,

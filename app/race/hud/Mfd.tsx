@@ -102,6 +102,10 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
     } else if (page === "CAR") {
       set("tc", hud.tc ? "ON" : "OFF");
       set("abs", hud.abs ? "ON" : "OFF");
+      set("brakesF", `${Math.round(hud.brakeTempFrontC)}°C`);
+      set("brakesR", `${Math.round(hud.brakeTempRearC)}°C`);
+      const worstBrake = Math.max(hud.brakeTempFrontC, hud.brakeTempRearC);
+      el.dataset.brakesHot = worstBrake >= 1000 ? "2" : worstBrake >= 700 ? "1" : "0";
       set("gears", hud.autoGear ? "AUTO" : "MANUAL");
       set("line", hud.racingLine ? "ON" : "OFF");
       set("flashbacks", flashbackLabel(hud.flashbacksLeft));
@@ -203,6 +207,8 @@ export function Mfd({ hudRef }: { hudRef: React.RefObject<HudSnapshot> }) {
           <dl className={styles.mfdList}>
             <div><dt>TC</dt><dd data-k="tc" /></div>
             <div><dt>ABS</dt><dd data-k="abs" /></div>
+            <div><dt>BRK FRONT</dt><dd data-k="brakesF" /></div>
+            <div><dt>BRK REAR</dt><dd data-k="brakesR" /></div>
             <div><dt>GEARBOX</dt><dd data-k="gears" /></div>
             <div><dt>RACING LINE</dt><dd data-k="line" /></div>
             <div><dt>FLASHBACKS</dt><dd data-k="flashbacks" /></div>

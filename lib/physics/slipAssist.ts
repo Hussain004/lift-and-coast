@@ -210,4 +210,11 @@ export interface SlipAssist {
   absEnabled: boolean;
   /** Per-driven-wheel wheelspin cut on throttle (adds to the steer/speed TC). */
   tractionEnabled: boolean;
+  /**
+   * Brake effectiveness multiplier per wheel (IMPROVEMENTS.md A9) - the
+   * brake model's cold-bite/fade curve applied to the applied-brake
+   * command, computed one tick earlier. Optional so the bundle still runs
+   * with only slip assists; omitted = healthy brakes.
+   */
+  brakeEffectiveness?: readonly [number, number, number, number];
 }

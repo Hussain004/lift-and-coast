@@ -38,6 +38,7 @@ import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
 import { createEnergySystem, overtakeModeActive, type EnergyMode } from "@/lib/physics/energy";
 import { fuelAdditionalMassKg, FUEL_MASS_UPDATE_THRESHOLD_KG } from "@/lib/physics/fuelMass";
 import { createSlipTracker } from "@/lib/physics/slipAssist";
+import { createBrakeTempModel } from "@/lib/physics/brakeTemp";
 import { createWeatherSystem } from "@/lib/physics/weather";
 import { unwrapGap } from "@/lib/ai/racecraft";
 import {
@@ -876,6 +877,10 @@ export function Car({
   // player's real ABS/TC. One tracker for the car, fed every physics tick
   // (the AI has none; its call sites omit the assist bundle).
   const slipTrackerRef = useRef(createSlipTracker());
+  // IMPROVEMENTS.md A9: brake temperature/fade model, fed post-step with
+  // each tick's applied impulses. Only its effectiveness reaches the control
+  // path, as a multiplier; the AI never gets this (its braking is validated).
+  const brakeModelRef = useRef(createBrakeTempModel());
   const overtakeSystem = useMemo(
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
@@ -1501,8 +1506,14 @@ export function Car({
       // IMPROVEMENTS.md A2/A3-lite: per-wheel assist modulation from this
       // tick's slip estimate. absEnabled/tractionControlEnabled are the
       // player's existing assist toggles (Driving Aids preset), now driving
-      // real systems instead of just the ramp/HUD flags.
-      { tracker: slipTrackerRef.current, absEnabled: absEnabled.current, tractionEnabled: tractionControlEnabled.current }
+      // real systems instead of just the ramp/HUD flags. A9: effectiveness
+      // one tick earlier, applied to the same applied-brake multiplier.
+      {
+        tracker: slipTrackerRef.current,
+        absEnabled: absEnabled.current,
+        tractionEnabled: tractionControlEnabled.current,
+        brakeEffectiveness: brakeModelRef.current.snapshot().effectiveness,
+      }
     );
     // Every shift, up or down, so the audio can voice the blip as well as the cut.
     if (gearboxRef.current.gear !== gearBeforeControls) shiftSerialRef.current += 1;
@@ -1611,6 +1622,26 @@ export function Car({
     }
 
     controller.updateVehicle(world.timestep);
+    // A9: integrate this tick's braking energy into the brake model, reading
+    // the per-wheel impulses post-solve (ABS modulating them included), so
+    // front and rear axles heat from their own share of the stop rather than
+    // an input-only approximation. The model's effectiveness is consumed a
+    // tick ahead of time by the applyCarControls bundle above.
+    {
+      const impulses: [number, number, number, number] = [
+        Math.abs(controller.wheelForwardImpulse(0) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(1) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(2) ?? 0),
+        Math.abs(controller.wheelForwardImpulse(3) ?? 0),
+      ];
+      brakeModelRef.current.update({
+        brakeImpulsePerWheel: impulses,
+        slipRatioPerWheel: slipTrackerRef.current.snapshot().perWheel,
+        forwardSpeedMs: controller.currentVehicleSpeed(),
+        ambientC: weatherState.airTemperatureC,
+        dt: world.timestep,
+      });
+    }
 
     applyVehicleStabilityTorques(body, DEFAULT_STABILIZE_STRENGTH, world.timestep);
     const downforceN =
@@ -2075,6 +2106,9 @@ export function Car({
       hud.racingLine = racingLineVisible.current;
       hud.weather = weatherStateRef.current.preset;
       hud.trackTempC = weatherStateRef.current.trackTemperatureC;
+      hud.brakeTempFrontC = brakeModelRef.current.tempFrontC;
+      hud.brakeTempRearC = brakeModelRef.current.tempRearC;
+      hud.brakeFade01 = brakeModelRef.current.fade01;
     }
     // Race audio snapshot (see lib/audio/raceAudio.ts): runs before the
     // rewind/countdown early returns below so the engine idles on the grid
