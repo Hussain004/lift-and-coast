@@ -37,6 +37,7 @@ import {
 import { computeDownforceN, towDragScale } from "@/lib/physics/aero";
 import { createEnergySystem, overtakeModeActive, type EnergyMode } from "@/lib/physics/energy";
 import { fuelAdditionalMassKg, FUEL_MASS_UPDATE_THRESHOLD_KG } from "@/lib/physics/fuelMass";
+import { createSlipTracker } from "@/lib/physics/slipAssist";
 import { createWeatherSystem } from "@/lib/physics/weather";
 import { unwrapGap } from "@/lib/ai/racecraft";
 import {
@@ -871,6 +872,10 @@ export function Car({
   // first physics step always applies the session's initial fuel load as
   // body mass, instead of waiting for a 0.25 kg change.
   const appliedFuelMassRef = useRef(-1);
+  // IMPROVEMENTS.md A2/A3-lite: per-wheel slip measurement for the
+  // player's real ABS/TC. One tracker for the car, fed every physics tick
+  // (the AI has none; its call sites omit the assist bundle).
+  const slipTrackerRef = useRef(createSlipTracker());
   const overtakeSystem = useMemo(
     () => createOvertakeSystem(track, sessionMode),
     [track, sessionMode]
@@ -1471,6 +1476,9 @@ export function Car({
     // and HUD both read it this tick.
     gearboxRef.current.auto = autoGear.current;
     const gearBeforeControls = gearboxRef.current.gear;
+    // IMPROVEMENTS.md A2/A3-lite: per-wheel slip estimate for this tick,
+    // fed to the player's TC/ABS via the applyCarControls bundle below.
+    slipTrackerRef.current.update(controller, controller.currentVehicleSpeed(), world.timestep);
     applyCarControls(
       controller,
       gatedDriveInput,
@@ -1489,7 +1497,12 @@ export function Car({
       // engine braking A7. The diagnostic thrust probe above deliberately
       // leaves both off.
       true,
-      true
+      true,
+      // IMPROVEMENTS.md A2/A3-lite: per-wheel assist modulation from this
+      // tick's slip estimate. absEnabled/tractionControlEnabled are the
+      // player's existing assist toggles (Driving Aids preset), now driving
+      // real systems instead of just the ramp/HUD flags.
+      { tracker: slipTrackerRef.current, absEnabled: absEnabled.current, tractionEnabled: tractionControlEnabled.current }
     );
     // Every shift, up or down, so the audio can voice the blip as well as the cut.
     if (gearboxRef.current.gear !== gearBeforeControls) shiftSerialRef.current += 1;

@@ -2,6 +2,7 @@ import type Rapier from "@dimforge/rapier3d-compat";
 import type { RigidBody } from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3 } from "three";
 import { loadSensitivityScale, peakLongitudinalForceN } from "./tireModel";
+import { tractionCutForSlip, type SlipAssist } from "./slipAssist";
 import { aeroGripMultiplier, computeDragN, type AeroMode } from "./aero";
 import {
   engineTorqueMultiplier,
@@ -745,7 +746,13 @@ export function applyCarControls(
   // with the open-diff ceiling (see openDiffPairCeilingN) - the corner-exit
   // torque-split cap. Can only reduce commanded force; omitted or false
   // keeps the call bit-identical.
-  openDiffSplit?: boolean
+  openDiffSplit?: boolean,
+  // IMPROVEMENTS.md phases A2/A3-lite: per-wheel assist modulation from a
+  // live slip estimate (the player's book). Per-wheel ABS lockup release
+  // multiplies the brake command on TOP of the 0.5 s anti-flip ramp; per-
+  // wheel TC cuts engine force on wheelspin. Omitted means the AI/headless
+  // paths stay bit-identical.
+  slipAssist?: SlipAssist
 ) {
   const steerAngle = steer * MAX_STEER_ANGLE * speedSensitiveSteerScale(currentSpeedMs);
   let engineForce = Math.min(baseEngineForce * boostMultiplier, BOOSTED_ENGINE_FORCE_CAP);
@@ -803,6 +810,10 @@ export function applyCarControls(
         )
       : 0;
   const diffCeiling = openDiffSplit ? openDiffPairCeilingN(controller) : null;
+  // Per-wheel slip estimates from the tracker's last update (Car.tsx calls
+  // update each physics tick; AI call sites never pass the bundle). One
+  // allocation per step - trivial against what the loop itself does.
+  const assistSlip = slipAssist ? slipAssist.tracker.snapshot() : null;
   const throttleScale = tractionControlThrottleScale(currentSpeedMs, steer, tractionControlEnabled);
   const brakeScale = combinedBrakeScale(currentSpeedMs, steer);
   CAR_WHEELS.forEach((wheel, i) => {
@@ -815,8 +826,26 @@ export function applyCarControls(
       wheel.isDriven && diffCeiling !== null
         ? Math.sign(driveCommand) * Math.min(Math.abs(driveCommand), diffCeiling)
         : driveCommand;
-    controller.setWheelEngineForce(i, capped);
-    controller.setWheelBrake(i, brake * maxBrakeForce * brakeScale);
+    let driveForce = capped;
+    let brakeCommand = brake * maxBrakeForce * brakeScale;
+    if (assistSlip && slipAssist) {
+      if (slipAssist.tractionEnabled) {
+        // Wheelspin cut: engine force spent on a wheel already beyond its
+        // peak longitudinal slip just heats rubber and moves air - exactly
+        // what the F1 games' TC stops, per wheel, with real lock/slip data.
+        driveForce *= tractionCutForSlip(assistSlip.perWheel[i], currentSpeedMs);
+      }
+      if (slipAssist.absEnabled) {
+        // Lockup modulation on TOP of the anti-flip ramp - the ramp governs
+        // how hard the pedal comes down, this governs what a wheel is
+        // allowed to do once down. Pressure eases toward the slip target on
+        // a locked wheel and recovers when the wheel rolls again; ABS on
+        // brings it back to the mu it is standing on.
+        brakeCommand *= assistSlip.absRelease[i];
+      }
+    }
+    controller.setWheelEngineForce(i, driveForce);
+    controller.setWheelBrake(i, brakeCommand);
     controller.setWheelSteering(i, wheel.isSteering ? steerAngle : 0);
   });
 }

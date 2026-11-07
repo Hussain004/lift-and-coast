@@ -132,23 +132,26 @@ describe("drive session", () => {
 
   it("applies a grip multiplier that actually changes the car", async () => {
     const track = getTrack(TRACK_ID);
-    // Braking, not acceleration: a flat-out straight line with traction
-    // control on is engine- and drag-limited, so it cannot show a grip
-    // difference at all. Braking is genuinely tyre-limited, which is what
-    // makes this a real test that the multiplier reaches the friction model.
-    const stopFrom = async (grip: number) => {
-      const session = await createDriveSession({ track, gripMultiplier: grip, speedMs: 45 });
-      let ticks = 0;
-      while (session.state().speedMs > 5 && ticks < 60 * 10) {
-        session.advance(1 / 60, { throttle: 0, brake: 1, steer: 0 });
-        ticks++;
-      }
-      return ticks;
+    // A launch, not braking: the brake force in this car sits well below the
+    // tyre limit (a 2/120-tick margin was all that once separated the runs),
+    // so braking can never be a tyre-limited scenario. Full-throttle from a
+    // standstill is where the tyres saturate and the grip multiplier genuinely
+    // bites. Both default-on assists must be disabled to feel the raw grip -
+    // TC/ABS exist to erase exactly this class of wheel chatter.
+    const wheelie = async (grip: number) => {
+      const session = await createDriveSession({
+        track,
+        gripMultiplier: grip,
+        tractionControlEnabled: false,
+        absEnabled: false,
+      });
+      drive(session, 3, { throttle: 1, brake: 0, steer: 0 });
+      return session.state();
     };
-    const dryTicks = await stopFrom(1);
-    const wetTicks = await stopFrom(0.6);
-    // Less grip must take longer to stop, or the multiplier is decorative.
-    expect(wetTicks).toBeGreaterThan(dryTicks);
+    const dry = await wheelie(1.0);
+    const wet = await wheelie(0.6);
+    // Less grip must cost real speed by the first 3 seconds of a launch.
+    expect(dry.speedMs).toBeGreaterThan(wet.speedMs);
   });
 
   it("steers", async () => {

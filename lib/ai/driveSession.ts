@@ -60,6 +60,7 @@ import {
   type GearboxState,
 } from "../physics/gearbox";
 import { computeDownforceN } from "../physics/aero";
+import { createSlipTracker } from "../physics/slipAssist";
 import { buildTerrainGeometry } from "../tracks/terrain";
 import { buildRibbonGeometry } from "../tracks/mesh";
 import { buildBarrierWallMesh } from "../tracks/structures";
@@ -110,6 +111,12 @@ export interface DriveSessionOptions {
   speedMs?: number;
   /** Traction control, matching the player's default-on assist. */
   tractionControlEnabled?: boolean;
+  /**
+   * ABS, matching the player's default-on assist. The 0.5 s anti-flip ramp
+   * always spans on brake application; this gates the per-wheel lockup
+   * release added on top (IMPROVEMENTS.md A2).
+   */
+  absEnabled?: boolean;
 }
 
 export interface DriveSession {
@@ -143,6 +150,7 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
   const gripMultiplier = options.gripMultiplier ?? 1;
   const aeroMode = options.aeroMode ?? "high-downforce";
   const tractionControl = options.tractionControlEnabled ?? true;
+  const absEnabled = options.absEnabled ?? true;
 
   const world = new RAPIER_MOD.World({ x: 0, y: -9.81, z: 0 });
 
@@ -199,6 +207,9 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
 
   const controller = createCarController(RAPIER_MOD, world, chassis);
   const gearbox: GearboxState = createGearboxState(true);
+  // IMPROVEMENTS.md A2/A3-lite: per-wheel slip for the time attack's
+  // ABS/TC, same implementation as the live player car.
+  const slipTracker = createSlipTracker();
   const startPos = chassis.translation();
   const startRotation = chassis.rotation();
 
@@ -248,6 +259,9 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
     // value for the speed argument (controller.currentVehicleSpeed(), which the
     // harness's own comment explains must stay this rather than the signed
     // forward speed, or every closed-loop gate would change behaviour).
+    // Per-wheel slip estimate ahead of this tick's control inputs - the
+    // same ordering (and tracker) the live Car.tsx loop uses.
+    slipTracker.update(controller, controller.currentVehicleSpeed(), TICK_SECONDS);
     applyCarControls(
       controller,
       { throttle: input.throttle, brake: input.brake, steer: input.steer },
@@ -262,11 +276,12 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
         shiftDown: false,
         selectReverse: input.selectReverse,
       },
-      // Engine braking (IMPROVEMENTS.md F5) and the open-diff ceiling (A4),
-      // as Car.tsx runs them - the landing page's time attack has to time
-      // laps on the same car.
+      // Engine braking (IMPROVEMENTS.md F5), the open-diff ceiling (A4), and
+      // the slip-based ABS/TC (A2/A3-lite) - the landing page's time attack
+      // times laps on the same car the race does.
       true,
-      true
+      true,
+      { tracker: slipTracker, absEnabled, tractionEnabled: tractionControl }
     );
 
     // Per-wheel surfaces, resampled from the LIVE position every tick - the one
