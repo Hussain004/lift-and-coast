@@ -4,6 +4,7 @@
 // app/race/hud/Engineer.tsx turns the lines into banners and (optionally)
 // speech.
 import type { HudSnapshot } from "./hud";
+import { BRAKE_FADE_END_C, BRAKE_FADE_START_C } from "../physics/brakeTemp";
 
 export interface EngineerState {
   /** Seconds of session time seen so far (advanced by the caller's dt). */
@@ -164,6 +165,25 @@ export function engineerStep(state: EngineerState, hud: HudSnapshot, dt: number)
     }
   }
   state.lastDamage = hud.damage;
+
+  // Brake temperature: the brake model (IMPROVEMENTS.md A9) tells the HUD
+  // both axle temperatures; the engineer teaches fade before it bites so
+  // the player learns what brake temps are FOR.
+  const hottestBrake = Math.max(hud.brakeTempFrontC, hud.brakeTempRearC);
+  const hotterFront = hud.brakeTempFrontC >= hud.brakeTempRearC;
+  if (hottestBrake >= BRAKE_FADE_END_C && can("brakes-fade", 120)) {
+    out.push(
+      hotterFront
+        ? "Front brakes are cooked. Back off RIGHT NOW, they will not stop the car like that."
+        : "Rear brakes are cooked. Back off RIGHT NOW, they will not stop the car like that."
+    );
+  } else if (hottestBrake >= BRAKE_FADE_START_C && can("brakes-hot", 50)) {
+    out.push(
+      hotterFront
+        ? "Front brakes are getting hot. Ease off a little across the braking zones, or they fade."
+        : "Rear brakes are getting hot. Ease off a little across the braking zones, or they fade."
+    );
+  }
 
   if (hud.trackLimitText.includes("2/3") && can("limits", 60)) {
     out.push("Careful with track limits. One more and it's a flag.");
