@@ -1507,13 +1507,11 @@ export function Car({
       // IMPROVEMENTS.md A2/A3-lite: per-wheel assist modulation from this
       // tick's slip estimate. absEnabled/tractionControlEnabled are the
       // player's existing assist toggles (Driving Aids preset), now driving
-      // real systems instead of just the ramp/HUD flags. A9: effectiveness
-      // one tick earlier, applied to the same applied-brake multiplier.
+      // real systems instead of just the ramp/HUD flags.
       {
         tracker: slipTrackerRef.current,
         absEnabled: absEnabled.current,
         tractionEnabled: tractionControlEnabled.current,
-        brakeEffectiveness: brakeModelRef.current.snapshot().effectiveness,
       },
       // B4: wheel-driver option for fixed full lock at any speed.
       getControlSettings().speedSensitiveSteer
@@ -2114,7 +2112,6 @@ export function Car({
       hud.trackTempC = weatherStateRef.current.trackTemperatureC;
       hud.brakeTempFrontC = brakeModelRef.current.tempFrontC;
       hud.brakeTempRearC = brakeModelRef.current.tempRearC;
-      hud.brakeFade01 = brakeModelRef.current.fade01;
     }
     // Race audio snapshot (see lib/audio/raceAudio.ts): runs before the
     // rewind/countdown early returns below so the engine idles on the grid

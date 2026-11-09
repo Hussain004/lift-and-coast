@@ -1,40 +1,22 @@
 /**
- * Brake temperature and fade (IMPROVEMENTS.md finding A9).
+ * Brake temperature DISC METER (post owner-decision 2026-11-09, strip).
  *
- * Until now brakes never knew they were doing work: 25 N·m per wheel at
- * full pressure, indefinitely, with no temperature, no cold bite on an
- * out-lap and no fade to report the infamous wall at the end of a stint of
- * repeated hard stops. This module is the honest book for all three, front
- * and rear axles independently, and the same per-wheel effectiveness values
- * are consumable by the control path as a pure multiplier (same pattern as
- * the ABS pressure multiplier):
+ * Until now this module modelled real disc thermodynamics LINKED to the
+ * car: cold-bite below ~230 C, fade ramps past ~700 C up to half of what
+ * the driver had. The shipped behaviour read as "brakes got so much
+ * worse" - the owner removed it. The module now exists as the meter it
+ * is on the outside of the stack: the MFD shows the axle temperatures
+ * climbing and cooling with the driver's braking, and the race engineer
+ * will call it out. The physics of the brakes is exactly what it was
+ * before A9; nothing in this file affects the car in any way.
  *
- * - Heating: brake torque does work on the contact patch, E = F x v_slip.
- *   Energy lands per wheel on every tick it brakes, scaled by how far off
- *   peak the tyre is (a locked wheel dissipates the whole motion, a freely
- *   rolling wedge dissipates none). Lockups count 1.6x as fast, per
- *   IMPROVEMENTS.md ("lockups raise temp faster").
- * - Cooling: convective exchange with the ambient, faster at speed, the
- *   same exponential shape the tyre blanket model uses.
- * - Fade: past BRAKE_FADE_START_C effectiveness ramps to
- *   BRAKE_FADE_MIN_EFFECT at BRAKE_FADE_END_C. Independent of the anti-flip
- *   application ramp, which keeps its own validated role.
- * - Cold bite: below BRAKE_COLD_FULL_C effectiveness ramps from
- *   BRAKE_COLD_MIN_EFFECT at BRAKE_COLD_START_C up to 1.0, so a fresh
- *   out-lap has a pericardioally-psychic bite but never a wall.
- *
- * Player-only by caller discipline, like the other assists; AI and the
- * headless harness never consume the effectiveness (no brake temps for them
- * at all, let alone degraded braking).
+ * Design kept from the original A9 for the meter to read honestly:
+ * per-wheel energy integration against actual post-solve impulse work
+ * (lockup boost, so the dial earns its keep by showing asymmetry), and
+ * convective cooling at a speed-dependent rate.
  */
 
 export const BRAKE_TEMP_COLD_START_C = 55;
-export const BRAKE_COLD_FULL_C = 230;
-export const BRAKE_COLD_MIN_EFFECT = 0.78;
-
-export const BRAKE_FADE_START_C = 700;
-export const BRAKE_FADE_END_C = 1000;
-export const BRAKE_FADE_MIN_EFFECT = 0.5;
 
 /** Convert a wheel's per-tick brake impulse to a heat-rate coefficient (°C per unit-force per second). */
 export const BRAKE_HEAT_PER_IMPULSE = 4;
@@ -48,46 +30,16 @@ export const BRAKE_LOCKUP_HEAT_FACTOR = 1.6;
 
 export const AMBIENT_REFERENCE_C = 25;
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-/** Multiplier on brake torque, in [BRAKE_FADE_MIN_EFFECT .. 1]. */
-export function brakeEffectivenessForTemp(tempC: number): number {
-  if (!Number.isFinite(tempC)) return 1;
-  if (tempC < BRAKE_COLD_FULL_C) {
-    const t = clamp01((tempC - BRAKE_TEMP_COLD_START_C) / (BRAKE_COLD_FULL_C - BRAKE_TEMP_COLD_START_C));
-    return BRAKE_COLD_MIN_EFFECT + (1 - BRAKE_COLD_MIN_EFFECT) * t;
-  }
-  if (tempC > BRAKE_FADE_START_C) {
-    const t = clamp01((tempC - BRAKE_FADE_START_C) / (BRAKE_FADE_END_C - BRAKE_FADE_START_C));
-    return 1 - (1 - BRAKE_FADE_MIN_EFFECT) * t;
-  }
-  return 1;
-}
-
-/**
- * Fade severity of the brake at tempC, 0 = healthy .. 1 = fully faded.
- * Cold-bite deficits are deliberately NOT folded in here: fade is the
- * hot-side problem; a cold disc that underperforms is exposed through
- * brakeEffectivenessForTemp directly.
- */
-export function brakeFadeForTemp(tempC: number): number {
-  if (!Number.isFinite(tempC) || tempC <= BRAKE_FADE_START_C) return 0;
-  return clamp01((tempC - BRAKE_FADE_START_C) / (BRAKE_FADE_END_C - BRAKE_FADE_START_C));
-}
-
 export interface BrakeTempInput {
-  /** Per-wheel |impulse| measured this tick; heat is integrated per impulse. */
+  /** Per-wheel impulse measured this tick; heat is integrated from it. */
   readonly brakeImpulsePerWheel: readonly [number, number, number, number];
-  /** Per-wheel slip ratio, if known, to boost heat on locked wheels. */
+  /** Per-wheel slip ratio, if known, to boost the reading on locked wheels. */
   readonly slipRatioPerWheel?: readonly [number, number, number, number];
   /**
-   * The driver's applied brake command, 0..1. Heat flows ONLY when this is
-   * non-zero, and only from impulses working against the car's motion:
-   * engine-thrust impulses on the driven wheels are not brake work, and
-   * engine braking is not the brakes either (in this simulation it is the
-   * power unit's drag, not friction at discs).
+   * The driver's applied brake command, 0..1. Heat accrues only when this is
+   * non-zero, and only from impulses opposing the car's motion; drive work is
+   * never counted. Propulsion impulses on the driven wheels and coasting
+   * work are not charged to the discs.
    */
   readonly brake01: number;
   /** Car forward speed m/s, for the airflow envelope. */
@@ -96,41 +48,33 @@ export interface BrakeTempInput {
   readonly dt: number;
 }
 
-export interface BrakeTempModel {
-  /** Per-axle temperatures: [front pair mean, rear pair mean]. */
+export interface BrakeTempSnapshot {
+  /** Worst-of-axle readings, for the MFD CAR page. */
   readonly tempFrontC: number;
   readonly tempRearC: number;
   /** Per-wheel temperatures, CAR_WHEELS order. */
   readonly perWheel: readonly [number, number, number, number];
-  /** Current effectiveness per wheel, to be offered as the control multiplier. */
-  readonly effectiveness: readonly [number, number, number, number];
-  /** 0 healthy .. 1 fully faded (worst axle). */
-  readonly fade01: number;
+}
+
+export interface BrakeTempModel {
+  readonly tempFrontC: number;
+  readonly tempRearC: number;
+  readonly perWheel: readonly [number, number, number, number];
   update(input: BrakeTempInput): void;
   snapshot(): BrakeTempSnapshot;
 }
 
-export interface BrakeTempSnapshot {
-  readonly tempFrontC: number;
-  readonly tempRearC: number;
-  readonly perWheel: readonly [number, number, number, number];
-  readonly effectiveness: readonly [number, number, number, number];
-  readonly fade01: number;
-}
-
+/**
+ * Per-wheel disc temperature integration. Player-facing by caller
+ * discipline; AI and headless sims never construct this and never see
+ * brake temperatures. The AI behaviour intentionally carries no brake
+ * model at all.
+ */
 export function createBrakeTempModel(
   initialTempC: number = BRAKE_TEMP_COLD_START_C
 ): BrakeTempModel {
   const initial = Number.isFinite(initialTempC) ? initialTempC : BRAKE_TEMP_COLD_START_C;
   const perWheel: [number, number, number, number] = [initial, initial, initial, initial];
-
-  function effectivenessOf(tempC: number): number {
-    return brakeEffectivenessForTemp(tempC);
-  }
-
-  function fadeOf(tempC: number): number {
-    return brakeFadeForTemp(tempC);
-  }
 
   function update(input: BrakeTempInput): void {
     const dt = input.dt;
@@ -141,9 +85,8 @@ export function createBrakeTempModel(
     const pedalling = input.brake01 > 0;
     for (let i = 0; i < 4; i++) {
       const impulse = input.brakeImpulsePerWheel[i];
-      // Brake work: only when the pedal is applied, and only from impulses
-      // opposing the direction of travel. Positive (propulsion) impulses on
-      // the driven wheels - or engine braking - generate no disc heat.
+      // Heat source: brake work only. Aids like the sign convention of the
+      // wheel impulses so the meter can tell push from holdback.
       const brakeHeatSource =
         pedalling && Number.isFinite(impulse)
           ? rollingForward
@@ -168,13 +111,6 @@ export function createBrakeTempModel(
       tempFrontC: front,
       tempRearC: rear,
       perWheel: [...perWheel] as [number, number, number, number],
-      effectiveness: [
-        effectivenessOf(perWheel[0]),
-        effectivenessOf(perWheel[1]),
-        effectivenessOf(perWheel[2]),
-        effectivenessOf(perWheel[3]),
-      ],
-      fade01: Math.max(fadeOf(front), fadeOf(rear)),
     };
   }
 
@@ -187,20 +123,6 @@ export function createBrakeTempModel(
     },
     get perWheel() {
       return [...perWheel] as [number, number, number, number];
-    },
-    get effectiveness() {
-      return [
-        effectivenessOf(perWheel[0]),
-        effectivenessOf(perWheel[1]),
-        effectivenessOf(perWheel[2]),
-        effectivenessOf(perWheel[3]),
-      ] as [number, number, number, number];
-    },
-    get fade01() {
-      return Math.max(
-        fadeOf((perWheel[0] + perWheel[1]) / 2),
-        fadeOf((perWheel[2] + perWheel[3]) / 2)
-      );
     },
     update,
     snapshot,

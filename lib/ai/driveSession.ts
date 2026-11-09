@@ -282,14 +282,14 @@ export async function createDriveSession(options: DriveSessionOptions): Promise<
       },
       // Engine braking (IMPROVEMENTS.md F5), the open-diff ceiling (A4), and
       // the slip-based ABS/TC (A2/A3-lite) - the landing page's time attack
-      // times laps on the same car the race does. A9 fade comes with it.
+      // times laps on the same car the race does. The brake temperature
+      // meter comes with it (a display-only dial; no effect on braking).
       true,
       true,
       {
         tracker: slipTracker,
         absEnabled,
         tractionEnabled: tractionControl,
-        brakeEffectiveness: brakeModel.snapshot().effectiveness,
       },
       // B4: fixed full lock option (the speed-sensitive narrowing is the
       // shipped default; the player can opt out in the controls settings).

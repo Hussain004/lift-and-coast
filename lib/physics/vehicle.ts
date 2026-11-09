@@ -849,11 +849,6 @@ export function applyCarControls(
         // brings it back to the mu it is standing on.
         brakeCommand *= assistSlip.absRelease[i];
       }
-      if (slipAssist.brakeEffectiveness) {
-        // A9: cold-bite below ~230 C and fade above ~700 C, reported by the
-        // brake temperature model one tick earlier.
-        brakeCommand *= slipAssist.brakeEffectiveness[i];
-      }
     }
     controller.setWheelEngineForce(i, driveForce);
     controller.setWheelBrake(i, brakeCommand);

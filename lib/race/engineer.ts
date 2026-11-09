@@ -4,7 +4,15 @@
 // app/race/hud/Engineer.tsx turns the lines into banners and (optionally)
 // speech.
 import type { HudSnapshot } from "./hud";
-import { BRAKE_FADE_END_C, BRAKE_FADE_START_C } from "../physics/brakeTemp";
+
+/**
+ * Display-meter thresholds for the engineer's brake-temperature lines. The
+ * discs do not fade (owner decision 2026-11-09); these are the dial's own
+ * working marks, the same ones the MFD colours by. Kept local to the radio
+ * so nothing in the physics depends on them.
+ */
+const ENGINEER_BRAKES_HOT_C = 700;
+const ENGINEER_BRAKES_COOKED_C = 1000;
 
 export interface EngineerState {
   /** Seconds of session time seen so far (advanced by the caller's dt). */
@@ -166,22 +174,21 @@ export function engineerStep(state: EngineerState, hud: HudSnapshot, dt: number)
   }
   state.lastDamage = hud.damage;
 
-  // Brake temperature: the brake model (IMPROVEMENTS.md A9) tells the HUD
-  // both axle temperatures; the engineer teaches fade before it bites so
-  // the player learns what brake temps are FOR.
+  // Brake temperature METER: the discs do not fade (owner decision
+  // 2026-11-09) - this line teaches the dial, not a physical consequence.
   const hottestBrake = Math.max(hud.brakeTempFrontC, hud.brakeTempRearC);
   const hotterFront = hud.brakeTempFrontC >= hud.brakeTempRearC;
-  if (hottestBrake >= BRAKE_FADE_END_C && can("brakes-fade", 120)) {
+  if (hottestBrake >= ENGINEER_BRAKES_COOKED_C && can("brakes-fade", 120)) {
     out.push(
       hotterFront
-        ? "Front brakes are cooked. Back off RIGHT NOW, they will not stop the car like that."
-        : "Rear brakes are cooked. Back off RIGHT NOW, they will not stop the car like that."
+        ? "Front brakes are running very hot. Back off across the braking zones."
+        : "Rear brakes are running very hot. Back off across the braking zones."
     );
-  } else if (hottestBrake >= BRAKE_FADE_START_C && can("brakes-hot", 50)) {
+  } else if (hottestBrake >= ENGINEER_BRAKES_HOT_C && can("brakes-hot", 50)) {
     out.push(
       hotterFront
-        ? "Front brakes are getting hot. Ease off a little across the braking zones, or they fade."
-        : "Rear brakes are getting hot. Ease off a little across the braking zones, or they fade."
+        ? "Front brakes are getting hot. Ease off a little across the braking zones if you can."
+        : "Rear brakes are getting hot. Ease off a little across the braking zones if you can."
     );
   }
 

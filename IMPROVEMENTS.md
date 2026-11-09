@@ -315,12 +315,21 @@ the constant only for AI pace-table compat if measurement demands). The car
 gets lighter and the track keeps changing underneath you across a stint — the
 most F1 feel-per-line-of-code in the whole plan.
 
-**A9. Brake temperature and fade.** Brake energy (speed × brake force) heats
-per-axle brake temps with airflow cooling; above the fade threshold, scale
-`DEFAULT_BRAKE_FORCE` down and shorten the 0.5 s ramp's authority (a hot fade
-car can't pole-vault). Surface for the driver: brake-temp readout in the MFD,
-an engineer radio line on overheat, and cold-bite behaviour on the out-lap.
-This also deepens A2 (lockups raise temp faster).
+**A9. Brake temperature and fade — physics attempt STRIPPED by owner decision
+(2026-11-09).** As first shipped, discs carried physics: cold bite below
+~230 °C and a fade ramp past 700 °C, applied to the real brake command. In
+drivability testing that read as "the brakes got much worse", so per the
+owner's decision the physics impact is fully removed — the brake forces the
+player gets are byte-identical to the pre-A9 calibration (full-drive bite,
+`combinedBrakeScale`/ramp unchanged). What remains is the honest meter
+discipline: the MFD CAR page shows axles heating and cooling with the
+player's braking (an energy-vs-impulse model, deliberately kept as a dial),
+and the engineer calls it out (hot at 700 °C, "very hot" at 1,000 °C, both
+with per-topic cooldowns) with its own 700/1,000 C thresholds. No toggle:
+less surface, no mode semantics, just a display. Phasing note: any future
+fade work returns behind an explicit player-selectable switch, not as a
+silently-on default. The same trip lesson as the retarder applies: realism
+that ships on by default is realism that ships to people who never agreed.
 
 **Sequencing and gates.** A1 → A2/A3 (they depend on A1's slip estimates) →
 A4/A7 (independent, both cheap) → A5/A6 (measurement-heavy) → A8/A9. Every step
@@ -498,11 +507,11 @@ Where an owner decision is requested, it is flagged.
   `tests/driveSession.test.ts`'s "applies a grip multiplier" test only became
   measurable after it was re-founded on a launch-vs-brake premise
   (braking in this physics is not tyre-limited).
-- A9 brake temperature and fade: per-wheel energy integration (post-solve
-  impulses), cold-bite below ~230 °C, fade ramp starting at 700 °C with a
-  0.5 floor at 1,000 °C; MFD CAR page shows F/R axle temps with colour
-  coding; engineer radio calls "hot" at 700 (50 s cooldown) and "cooked" at
-  1,000 (120 s cooldown).
+- A9: PHYSICS STRIPPED after shipping and removing the user's preferred
+  brake feel (owner decision, 2026-11-09). What ships is the player-visible
+  ride: MFD axle-temperature readout and tempered engineer calls (hot at
+  700 °C, very-hot at 1,000 °C), both as display meters - zero effect on
+  braking.
 - A5: parked `weightTransfer.ts` deleted (measured decision — Rapier's live
   `wheelSuspensionForce` is the load truth already read by the friction
   model, the brake-temp model, the open-diff ceiling and the telemetry).

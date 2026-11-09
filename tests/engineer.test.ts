@@ -88,12 +88,12 @@ describe("race engineer", () => {
     expect(engineerStep(state, hud, 0.25)).toEqual(["Rain has stopped. The track will dry, slicks soon."]);
   });
 
-  it("warns brakes hot once per cooldown window, and cooked when they pass the floor", () => {
+  it("calls brakes hot and very hot, with per-topic cooldowns", () => {
     const { hud, state } = running();
     hud.brakeTempFrontC = 720;
     hud.brakeTempRearC = 640;
     expect(engineerStep(state, hud, 0.25)).toEqual([
-      "Front brakes are getting hot. Ease off a little across the braking zones, or they fade.",
+      "Front brakes are getting hot. Ease off a little across the braking zones if you can.",
     ]);
     // Cooldown: the same warning stays silent until it expires.
     expect(engineerStep(state, hud, 0.25)).toEqual([]);
@@ -101,7 +101,7 @@ describe("race engineer", () => {
     // 40 sim-seconds: the fade call fires on its own topic; the hot
     // warning's 50-second cooldown is still pending, so it stays silent.
     expect(engineerStep(state, hud, 40)).toEqual([
-      "Front brakes are cooked. Back off RIGHT NOW, they will not stop the car like that.",
+      "Front brakes are running very hot. Back off across the braking zones.",
     ]);
     expect(engineerStep(state, hud, 0.25)).toEqual([]);
   });
